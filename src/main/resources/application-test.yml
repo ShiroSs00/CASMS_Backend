@@ -1,0 +1,12 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/casms_test
+    username: ${DB_USERNAME:postgres}
+    password: ${DB_PASSWORD:}
+
+  flyway:
+    clean-on-validation-error: true
+
+logging:
+  level:
+    com.casms: DEBUG
