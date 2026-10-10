@@ -1,5 +1,6 @@
 package com.casms.booking.entity;
 
+import com.casms.booking.enums.BookingContractStatus;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;

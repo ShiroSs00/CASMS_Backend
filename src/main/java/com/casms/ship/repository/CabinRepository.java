@@ -1,8 +1,8 @@
 package com.casms.ship.repository;
 
 import com.casms.ship.entity.Cabin;
-import com.casms.ship.entity.CabinStatus;
-import com.casms.ship.entity.CabinType;
+import com.casms.ship.enums.CabinStatus;
+import com.casms.ship.enums.CabinType;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;

@@ -4,6 +4,7 @@ import com.casms.booking.entity.Booking;
 import com.casms.booking.entity.BookingPassenger;
 import com.casms.identity.entity.Passenger;
 import com.casms.identity.entity.User;
+import com.casms.servicepackage.enums.ServiceRequestStatus;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;

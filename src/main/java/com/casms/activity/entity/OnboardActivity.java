@@ -1,5 +1,6 @@
 package com.casms.activity.entity;
 
+import com.casms.activity.enums.OnboardActivityStatus;
 import com.casms.ship.entity.Cruise;
 import jakarta.persistence.*;
 import lombok.Getter;

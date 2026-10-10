@@ -1,5 +1,6 @@
 package com.casms.servicepackage.entity;
 
+import com.casms.servicepackage.enums.ProductStatus;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;

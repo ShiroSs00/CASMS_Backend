@@ -1,6 +1,7 @@
 package com.casms.ship.entity;
 
 import com.casms.identity.entity.User;
+import com.casms.ship.enums.ItineraryChangeType;
 import io.hypersistence.utils.hibernate.type.json.JsonBinaryType;
 import jakarta.persistence.*;
 import lombok.Getter;

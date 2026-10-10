@@ -1,5 +1,7 @@
 package com.casms.checkin.entity;
 
+import com.casms.checkin.enums.PassengerIdentifierStatus;
+import com.casms.checkin.enums.PassengerIdentifierType;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;

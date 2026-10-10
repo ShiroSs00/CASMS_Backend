@@ -1,6 +1,9 @@
 package com.casms.payment.entity;
 
 import com.casms.identity.entity.Passenger;
+import com.casms.payment.enums.AccountMemberStatus;
+import com.casms.payment.enums.ChargePermission;
+import com.casms.payment.enums.MemberRole;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;

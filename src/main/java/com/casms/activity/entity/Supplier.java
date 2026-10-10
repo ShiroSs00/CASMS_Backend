@@ -1,5 +1,6 @@
 package com.casms.activity.entity;
 
+import com.casms.activity.enums.SupplierStatus;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;

@@ -1,6 +1,7 @@
 package com.casms.payment.entity;
 
 import com.casms.identity.entity.User;
+import com.casms.payment.enums.RefundStatus;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;

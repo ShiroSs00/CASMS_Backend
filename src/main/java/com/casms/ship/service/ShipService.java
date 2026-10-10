@@ -2,11 +2,12 @@ package com.casms.ship.service;
 
 import com.casms.common.exception.BusinessException;
 import com.casms.common.exception.ResourceNotFoundException;
-import com.casms.ship.dto.*;
-import com.casms.ship.entity.CabinStatus;
+import com.casms.ship.dto.request.*;
+import com.casms.ship.dto.response.*;
+import com.casms.ship.enums.CabinStatus;
 import com.casms.ship.entity.Cruise;
 import com.casms.ship.entity.Ship;
-import com.casms.ship.entity.ShipStatus;
+import com.casms.ship.enums.ShipStatus;
 import com.casms.ship.repository.CabinRepository;
 import com.casms.ship.repository.CruiseRepository;
 import com.casms.ship.repository.DeckRepository;

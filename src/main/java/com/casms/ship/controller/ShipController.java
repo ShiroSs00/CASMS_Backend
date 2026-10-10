@@ -1,8 +1,9 @@
 package com.casms.ship.controller;
 
 import com.casms.common.response.ApiResponse;
-import com.casms.ship.dto.*;
-import com.casms.ship.entity.ShipStatus;
+import com.casms.ship.dto.request.*;
+import com.casms.ship.dto.response.*;
+import com.casms.ship.enums.ShipStatus;
 import com.casms.ship.service.ShipService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;

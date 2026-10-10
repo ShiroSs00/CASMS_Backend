@@ -2,6 +2,9 @@ package com.casms.payment.entity;
 
 import com.casms.identity.entity.Passenger;
 import com.casms.identity.entity.User;
+import com.casms.payment.enums.TransactionStatus;
+import com.casms.payment.enums.TransactionSyncStatus;
+import com.casms.payment.enums.TransactionType;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;

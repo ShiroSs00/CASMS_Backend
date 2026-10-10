@@ -1,5 +1,7 @@
 package com.casms.servicepackage.entity;
 
+import com.casms.servicepackage.enums.TourPackageStatus;
+import com.casms.servicepackage.enums.TourPackageType;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
