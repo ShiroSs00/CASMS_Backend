@@ -8,4 +8,6 @@ import java.util.UUID;
 
 @Repository
 public interface DeckRepository extends JpaRepository<Deck, UUID> {
+    long countByShipShipId(UUID shipId);
+    boolean existsByShipShipIdAndDeckNumber(UUID shipId, Integer deckNumber);
 }
