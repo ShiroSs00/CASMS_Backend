@@ -1,6 +1,8 @@
 package com.casms.payment.entity;
 
 import com.casms.booking.entity.Booking;
+import com.casms.payment.enums.InvoiceDocumentType;
+import com.casms.payment.enums.InvoiceStatus;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;

@@ -1,6 +1,9 @@
 package com.casms.ship.entity;
 
 import com.casms.identity.entity.User;
+import com.casms.ship.enums.OperationalIssueSeverity;
+import com.casms.ship.enums.OperationalIssueStatus;
+import com.casms.ship.enums.OperationalIssueType;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;

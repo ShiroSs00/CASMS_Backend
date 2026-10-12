@@ -1,6 +1,8 @@
 package com.casms.ship.entity;
 
 import com.casms.identity.entity.User;
+import com.casms.ship.enums.ItineraryStatus;
+import com.casms.ship.enums.ItineraryType;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;

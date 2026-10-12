@@ -1,6 +1,7 @@
 package com.casms.security.principal;
 
 import com.casms.identity.entity.User;
+import com.casms.identity.enums.UserStatus;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.GrantedAuthority;
@@ -37,11 +38,11 @@ public class CasmsPrincipal implements UserDetails {
 
     @Override
     public boolean isAccountNonLocked() {
-        return user.getStatus() != com.casms.identity.entity.UserStatus.LOCKED;
+        return user.getStatus() != UserStatus.LOCKED;
     }
 
     @Override
     public boolean isEnabled() {
-        return user.getStatus() == com.casms.identity.entity.UserStatus.ACTIVE;
+        return user.getStatus() == UserStatus.ACTIVE;
     }
 }

@@ -1,5 +1,6 @@
 package com.casms.ship.entity;
 
+import com.casms.ship.enums.ShipStatus;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;

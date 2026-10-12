@@ -1,5 +1,7 @@
 package com.casms.ship.entity;
 
+import com.casms.ship.enums.CabinStatus;
+import com.casms.ship.enums.CabinType;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;

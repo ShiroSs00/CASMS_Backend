@@ -1,5 +1,6 @@
 package com.casms.identity.entity;
 
+import com.casms.identity.enums.PassengerDocumentType;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;

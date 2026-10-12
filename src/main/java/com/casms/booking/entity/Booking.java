@@ -1,5 +1,6 @@
 package com.casms.booking.entity;
 
+import com.casms.booking.enums.BookingStatus;
 import com.casms.identity.entity.Passenger;
 import com.casms.identity.entity.User;
 import com.casms.payment.entity.OnboardAccount;

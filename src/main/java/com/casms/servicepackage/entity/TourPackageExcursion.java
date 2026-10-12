@@ -1,6 +1,7 @@
 package com.casms.servicepackage.entity;
 
 import com.casms.activity.entity.ShoreExcursion;
+import com.casms.servicepackage.enums.BenefitType;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;

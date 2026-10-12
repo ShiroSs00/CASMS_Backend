@@ -1,5 +1,7 @@
 package com.casms.checkin.entity;
 
+import com.casms.checkin.enums.GangwayEventResult;
+import com.casms.checkin.enums.GangwayEventType;
 import com.casms.ship.entity.CruiseStop;
 import jakarta.persistence.*;
 import lombok.Getter;

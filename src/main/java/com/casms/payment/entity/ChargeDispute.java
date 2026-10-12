@@ -2,6 +2,9 @@ package com.casms.payment.entity;
 
 import com.casms.identity.entity.Passenger;
 import com.casms.identity.entity.User;
+import com.casms.payment.enums.ChargeDisputeReasonCode;
+import com.casms.payment.enums.ChargeDisputeResolutionType;
+import com.casms.payment.enums.ChargeDisputeStatus;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;

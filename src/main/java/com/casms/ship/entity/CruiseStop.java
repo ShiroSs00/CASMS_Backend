@@ -1,5 +1,8 @@
 package com.casms.ship.entity;
 
+import com.casms.ship.enums.CruiseStopArrivalMethod;
+import com.casms.ship.enums.CruiseStopCallType;
+import com.casms.ship.enums.CruiseStopStatus;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;

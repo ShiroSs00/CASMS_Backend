@@ -1,5 +1,6 @@
 package com.casms.activity.entity;
 
+import com.casms.activity.enums.RegistrationStatus;
 import com.casms.booking.entity.BookingPassenger;
 import com.casms.identity.entity.Passenger;
 import jakarta.persistence.*;

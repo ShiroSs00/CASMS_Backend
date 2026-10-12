@@ -1,5 +1,7 @@
 package com.casms.checkin.entity;
 
+import com.casms.checkin.enums.CheckinStepCode;
+import com.casms.checkin.enums.CheckinStepStatus;
 import com.casms.identity.entity.User;
 import jakarta.persistence.*;
 import lombok.Getter;

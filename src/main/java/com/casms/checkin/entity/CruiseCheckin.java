@@ -1,6 +1,7 @@
 package com.casms.checkin.entity;
 
 import com.casms.booking.entity.BookingPassenger;
+import com.casms.checkin.enums.CruiseCheckinStatus;
 import io.hypersistence.utils.hibernate.type.json.JsonBinaryType;
 import jakarta.persistence.*;
 import lombok.Getter;
