@@ -1,0 +1,154 @@
+package com.casms.ship.controller;
+
+import com.casms.common.response.ApiResponse;
+import com.casms.ship.dto.request.CruiseCancelRequest;
+import com.casms.ship.dto.request.CruiseCreateRequest;
+import com.casms.ship.dto.request.CruiseUpdateDraftRequest;
+import com.casms.ship.dto.response.CruiseCapacityValidationResponse;
+import com.casms.ship.dto.response.CruiseReadinessResponse;
+import com.casms.ship.dto.response.CruiseResponse;
+import com.casms.ship.enums.CruiseCruiseType;
+import com.casms.ship.enums.CruiseStatus;
+import com.casms.ship.service.CruiseService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.UUID;
+
+@Tag(name = "Cruise Management", description = "Quản lý kế hoạch và vòng đời chuyến đi du thuyền (Cruise)")
+@RestController
+@RequestMapping("/cruise")
+@RequiredArgsConstructor
+public class CruiseController {
+
+    private final CruiseService service;
+
+    @Operation(summary = "Tạo chuyến đi mới", description = "Khởi tạo bản ghi chuyến đi (mặc định ở trạng thái DRAFT). Có thể gán tàu ngay hoặc gán sau.")
+    @PostMapping
+    @ResponseStatus(HttpStatus.CREATED)
+    public ApiResponse<CruiseResponse> create(@RequestBody @Valid CruiseCreateRequest request) {
+        return ApiResponse.success(service.create(request));
+    }
+
+    @Operation(summary = "Danh sách chuyến đi", description = "Lấy danh sách các chuyến đi (hỗ trợ phân trang và lọc theo trạng thái, tàu, loại chuyến)")
+    @GetMapping
+    public ApiResponse<Page<CruiseResponse>> list(
+            @Parameter(description = "Lọc theo trạng thái chuyến đi") @RequestParam(required = false) CruiseStatus status,
+            @Parameter(description = "Lọc theo ID tàu") @RequestParam(required = false) UUID shipId,
+            @Parameter(description = "Lọc theo loại chuyến đi (ONE_DAY, MULTI_DAYS)") @RequestParam(required = false) CruiseCruiseType cruiseType,
+            Pageable pageable) {
+        return ApiResponse.success(service.list(status, shipId, cruiseType, pageable));
+    }
+
+    @Operation(summary = "Chi tiết chuyến đi", description = "Lấy thông tin chi tiết của một chuyến đi theo ID")
+    @GetMapping("/{cruiseId}")
+    public ApiResponse<CruiseResponse> detail(
+            @Parameter(description = "ID chuyến đi", required = true) @PathVariable UUID cruiseId) {
+        return ApiResponse.success(service.detail(cruiseId));
+    }
+
+    @Operation(summary = "Cập nhật bản nháp chuyến đi", description = "Cập nhật thông tin chuyến đi (chỉ áp dụng khi chuyến ở trạng thái DRAFT)")
+    @PatchMapping("/{cruiseId}/draft")
+    public ApiResponse<CruiseResponse> updateDraft(
+            @Parameter(description = "ID chuyến đi", required = true) @PathVariable UUID cruiseId,
+            @RequestBody @Valid CruiseUpdateDraftRequest request) {
+        return ApiResponse.success(service.updateDraft(cruiseId, request));
+    }
+
+    @Operation(summary = "Xóa bản nháp chuyến đi", description = "Xóa chuyến đi ở trạng thái DRAFT và chưa có đặt chỗ nào")
+    @DeleteMapping("/{cruiseId}/draft")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public ApiResponse<Void> deleteDraft(
+            @Parameter(description = "ID chuyến đi", required = true) @PathVariable UUID cruiseId) {
+        service.deleteDraft(cruiseId);
+        return ApiResponse.success("Deleted draft cruise successfully", null);
+    }
+
+    @Operation(summary = "Gán tàu cho chuyến đi", description = "Gán tàu đang ACTIVE và không bị trùng lịch cho chuyến đi (khi chuyến ở trạng thái DRAFT hoặc PUBLISHED)")
+    @PostMapping("/{cruiseId}/assign-ship")
+    public ApiResponse<CruiseResponse> assignShip(
+            @Parameter(description = "ID chuyến đi", required = true) @PathVariable UUID cruiseId,
+            @Parameter(description = "ID tàu cần gán", required = true) @RequestParam UUID shipId) {
+        return ApiResponse.success(service.assignShip(cruiseId, shipId));
+    }
+
+    @Operation(summary = "Thay đổi tàu đã gán", description = "Đổi sang tàu khác cho chuyến đi (kiểm tra tàu mới ACTIVE, không trùng lịch, và sức chứa đáp ứng lượng khách đã đặt)")
+    @PutMapping("/{cruiseId}/change-assigned-ship")
+    public ApiResponse<CruiseResponse> changeAssignedShip(
+            @Parameter(description = "ID chuyến đi", required = true) @PathVariable UUID cruiseId,
+            @Parameter(description = "ID tàu mới", required = true) @RequestParam UUID newShipId) {
+        return ApiResponse.success(service.changeAssignedShip(cruiseId, newShipId));
+    }
+
+    @Operation(summary = "Hủy gán tàu khỏi chuyến đi", description = "Gỡ bỏ tàu khỏi chuyến đi (chỉ áp dụng khi chuyến ở trạng thái DRAFT và chưa có đặt chỗ)")
+    @PostMapping("/{cruiseId}/unassign-ship")
+    public ApiResponse<CruiseResponse> unassignShip(
+            @Parameter(description = "ID chuyến đi", required = true) @PathVariable UUID cruiseId) {
+        return ApiResponse.success(service.unassignShip(cruiseId));
+    }
+
+    @Operation(summary = "Kiểm tra tính khả dụng của tàu đối với chuyến đi", description = "Kiểm tra tàu có ACTIVE và không bị trùng lịch với chuyến đi này không")
+    @GetMapping("/{cruiseId}/validate-ship-availability")
+    public ApiResponse<Boolean> validateShipAvailability(
+            @Parameter(description = "ID chuyến đi", required = true) @PathVariable UUID cruiseId,
+            @Parameter(description = "ID tàu cần kiểm tra", required = true) @RequestParam UUID shipId) {
+        return ApiResponse.success(service.validateShipAvailability(cruiseId, shipId));
+    }
+
+    @Operation(summary = "Kiểm tra tính hợp lệ của lịch trình chuyến đi", description = "Xác nhận thời điểm trở về sau thời điểm khởi hành")
+    @GetMapping("/{cruiseId}/validate-schedule")
+    public ApiResponse<Boolean> validateSchedule(
+            @Parameter(description = "ID chuyến đi", required = true) @PathVariable UUID cruiseId) {
+        return ApiResponse.success(service.validateSchedule(cruiseId));
+    }
+
+    @Operation(summary = "Kiểm tra sức chứa của chuyến đi", description = "So sánh sức chứa tối đa của tàu với số lượng hành khách đã đặt chỗ hiện tại")
+    @GetMapping("/{cruiseId}/validate-capacity")
+    public ApiResponse<CruiseCapacityValidationResponse> validateCapacity(
+            @Parameter(description = "ID chuyến đi", required = true) @PathVariable UUID cruiseId) {
+        return ApiResponse.success(service.validateCapacity(cruiseId));
+    }
+
+    @Operation(summary = "Kiểm tra tính sẵn sàng vận hành (Operational Readiness)", description = "Đánh giá toàn diện: tàu đã gán và ACTIVE, có tầng và phòng, lịch trình hợp lệ, cảng hoạt động, hải trình đã cấu hình")
+    @GetMapping("/{cruiseId}/readiness")
+    public ApiResponse<CruiseReadinessResponse> validateOperationalReadiness(
+            @Parameter(description = "ID chuyến đi", required = true) @PathVariable UUID cruiseId) {
+        return ApiResponse.success(service.validateOperationalReadiness(cruiseId));
+    }
+
+    @Operation(summary = "Phát hành chuyến đi (Publish)", description = "Chuyển trạng thái từ DRAFT sang PUBLISHED (yêu cầu kiểm tra sẵn sàng vận hành đạt tiêu chuẩn)")
+    @PostMapping("/{cruiseId}/publish")
+    public ApiResponse<CruiseResponse> publish(
+            @Parameter(description = "ID chuyến đi", required = true) @PathVariable UUID cruiseId) {
+        return ApiResponse.success(service.publish(cruiseId));
+    }
+
+    @Operation(summary = "Bắt đầu chuyến đi (Start)", description = "Chuyển trạng thái từ PUBLISHED sang IN_PROGRESS khi chuyến đi chính thức bắt đầu")
+    @PostMapping("/{cruiseId}/start")
+    public ApiResponse<CruiseResponse> start(
+            @Parameter(description = "ID chuyến đi", required = true) @PathVariable UUID cruiseId) {
+        return ApiResponse.success(service.start(cruiseId));
+    }
+
+    @Operation(summary = "Hoàn tất chuyến đi (Complete)", description = "Chuyển trạng thái từ IN_PROGRESS sang COMPLETED khi tàu cập cảng an toàn và kết thúc chuyến đi")
+    @PostMapping("/{cruiseId}/complete")
+    public ApiResponse<CruiseResponse> complete(
+            @Parameter(description = "ID chuyến đi", required = true) @PathVariable UUID cruiseId) {
+        return ApiResponse.success(service.complete(cruiseId));
+    }
+
+    @Operation(summary = "Hủy chuyến đi (Cancel)", description = "Hủy chuyến đi (yêu cầu cung cấp lý do hủy, không thể hủy chuyến đã hoàn tất)")
+    @PostMapping("/{cruiseId}/cancel")
+    public ApiResponse<CruiseResponse> cancel(
+            @Parameter(description = "ID chuyến đi", required = true) @PathVariable UUID cruiseId,
+            @RequestBody @Valid CruiseCancelRequest request) {
+        return ApiResponse.success(service.cancel(cruiseId, request.getReason()));
+    }
+}
