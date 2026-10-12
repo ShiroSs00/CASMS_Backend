@@ -1,0 +1,14 @@
+{
+    "java.compile.nullAnalysis.mode": "automatic",
+    "java.configuration.updateBuildConfiguration": "automatic",
+    "java.autobuild.enabled": true,
+    "java.saveActions.organizeImports": true,
+    "java.completion.guessMethodArguments": true,
+    "java.import.maven.enabled": true,
+    "java.jdt.ls.vmargs": "-XX:+UseParallelGC -XX:GCTimeRatio=4 -XX:AdaptiveSizePolicyWeight=90 -Dsun.zip.disableMemoryMapping=true -Xmx4G -Xms100m -Xlog:disable",
+    "extensions.ignoreRecommendations": true,
+    "[java]": {
+        "editor.defaultFormatter": "redhat.java",
+        "editor.formatOnSave": true
+    }
+}

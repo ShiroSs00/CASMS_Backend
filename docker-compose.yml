@@ -1,0 +1,48 @@
+  services:
+    postgres:
+      image: postgres:16-alpine
+      container_name: casms-postgres
+      restart: unless-stopped
+      environment:
+        POSTGRES_DB: casms
+        POSTGRES_USER: postgres
+        POSTGRES_PASSWORD: "12345"
+      ports:
+        - "5432:5432"
+      volumes:
+        - postgres_data:/var/lib/postgresql/data
+      healthcheck:
+        test: ["CMD-SHELL", "pg_isready -U postgres -d casms"]
+        interval: 5s
+        timeout: 5s
+        retries: 5
+      networks:
+        - casms-network
+
+    backend:
+      build:
+        context: .
+        dockerfile: Dockerfile
+      container_name: casms-backend
+      restart: unless-stopped
+      ports:
+        - "8080:8080"
+      environment:
+        DB_URL: jdbc:postgresql://postgres:5432/casms
+        DB_USERNAME: postgres
+        DB_PASSWORD: "12345"
+        JWT_SECRET: ${JWT_SECRET:-changeme-use-a-long-random-secret-in-production-1234567890-must-be-very-long}
+        SPRING_PROFILES_ACTIVE: dev
+      depends_on:
+        postgres:
+          condition: service_healthy
+      networks:
+        - casms-network
+
+  volumes:
+    postgres_data:
+
+  networks:
+    casms-network:
+      driver: bridge
+
