@@ -1,12 +1,15 @@
-﻿spring:
+spring:
   application:
     name: CASMS
 
   datasource:
-    url: ${DB_URL:jdbc:postgresql://localhost:5432/casms}
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/casms?stringtype=unspecified}
     username: ${DB_USERNAME:postgres}
     password: ${DB_PASSWORD:12345}
     driver-class-name: org.postgresql.Driver
+    hikari:
+      data-source-properties:
+        stringtype: unspecified
 
   jpa:
     hibernate:
@@ -16,7 +19,6 @@
     show-sql: false
     properties:
       hibernate:
-        dialect: org.hibernate.dialect.PostgreSQLDialect
         format_sql: true
         default_schema: public
 

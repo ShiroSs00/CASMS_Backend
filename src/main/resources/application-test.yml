@@ -1,8 +1,11 @@
 spring:
   datasource:
-    url: jdbc:postgresql://localhost:5432/casms_test
+    url: jdbc:postgresql://localhost:5432/casms_test?stringtype=unspecified
     username: ${DB_USERNAME:postgres}
     password: ${DB_PASSWORD:}
+    hikari:
+      data-source-properties:
+        stringtype: unspecified
 
   flyway:
     clean-on-validation-error: true
