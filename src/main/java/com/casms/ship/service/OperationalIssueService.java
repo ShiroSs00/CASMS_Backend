@@ -1,7 +1,8 @@
-
 package com.casms.ship.service;
 
+import com.casms.common.exception.BusinessException;
 import com.casms.identity.entity.User;
+import com.casms.identity.enums.UserStatus;
 import com.casms.identity.repository.UserRepository;
 import com.casms.ship.dto.request.OperationalIssueAssignRequest;
 import com.casms.ship.dto.request.OperationalIssueRequest;
@@ -19,16 +20,17 @@ import com.casms.ship.repository.OperationalIssueRepository;
 import com.casms.ship.repository.ShipRepository;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.validation.annotation.Validated;
 
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
+@Slf4j
 @Service
-@Validated
 @RequiredArgsConstructor
 @Transactional
 public class OperationalIssueService {
@@ -44,8 +46,8 @@ public class OperationalIssueService {
             @Valid OperationalIssueRequest request,
             UUID reporterId) {
 
-        if (issueRepository.existsByIssueCode(request.getIssueCode())) {
-            throw new IllegalArgumentException("Issue code already exists");
+        if (issueRepository.existsByIssueCode(request.getIssueCode().trim())) {
+            throw new IllegalArgumentException("Issue code already exists: " + request.getIssueCode());
         }
 
         User reporter = findUser(reporterId);
@@ -80,31 +82,23 @@ public class OperationalIssueService {
         List<OperationalIssue> issues;
 
         if (status != null && shipId != null) {
-            issues = issueRepository
-                    .findByStatusAndShip_ShipIdOrderByReportedAtDesc(
-                            status, shipId);
+            issues = issueRepository.findByStatusAndShip_ShipIdOrderByReportedAtDesc(status, shipId);
+        } else if (status != null && cruiseId != null) {
+            issues = issueRepository.findByStatusAndCruise_CruiseIdOrderByReportedAtDesc(
+                    status, cruiseId);
         } else if (status != null) {
-            issues = issueRepository
-                    .findByStatusOrderByReportedAtDesc(status);
+            issues = issueRepository.findByStatusOrderByReportedAtDesc(status);
         } else if (shipId != null) {
-            issues = issueRepository
-                    .findByShip_ShipIdOrderByReportedAtDesc(shipId);
+            issues = issueRepository.findByShip_ShipIdOrderByReportedAtDesc(shipId);
         } else if (cruiseId != null) {
-            issues = issueRepository
-                    .findByCruise_CruiseIdOrderByReportedAtDesc(cruiseId);
+            issues = issueRepository.findByCruise_CruiseIdOrderByReportedAtDesc(cruiseId);
         } else {
             issues = issueRepository.findAllByOrderByReportedAtDesc();
         }
 
-        if (cruiseId != null && (status != null || shipId != null)) {
-            issues = issues.stream()
-                    .filter(issue -> issue.getCruise() != null
-                            && cruiseId.equals(
-                            issue.getCruise().getCruiseId()))
-                    .toList();
-        }
-
-        return issues.stream().map(this::toResponse).toList();
+        return issues.stream()
+                .map(this::toResponse)
+                .toList();
     }
 
     // 3. Detail
@@ -113,7 +107,7 @@ public class OperationalIssueService {
         return toResponse(findIssue(issueId));
     }
 
-    // 4. Update only while OPEN
+    // 4. Update an OPEN issue
     public OperationalIssueResponse updateOpen(
             UUID issueId,
             @Valid OperationalIssueUpdateRequest request) {
@@ -121,17 +115,10 @@ public class OperationalIssueService {
         OperationalIssue issue = findIssue(issueId);
         requireStatus(issue, OperationalIssueStatus.OPEN);
 
-        Ship ship = findShip(request.getShipId());
-        Cruise cruise = findOptionalCruise(request.getCruiseId());
-        Cabin cabin = findOptionalCabin(request.getCabinId());
+        if (request.getSeverity() != null) {
+            issue.setSeverity(request.getSeverity());
+        }
 
-        validateLocation(ship, cruise, cabin);
-
-        issue.setShip(ship);
-        issue.setCruise(cruise);
-        issue.setCabin(cabin);
-        issue.setIssueType(request.getIssueType());
-        issue.setSeverity(request.getSeverity());
         issue.setDescription(request.getDescription().trim());
 
         return toResponse(issueRepository.save(issue));
@@ -151,6 +138,14 @@ public class OperationalIssueService {
         }
 
         User handler = findUser(request.getAssignedToId());
+        if (handler.getStatus() != UserStatus.ACTIVE) {
+            throw new BusinessException(
+                    HttpStatus.BAD_REQUEST,
+                    "HANDLER_NOT_ACTIVE",
+                    "Handler must be an ACTIVE user"
+            );
+        }
+
         issue.setAssignedTo(handler);
 
         return toResponse(issueRepository.save(issue));
@@ -163,14 +158,14 @@ public class OperationalIssueService {
 
         if (issue.getAssignedTo() == null) {
             throw new IllegalStateException(
-                    "Assign a handler before starting issue handling");
+                    "Assign a handler before starting the issue");
         }
 
         issue.setStatus(OperationalIssueStatus.IN_PROGRESS);
         return toResponse(issueRepository.save(issue));
     }
 
-    // 7. Record resolution; verification is a separate step
+    // 7. Record resolution
     public OperationalIssueResponse recordResolution(
             UUID issueId,
             UUID resolverId,
@@ -185,7 +180,7 @@ public class OperationalIssueService {
         issue.setResolvedBy(resolver);
         issue.setResolvedAt(Instant.now());
 
-        // Remain IN_PROGRESS until verification succeeds.
+        // Reset verification fields if resolution is updated
         issue.setVerifiedBy(null);
         issue.setVerifiedAt(null);
 
@@ -249,21 +244,16 @@ public class OperationalIssueService {
     public void validateIssue(UUID issueId) {
         OperationalIssue issue = findIssue(issueId);
 
-        if (issue.getShip() == null
-                || issue.getReportedBy() == null
-                || issue.getIssueType() == null
-                || issue.getSeverity() == null
-                || issue.getDescription() == null
-                || issue.getDescription().isBlank()) {
-            throw new IllegalStateException(
-                    "Issue is missing required data");
+        if (issue.getIssueCode() == null || issue.getIssueCode().isBlank()) {
+            throw new IllegalStateException("Issue code is required");
         }
 
-        if (issue.getStatus() == OperationalIssueStatus.IN_PROGRESS
-                && issue.getAssignedTo() == null) {
-            throw new IllegalStateException(
-                    "IN_PROGRESS issue must have an assigned handler");
+        if (issue.getDescription() == null || issue.getDescription().isBlank()) {
+            throw new IllegalStateException("Description is required");
         }
+
+        validateLocation(
+                issue.getShip(), issue.getCruise(), issue.getCabin());
 
         if (issue.getStatus() == OperationalIssueStatus.RESOLVED
                 || issue.getStatus() == OperationalIssueStatus.CLOSED) {
@@ -275,8 +265,7 @@ public class OperationalIssueService {
                     || issue.getVerifiedAt() == null
                     || issue.getVerifiedBy() == null) {
                 throw new IllegalStateException(
-                        "Resolved or closed issue must have a recorded "
-                                + "and verified resolution");
+                        "Resolved or closed issue must have a recorded and verified resolution");
             }
         }
     }
