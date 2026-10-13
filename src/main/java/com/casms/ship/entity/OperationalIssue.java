@@ -1,3 +1,4 @@
+
 package com.casms.ship.entity;
 
 import com.casms.identity.entity.User;
@@ -73,7 +74,14 @@ public class OperationalIssue {
     @JoinColumn(name = "assigned_to")
     private User assignedTo;
 
-    @Column(name = "created_at", nullable = false)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "verified_by")
+    private User verifiedBy;
+
+    @Column(name = "verified_at")
+    private Instant verifiedAt;
+
+    @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
     @Column(name = "updated_at", nullable = false)
@@ -81,8 +89,15 @@ public class OperationalIssue {
 
     @PrePersist
     protected void onCreate() {
-        createdAt = Instant.now();
-        updatedAt = Instant.now();
+        Instant now = Instant.now();
+        if (reportedAt == null) {
+            reportedAt = now;
+        }
+        if (status == null) {
+            status = OperationalIssueStatus.OPEN;
+        }
+        createdAt = now;
+        updatedAt = now;
     }
 
     @PreUpdate
@@ -90,4 +105,3 @@ public class OperationalIssue {
         updatedAt = Instant.now();
     }
 }
-
