@@ -384,7 +384,13 @@ public class CruiseRegulationService {
                 .build();
     }
 
-    private CruiseRegulationResponse toResponse(UUID cruiseId, UUID regulationId) {
+    /**
+     * Tạo response dto cho quy định GLOBAL.
+     */
+    private CruiseRegulationResponse toResponse(
+            UUID cruiseId,
+            UUID regulationId
+    ) {
         return CruiseRegulationResponse.builder()
                 .cruiseId(cruiseId)
                 .regulationId(regulationId)

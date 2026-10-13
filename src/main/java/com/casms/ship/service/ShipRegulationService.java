@@ -347,7 +347,13 @@ public class ShipRegulationService {
                 .build();
     }
 
-    private ShipRegulationResponse toResponse(UUID shipId, UUID regulationId) {
+    /**
+     * Tạo response dto cho quy định GLOBAL.
+     */
+    private ShipRegulationResponse toResponse(
+            UUID shipId,
+            UUID regulationId
+    ) {
         return ShipRegulationResponse.builder()
                 .shipId(shipId)
                 .regulationId(regulationId)
