@@ -22,7 +22,7 @@ import java.util.UUID;
 
 @Tag(name = "Deck Management", description = "Quản lý boong / tầng tàu du lịch")
 @RestController
-@RequestMapping("/deck")
+@RequestMapping("/decks")
 @RequiredArgsConstructor
 public class DeckController {
 

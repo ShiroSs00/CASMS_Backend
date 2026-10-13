@@ -23,7 +23,7 @@ import java.util.UUID;
 
 @Tag(name = "Cabin Management", description = "Quản lý phòng nghỉ (cabin) trên tàu du lịch")
 @RestController
-@RequestMapping("/cabin")
+@RequestMapping("/cabins")
 @RequiredArgsConstructor
 public class CabinController {
 

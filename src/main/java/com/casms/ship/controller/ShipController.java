@@ -25,7 +25,7 @@ import java.util.UUID;
 
 @Tag(name = "Ship Management", description = "Quản lý thông tin và vận hành tàu du lịch")
 @RestController
-@RequestMapping("/ship")
+@RequestMapping("/ships")
 @RequiredArgsConstructor
 public class ShipController {
 
