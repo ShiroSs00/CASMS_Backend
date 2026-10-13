@@ -1,7 +1,9 @@
 package com.casms.ship.controller;
 
+import com.casms.common.response.ApiResponse;
 import com.casms.ship.dto.request.OperationalRegulationRequest;
 import com.casms.ship.dto.response.OperationalRegulationResponse;
+import com.casms.ship.dto.response.RegulationConflictResponse;
 import com.casms.ship.service.OperationalRegulationService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -24,33 +26,33 @@ public class OperationalRegulationController {
 
     @Operation(summary = "Tạo quy định mới", description = "Khởi tạo một quy định vận hành mới trong hệ thống")
     @PostMapping
-    public ResponseEntity<OperationalRegulationResponse> create(
+    public ResponseEntity<ApiResponse<OperationalRegulationResponse>> create(
             @Valid @RequestBody OperationalRegulationRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(regulationService.createRegulation(request));
+                .body(ApiResponse.success(regulationService.createRegulation(request)));
     }
 
     @Operation(summary = "Danh sách quy định", description = "Lấy toàn bộ danh sách quy định vận hành")
     @GetMapping
-    public ResponseEntity<List<OperationalRegulationResponse>> list() {
-        return ResponseEntity.ok(regulationService.listRegulations());
+    public ResponseEntity<ApiResponse<List<OperationalRegulationResponse>>> list() {
+        return ResponseEntity.ok(ApiResponse.success(regulationService.listRegulations()));
     }
 
     @Operation(summary = "Chi tiết quy định", description = "Lấy thông tin chi tiết của một quy định vận hành theo ID")
     @GetMapping("/{regulationId}")
-    public ResponseEntity<OperationalRegulationResponse> detail(
+    public ResponseEntity<ApiResponse<OperationalRegulationResponse>> detail(
             @PathVariable UUID regulationId) {
-        return ResponseEntity.ok(
-                regulationService.getRegulationDetail(regulationId));
+        return ResponseEntity.ok(ApiResponse.success(
+                regulationService.getRegulationDetail(regulationId)));
     }
 
     @Operation(summary = "Cập nhật quy định", description = "Chỉnh sửa nội dung, tham số của quy định vận hành")
     @PutMapping("/{regulationId}")
-    public ResponseEntity<OperationalRegulationResponse> update(
+    public ResponseEntity<ApiResponse<OperationalRegulationResponse>> update(
             @PathVariable UUID regulationId,
             @Valid @RequestBody OperationalRegulationRequest request) {
-        return ResponseEntity.ok(
-                regulationService.updateRegulation(regulationId, request));
+        return ResponseEntity.ok(ApiResponse.success(
+                regulationService.updateRegulation(regulationId, request)));
     }
 
     @Operation(summary = "Xóa quy định", description = "Xóa quy định vận hành chưa được sử dụng")
@@ -63,25 +65,25 @@ public class OperationalRegulationController {
 
     @Operation(summary = "Kích hoạt quy định", description = "Chuyển trạng thái quy định sang hiệu lực (ACTIVE)")
     @PatchMapping("/{regulationId}/activate")
-    public ResponseEntity<OperationalRegulationResponse> activate(
+    public ResponseEntity<ApiResponse<OperationalRegulationResponse>> activate(
             @PathVariable UUID regulationId) {
-        return ResponseEntity.ok(
-                regulationService.activateRegulation(regulationId));
+        return ResponseEntity.ok(ApiResponse.success(
+                regulationService.activateRegulation(regulationId)));
     }
 
     @Operation(summary = "Hủy kích hoạt quy định", description = "Chuyển trạng thái quy định sang ngưng hiệu lực (INACTIVE)")
     @PatchMapping("/{regulationId}/deactivate")
-    public ResponseEntity<OperationalRegulationResponse> deactivate(
+    public ResponseEntity<ApiResponse<OperationalRegulationResponse>> deactivate(
             @PathVariable UUID regulationId) {
-        return ResponseEntity.ok(
-                regulationService.deactivateRegulation(regulationId));
+        return ResponseEntity.ok(ApiResponse.success(
+                regulationService.deactivateRegulation(regulationId)));
     }
 
     @Operation(summary = "Danh sách quy định hiệu lực", description = "Lấy danh sách các quy định vận hành hiện đang có hiệu lực")
     @GetMapping("/effective")
-    public ResponseEntity<List<OperationalRegulationResponse>> getEffective() {
-        return ResponseEntity.ok(
-                regulationService.getEffectiveRegulations());
+    public ResponseEntity<ApiResponse<List<OperationalRegulationResponse>>> getEffective() {
+        return ResponseEntity.ok(ApiResponse.success(
+                regulationService.getEffectiveRegulations()));
     }
 
     @Operation(summary = "Kiểm tra tính hợp lệ quy định", description = "Kiểm tra tính hợp lệ cấu hình của quy định vận hành")
@@ -92,11 +94,12 @@ public class OperationalRegulationController {
         return ResponseEntity.noContent().build();
     }
 
-    @Operation(summary = "Kiểm tra xung đột quy định", description = "Kiểm tra xung đột giữa quy định này với các quy định khác")
+    @Operation(summary = "Kiểm tra xung đột quy định", description = "Kiểm tra xung đột giữa quy định này với các quy định khác và trả kết luận chính thức")
     @GetMapping("/{regulationId}/conflicts")
-    public ResponseEntity<List<OperationalRegulationResponse>> validateConflict(
-            @PathVariable UUID regulationId) {
-        return ResponseEntity.ok(
-                regulationService.validateConflict(regulationId));
+    public ResponseEntity<ApiResponse<RegulationConflictResponse>> validateConflict(
+            @PathVariable UUID regulationId,
+            @RequestParam(required = false, defaultValue = "ACTIVATE") String context) {
+        return ResponseEntity.ok(ApiResponse.success(
+                regulationService.getConflictVerdict(regulationId, context)));
     }
 }

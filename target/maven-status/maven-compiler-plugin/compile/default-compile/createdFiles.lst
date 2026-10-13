@@ -26,12 +26,16 @@ com\casms\servicepackage\repository\ServiceRequestRepository.class
 com\casms\ship\repository\ItineraryChangeHistoryRepository.class
 com\casms\servicepackage\entity\TourPackageActivity.class
 com\casms\activity\service\ActivityService.class
+com\casms\ship\dto\request\RegulationPrecheckRequest$RegulationPrecheckRequestBuilder.class
 com\casms\activity\repository\RegistrationRepository.class
 com\casms\checkin\entity\CheckinStep.class
 com\casms\payment\entity\Refund.class
 com\casms\activity\enums\TourGroupPassengerAssignmentStatus.class
 com\casms\servicepackage\repository\ServiceRepository.class
+com\casms\ship\dto\response\RegulationConflictComparedItem$RegulationConflictComparedItemBuilder.class
+com\casms\ship\dto\response\RegulationAssignmentSnapshotResponse.class
 com\casms\activity\entity\TourGroup.class
+com\casms\identity\dto\UserLookupResponse$UserLookupResponseBuilder.class
 com\casms\ship\enums\RegulationUnit.class
 com\casms\config\SecurityConfig.class
 com\casms\servicepackage\repository\TourPackageActivityRepository.class
@@ -49,6 +53,7 @@ com\casms\booking\repository\BookingRepository.class
 com\casms\checkin\enums\CruiseCheckinStatus.class
 com\casms\ship\entity\CruiseStop.class
 com\casms\ship\repository\CruiseRepository.class
+com\casms\identity\dto\UserLookupResponse.class
 com\casms\notification\service\NotificationService.class
 com\casms\servicepackage\entity\TourPackage.class
 com\casms\ship\controller\DeckController.class
@@ -61,7 +66,9 @@ com\casms\payment\entity\OnboardTransaction.class
 com\casms\ship\entity\Deck.class
 com\casms\payment\repository\OnboardTransactionRepository.class
 com\casms\payment\repository\OnboardAccountRepository.class
+com\casms\ship\dto\response\RegulationAssignmentSnapshotResponse$HostSummary.class
 com\casms\ship\dto\response\CruiseSummaryResponse.class
+com\casms\ship\dto\response\RegulationConflictComparedItem.class
 com\casms\payment\entity\InvoiceLine.class
 com\casms\ship\entity\Ship.class
 com\casms\config\JacksonConfig.class
@@ -75,9 +82,11 @@ com\casms\ship\enums\RegulationScope.class
 com\casms\checkin\repository\PassengerIdentifierRepository.class
 com\casms\servicepackage\entity\TourPackageActivity$TourPackageActivityId.class
 com\casms\servicepackage\repository\TourPackageExcursionRepository.class
+com\casms\common\response\ApiResponse$ApiResponseBuilder.class
 com\casms\ship\service\DeckService.class
 com\casms\identity\enums\UserStatus.class
 com\casms\ship\dto\request\CabinCreateRequest.class
+com\casms\ship\dto\response\RegulationAssignmentSnapshotResponse$RegulationAssignmentItemResponse.class
 com\casms\ship\repository\OperationalRegulationRepository.class
 com\casms\ship\enums\CruiseCruiseType.class
 com\casms\checkin\enums\GuidanceSessionParticipantAttendanceStatus.class
@@ -125,6 +134,7 @@ com\casms\ship\repository\PortRepository.class
 com\casms\ship\enums\CruiseStopStatus.class
 com\casms\ship\dto\response\CabinAssignmentHistoryResponse.class
 com\casms\ship\dto\request\CruiseUpdateDraftRequest.class
+com\casms\ship\dto\response\RegulationAssignmentSnapshotResponse$RegulationAssignmentSnapshotResponseBuilder.class
 com\casms\ship\repository\DestinationRepository.class
 com\casms\servicepackage\entity\Product.class
 com\casms\ship\dto\response\ShipCapacitySummaryResponse.class
@@ -140,6 +150,7 @@ com\casms\ship\dto\request\ShipCreateRequest.class
 com\casms\payment\enums\RefundStatus.class
 com\casms\checkin\controller\CheckinController.class
 com\casms\identity\repository\UserRepository.class
+com\casms\ship\dto\response\RegulationConflictResponse.class
 com\casms\CASMSApplication.class
 com\casms\activity\enums\ShoreExcursionStatus.class
 com\casms\ship\dto\request\DeckUpdateRequest.class
@@ -156,6 +167,7 @@ com\casms\servicepackage\entity\TourPackageExcursion$TourPackageExcursionId.clas
 com\casms\payment\enums\TransactionStatus.class
 com\casms\booking\repository\BookingPassengerRepository.class
 com\casms\ship\repository\OperationalIssueRepository.class
+com\casms\ship\dto\response\RegulationAssignmentSnapshotResponse$RegulationAssignmentItemResponse$RegulationAssignmentItemResponseBuilder.class
 com\casms\ship\entity\Itinerary.class
 com\casms\ship\enums\ItineraryChangeType.class
 com\casms\activity\entity\OnboardActivity.class
@@ -209,13 +221,16 @@ com\casms\servicepackage\repository\TourPackageServiceRepository.class
 com\casms\payment\enums\InvoiceStatus.class
 com\casms\ship\entity\OperationalIssue.class
 com\casms\payment\enums\AccountMemberStatus.class
+com\casms\ship\dto\response\RegulationAssignmentSnapshotResponse$HostSummary$HostSummaryBuilder.class
 com\casms\ship\service\ShipService.class
 com\casms\booking\entity\Booking.class
 com\casms\logging\LoggingConfig.class
 com\casms\security\principal\CasmsPrincipal.class
 com\casms\identity\service\IdentityService.class
+com\casms\ship\dto\response\RegulationConflictResponse$RegulationConflictResponseBuilder.class
 com\casms\checkin\enums\PassengerIdentifierStatus.class
 com\casms\ship\repository\ShipRegulationRepository.class
+com\casms\ship\dto\request\RegulationPrecheckRequest.class
 com\casms\common\response\ApiResponse.class
 com\casms\booking\repository\CabinAssignmentRepository.class
 com\casms\payment\repository\RefundRepository.class

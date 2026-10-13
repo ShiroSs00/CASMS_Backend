@@ -1,8 +1,10 @@
-
 package com.casms.ship.service;
 
+import com.casms.common.exception.BusinessException;
 import com.casms.ship.dto.request.OperationalRegulationRequest;
 import com.casms.ship.dto.response.OperationalRegulationResponse;
+import com.casms.ship.dto.response.RegulationConflictComparedItem;
+import com.casms.ship.dto.response.RegulationConflictResponse;
 import com.casms.ship.entity.OperationalRegulation;
 import com.casms.ship.enums.RegulationScope;
 import com.casms.ship.enums.RegulationStatus;
@@ -12,16 +14,18 @@ import com.casms.ship.repository.ShipRegulationRepository;
 import jakarta.persistence.EntityNotFoundException;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.validation.annotation.Validated;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
 
+@Slf4j
 @Service
-@Validated
 @RequiredArgsConstructor
 @Transactional
 public class OperationalRegulationService {
@@ -37,11 +41,11 @@ public class OperationalRegulationService {
     ) {
         validateRequest(request);
 
-        String code = request.getRegulationCode().trim();
-
-        if (regulationRepository.existsByRegulationCode(code)) {
+        if (regulationRepository.existsByRegulationCode(
+                request.getRegulationCode().trim()
+        )) {
             throw new IllegalArgumentException(
-                    "Regulation code already exists."
+                    "Regulation code already exists: " + request.getRegulationCode()
             );
         }
 
@@ -49,12 +53,10 @@ public class OperationalRegulationService {
         applyRequest(regulation, request);
         regulation.setStatus(RegulationStatus.DRAFT);
 
-        OperationalRegulation saved = regulationRepository.save(regulation);
-
-        return toResponse(saved);
+        return toResponse(regulationRepository.save(regulation));
     }
 
-    // ==================== READ ====================
+    // ==================== LIST ====================
 
     @Transactional(readOnly = true)
     public List<OperationalRegulationResponse> listRegulations() {
@@ -63,6 +65,8 @@ public class OperationalRegulationService {
                 .map(this::toResponse)
                 .toList();
     }
+
+    // ==================== DETAIL ====================
 
     @Transactional(readOnly = true)
     public OperationalRegulationResponse getRegulationDetail(
@@ -77,24 +81,21 @@ public class OperationalRegulationService {
             UUID regulationId,
             @Valid OperationalRegulationRequest request
     ) {
+        OperationalRegulation regulation = findRegulation(regulationId);
         validateRequest(request);
 
-        OperationalRegulation existing = findRegulation(regulationId);
-
-        String code = request.getRegulationCode().trim();
-
         if (regulationRepository.existsByRegulationCodeAndRegulationIdNot(
-                code,
+                request.getRegulationCode().trim(),
                 regulationId
         )) {
             throw new IllegalArgumentException(
-                    "Regulation code already exists."
+                    "Regulation code already exists: " + request.getRegulationCode()
             );
         }
 
-        applyRequest(existing, request);
+        applyRequest(regulation, request);
 
-        return toResponse(regulationRepository.save(existing));
+        return toResponse(regulationRepository.save(regulation));
     }
 
     // ==================== DELETE ====================
@@ -146,6 +147,15 @@ public class OperationalRegulationService {
             );
         }
 
+        RegulationConflictResponse verdict = getConflictVerdict(regulationId, "ACTIVATE");
+        if (Boolean.FALSE.equals(verdict.getCanProceed())) {
+            throw new BusinessException(
+                    HttpStatus.UNPROCESSABLE_ENTITY,
+                    verdict.getCode() != null ? verdict.getCode() : "REGULATION_CONFLICT_BLOCKING",
+                    verdict.getMessage()
+            );
+        }
+
         regulation.setStatus(RegulationStatus.ACTIVE);
 
         return toResponse(regulationRepository.save(regulation));
@@ -181,20 +191,14 @@ public class OperationalRegulationService {
             Instant at
     ) {
         if (at == null) {
-            throw new IllegalArgumentException(
-                    "Evaluation time must not be null."
-            );
+            throw new IllegalArgumentException("Effective date must not be null.");
         }
 
         return regulationRepository.findAll()
                 .stream()
-                .filter(regulation ->
-                        regulation.getStatus() == RegulationStatus.ACTIVE)
-                .filter(regulation ->
-                        !regulation.getEffectiveFrom().isAfter(at))
-                .filter(regulation ->
-                        regulation.getEffectiveTo() == null
-                                || !regulation.getEffectiveTo().isBefore(at))
+                .filter(regulation -> regulation.getStatus() == RegulationStatus.ACTIVE)
+                .filter(regulation -> !regulation.getEffectiveFrom().isAfter(at))
+                .filter(regulation -> regulation.getEffectiveTo() == null || !regulation.getEffectiveTo().isBefore(at))
                 .map(this::toResponse)
                 .toList();
     }
@@ -221,21 +225,20 @@ public class OperationalRegulationService {
         }
     }
 
-    // ==================== VALIDATE CONFLICT ====================
+    // ==================== CONFLICT VERDICT ====================
 
-    /**
-     * Trả về các quy định cùng loại, cùng scope và có khoảng hiệu lực
-     * chồng lấn để rà soát.
-     *
-     * Đây là điều kiện tìm ứng viên, không tự kết luận xung đột nghiệp vụ.
-     */
     @Transactional(readOnly = true)
-    public List<OperationalRegulationResponse> validateConflict(
-            UUID regulationId
+    public RegulationConflictResponse getConflictVerdict(
+            UUID regulationId,
+            String context
     ) {
+        String effectiveContext = (context != null && !context.isBlank())
+                ? context.trim().toUpperCase()
+                : "ACTIVATE";
+
         OperationalRegulation target = findRegulation(regulationId);
 
-        return regulationRepository
+        List<OperationalRegulation> candidates = regulationRepository
                 .findByRegulationTypeAndScope(
                         target.getRegulationType(),
                         target.getScope()
@@ -254,13 +257,56 @@ public class OperationalRegulationService {
                                 other.getEffectiveFrom(),
                                 other.getEffectiveTo()
                         ))
-                .map(this::toResponse)
                 .toList();
+
+        if (candidates.isEmpty()) {
+            return RegulationConflictResponse.builder()
+                    .context(effectiveContext)
+                    .severity("CLEAR")
+                    .canProceed(true)
+                    .code("CLEAR")
+                    .message("Không phát hiện xung đột quy định.")
+                    .comparedWith(List.of())
+                    .build();
+        }
+
+        List<RegulationConflictComparedItem> comparedItems = candidates.stream()
+                .map(cand -> RegulationConflictComparedItem.builder()
+                        .regulationId(cand.getRegulationId())
+                        .code(cand.getRegulationCode())
+                        .scope(cand.getScope())
+                        .value(cand.getValue())
+                        .unit(cand.getUnit() != null ? cand.getUnit().name() : null)
+                        .build())
+                .toList();
+
+        boolean hasConflictingValue = candidates.stream()
+                .anyMatch(c -> !Objects.equals(c.getValue(), target.getValue()));
+
+        if (hasConflictingValue) {
+            return RegulationConflictResponse.builder()
+                    .context(effectiveContext)
+                    .severity("BLOCKING")
+                    .canProceed(false)
+                    .code("REGULATION_CONFLICT_BLOCKING")
+                    .message("Xung đột giá trị với quy định hiện hành đang có hiệu lực.")
+                    .comparedWith(comparedItems)
+                    .build();
+        }
+
+        return RegulationConflictResponse.builder()
+                .context(effectiveContext)
+                .severity("WARNING")
+                .canProceed(true)
+                .code("REGULATION_OVERLAP_REVIEW")
+                .message("Có các khoảng hiệu lực cần được rà soát.")
+                .comparedWith(comparedItems)
+                .build();
     }
 
     // ==================== PRIVATE HELPERS ====================
 
-    private OperationalRegulation findRegulation(UUID regulationId) {
+    public OperationalRegulation findRegulation(UUID regulationId) {
         if (regulationId == null) {
             throw new IllegalArgumentException(
                     "Regulation ID must not be null."
@@ -356,12 +402,6 @@ public class OperationalRegulationService {
             );
         }
 
-        if (value.trim().length() > 100) {
-            throw new IllegalArgumentException(
-                    "Regulation value must not exceed 100 characters."
-            );
-        }
-
         if (effectiveFrom == null) {
             throw new IllegalArgumentException(
                     "Effective-from date is required."
@@ -420,7 +460,7 @@ public class OperationalRegulationService {
         target.setEffectiveTo(request.getEffectiveTo());
     }
 
-    private OperationalRegulationResponse toResponse(
+    public OperationalRegulationResponse toResponse(
             OperationalRegulation regulation
     ) {
         return OperationalRegulationResponse.builder()

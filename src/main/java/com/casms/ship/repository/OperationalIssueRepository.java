@@ -1,4 +1,3 @@
-
 package com.casms.ship.repository;
 
 import com.casms.ship.entity.OperationalIssue;
@@ -32,6 +31,9 @@ public interface OperationalIssueRepository
 
     List<OperationalIssue> findByStatusAndShip_ShipIdOrderByReportedAtDesc(
             OperationalIssueStatus status, UUID shipId);
+
+    List<OperationalIssue> findByStatusAndCruise_CruiseIdOrderByReportedAtDesc(
+            OperationalIssueStatus status, UUID cruiseId);
 
     List<OperationalIssue> findByAssignedTo_UserIdOrderByReportedAtDesc(
             UUID userId);

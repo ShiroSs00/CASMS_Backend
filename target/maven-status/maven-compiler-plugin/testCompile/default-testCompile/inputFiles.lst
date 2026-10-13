@@ -1,4 +1,7 @@
-D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\ship\service\CabinServiceTest.java
-D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\ship\service\CruiseServiceTest.java
-D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\ship\service\DeckServiceTest.java
+D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\common\exception\GlobalExceptionHandlerTest.java
+D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\identity\service\IdentityServiceTest.java
+D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\ship\service\CruiseRegulationServiceTest.java
+D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\ship\service\OperationalIssueServiceTest.java
+D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\ship\service\OperationalRegulationServiceTest.java
+D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\ship\service\ShipRegulationServiceTest.java
 D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\ship\service\ShipServiceTest.java
