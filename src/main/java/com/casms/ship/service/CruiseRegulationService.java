@@ -197,7 +197,7 @@ public class CruiseRegulationService {
     }
 
     /**
-     * Chuyển entity sang response DTO.
+     * Chuyển entity sang response dto.
      */
     private CruiseRegulationResponse toResponse(CruiseRegulation entity) {
         return CruiseRegulationResponse.builder()
@@ -207,7 +207,7 @@ public class CruiseRegulationService {
     }
 
     /**
-     * Tạo response DTO cho quy định GLOBAL.
+     * Tạo response dto cho quy định GLOBAL.
      */
     private CruiseRegulationResponse toResponse(
             UUID cruiseId,

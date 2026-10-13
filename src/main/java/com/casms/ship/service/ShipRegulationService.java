@@ -197,7 +197,7 @@ public class ShipRegulationService {
     }
 
     /**
-     * Chuyển entity sang response DTO.
+     * Chuyển entity sang response dto.
      */
     private ShipRegulationResponse toResponse(ShipRegulation entity) {
         return ShipRegulationResponse.builder()
@@ -207,7 +207,7 @@ public class ShipRegulationService {
     }
 
     /**
-     * Tạo response DTO cho quy định GLOBAL.
+     * Tạo response dto cho quy định GLOBAL.
      */
     private ShipRegulationResponse toResponse(
             UUID shipId,

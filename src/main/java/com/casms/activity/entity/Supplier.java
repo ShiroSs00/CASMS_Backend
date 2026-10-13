@@ -1,11 +1,12 @@
+
 package com.casms.activity.entity;
 
 import com.casms.activity.enums.SupplierStatus;
+import com.casms.activity.enums.SupplierVerificationStatus;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
 
-import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.UUID;
 
@@ -36,13 +37,28 @@ public class Supplier {
     private String contactEmail;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "status", nullable = false)
-    private SupplierStatus status;
+    @Column(name = "status", nullable = false, length = 20)
+    private SupplierStatus status = SupplierStatus.INACTIVE;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "verification_status", nullable = false, length = 30)
+    private SupplierVerificationStatus verificationStatus =
+            SupplierVerificationStatus.PENDING;
+
+    @Column(name = "verified_at")
+    private Instant verifiedAt;
+
+    // ID tài khoản nhân viên thực hiện xác minh.
+    @Column(name = "verified_by")
+    private UUID verifiedBy;
+
+    @Column(name = "verification_notes", length = 1000)
+    private String verificationNotes;
 
     @Column(name = "notes", length = 1000)
     private String notes;
 
-    @Column(name = "created_at", nullable = false)
+    @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
     @Column(name = "updated_at", nullable = false)
@@ -50,8 +66,9 @@ public class Supplier {
 
     @PrePersist
     protected void onCreate() {
-        createdAt = Instant.now();
-        updatedAt = Instant.now();
+        Instant now = Instant.now();
+        createdAt = now;
+        updatedAt = now;
     }
 
     @PreUpdate

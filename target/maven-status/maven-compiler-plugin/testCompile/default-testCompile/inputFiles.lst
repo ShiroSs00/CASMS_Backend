@@ -1,4 +1,10 @@
-D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\ship\service\CabinServiceTest.java
-D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\ship\service\CruiseServiceTest.java
-D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\ship\service\DeckServiceTest.java
-D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\ship\service\ShipServiceTest.java
+D:\02_Projects\Coding\CASMS_Backend\src\test\java\com\casms\activity\service\ShoreExcursionServiceTest.java
+D:\02_Projects\Coding\CASMS_Backend\src\test\java\com\casms\activity\service\SupplierServiceTest.java
+D:\02_Projects\Coding\CASMS_Backend\src\test\java\com\casms\activity\service\TourGroupPassengerServiceTest.java
+D:\02_Projects\Coding\CASMS_Backend\src\test\java\com\casms\activity\service\TourGroupServiceTest.java
+D:\02_Projects\Coding\CASMS_Backend\src\test\java\com\casms\ship\service\CruiseRegulationServiceTest.java
+D:\02_Projects\Coding\CASMS_Backend\src\test\java\com\casms\ship\service\ItineraryChangeHistoryServiceTest.java
+D:\02_Projects\Coding\CASMS_Backend\src\test\java\com\casms\ship\service\OperationalIssueServiceTest.java
+D:\02_Projects\Coding\CASMS_Backend\src\test\java\com\casms\ship\service\OperationalRegulationServiceTest.java
+D:\02_Projects\Coding\CASMS_Backend\src\test\java\com\casms\ship\service\ShipRegulationServiceTest.java
+D:\02_Projects\Coding\CASMS_Backend\src\test\java\com\casms\ship\service\ShipServiceTest.java
