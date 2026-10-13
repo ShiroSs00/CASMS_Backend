@@ -1,254 +1,273 @@
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\activity\controller\ActivityController.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\activity\entity\OnboardActivity.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\activity\entity\Participation.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\activity\entity\Registration.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\activity\entity\ShoreExcursion.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\activity\entity\Supplier.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\activity\entity\TourGroup.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\activity\entity\TourGroupPassenger.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\activity\enums\OnboardActivityStatus.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\activity\enums\ParticipationStatus.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\activity\enums\RegistrationStatus.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\activity\enums\ShoreExcursionStatus.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\activity\enums\SupplierStatus.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\activity\enums\TourGroupPassengerAssignmentStatus.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\activity\enums\TourGroupStatus.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\activity\repository\OnboardActivityRepository.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\activity\repository\ParticipationRepository.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\activity\repository\RegistrationRepository.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\activity\repository\ShoreExcursionRepository.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\activity\repository\SupplierRepository.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\activity\repository\TourGroupPassengerRepository.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\activity\repository\TourGroupRepository.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\activity\service\ActivityService.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\audit\Auditable.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\audit\AuditAspect.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\audit\AuditLog.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\audit\AuditRepository.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\audit\AuditService.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\booking\controller\BookingController.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\booking\entity\Booking.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\booking\entity\BookingContract.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\booking\entity\BookingPassenger.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\booking\entity\CabinAssignment.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\booking\enums\BookingContractStatus.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\booking\enums\BookingPassengerParticipationStatus.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\booking\enums\BookingStatus.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\booking\repository\BookingContractRepository.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\booking\repository\BookingPassengerRepository.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\booking\repository\BookingRepository.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\booking\repository\CabinAssignmentRepository.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\booking\service\BookingService.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\CASMSApplication.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\checkin\controller\CheckinController.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\checkin\entity\CheckinStep.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\checkin\entity\CruiseCheckin.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\checkin\entity\CruiseCheckout.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\checkin\entity\GangwayEvent.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\checkin\entity\GuidanceSession.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\checkin\entity\GuidanceSessionParticipant.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\checkin\entity\PassengerIdentifier.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\checkin\enums\CheckinStepCode.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\checkin\enums\CheckinStepStatus.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\checkin\enums\CruiseCheckinStatus.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\checkin\enums\CruiseCheckoutStatus.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\checkin\enums\GangwayEventResult.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\checkin\enums\GangwayEventType.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\checkin\enums\GuidanceSessionParticipantAttendanceStatus.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\checkin\enums\GuidanceSessionStatus.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\checkin\enums\PassengerIdentifierStatus.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\checkin\enums\PassengerIdentifierType.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\checkin\repository\CheckinStepRepository.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\checkin\repository\CruiseCheckinRepository.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\checkin\repository\CruiseCheckoutRepository.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\checkin\repository\GangwayEventRepository.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\checkin\repository\GuidanceSessionParticipantRepository.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\checkin\repository\GuidanceSessionRepository.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\checkin\repository\PassengerIdentifierRepository.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\checkin\service\CheckinService.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\common\exception\BusinessException.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\common\exception\ForbiddenException.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\common\exception\GlobalExceptionHandler.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\common\exception\ResourceNotFoundException.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\common\exception\UnauthorizedException.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\common\exception\ValidationException.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\common\response\ApiResponse.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\config\ApplicationConfig.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\config\CorsConfig.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\config\DatabaseConfig.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\config\JacksonConfig.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\config\OpenApiConfig.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\config\SecurityConfig.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\identity\controller\IdentityController.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\identity\entity\Passenger.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\identity\entity\User.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\identity\enums\PassengerDocumentType.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\identity\enums\UserStatus.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\identity\repository\PassengerRepository.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\identity\repository\UserRepository.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\identity\service\IdentityService.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\logging\CorrelationIdFilter.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\logging\LogContext.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\logging\LoggingConfig.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\notification\controller\NotificationController.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\notification\entity\Notification.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\notification\repository\NotificationRepository.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\notification\service\NotificationService.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\payment\controller\PaymentController.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\payment\entity\Charge.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\payment\entity\ChargeDispute.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\payment\entity\FinalSettlement.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\payment\entity\Installment.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\payment\entity\Invoice.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\payment\entity\InvoiceLine.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\payment\entity\OnboardAccount.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\payment\entity\OnboardAccountMember.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\payment\entity\OnboardTransaction.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\payment\entity\Payment.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\payment\entity\Refund.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\payment\entity\RefundLine.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\payment\entity\SpendingLimit.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\payment\enums\AccountMemberStatus.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\payment\enums\ChargeDisputeReasonCode.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\payment\enums\ChargeDisputeResolutionType.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\payment\enums\ChargeDisputeStatus.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\payment\enums\ChargePermission.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\payment\enums\FinalSettlementStatus.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\payment\enums\InstallmentStatus.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\payment\enums\InstallmentType.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\payment\enums\InvoiceDocumentType.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\payment\enums\InvoiceStatus.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\payment\enums\MemberRole.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\payment\enums\OnboardAccountStatus.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\payment\enums\PaymentMethod.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\payment\enums\PaymentOperationType.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\payment\enums\PaymentStatus.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\payment\enums\RefundStatus.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\payment\enums\SpendingLimitStatus.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\payment\enums\TransactionStatus.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\payment\enums\TransactionSyncStatus.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\payment\enums\TransactionType.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\payment\repository\ChargeDisputeRepository.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\payment\repository\ChargeRepository.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\payment\repository\FinalSettlementRepository.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\payment\repository\InstallmentRepository.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\payment\repository\InvoiceLineRepository.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\payment\repository\InvoiceRepository.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\payment\repository\OnboardAccountMemberRepository.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\payment\repository\OnboardAccountRepository.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\payment\repository\OnboardTransactionRepository.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\payment\repository\PaymentRepository.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\payment\repository\RefundLineRepository.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\payment\repository\RefundRepository.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\payment\repository\SpendingLimitRepository.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\payment\service\PaymentService.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\scheduler\CruiseScheduler.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\scheduler\NotificationScheduler.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\scheduler\PaymentScheduler.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\security\auth\AuthenticationService.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\security\jwt\JwtAuthenticationFilter.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\security\jwt\JwtService.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\security\principal\CasmsPrincipal.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\servicepackage\controller\ServicepackageController.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\servicepackage\entity\BookingPassengerPackage.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\servicepackage\entity\Feedback.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\servicepackage\entity\Product.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\servicepackage\entity\Service.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\servicepackage\entity\ServiceRequest.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\servicepackage\entity\TourPackage.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\servicepackage\entity\TourPackageActivity.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\servicepackage\entity\TourPackageExcursion.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\servicepackage\entity\TourPackageService.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\servicepackage\enums\BenefitType.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\servicepackage\enums\ProductStatus.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\servicepackage\enums\ServiceRequestStatus.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\servicepackage\enums\ServiceStatus.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\servicepackage\enums\TourPackageStatus.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\servicepackage\enums\TourPackageType.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\servicepackage\repository\BookingPassengerPackageRepository.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\servicepackage\repository\FeedbackRepository.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\servicepackage\repository\ProductRepository.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\servicepackage\repository\ServiceRepository.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\servicepackage\repository\ServiceRequestRepository.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\servicepackage\repository\TourPackageActivityRepository.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\servicepackage\repository\TourPackageExcursionRepository.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\servicepackage\repository\TourPackageRepository.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\servicepackage\repository\TourPackageServiceRepository.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\servicepackage\service\ServicepackageService.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\ship\controller\CabinController.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\ship\controller\CruiseController.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\ship\controller\DeckController.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\ship\controller\ShipController.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\ship\dto\request\CabinCreateRequest.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\ship\dto\request\CabinSearchRequest.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\ship\dto\request\CabinUpdateRequest.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\ship\dto\request\CruiseCancelRequest.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\ship\dto\request\CruiseCreateRequest.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\ship\dto\request\CruiseUpdateDraftRequest.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\ship\dto\request\DeckCreateRequest.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\ship\dto\request\DeckUpdateRequest.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\ship\dto\request\ShipCreateRequest.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\ship\dto\request\ShipUpdateRequest.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\ship\dto\response\CabinAssignmentHistoryResponse.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\ship\dto\response\CabinSummaryResponse.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\ship\dto\response\CruiseCapacityValidationResponse.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\ship\dto\response\CruiseReadinessResponse.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\ship\dto\response\CruiseResponse.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\ship\dto\response\CruiseSummaryResponse.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\ship\dto\response\DeckCapacityResponse.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\ship\dto\response\DeckResponse.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\ship\dto\response\ShipCapacitySummaryResponse.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\ship\dto\response\ShipResponse.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\ship\entity\Cabin.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\ship\entity\Cruise.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\ship\entity\CruiseRegulation.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\ship\entity\CruiseStop.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\ship\entity\Deck.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\ship\entity\Destination.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\ship\entity\Itinerary.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\ship\entity\ItineraryChangeHistory.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\ship\entity\ItineraryDay.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\ship\entity\OperationalIssue.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\ship\entity\OperationalRegulation.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\ship\entity\Port.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\ship\entity\Ship.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\ship\entity\ShipRegulation.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\ship\enums\CabinStatus.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\ship\enums\CabinType.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\ship\enums\CruiseCruiseType.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\ship\enums\CruiseStatus.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\ship\enums\CruiseStopArrivalMethod.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\ship\enums\CruiseStopCallType.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\ship\enums\CruiseStopStatus.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\ship\enums\DestinationStatus.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\ship\enums\ItineraryChangeType.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\ship\enums\ItineraryDayType.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\ship\enums\ItineraryStatus.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\ship\enums\ItineraryType.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\ship\enums\OperationalIssueSeverity.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\ship\enums\OperationalIssueStatus.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\ship\enums\OperationalIssueType.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\ship\enums\PortStatus.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\ship\enums\RegulationScope.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\ship\enums\RegulationStatus.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\ship\enums\RegulationType.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\ship\enums\RegulationUnit.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\ship\enums\ShipStatus.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\ship\repository\CabinRepository.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\ship\repository\CruiseRegulationRepository.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\ship\repository\CruiseRepository.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\ship\repository\CruiseStopRepository.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\ship\repository\DeckRepository.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\ship\repository\DestinationRepository.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\ship\repository\ItineraryChangeHistoryRepository.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\ship\repository\ItineraryDayRepository.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\ship\repository\ItineraryRepository.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\ship\repository\OperationalIssueRepository.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\ship\repository\OperationalRegulationRepository.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\ship\repository\PortRepository.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\ship\repository\ShipRegulationRepository.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\ship\repository\ShipRepository.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\ship\service\CabinService.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\ship\service\CruiseService.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\ship\service\DeckService.java
-D:\FPT-University\Semester 9\CASMS\src\main\java\com\casms\ship\service\ShipService.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/CASMSApplication.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/activity/controller/ActivityController.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/activity/entity/OnboardActivity.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/activity/entity/Participation.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/activity/entity/Registration.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/activity/entity/ShoreExcursion.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/activity/entity/Supplier.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/activity/entity/TourGroup.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/activity/entity/TourGroupPassenger.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/activity/enums/OnboardActivityStatus.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/activity/enums/ParticipationStatus.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/activity/enums/RegistrationStatus.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/activity/enums/ShoreExcursionStatus.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/activity/enums/SupplierStatus.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/activity/enums/TourGroupPassengerAssignmentStatus.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/activity/enums/TourGroupStatus.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/activity/repository/OnboardActivityRepository.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/activity/repository/ParticipationRepository.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/activity/repository/RegistrationRepository.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/activity/repository/ShoreExcursionRepository.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/activity/repository/SupplierRepository.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/activity/repository/TourGroupPassengerRepository.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/activity/repository/TourGroupRepository.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/activity/service/ActivityService.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/audit/AuditAspect.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/audit/AuditLog.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/audit/AuditRepository.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/audit/AuditService.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/audit/Auditable.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/booking/controller/BookingController.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/booking/entity/Booking.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/booking/entity/BookingContract.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/booking/entity/BookingPassenger.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/booking/entity/CabinAssignment.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/booking/enums/BookingContractStatus.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/booking/enums/BookingPassengerParticipationStatus.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/booking/enums/BookingStatus.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/booking/repository/BookingContractRepository.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/booking/repository/BookingPassengerRepository.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/booking/repository/BookingRepository.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/booking/repository/CabinAssignmentRepository.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/booking/service/BookingService.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/checkin/controller/CheckinController.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/checkin/entity/CheckinStep.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/checkin/entity/CruiseCheckin.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/checkin/entity/CruiseCheckout.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/checkin/entity/GangwayEvent.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/checkin/entity/GuidanceSession.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/checkin/entity/GuidanceSessionParticipant.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/checkin/entity/PassengerIdentifier.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/checkin/enums/CheckinStepCode.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/checkin/enums/CheckinStepStatus.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/checkin/enums/CruiseCheckinStatus.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/checkin/enums/CruiseCheckoutStatus.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/checkin/enums/GangwayEventResult.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/checkin/enums/GangwayEventType.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/checkin/enums/GuidanceSessionParticipantAttendanceStatus.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/checkin/enums/GuidanceSessionStatus.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/checkin/enums/PassengerIdentifierStatus.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/checkin/enums/PassengerIdentifierType.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/checkin/repository/CheckinStepRepository.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/checkin/repository/CruiseCheckinRepository.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/checkin/repository/CruiseCheckoutRepository.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/checkin/repository/GangwayEventRepository.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/checkin/repository/GuidanceSessionParticipantRepository.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/checkin/repository/GuidanceSessionRepository.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/checkin/repository/PassengerIdentifierRepository.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/checkin/service/CheckinService.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/common/exception/BusinessException.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/common/exception/ForbiddenException.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/common/exception/GlobalExceptionHandler.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/common/exception/ResourceNotFoundException.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/common/exception/UnauthorizedException.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/common/exception/ValidationException.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/common/response/ApiResponse.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/config/ApplicationConfig.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/config/CorsConfig.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/config/DatabaseConfig.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/config/JacksonConfig.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/config/OpenApiConfig.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/config/SecurityConfig.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/identity/controller/IdentityController.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/identity/entity/Passenger.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/identity/entity/User.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/identity/enums/PassengerDocumentType.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/identity/enums/UserStatus.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/identity/repository/PassengerRepository.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/identity/repository/UserRepository.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/identity/service/IdentityService.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/logging/CorrelationIdFilter.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/logging/LogContext.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/logging/LoggingConfig.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/notification/controller/NotificationController.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/notification/entity/Notification.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/notification/repository/NotificationRepository.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/notification/service/NotificationService.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/payment/controller/PaymentController.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/payment/entity/Charge.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/payment/entity/ChargeDispute.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/payment/entity/FinalSettlement.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/payment/entity/Installment.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/payment/entity/Invoice.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/payment/entity/InvoiceLine.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/payment/entity/OnboardAccount.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/payment/entity/OnboardAccountMember.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/payment/entity/OnboardTransaction.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/payment/entity/Payment.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/payment/entity/Refund.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/payment/entity/RefundLine.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/payment/entity/SpendingLimit.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/payment/enums/AccountMemberStatus.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/payment/enums/ChargeDisputeReasonCode.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/payment/enums/ChargeDisputeResolutionType.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/payment/enums/ChargeDisputeStatus.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/payment/enums/ChargePermission.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/payment/enums/FinalSettlementStatus.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/payment/enums/InstallmentStatus.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/payment/enums/InstallmentType.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/payment/enums/InvoiceDocumentType.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/payment/enums/InvoiceStatus.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/payment/enums/MemberRole.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/payment/enums/OnboardAccountStatus.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/payment/enums/PaymentMethod.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/payment/enums/PaymentOperationType.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/payment/enums/PaymentStatus.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/payment/enums/RefundStatus.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/payment/enums/SpendingLimitStatus.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/payment/enums/TransactionStatus.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/payment/enums/TransactionSyncStatus.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/payment/enums/TransactionType.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/payment/repository/ChargeDisputeRepository.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/payment/repository/ChargeRepository.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/payment/repository/FinalSettlementRepository.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/payment/repository/InstallmentRepository.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/payment/repository/InvoiceLineRepository.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/payment/repository/InvoiceRepository.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/payment/repository/OnboardAccountMemberRepository.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/payment/repository/OnboardAccountRepository.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/payment/repository/OnboardTransactionRepository.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/payment/repository/PaymentRepository.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/payment/repository/RefundLineRepository.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/payment/repository/RefundRepository.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/payment/repository/SpendingLimitRepository.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/payment/service/PaymentService.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/scheduler/CruiseScheduler.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/scheduler/NotificationScheduler.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/scheduler/PaymentScheduler.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/security/auth/AuthenticationService.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/security/jwt/JwtAuthenticationFilter.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/security/jwt/JwtService.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/security/principal/CasmsPrincipal.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/servicepackage/controller/ServicepackageController.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/servicepackage/entity/BookingPassengerPackage.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/servicepackage/entity/Feedback.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/servicepackage/entity/Product.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/servicepackage/entity/Service.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/servicepackage/entity/ServiceRequest.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/servicepackage/entity/TourPackage.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/servicepackage/entity/TourPackageActivity.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/servicepackage/entity/TourPackageExcursion.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/servicepackage/entity/TourPackageService.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/servicepackage/enums/BenefitType.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/servicepackage/enums/ProductStatus.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/servicepackage/enums/ServiceRequestStatus.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/servicepackage/enums/ServiceStatus.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/servicepackage/enums/TourPackageStatus.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/servicepackage/enums/TourPackageType.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/servicepackage/repository/BookingPassengerPackageRepository.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/servicepackage/repository/FeedbackRepository.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/servicepackage/repository/ProductRepository.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/servicepackage/repository/ServiceRepository.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/servicepackage/repository/ServiceRequestRepository.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/servicepackage/repository/TourPackageActivityRepository.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/servicepackage/repository/TourPackageExcursionRepository.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/servicepackage/repository/TourPackageRepository.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/servicepackage/repository/TourPackageServiceRepository.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/servicepackage/service/ServicepackageService.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/ship/controller/CabinController.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/ship/controller/CruiseController.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/ship/controller/CruiseRegulationController.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/ship/controller/DeckController.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/ship/controller/OperationalIssueController.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/ship/controller/OperationalRegulationController.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/ship/controller/ShipController.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/ship/controller/ShipRegulationController.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/ship/dto/request/CabinCreateRequest.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/ship/dto/request/CabinSearchRequest.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/ship/dto/request/CabinUpdateRequest.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/ship/dto/request/CruiseCancelRequest.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/ship/dto/request/CruiseCreateRequest.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/ship/dto/request/CruiseRegulationRequest.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/ship/dto/request/CruiseUpdateDraftRequest.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/ship/dto/request/DeckCreateRequest.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/ship/dto/request/DeckUpdateRequest.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/ship/dto/request/OperationalIssueAssignRequest.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/ship/dto/request/OperationalIssueRequest.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/ship/dto/request/OperationalIssueResolutionRequest.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/ship/dto/request/OperationalIssueUpdateRequest.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/ship/dto/request/OperationalRegulationRequest.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/ship/dto/request/ShipCreateRequest.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/ship/dto/request/ShipRegulationRequest.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/ship/dto/request/ShipUpdateRequest.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/ship/dto/response/CabinAssignmentHistoryResponse.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/ship/dto/response/CabinSummaryResponse.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/ship/dto/response/CruiseCapacityValidationResponse.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/ship/dto/response/CruiseReadinessResponse.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/ship/dto/response/CruiseRegulationResponse.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/ship/dto/response/CruiseResponse.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/ship/dto/response/CruiseSummaryResponse.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/ship/dto/response/DeckCapacityResponse.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/ship/dto/response/DeckResponse.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/ship/dto/response/OperationalIssueResponse.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/ship/dto/response/OperationalRegulationResponse.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/ship/dto/response/ShipCapacitySummaryResponse.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/ship/dto/response/ShipRegulationResponse.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/ship/dto/response/ShipResponse.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/ship/entity/Cabin.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/ship/entity/Cruise.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/ship/entity/CruiseRegulation.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/ship/entity/CruiseStop.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/ship/entity/Deck.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/ship/entity/Destination.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/ship/entity/Itinerary.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/ship/entity/ItineraryChangeHistory.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/ship/entity/ItineraryDay.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/ship/entity/OperationalIssue.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/ship/entity/OperationalRegulation.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/ship/entity/Port.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/ship/entity/Ship.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/ship/entity/ShipRegulation.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/ship/enums/CabinStatus.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/ship/enums/CabinType.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/ship/enums/CruiseCruiseType.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/ship/enums/CruiseStatus.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/ship/enums/CruiseStopArrivalMethod.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/ship/enums/CruiseStopCallType.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/ship/enums/CruiseStopStatus.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/ship/enums/DestinationStatus.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/ship/enums/ItineraryChangeType.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/ship/enums/ItineraryDayType.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/ship/enums/ItineraryStatus.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/ship/enums/ItineraryType.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/ship/enums/OperationalIssueSeverity.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/ship/enums/OperationalIssueStatus.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/ship/enums/OperationalIssueType.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/ship/enums/PortStatus.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/ship/enums/RegulationScope.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/ship/enums/RegulationStatus.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/ship/enums/RegulationType.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/ship/enums/RegulationUnit.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/ship/enums/ShipStatus.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/ship/repository/CabinRepository.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/ship/repository/CruiseRegulationRepository.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/ship/repository/CruiseRepository.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/ship/repository/CruiseStopRepository.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/ship/repository/DeckRepository.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/ship/repository/DestinationRepository.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/ship/repository/ItineraryChangeHistoryRepository.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/ship/repository/ItineraryDayRepository.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/ship/repository/ItineraryRepository.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/ship/repository/OperationalIssueRepository.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/ship/repository/OperationalRegulationRepository.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/ship/repository/PortRepository.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/ship/repository/ShipRegulationRepository.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/ship/repository/ShipRepository.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/ship/service/CabinService.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/ship/service/CruiseRegulationService.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/ship/service/CruiseService.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/ship/service/DeckService.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/ship/service/OperationalIssueService.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/ship/service/OperationalRegulationService.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/ship/service/ShipRegulationService.java
+/home/runner/work/CASMS_Backend/CASMS_Backend/src/main/java/com/casms/ship/service/ShipService.java
