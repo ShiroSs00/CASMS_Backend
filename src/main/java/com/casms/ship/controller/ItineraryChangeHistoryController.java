@@ -13,7 +13,7 @@ import java.util.List;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/itinerary-change-history")
+@RequestMapping("/itinerary-change-history")
 public class ItineraryChangeHistoryController {
 
     private final ItineraryChangeHistoryService service;

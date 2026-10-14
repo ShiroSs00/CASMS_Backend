@@ -1,8 +1,8 @@
 spring:
   datasource:
-    url: jdbc:postgresql://localhost:5432/casms_dev?stringtype=unspecified
+    url: jdbc:postgresql://postgres:5432/casms?stringtype=unspecified
     username: ${DB_USERNAME:postgres}
-    password: ${DB_PASSWORD:}
+    password: ${DB_PASSWORD:12345}
     hikari:
       data-source-properties:
         stringtype: unspecified
