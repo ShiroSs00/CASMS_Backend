@@ -10,6 +10,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -30,6 +31,7 @@ public class ItineraryChangeHistoryController {
 
     // APPEND / RECORD CHANGE
     @Operation(summary = "Ghi nhận thay đổi lịch trình", description = "Thêm bản ghi mới vào lịch sử điều chỉnh lịch trình chuyến đi")
+    @PreAuthorize("hasAuthority('ITINERARY_CHANGE_RECORD')")
     @PostMapping
     public ResponseEntity<ItineraryChangeHistoryResponse> append(
             @Valid @RequestBody ItineraryChangeRequest request
@@ -40,6 +42,7 @@ public class ItineraryChangeHistoryController {
 
     // LIST / FILTER
     @Operation(summary = "Danh sách lịch sử thay đổi", description = "Tra cứu danh sách lịch sử thay đổi lịch trình theo bộ lọc (itineraryId, cruiseStopId, loại thay đổi, người thay đổi)")
+    @PreAuthorize("hasAuthority('ITINERARY_CHANGE_READ')")
     @GetMapping
     public ResponseEntity<List<ItineraryChangeHistoryResponse>> list(
             @Parameter(description = "ID lịch trình") @RequestParam(required = false) UUID itineraryId,
@@ -59,6 +62,7 @@ public class ItineraryChangeHistoryController {
 
     // DETAIL
     @Operation(summary = "Chi tiết bản ghi thay đổi lịch trình", description = "Xem chi tiết một bản ghi thay đổi lịch trình theo ID lịch sử")
+    @PreAuthorize("hasAuthority('ITINERARY_CHANGE_READ')")
     @GetMapping("/{historyId}")
     public ResponseEntity<ItineraryChangeHistoryResponse> detail(
             @Parameter(description = "ID của bản ghi lịch sử thay đổi", required = true) @PathVariable UUID historyId
@@ -68,6 +72,7 @@ public class ItineraryChangeHistoryController {
 
     // GET ALL CHANGES OF AN ITINERARY
     @Operation(summary = "Lịch sử thay đổi theo lịch trình", description = "Lấy toàn bộ danh sách các lần điều chỉnh, sửa đổi của một lịch trình cụ thể")
+    @PreAuthorize("hasAuthority('ITINERARY_CHANGE_READ')")
     @GetMapping("/itineraries/{itineraryId}")
     public ResponseEntity<List<ItineraryChangeHistoryResponse>>
     getChangeHistory(

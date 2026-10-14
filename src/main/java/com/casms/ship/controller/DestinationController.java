@@ -14,6 +14,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -28,6 +29,7 @@ public class DestinationController {
     private final DestinationService service;
 
     @Operation(summary = "Tạo điểm đến mới", description = "Đăng ký điểm đến du lịch mới vào hệ thống")
+    @PreAuthorize("hasAuthority('DESTINATION_CREATE')")
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<DestinationResponse> create(@RequestBody @Valid DestinationCreateRequest request) {
@@ -35,18 +37,21 @@ public class DestinationController {
     }
 
     @Operation(summary = "Danh sách điểm đến", description = "Lấy danh sách điểm đến (hỗ trợ phân trang)")
+    @PreAuthorize("hasAuthority('DESTINATION_READ')")
     @GetMapping
     public ApiResponse<Page<DestinationResponse>> list(Pageable pageable) {
         return ApiResponse.success(service.list(pageable));
     }
 
     @Operation(summary = "Danh sách điểm đến hoạt động", description = "Lấy danh sách tất cả điểm đến đang ACTIVE (không phân trang)")
+    @PreAuthorize("hasAuthority('DESTINATION_READ')")
     @GetMapping("/active")
     public ApiResponse<List<DestinationResponse>> listActive() {
         return ApiResponse.success(service.listAllActive());
     }
 
     @Operation(summary = "Chi tiết điểm đến", description = "Lấy thông tin chi tiết của một điểm đến theo ID")
+    @PreAuthorize("hasAuthority('DESTINATION_READ')")
     @GetMapping("/{destinationId}")
     public ApiResponse<DestinationResponse> detail(
             @Parameter(description = "ID của điểm đến", required = true) @PathVariable UUID destinationId) {
@@ -54,6 +59,7 @@ public class DestinationController {
     }
 
     @Operation(summary = "Cập nhật điểm đến", description = "Cập nhật thông tin điểm đến (tên, mô tả)")
+    @PreAuthorize("hasAuthority('DESTINATION_UPDATE')")
     @PatchMapping("/{destinationId}")
     public ApiResponse<DestinationResponse> update(
             @Parameter(description = "ID của điểm đến", required = true) @PathVariable UUID destinationId,
@@ -62,6 +68,7 @@ public class DestinationController {
     }
 
     @Operation(summary = "Xóa điểm đến chưa sử dụng", description = "Xóa điểm đến nếu chưa được gán cho bất kỳ điểm dừng chuyến đi nào")
+    @PreAuthorize("hasAuthority('DESTINATION_DELETE_UNUSED')")
     @DeleteMapping("/{destinationId}/unused")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public ApiResponse<Void> deleteUnused(
@@ -71,6 +78,7 @@ public class DestinationController {
     }
 
     @Operation(summary = "Danh sách cảng theo điểm đến", description = "Lấy danh sách các cảng thuộc về điểm đến này")
+    @PreAuthorize("hasAuthority('DESTINATION_PORTS_VIEW')")
     @GetMapping("/{destinationId}/ports")
     public ApiResponse<List<PortSummaryResponse>> listPortsByDestination(
             @Parameter(description = "ID của điểm đến", required = true) @PathVariable UUID destinationId) {
@@ -78,6 +86,7 @@ public class DestinationController {
     }
 
     @Operation(summary = "Kiểm tra tính hợp lệ điểm đến", description = "Xác minh tính hợp lệ của dữ liệu điểm đến")
+    @PreAuthorize("hasAuthority('DESTINATION_VALIDATE')")
     @PostMapping("/{destinationId}/validate")
     public ApiResponse<Void> validateDestination(
             @Parameter(description = "ID của điểm đến", required = true) @PathVariable UUID destinationId) {

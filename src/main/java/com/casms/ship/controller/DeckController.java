@@ -15,6 +15,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -29,6 +30,7 @@ public class DeckController {
     private final DeckService service;
 
     @Operation(summary = "Tạo tầng mới", description = "Tạo tầng mới trên tàu, xác thực số tầng không vượt quá tổng số boong và không trùng trên cùng tàu")
+    @PreAuthorize("hasAuthority('DECK_CREATE')")
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<DeckResponse> create(@RequestBody @Valid DeckCreateRequest request) {
@@ -36,12 +38,14 @@ public class DeckController {
     }
 
     @Operation(summary = "Danh sách tầng", description = "Lấy danh sách các tầng trên hệ thống (hỗ trợ phân trang)")
+    @PreAuthorize("hasAuthority('DECK_READ')")
     @GetMapping
     public ApiResponse<Page<DeckResponse>> list(Pageable pageable) {
         return ApiResponse.success(service.list(pageable));
     }
 
     @Operation(summary = "Chi tiết tầng", description = "Lấy thông tin chi tiết của một tầng theo ID")
+    @PreAuthorize("hasAuthority('DECK_READ')")
     @GetMapping("/{deckId}")
     public ApiResponse<DeckResponse> detail(
             @Parameter(description = "ID của tầng", required = true) @PathVariable UUID deckId) {
@@ -49,6 +53,7 @@ public class DeckController {
     }
 
     @Operation(summary = "Cập nhật tầng", description = "Cập nhật tên hoặc số thứ tự tầng (kiểm tra trùng lặp và giới hạn của tàu)")
+    @PreAuthorize("hasAuthority('DECK_UPDATE')")
     @PatchMapping("/{deckId}")
     public ApiResponse<DeckResponse> update(
             @Parameter(description = "ID của tầng", required = true) @PathVariable UUID deckId,
@@ -57,6 +62,7 @@ public class DeckController {
     }
 
     @Operation(summary = "Xóa tầng chưa sử dụng", description = "Xóa tầng nếu tầng không chứa cabin nào")
+    @PreAuthorize("hasAuthority('DECK_DELETE')")
     @DeleteMapping("/{deckId}/unused")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public ApiResponse<Void> deleteUnused(
@@ -66,6 +72,7 @@ public class DeckController {
     }
 
     @Operation(summary = "Danh sách phòng theo tầng", description = "Lấy toàn bộ danh sách cabin thuộc về tầng này")
+    @PreAuthorize("hasAuthority('DECK_CABINS_VIEW')")
     @GetMapping("/{deckId}/cabins")
     public ApiResponse<List<CabinSummaryResponse>> listCabinsByDeck(
             @Parameter(description = "ID của tầng", required = true) @PathVariable UUID deckId) {
@@ -73,6 +80,7 @@ public class DeckController {
     }
 
     @Operation(summary = "Kiểm tra tầng thuộc tàu", description = "Xác nhận tầng có thuộc về tàu chỉ định hay không")
+    @PreAuthorize("hasAuthority('DECK_READ')")
     @GetMapping("/{deckId}/validate-ship")
     public ApiResponse<Boolean> validateBelongsToShip(
             @Parameter(description = "ID của tầng", required = true) @PathVariable UUID deckId,
@@ -81,6 +89,7 @@ public class DeckController {
     }
 
     @Operation(summary = "Kiểm tra tính hợp lệ của tầng", description = "Xác minh số thứ tự tầng không vượt quá giới hạn tổng số boong của tàu")
+    @PreAuthorize("hasAuthority('DECK_READ')")
     @PostMapping("/{deckId}/validate")
     public ApiResponse<Void> validateDeck(
             @Parameter(description = "ID của tầng", required = true) @PathVariable UUID deckId) {
@@ -89,6 +98,7 @@ public class DeckController {
     }
 
     @Operation(summary = "Xem sức chứa của tầng", description = "Lấy tổng số phòng, số phòng trống và tổng sức chứa khách trên tầng này")
+    @PreAuthorize("hasAuthority('DECK_READ')")
     @GetMapping("/{deckId}/capacity")
     public ApiResponse<DeckCapacityResponse> getDeckCapacity(
             @Parameter(description = "ID của tầng", required = true) @PathVariable UUID deckId) {

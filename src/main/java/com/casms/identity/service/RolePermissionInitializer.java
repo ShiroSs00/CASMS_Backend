@@ -38,7 +38,7 @@ public class RolePermissionInitializer implements CommandLineRunner {
                 Permission.CRUISE_CREATE, Permission.CRUISE_READ, Permission.CRUISE_UPDATE_DRAFT,
                 Permission.CRUISE_DELETE_DRAFT, Permission.CRUISE_ASSIGN_SHIP, Permission.CRUISE_CHANGE_SHIP,
                 Permission.CRUISE_UNASSIGN_SHIP, Permission.CRUISE_VALIDATE, Permission.CRUISE_PUBLISH,
-                Permission.CRUISE_START, Permission.CRUISE_COMPLETE, Permission.CRUISE_CANCEL,
+                Permission.CRUISE_START, Permission.CRUISE_COMPLETE, Permission.CRUISE_CANCEL, Permission.CRUISE_STATUS_CHANGE,
                 Permission.ITINERARY_CREATE, Permission.ITINERARY_READ, Permission.ITINERARY_UPDATE_DRAFT,
                 Permission.ITINERARY_DELETE_DRAFT, Permission.ITINERARY_VALIDATE, Permission.ITINERARY_SUBMIT,
                 Permission.ITINERARY_APPROVE, Permission.ITINERARY_REJECT, Permission.ITINERARY_APPLY_CHANGE,
@@ -51,6 +51,9 @@ public class RolePermissionInitializer implements CommandLineRunner {
                 Permission.CRUISE_STOP_OMIT, Permission.CRUISE_STOP_SUBSTITUTE, Permission.CRUISE_STOP_VALIDATE,
                 Permission.CRUISE_STOP_TIME_MANAGE,
                 Permission.PORT_READ, Permission.DESTINATION_READ,
+                Permission.CRUISE_REGULATION_ASSIGN, Permission.CRUISE_REGULATION_READ, Permission.CRUISE_REGULATION_REMOVE,
+                Permission.REGULATION_READ,
+                Permission.ITINERARY_CHANGE_RECORD, Permission.ITINERARY_CHANGE_READ,
                 Permission.REPORT_GENERATE
         ));
 
@@ -62,9 +65,44 @@ public class RolePermissionInitializer implements CommandLineRunner {
                 Permission.DECK_CABINS_VIEW,
                 Permission.CABIN_CREATE, Permission.CABIN_READ, Permission.CABIN_UPDATE, Permission.CABIN_DELETE,
                 Permission.CABIN_SEARCH, Permission.CABIN_STATUS_CHANGE, Permission.CABIN_BLOCK, Permission.CABIN_RELEASE,
-                Permission.CABIN_ASSIGNMENTS_VIEW,
+                Permission.CABIN_ASSIGNMENTS_VIEW, Permission.CABIN_AVAILABILITY,
                 Permission.SHIP_CAPACITY_SUMMARY,
+                Permission.SHIP_REGULATION_ASSIGN, Permission.SHIP_REGULATION_READ, Permission.SHIP_REGULATION_REMOVE,
+                Permission.REGULATION_READ,
                 Permission.REPORT_GENERATE
+        ));
+
+        // OPERATIONS_MANAGER - operational monitoring, issues, ship/cruise monitoring
+        saveRolePermission(Role.OPERATIONS_MANAGER, Set.of(
+                // Operational Issues
+                Permission.OPERATIONAL_ISSUE_CREATE, Permission.OPERATIONAL_ISSUE_READ,
+                Permission.OPERATIONAL_ISSUE_UPDATE, Permission.OPERATIONAL_ISSUE_RESOLVE,
+                Permission.OPERATIONAL_ISSUE_ESCALATE, Permission.OPERATIONAL_ISSUE_ASSIGN,
+                // Ship monitoring
+                Permission.SHIP_READ, Permission.SHIP_STATUS_CHANGE, Permission.SHIP_SCHEDULE_CHECK,
+                Permission.SHIP_CAPACITY_SUMMARY, Permission.SHIP_AFFECTED_CRUISES,
+                // Cruise monitoring
+                Permission.CRUISE_READ, Permission.CRUISE_VALIDATE, Permission.CRUISE_START,
+                Permission.CRUISE_COMPLETE, Permission.CRUISE_STATUS_CHANGE,
+                // Itinerary/Cruise Stop monitoring
+                Permission.ITINERARY_READ, Permission.ITINERARY_DAYS_MANAGE,
+                Permission.CRUISE_STOP_READ, Permission.CRUISE_STOP_ACTUAL_ARRIVAL,
+                Permission.CRUISE_STOP_ACTUAL_DEPARTURE, Permission.CRUISE_STOP_OMIT,
+                Permission.CRUISE_STOP_SUBSTITUTE, Permission.CRUISE_STOP_VALIDATE,
+                Permission.CRUISE_STOP_TIME_MANAGE,
+                // Port/Destination
+                Permission.PORT_READ, Permission.PORT_VALIDATE,
+                Permission.DESTINATION_READ, Permission.DESTINATION_VALIDATE,
+                // Regulations
+                Permission.REGULATION_CREATE, Permission.REGULATION_READ, Permission.REGULATION_UPDATE,
+                Permission.REGULATION_DELETE, Permission.REGULATION_ACTIVATE, Permission.REGULATION_DEACTIVATE,
+                Permission.REGULATION_VALIDATE,
+                Permission.SHIP_REGULATION_ASSIGN, Permission.SHIP_REGULATION_READ, Permission.SHIP_REGULATION_REMOVE,
+                Permission.CRUISE_REGULATION_ASSIGN, Permission.CRUISE_REGULATION_READ, Permission.CRUISE_REGULATION_REMOVE,
+                // Itinerary history
+                Permission.ITINERARY_CHANGE_RECORD, Permission.ITINERARY_CHANGE_READ,
+                // Reports
+                Permission.REPORT_GENERATE, Permission.REPORT_EXPORT
         ));
 
         // BOOKING_AGENT - booking, check-in, cabin assignment

@@ -13,6 +13,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.Instant;
@@ -28,6 +29,7 @@ public class ShipRegulationController {
     private final ShipRegulationService shipRegulationService;
 
     @Operation(summary = "Gán quy định cho tàu", description = "Áp dụng một quy định vận hành cụ thể vào tàu du lịch")
+    @PreAuthorize("hasAuthority('SHIP_REGULATION_ASSIGN')")
     @PostMapping
     public ResponseEntity<ApiResponse<ShipRegulationResponse>> assign(
             @PathVariable UUID shipId,
@@ -40,6 +42,7 @@ public class ShipRegulationController {
     }
 
     @Operation(summary = "Kiểm tra xung đột trước khi gán cho tàu", description = "Precheck xung đột quy định trước khi thực hiện gán cho tàu")
+    @PreAuthorize("hasAuthority('SHIP_REGULATION_READ')")
     @PostMapping("/precheck")
     public ResponseEntity<ApiResponse<RegulationConflictResponse>> precheck(
             @PathVariable UUID shipId,
@@ -49,6 +52,7 @@ public class ShipRegulationController {
     }
 
     @Operation(summary = "Danh sách quy định của tàu", description = "Lấy danh sách tất cả các quy định đang áp dụng cho tàu")
+    @PreAuthorize("hasAuthority('SHIP_REGULATION_READ')")
     @GetMapping
     public ResponseEntity<ApiResponse<List<ShipRegulationResponse>>> list(
             @PathVariable UUID shipId) {
@@ -56,6 +60,7 @@ public class ShipRegulationController {
     }
 
     @Operation(summary = "Snapshot quy định hiệu lực của tàu", description = "Lấy snapshot các quy định hiệu lực trực tiếp và kế thừa của tàu")
+    @PreAuthorize("hasAuthority('SHIP_REGULATION_READ')")
     @GetMapping("/effective")
     public ResponseEntity<ApiResponse<RegulationAssignmentSnapshotResponse>> getEffectiveSnapshot(
             @PathVariable UUID shipId,
@@ -65,6 +70,7 @@ public class ShipRegulationController {
     }
 
     @Operation(summary = "Gỡ quy định khỏi tàu", description = "Gỡ bỏ áp dụng quy định khỏi tàu")
+    @PreAuthorize("hasAuthority('SHIP_REGULATION_REMOVE')")
     @DeleteMapping("/{regulationId}")
     public ResponseEntity<Void> remove(
             @PathVariable UUID shipId,

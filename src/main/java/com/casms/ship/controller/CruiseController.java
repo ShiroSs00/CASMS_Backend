@@ -18,6 +18,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.UUID;
@@ -31,6 +32,7 @@ public class CruiseController {
     private final CruiseService service;
 
     @Operation(summary = "Tạo chuyến đi mới", description = "Khởi tạo bản ghi chuyến đi (mặc định ở trạng thái DRAFT). Có thể gán tàu ngay hoặc gán sau.")
+    @PreAuthorize("hasAuthority('CRUISE_CREATE')")
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<CruiseResponse> create(@RequestBody @Valid CruiseCreateRequest request) {
@@ -38,6 +40,7 @@ public class CruiseController {
     }
 
     @Operation(summary = "Danh sách chuyến đi", description = "Lấy danh sách các chuyến đi (hỗ trợ phân trang và lọc theo trạng thái, tàu, loại chuyến)")
+    @PreAuthorize("hasAuthority('CRUISE_READ')")
     @GetMapping
     public ApiResponse<Page<CruiseResponse>> list(
             @Parameter(description = "Lọc theo trạng thái chuyến đi") @RequestParam(required = false) CruiseStatus status,
@@ -48,6 +51,7 @@ public class CruiseController {
     }
 
     @Operation(summary = "Chi tiết chuyến đi", description = "Lấy thông tin chi tiết của một chuyến đi theo ID")
+    @PreAuthorize("hasAuthority('CRUISE_READ')")
     @GetMapping("/{cruiseId}")
     public ApiResponse<CruiseResponse> detail(
             @Parameter(description = "ID chuyến đi", required = true) @PathVariable UUID cruiseId) {
@@ -55,6 +59,7 @@ public class CruiseController {
     }
 
     @Operation(summary = "Cập nhật bản nháp chuyến đi", description = "Cập nhật thông tin chuyến đi (chỉ áp dụng khi chuyến ở trạng thái DRAFT)")
+    @PreAuthorize("hasAuthority('CRUISE_UPDATE_DRAFT')")
     @PatchMapping("/{cruiseId}/draft")
     public ApiResponse<CruiseResponse> updateDraft(
             @Parameter(description = "ID chuyến đi", required = true) @PathVariable UUID cruiseId,
@@ -63,6 +68,7 @@ public class CruiseController {
     }
 
     @Operation(summary = "Xóa bản nháp chuyến đi", description = "Xóa chuyến đi ở trạng thái DRAFT và chưa có đặt chỗ nào")
+    @PreAuthorize("hasAuthority('CRUISE_DELETE_DRAFT')")
     @DeleteMapping("/{cruiseId}/draft")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public ApiResponse<Void> deleteDraft(
@@ -72,6 +78,7 @@ public class CruiseController {
     }
 
     @Operation(summary = "Gán tàu cho chuyến đi", description = "Gán tàu đang ACTIVE và không bị trùng lịch cho chuyến đi (khi chuyến ở trạng thái DRAFT hoặc PUBLISHED)")
+    @PreAuthorize("hasAuthority('CRUISE_ASSIGN_SHIP')")
     @PostMapping("/{cruiseId}/assign-ship")
     public ApiResponse<CruiseResponse> assignShip(
             @Parameter(description = "ID chuyến đi", required = true) @PathVariable UUID cruiseId,
@@ -80,6 +87,7 @@ public class CruiseController {
     }
 
     @Operation(summary = "Thay đổi tàu đã gán", description = "Đổi sang tàu khác cho chuyến đi (kiểm tra tàu mới ACTIVE, không trùng lịch, và sức chứa đáp ứng lượng khách đã đặt)")
+    @PreAuthorize("hasAuthority('CRUISE_CHANGE_SHIP')")
     @PutMapping("/{cruiseId}/change-assigned-ship")
     public ApiResponse<CruiseResponse> changeAssignedShip(
             @Parameter(description = "ID chuyến đi", required = true) @PathVariable UUID cruiseId,
@@ -88,6 +96,7 @@ public class CruiseController {
     }
 
     @Operation(summary = "Hủy gán tàu khỏi chuyến đi", description = "Gỡ bỏ tàu khỏi chuyến đi (chỉ áp dụng khi chuyến ở trạng thái DRAFT và chưa có đặt chỗ)")
+    @PreAuthorize("hasAuthority('CRUISE_UNASSIGN_SHIP')")
     @PostMapping("/{cruiseId}/unassign-ship")
     public ApiResponse<CruiseResponse> unassignShip(
             @Parameter(description = "ID chuyến đi", required = true) @PathVariable UUID cruiseId) {
@@ -95,6 +104,7 @@ public class CruiseController {
     }
 
     @Operation(summary = "Kiểm tra tính khả dụng của tàu đối với chuyến đi", description = "Kiểm tra tàu có ACTIVE và không bị trùng lịch với chuyến đi này không")
+    @PreAuthorize("hasAuthority('CRUISE_VALIDATE')")
     @GetMapping("/{cruiseId}/validate-ship-availability")
     public ApiResponse<Boolean> validateShipAvailability(
             @Parameter(description = "ID chuyến đi", required = true) @PathVariable UUID cruiseId,
@@ -103,6 +113,7 @@ public class CruiseController {
     }
 
     @Operation(summary = "Kiểm tra tính hợp lệ của lịch trình chuyến đi", description = "Xác nhận thời điểm trở về sau thời điểm khởi hành")
+    @PreAuthorize("hasAuthority('CRUISE_VALIDATE')")
     @GetMapping("/{cruiseId}/validate-schedule")
     public ApiResponse<Boolean> validateSchedule(
             @Parameter(description = "ID chuyến đi", required = true) @PathVariable UUID cruiseId) {
@@ -110,6 +121,7 @@ public class CruiseController {
     }
 
     @Operation(summary = "Kiểm tra sức chứa của chuyến đi", description = "So sánh sức chứa tối đa của tàu với số lượng hành khách đã đặt chỗ hiện tại")
+    @PreAuthorize("hasAuthority('CRUISE_VALIDATE')")
     @GetMapping("/{cruiseId}/validate-capacity")
     public ApiResponse<CruiseCapacityValidationResponse> validateCapacity(
             @Parameter(description = "ID chuyến đi", required = true) @PathVariable UUID cruiseId) {
@@ -117,6 +129,7 @@ public class CruiseController {
     }
 
     @Operation(summary = "Kiểm tra tính sẵn sàng vận hành (Operational Readiness)", description = "Đánh giá toàn diện: tàu đã gán và ACTIVE, có tầng và phòng, lịch trình hợp lệ, cảng hoạt động, hải trình đã cấu hình")
+    @PreAuthorize("hasAuthority('CRUISE_VALIDATE')")
     @GetMapping("/{cruiseId}/readiness")
     public ApiResponse<CruiseReadinessResponse> validateOperationalReadiness(
             @Parameter(description = "ID chuyến đi", required = true) @PathVariable UUID cruiseId) {
@@ -124,6 +137,7 @@ public class CruiseController {
     }
 
     @Operation(summary = "Phát hành chuyến đi (Publish)", description = "Chuyển trạng thái từ DRAFT sang PUBLISHED (yêu cầu kiểm tra sẵn sàng vận hành đạt tiêu chuẩn)")
+    @PreAuthorize("hasAuthority('CRUISE_PUBLISH')")
     @PostMapping("/{cruiseId}/publish")
     public ApiResponse<CruiseResponse> publish(
             @Parameter(description = "ID chuyến đi", required = true) @PathVariable UUID cruiseId) {
@@ -131,6 +145,7 @@ public class CruiseController {
     }
 
     @Operation(summary = "Bắt đầu chuyến đi (Start)", description = "Chuyển trạng thái từ PUBLISHED sang IN_PROGRESS khi chuyến đi chính thức bắt đầu")
+    @PreAuthorize("hasAuthority('CRUISE_START')")
     @PostMapping("/{cruiseId}/start")
     public ApiResponse<CruiseResponse> start(
             @Parameter(description = "ID chuyến đi", required = true) @PathVariable UUID cruiseId) {
@@ -138,6 +153,7 @@ public class CruiseController {
     }
 
     @Operation(summary = "Hoàn tất chuyến đi (Complete)", description = "Chuyển trạng thái từ IN_PROGRESS sang COMPLETED khi tàu cập cảng an toàn và kết thúc chuyến đi")
+    @PreAuthorize("hasAuthority('CRUISE_COMPLETE')")
     @PostMapping("/{cruiseId}/complete")
     public ApiResponse<CruiseResponse> complete(
             @Parameter(description = "ID chuyến đi", required = true) @PathVariable UUID cruiseId) {
@@ -145,6 +161,7 @@ public class CruiseController {
     }
 
     @Operation(summary = "Hủy chuyến đi (Cancel)", description = "Hủy chuyến đi (yêu cầu cung cấp lý do hủy, không thể hủy chuyến đã hoàn tất)")
+    @PreAuthorize("hasAuthority('CRUISE_CANCEL')")
     @PostMapping("/{cruiseId}/cancel")
     public ApiResponse<CruiseResponse> cancel(
             @Parameter(description = "ID chuyến đi", required = true) @PathVariable UUID cruiseId,
