@@ -6,6 +6,8 @@ import lombok.Getter;
 import lombok.Setter;
 
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 @Getter
@@ -43,4 +45,30 @@ public class ItineraryDay {
 
     @Column(name = "description", length = 500)
     private String description;
+
+    @OneToMany(mappedBy = "arrivalItineraryDay", fetch = FetchType.LAZY, cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<CruiseStop> arrivalStops = new ArrayList<>();
+
+    @OneToMany(mappedBy = "departureItineraryDay", fetch = FetchType.LAZY, cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<CruiseStop> departureStops = new ArrayList<>();
+
+    public void addArrivalStop(CruiseStop stop) {
+        arrivalStops.add(stop);
+        stop.setArrivalItineraryDay(this);
+    }
+
+    public void removeArrivalStop(CruiseStop stop) {
+        arrivalStops.remove(stop);
+        stop.setArrivalItineraryDay(null);
+    }
+
+    public void addDepartureStop(CruiseStop stop) {
+        departureStops.add(stop);
+        stop.setDepartureItineraryDay(this);
+    }
+
+    public void removeDepartureStop(CruiseStop stop) {
+        departureStops.remove(stop);
+        stop.setDepartureItineraryDay(null);
+    }
 }

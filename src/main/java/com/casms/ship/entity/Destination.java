@@ -6,6 +6,8 @@ import lombok.Getter;
 import lombok.Setter;
 
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 @Getter
@@ -32,6 +34,9 @@ public class Destination {
     @Column(name = "status", nullable = false)
     private DestinationStatus status;
 
+    @OneToMany(mappedBy = "destination", fetch = FetchType.LAZY, cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<Port> ports = new ArrayList<>();
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -47,5 +52,15 @@ public class Destination {
     @PreUpdate
     protected void onUpdate() {
         updatedAt = Instant.now();
+    }
+
+    public void addPort(Port port) {
+        ports.add(port);
+        port.setDestination(this);
+    }
+
+    public void removePort(Port port) {
+        ports.remove(port);
+        port.setDestination(null);
     }
 }

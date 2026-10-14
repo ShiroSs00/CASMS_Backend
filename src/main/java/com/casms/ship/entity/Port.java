@@ -41,6 +41,13 @@ public class Port {
     @Column(name = "status", nullable = false)
     private PortStatus status;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "destination_id")
+    private Destination destination;
+
+    @Column(name = "description", length = 1000)
+    private String description;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 

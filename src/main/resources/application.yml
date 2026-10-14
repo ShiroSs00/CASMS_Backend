@@ -3,9 +3,9 @@
     name: CASMS
 
   datasource:
-    url: ${DB_URL:jdbc:postgresql://postgres:5432/casms?stringtype=unspecified}
-    username: ${DB_USERNAME:postgres}
-    password: ${DB_PASSWORD:12345}
+    url: jdbc:postgresql://localhost:5432/casms?stringtype=unspecified
+    username: postgres
+    password: 12345
     driver-class-name: org.postgresql.Driver
     hikari:
       data-source-properties:
@@ -34,3 +34,28 @@ server:
   port: 8080
   servlet:
     context-path: /api
+
+jwt:
+  secret: ${JWT_SECRET:rIFy5i9RTGzjEe253ROYoY3ETmwzMn0cK1dmkqybYdo}
+  expiration-ms: ${JWT_EXPIRATION_MS:86400000}
+
+logging:
+  level:
+    root: INFO
+    com.casms: DEBUG
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%X{correlationId}] %-5level %logger{36} - %msg%n"
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+    enabled: true
+  swagger-ui:
+    path: /swagger-ui.html
+    enabled: true
+    tags-sorter: alpha
+    operations-sorter: method
+    display-request-duration: true
+    doc-expansion: none
+    filter: true
+    try-it-out-enabled: true
