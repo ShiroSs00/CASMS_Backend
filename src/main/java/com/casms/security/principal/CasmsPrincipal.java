@@ -1,7 +1,9 @@
 package com.casms.security.principal;
 
 import com.casms.identity.entity.User;
-import com.casms.identity.enums.UserStatus;
+import com.casms.identity.enums.Permission;
+import com.casms.identity.enums.Role;
+import com.casms.identity.repository.RolePermissionRepository;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.GrantedAuthority;
@@ -9,13 +11,17 @@ import org.springframework.security.core.userdetails.UserDetails;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
+import java.util.Collections;
+import java.util.stream.Stream;
 
 @Getter
 @RequiredArgsConstructor
 public class CasmsPrincipal implements UserDetails {
 
     private final User user;
+    private final RolePermissionRepository rolePermissionRepository;
 
     public UUID getUserId() {
         return user.getUserId();
@@ -38,11 +44,62 @@ public class CasmsPrincipal implements UserDetails {
 
     @Override
     public boolean isAccountNonLocked() {
-        return user.getStatus() != UserStatus.LOCKED;
+        return user.getStatus() != com.casms.identity.enums.UserStatus.LOCKED;
     }
 
     @Override
     public boolean isEnabled() {
-        return user.getStatus() == UserStatus.ACTIVE;
+        return user.getStatus() == com.casms.identity.enums.UserStatus.ACTIVE;
+    }
+
+    public boolean hasRole(Role role) {
+        return user.hasRole(role);
+    }
+
+    public boolean hasAnyRole(Role... roles) {
+        return user.hasAnyRole(roles);
+    }
+
+    public boolean hasAllRoles(Role... roles) {
+        return user.hasAllRoles(roles);
+    }
+
+    public boolean hasPermission(Permission permission) {
+        if (user.isAdmin()) {
+            return true;
+        }
+        return user.getRoles().stream()
+                .flatMap(role -> {
+                    var rpOptional = rolePermissionRepository.findByRole(role);
+                    return rpOptional.map(rp -> rp.getPermissions().stream())
+                            .orElseGet(Stream::empty);
+                })
+                .anyMatch(permission::equals);
+    }
+
+    public boolean hasAnyPermission(Permission... permissions) {
+        for (Permission perm : permissions) {
+            if (hasPermission(perm)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public boolean hasAllPermissions(Permission... permissions) {
+        for (Permission perm : permissions) {
+            if (!hasPermission(perm)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    public boolean isAdmin() {
+        return user.isAdmin();
+    }
+
+    public boolean isStaff() {
+        return user.isStaff();
     }
 }

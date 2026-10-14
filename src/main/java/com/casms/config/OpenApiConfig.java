@@ -47,17 +47,27 @@ public class OpenApiConfig {
                 .tags(List.of(
                         new Tag().name("Cruise Management").description("APIs quản lý kế hoạch và vòng đời chuyến đi du thuyền (Tạo, gán tàu, duyệt, phát hành, vận hành, hủy)"),
                         new Tag().name("Cruise Regulation Management").description("APIs quản lý và áp dụng quy định vận hành cho chuyến đi du thuyền"),
+                        new Tag().name("Cruise Stop Management").description("APIs quản lý điểm dừng trong lịch trình chuyến đi"),
                         new Tag().name("Ship Management").description("APIs quản lý tàu (Tạo mới, cập nhật, đổi trạng thái, kiểm tra lịch trình, sức chứa)"),
                         new Tag().name("Ship Regulation Management").description("APIs quản lý và áp dụng quy định vận hành cho tàu du lịch"),
                         new Tag().name("Deck Management").description("APIs quản lý tầng/boong tàu (Tạo mới, cập nhật, danh sách cabin, sức chứa boong)"),
                         new Tag().name("Cabin Management").description("APIs quản lý phòng/cabin (Tạo mới, cập nhật, tìm phòng trống, khóa/mở phòng, lịch sử gán)"),
+                        new Tag().name("Port Management").description("APIs quản lý cảng biển (Tạo mới, cập nhật, kích hoạt, vô hiệu hóa, sẵn sàng vận hành)"),
+                        new Tag().name("Destination Management").description("APIs quản lý điểm đến du lịch"),
+                        new Tag().name("Itinerary Management").description("APIs quản lý lịch trình chuyến đi du thuyền"),
+                        new Tag().name("Itinerary Day Management").description("APIs quản lý ngày trong lịch trình chuyến đi"),
+                        new Tag().name("Itinerary Change History Management").description("APIs quản lý và tra cứu lịch sử thay đổi lịch trình chuyến đi"),
                         new Tag().name("Operational Regulation Management").description("APIs quản lý danh mục quy định vận hành và an toàn hàng hải"),
                         new Tag().name("Operational Issue Management").description("APIs quản lý, báo cáo và giải quyết sự cố vận hành"),
+                        new Tag().name("Activities & Excursions").description("APIs hoạt động trên tàu và tham quan trên bờ"),
+                        new Tag().name("Shore Excursion Management").description("APIs quản lý tour và hoạt động tham quan trên bờ cho hành khách"),
+                        new Tag().name("Supplier Management").description("APIs quản lý nhà cung cấp dịch vụ và đối tác tour tham quan"),
+                        new Tag().name("Tour Group Management").description("APIs quản lý đoàn/nhóm tham quan tour trên bờ, phân công hướng dẫn viên"),
+                        new Tag().name("Tour Group Passenger Management").description("APIs quản lý phân bổ hành khách trong nhóm tour, điểm danh và điều chuyển nhóm"),
                         new Tag().name("Identity & Users").description("APIs quản lý tài khoản, người dùng và hành khách"),
                         new Tag().name("Booking & Contracts").description("APIs quản lý đặt chỗ và hợp đồng du thuyền"),
                         new Tag().name("Check-in & Boarding").description("APIs làm thủ tục lên tàu, thẻ định danh và trả phòng"),
                         new Tag().name("Services & Packages").description("APIs quản lý dịch vụ trên tàu và gói dịch vụ tour"),
-                        new Tag().name("Activities & Excursions").description("APIs hoạt động trên tàu và tham quan trên bờ"),
                         new Tag().name("Finance & Payment").description("APIs quản lý tài khoản chi tiêu, giao dịch, hóa đơn và thanh toán"),
                         new Tag().name("Notifications").description("APIs thông báo hệ thống")
                 ))
@@ -85,9 +95,15 @@ public class OpenApiConfig {
                 .group("2. Đội tàu & Chuyến đi (Fleet & Cruise)")
                 .pathsToMatch(
                         "/cruise/**", "/cruises/**",
+                        "/cruise-stops/**", "/cruise-stop/**",
                         "/ship/**", "/ships/**",
                         "/deck/**", "/decks/**",
                         "/cabin/**", "/cabins/**",
+                        "/ports/**", "/port/**",
+                        "/destinations/**", "/destination/**",
+                        "/itineraries/**", "/itinerary/**",
+                        "/itinerary-days/**", "/itinerary-day/**",
+                        "/itinerary-change-history/**",
                         "/operational-regulations/**",
                         "/operational-issues/**"
                 )
@@ -122,7 +138,13 @@ public class OpenApiConfig {
     public GroupedOpenApi activityApi() {
         return GroupedOpenApi.builder()
                 .group("6. Hoạt động & Tham quan (Activities & Excursions)")
-                .pathsToMatch("/activity/**")
+                .pathsToMatch(
+                        "/activity/**",
+                        "/shore-excursions/**",
+                        "/suppliers/**",
+                        "/tour-groups/**",
+                        "/tour-group-passengers/**"
+                )
                 .build();
     }
 

@@ -5,6 +5,9 @@ import com.casms.activity.dto.request.TourGroupPassengerMoveRequest;
 import com.casms.activity.dto.response.TourGroupPassengerResponse;
 import com.casms.activity.enums.TourGroupPassengerAssignmentStatus;
 import com.casms.activity.service.TourGroupPassengerService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -14,8 +17,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+@Tag(name = "Tour Group Passenger Management", description = "Quản lý phân bổ hành khách trong nhóm tour, điểm danh và điều chuyển nhóm")
 @RestController
-@RequestMapping("/api/tour-group-passengers")
+@RequestMapping("/tour-group-passengers")
 public class TourGroupPassengerController {
 
     private final TourGroupPassengerService service;
@@ -27,6 +31,7 @@ public class TourGroupPassengerController {
     }
 
     // ASSIGN
+    @Operation(summary = "Gán hành khách vào nhóm tour", description = "Đăng ký hành khách vào một nhóm tour cụ thể")
     @PostMapping
     public ResponseEntity<TourGroupPassengerResponse> assign(
             @Valid @RequestBody TourGroupPassengerAssignRequest request
@@ -36,11 +41,12 @@ public class TourGroupPassengerController {
     }
 
     // LIST WITH OPTIONAL FILTERS
+    @Operation(summary = "Danh sách phân bổ hành khách", description = "Lấy danh sách gán hành khách theo bộ lọc (groupId, passengerId, trạng thái gán)")
     @GetMapping
     public ResponseEntity<List<TourGroupPassengerResponse>> list(
-            @RequestParam(required = false) UUID groupId,
-            @RequestParam(required = false) UUID passengerId,
-            @RequestParam(required = false)
+            @Parameter(description = "ID nhóm tour") @RequestParam(required = false) UUID groupId,
+            @Parameter(description = "ID hành khách") @RequestParam(required = false) UUID passengerId,
+            @Parameter(description = "Trạng thái phân bổ hành khách") @RequestParam(required = false)
             TourGroupPassengerAssignmentStatus status
     ) {
         return ResponseEntity.ok(
@@ -49,17 +55,19 @@ public class TourGroupPassengerController {
     }
 
     // DETAIL
+    @Operation(summary = "Chi tiết phân bổ hành khách", description = "Xem chi tiết thông tin một lượt phân bổ hành khách theo ID")
     @GetMapping("/{id}")
     public ResponseEntity<TourGroupPassengerResponse> detail(
-            @PathVariable UUID id
+            @Parameter(description = "ID phân bổ hành khách", required = true) @PathVariable UUID id
     ) {
         return ResponseEntity.ok(service.detail(id));
     }
 
     // MOVE TO ANOTHER GROUP
+    @Operation(summary = "Chuyển hành khách sang nhóm khác", description = "Điều chuyển hành khách từ nhóm hiện tại sang nhóm tour khác cùng tour tham quan")
     @PatchMapping("/{id}/move")
     public ResponseEntity<TourGroupPassengerResponse> move(
-            @PathVariable UUID id,
+            @Parameter(description = "ID phân bổ hiện tại của hành khách", required = true) @PathVariable UUID id,
             @Valid @RequestBody TourGroupPassengerMoveRequest request
     ) {
         return ResponseEntity.ok(
@@ -68,34 +76,38 @@ public class TourGroupPassengerController {
     }
 
     // REMOVE BY SOFT CANCELLATION
+    @Operation(summary = "Hủy phân bổ hành khách", description = "Hủy gán hành khách khỏi nhóm tour (hủy mềm)")
     @PatchMapping("/{id}/remove")
     public ResponseEntity<TourGroupPassengerResponse> remove(
-            @PathVariable UUID id
+            @Parameter(description = "ID phân bổ hành khách cần hủy", required = true) @PathVariable UUID id
     ) {
         return ResponseEntity.ok(service.remove(id));
     }
 
     // RECORD CHECK-IN BEFORE DEPARTURE
+    @Operation(summary = "Điểm danh hành khách lúc khởi hành", description = "Ghi nhận hành khách đã có mặt và lên xe khởi hành đi tour")
     @PatchMapping("/{id}/departure")
     public ResponseEntity<TourGroupPassengerResponse> recordDeparture(
-            @PathVariable UUID id
+            @Parameter(description = "ID phân bổ hành khách", required = true) @PathVariable UUID id
     ) {
         return ResponseEntity.ok(service.recordDeparture(id));
     }
 
     // RECORD RETURN / COMPLETION
+    @Operation(summary = "Điểm danh hành khách lúc quay về", description = "Ghi nhận hành khách đã hoàn thành tour và quay trở lại tàu an toàn")
     @PatchMapping("/{id}/return")
     public ResponseEntity<TourGroupPassengerResponse> recordReturn(
-            @PathVariable UUID id
+            @Parameter(description = "ID phân bổ hành khách", required = true) @PathVariable UUID id
     ) {
         return ResponseEntity.ok(service.recordReturn(id));
     }
 
     // VALIDATE ASSIGNMENT
+    @Operation(summary = "Kiểm tra tính hợp lệ phân bổ", description = "Kiểm tra xem việc phân bổ hành khách vào nhóm tour có hợp lệ và thỏa mãn điều kiện không")
     @PostMapping("/validate")
     public ResponseEntity<Map<String, String>> validateAssignment(
-            @RequestParam UUID groupId,
-            @RequestParam UUID passengerId
+            @Parameter(description = "ID nhóm tour", required = true) @RequestParam UUID groupId,
+            @Parameter(description = "ID hành khách", required = true) @RequestParam UUID passengerId
     ) {
         service.validateAssignment(groupId, passengerId);
 
@@ -105,9 +117,10 @@ public class TourGroupPassengerController {
     }
 
     // CHECK AVAILABLE GROUP CAPACITY
+    @Operation(summary = "Kiểm tra chỗ trống của nhóm tour", description = "Tra cứu số chỗ khả dụng còn lại của một nhóm tour cụ thể")
     @GetMapping("/groups/{groupId}/available-capacity")
     public ResponseEntity<Map<String, Long>> checkGroupCapacity(
-            @PathVariable UUID groupId
+            @Parameter(description = "ID nhóm tour", required = true) @PathVariable UUID groupId
     ) {
         return ResponseEntity.ok(Map.of(
                 "availableCapacity",
@@ -116,10 +129,11 @@ public class TourGroupPassengerController {
     }
 
     // CHECK PASSENGER ELIGIBILITY
+    @Operation(summary = "Kiểm tra điều kiện tham gia của hành khách", description = "Kiểm tra xem hành khách có đủ điều kiện tham gia tour tham quan không")
     @GetMapping("/eligibility")
     public ResponseEntity<Map<String, Boolean>> checkPassengerEligibility(
-            @RequestParam UUID passengerId,
-            @RequestParam UUID excursionId
+            @Parameter(description = "ID hành khách", required = true) @RequestParam UUID passengerId,
+            @Parameter(description = "ID tour tham quan", required = true) @RequestParam UUID excursionId
     ) {
         return ResponseEntity.ok(Map.of(
                 "eligible",

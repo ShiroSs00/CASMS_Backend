@@ -1,6 +1,7 @@
 package com.casms.ship.controller;
 
 import com.casms.common.response.ApiResponse;
+import com.casms.identity.enums.Permission;
 import com.casms.ship.dto.request.ShipCreateRequest;
 import com.casms.ship.dto.request.ShipUpdateRequest;
 import com.casms.ship.dto.response.CruiseSummaryResponse;
@@ -17,6 +18,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.Instant;
@@ -32,6 +34,7 @@ public class ShipController {
     private final ShipService service;
 
     @Operation(summary = "Tạo tàu mới", description = "Đăng ký thông tin tàu mới vào hệ thống với mã tàu duy nhất")
+    @PreAuthorize("hasPermission('SHIP_CREATE')")
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<ShipResponse> create(@RequestBody @Valid ShipCreateRequest request) {
@@ -39,12 +42,14 @@ public class ShipController {
     }
 
     @Operation(summary = "Danh sách tàu", description = "Lấy danh sách tàu trong hệ thống (hỗ trợ phân trang và sắp xếp)")
+    @PreAuthorize("hasPermission('SHIP_READ')")
     @GetMapping
     public ApiResponse<Page<ShipResponse>> list(Pageable pageable) {
         return ApiResponse.success(service.list(pageable));
     }
 
     @Operation(summary = "Chi tiết tàu", description = "Xem thông tin chi tiết của một tàu theo ID")
+    @PreAuthorize("hasPermission('SHIP_READ')")
     @GetMapping("/{shipId}")
     public ApiResponse<ShipResponse> detail(
             @Parameter(description = "ID của tàu", required = true) @PathVariable UUID shipId) {
@@ -52,6 +57,7 @@ public class ShipController {
     }
 
     @Operation(summary = "Cập nhật tàu", description = "Cập nhật các thông tin cơ bản của tàu (tên, sức chứa, số boong, ngày hạ thủy)")
+    @PreAuthorize("hasPermission('SHIP_UPDATE')")
     @PatchMapping("/{shipId}")
     public ApiResponse<ShipResponse> update(
             @Parameter(description = "ID của tàu", required = true) @PathVariable UUID shipId,
@@ -60,6 +66,7 @@ public class ShipController {
     }
 
     @Operation(summary = "Xóa tàu chưa sử dụng", description = "Xóa tàu nếu tàu chưa được gán cho bất kỳ chuyến đi (Cruise) nào")
+    @PreAuthorize("hasPermission('SHIP_DELETE')")
     @DeleteMapping("/{shipId}/unused")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public ApiResponse<Void> deleteUnused(
@@ -69,6 +76,7 @@ public class ShipController {
     }
 
     @Operation(summary = "Thay đổi trạng thái tàu", description = "Cập nhật trạng thái tàu (ACTIVE, MAINTENANCE, INACTIVE). Chặn chuyển sang MAINTENANCE/INACTIVE nếu tàu đang trong chuyến đi")
+    @PreAuthorize("hasPermission('SHIP_STATUS_CHANGE')")
     @PostMapping("/{shipId}/status")
     public ApiResponse<ShipResponse> changeStatus(
             @Parameter(description = "ID của tàu", required = true) @PathVariable UUID shipId,
@@ -77,6 +85,7 @@ public class ShipController {
     }
 
     @Operation(summary = "Kiểm tra lịch trình khả dụng", description = "Kiểm tra xem tàu có rảnh trong khoảng thời gian chỉ định hay không")
+    @PreAuthorize("hasPermission('SHIP_SCHEDULE_CHECK')")
     @GetMapping("/{shipId}/availability")
     public ApiResponse<Boolean> checkScheduleAvailability(
             @Parameter(description = "ID của tàu", required = true) @PathVariable UUID shipId,
@@ -86,6 +95,7 @@ public class ShipController {
     }
 
     @Operation(summary = "Tổng hợp sức chứa của tàu", description = "Lấy báo cáo tổng hợp về số tầng, tổng cabin thực tế và số cabin còn trống")
+    @PreAuthorize("hasPermission('SHIP_CAPACITY_SUMMARY')")
     @GetMapping("/{shipId}/capacity-summary")
     public ApiResponse<ShipCapacitySummaryResponse> getCapacitySummary(
             @Parameter(description = "ID của tàu", required = true) @PathVariable UUID shipId) {
@@ -93,6 +103,7 @@ public class ShipController {
     }
 
     @Operation(summary = "Danh sách chuyến đi bị ảnh hưởng", description = "Tìm các chuyến đi của tàu nằm trong khoảng thời gian chỉ định (thường dùng khi cần đưa tàu vào bảo trì)")
+    @PreAuthorize("hasPermission('SHIP_AFFECTED_CRUISES')")
     @GetMapping("/{shipId}/affected-cruises")
     public ApiResponse<List<CruiseSummaryResponse>> getAffectedCruises(
             @Parameter(description = "ID của tàu", required = true) @PathVariable UUID shipId,
@@ -101,7 +112,8 @@ public class ShipController {
         return ApiResponse.success(service.getAffectedCruises(shipId, start, end));
     }
 
-    @Operation(summary = "Chuyến đi hiện tại của tàu", description = "Lấy thông tin chuyến đi đang diễn ra (IN_PROGRESS) của tàu tại thời điểm hiện tại")
+    @Operation(summary = "Chuyến đi hiện tại của tàu", description = "Lấy chuyến đi đang diễn ra (IN_PROGRESS) của tàu tại thời điểm hiện tại")
+    @PreAuthorize("hasPermission('SHIP_CURRENT_CRUISE')")
     @GetMapping("/{shipId}/current-cruise")
     public ApiResponse<CruiseSummaryResponse> getCurrentCruise(
             @Parameter(description = "ID của tàu", required = true) @PathVariable UUID shipId) {
@@ -109,6 +121,7 @@ public class ShipController {
     }
 
     @Operation(summary = "Kiểm tra tính hợp lệ của tàu", description = "Xác minh các ràng buộc cấu hình của tàu (ví dụ: số boong thực tế không vượt quá số boong tối đa)")
+    @PreAuthorize("hasPermission('SHIP_VALIDATE')")
     @PostMapping("/{shipId}/validate")
     public ApiResponse<Void> validateShip(
             @Parameter(description = "ID của tàu", required = true) @PathVariable UUID shipId) {
@@ -117,6 +130,7 @@ public class ShipController {
     }
 
     @Operation(summary = "Kiểm tra sẵn sàng vận hành", description = "Xác minh tàu đã đủ điều kiện hoạt động: trạng thái ACTIVE, có ít nhất 1 boong và 1 cabin")
+    @PreAuthorize("hasPermission('SHIP_READINESS')")
     @GetMapping("/{shipId}/readiness")
     public ApiResponse<Boolean> validateOperationalReadiness(
             @Parameter(description = "ID của tàu", required = true) @PathVariable UUID shipId) {

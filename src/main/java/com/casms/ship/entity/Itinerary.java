@@ -9,6 +9,8 @@ import lombok.Setter;
 
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 @Getter
@@ -54,6 +56,9 @@ public class Itinerary {
     @JoinColumn(name = "created_by_user_id")
     private User createdByUser;
 
+    @OneToMany(mappedBy = "itinerary", fetch = FetchType.LAZY, cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<ItineraryDay> days = new ArrayList<>();
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -69,5 +74,15 @@ public class Itinerary {
     @PreUpdate
     protected void onUpdate() {
         updatedAt = Instant.now();
+    }
+
+    public void addDay(ItineraryDay day) {
+        days.add(day);
+        day.setItinerary(this);
+    }
+
+    public void removeDay(ItineraryDay day) {
+        days.remove(day);
+        day.setItinerary(null);
     }
 }
