@@ -13,6 +13,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.Instant;
@@ -28,6 +29,7 @@ public class CruiseRegulationController {
     private final CruiseRegulationService cruiseRegulationService;
 
     @Operation(summary = "Gán quy định cho chuyến đi", description = "Áp dụng một quy định vận hành cụ thể vào chuyến đi du thuyền")
+    @PreAuthorize("hasAuthority('CRUISE_REGULATION_ASSIGN')")
     @PostMapping
     public ResponseEntity<ApiResponse<CruiseRegulationResponse>> assign(
             @PathVariable UUID cruiseId,
@@ -40,6 +42,7 @@ public class CruiseRegulationController {
     }
 
     @Operation(summary = "Kiểm tra xung đột trước khi gán cho chuyến đi", description = "Precheck xung đột quy định trước khi thực hiện gán cho chuyến đi")
+    @PreAuthorize("hasAuthority('CRUISE_REGULATION_READ')")
     @PostMapping("/precheck")
     public ResponseEntity<ApiResponse<RegulationConflictResponse>> precheck(
             @PathVariable UUID cruiseId,
@@ -49,6 +52,7 @@ public class CruiseRegulationController {
     }
 
     @Operation(summary = "Danh sách quy định của chuyến đi", description = "Lấy danh sách tất cả các quy định đang áp dụng cho chuyến đi")
+    @PreAuthorize("hasAuthority('CRUISE_REGULATION_READ')")
     @GetMapping
     public ResponseEntity<ApiResponse<List<CruiseRegulationResponse>>> list(
             @PathVariable UUID cruiseId) {
@@ -56,6 +60,7 @@ public class CruiseRegulationController {
     }
 
     @Operation(summary = "Snapshot quy định hiệu lực của chuyến đi", description = "Lấy snapshot các quy định hiệu lực trực tiếp và kế thừa của chuyến đi")
+    @PreAuthorize("hasAuthority('CRUISE_REGULATION_READ')")
     @GetMapping("/effective")
     public ResponseEntity<ApiResponse<RegulationAssignmentSnapshotResponse>> getEffectiveSnapshot(
             @PathVariable UUID cruiseId,
@@ -65,6 +70,7 @@ public class CruiseRegulationController {
     }
 
     @Operation(summary = "Gỡ quy định khỏi chuyến đi", description = "Gỡ bỏ áp dụng quy định khỏi chuyến đi")
+    @PreAuthorize("hasAuthority('CRUISE_REGULATION_REMOVE')")
     @DeleteMapping("/{regulationId}")
     public ResponseEntity<Void> remove(
             @PathVariable UUID cruiseId,

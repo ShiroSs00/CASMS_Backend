@@ -13,6 +13,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -27,6 +28,7 @@ public class PortController {
     private final PortService service;
 
     @Operation(summary = "Tạo cảng mới", description = "Đăng ký cảng biển mới vào hệ thống")
+    @PreAuthorize("hasAuthority('PORT_CREATE')")
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<PortResponse> create(@RequestBody @Valid PortCreateRequest request) {
@@ -34,18 +36,21 @@ public class PortController {
     }
 
     @Operation(summary = "Danh sách cảng", description = "Lấy danh sách cảng (hỗ trợ phân trang)")
+    @PreAuthorize("hasAuthority('PORT_READ')")
     @GetMapping
     public ApiResponse<Page<PortResponse>> list(Pageable pageable) {
         return ApiResponse.success(service.list(pageable));
     }
 
     @Operation(summary = "Danh sách cảng hoạt động", description = "Lấy danh sách tất cả cảng đang ACTIVE (không phân trang)")
+    @PreAuthorize("hasAuthority('PORT_READ')")
     @GetMapping("/active")
     public ApiResponse<List<PortResponse>> listActive() {
         return ApiResponse.success(service.listAllActive());
     }
 
     @Operation(summary = "Chi tiết cảng", description = "Lấy thông tin chi tiết của một cảng theo ID")
+    @PreAuthorize("hasAuthority('PORT_READ')")
     @GetMapping("/{portId}")
     public ApiResponse<PortResponse> detail(
             @Parameter(description = "ID của cảng", required = true) @PathVariable UUID portId) {
@@ -53,6 +58,7 @@ public class PortController {
     }
 
     @Operation(summary = "Cập nhật cảng", description = "Cập nhật thông tin cảng (tên, tọa độ, múi giờ)")
+    @PreAuthorize("hasAuthority('PORT_UPDATE')")
     @PatchMapping("/{portId}")
     public ApiResponse<PortResponse> update(
             @Parameter(description = "ID của cảng", required = true) @PathVariable UUID portId,
@@ -61,6 +67,7 @@ public class PortController {
     }
 
     @Operation(summary = "Xóa cảng chưa sử dụng", description = "Xóa cảng nếu cảng chưa được gán cho bất kỳ điểm dừng chuyến đi nào")
+    @PreAuthorize("hasAuthority('PORT_DELETE_UNUSED')")
     @DeleteMapping("/{portId}/unused")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public ApiResponse<Void> deleteUnused(
@@ -70,6 +77,7 @@ public class PortController {
     }
 
     @Operation(summary = "Kích hoạt cảng", description = "Chuyển trạng thái cảng sang ACTIVE")
+    @PreAuthorize("hasAuthority('PORT_ACTIVATE')")
     @PostMapping("/{portId}/activate")
     public ApiResponse<PortResponse> activate(
             @Parameter(description = "ID của cảng", required = true) @PathVariable UUID portId) {
@@ -77,6 +85,7 @@ public class PortController {
     }
 
     @Operation(summary = "Vô hiệu hóa cảng", description = "Chuyển trạng thái cảng sang INACTIVE")
+    @PreAuthorize("hasAuthority('PORT_DEACTIVATE')")
     @PostMapping("/{portId}/deactivate")
     public ApiResponse<PortResponse> deactivate(
             @Parameter(description = "ID của cảng", required = true) @PathVariable UUID portId) {
@@ -84,6 +93,7 @@ public class PortController {
     }
 
     @Operation(summary = "Kiểm tra tính hợp lệ cảng", description = "Xác minh tính hợp lệ của dữ liệu cảng")
+    @PreAuthorize("hasAuthority('PORT_VALIDATE')")
     @PostMapping("/{portId}/validate")
     public ApiResponse<Void> validatePort(
             @Parameter(description = "ID của cảng", required = true) @PathVariable UUID portId) {
@@ -92,6 +102,7 @@ public class PortController {
     }
 
     @Operation(summary = "Kiểm tra sẵn sàng vận hành", description = "Kiểm tra cảng có đang ACTIVE và sẵn sàng cho hoạt động không")
+    @PreAuthorize("hasAuthority('PORT_READ')")
     @GetMapping("/{portId}/availability")
     public ApiResponse<Boolean> checkOperationalAvailability(
             @Parameter(description = "ID của cảng", required = true) @PathVariable UUID portId) {

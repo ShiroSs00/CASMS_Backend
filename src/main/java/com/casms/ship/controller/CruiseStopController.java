@@ -12,6 +12,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.Instant;
@@ -27,6 +28,7 @@ public class CruiseStopController {
     private final CruiseStopService service;
 
     @Operation(summary = "Thêm điểm dừng mới", description = "Thêm điểm dừng mới vào lịch trình (chỉ khi lịch trình ở trạng thái DRAFT hoặc PENDING_APPROVAL)")
+    @PreAuthorize("hasAuthority('CRUISE_STOP_ADD')")
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<CruiseStopResponse> add(@RequestBody @Valid CruiseStopCreateRequest request) {
@@ -34,6 +36,7 @@ public class CruiseStopController {
     }
 
     @Operation(summary = "Danh sách điểm dừng theo lịch trình", description = "Lấy danh sách tất cả điểm dừng trong một lịch trình (đã sắp xếp theo thứ tự)")
+    @PreAuthorize("hasAuthority('CRUISE_STOP_READ')")
     @GetMapping("/by-itinerary/{itineraryId}")
     public ApiResponse<List<CruiseStopResponse>> listByItinerary(
             @Parameter(description = "ID của lịch trình", required = true) @PathVariable UUID itineraryId) {
@@ -41,6 +44,7 @@ public class CruiseStopController {
     }
 
     @Operation(summary = "Chi tiết điểm dừng", description = "Lấy thông tin chi tiết của một điểm dừng theo ID")
+    @PreAuthorize("hasAuthority('CRUISE_STOP_READ')")
     @GetMapping("/{cruiseStopId}")
     public ApiResponse<CruiseStopResponse> detail(
             @Parameter(description = "ID của điểm dừng", required = true) @PathVariable UUID cruiseStopId) {
@@ -48,6 +52,7 @@ public class CruiseStopController {
     }
 
     @Operation(summary = "Cập nhật điểm dừng", description = "Cập nhật thông tin điểm dừng (chỉ khi lịch trình ở trạng thái DRAFT hoặc PENDING_APPROVAL)")
+    @PreAuthorize("hasAuthority('CRUISE_STOP_UPDATE')")
     @PatchMapping("/{cruiseStopId}")
     public ApiResponse<CruiseStopResponse> update(
             @Parameter(description = "ID của điểm dừng", required = true) @PathVariable UUID cruiseStopId,
@@ -56,6 +61,7 @@ public class CruiseStopController {
     }
 
     @Operation(summary = "Xóa điểm dừng bản nháp", description = "Xóa điểm dừng nếu lịch trình ở trạng thái DRAFT hoặc PENDING_APPROVAL")
+    @PreAuthorize("hasAuthority('CRUISE_STOP_REMOVE_DRAFT')")
     @DeleteMapping("/{cruiseStopId}/draft")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public ApiResponse<Void> removeDraft(
@@ -65,6 +71,7 @@ public class CruiseStopController {
     }
 
     @Operation(summary = "Sắp xếp lại thứ tự điểm dừng", description = "Thay đổi thứ tự điểm dừng trong lịch trình")
+    @PreAuthorize("hasAuthority('CRUISE_STOP_REORDER')")
     @PostMapping("/{cruiseStopId}/reorder")
     public ApiResponse<CruiseStopResponse> reorder(
             @Parameter(description = "ID của điểm dừng", required = true) @PathVariable UUID cruiseStopId,
@@ -73,6 +80,7 @@ public class CruiseStopController {
     }
 
     @Operation(summary = "Đặt thời gian tất cả hành khách lên tàu", description = "Cập nhật thời gian all aboard cho điểm dừng")
+    @PreAuthorize("hasAuthority('CRUISE_STOP_ALL_ABOARD')")
     @PostMapping("/{cruiseStopId}/all-aboard-time")
     public ApiResponse<CruiseStopResponse> setAllAboardTime(
             @Parameter(description = "ID của điểm dừng", required = true) @PathVariable UUID cruiseStopId,
@@ -81,6 +89,7 @@ public class CruiseStopController {
     }
 
     @Operation(summary = "Ghi nhận thời gian đến thực tế", description = "Ghi nhận thời gian tàu đến cảng thực tế")
+    @PreAuthorize("hasAuthority('CRUISE_STOP_ACTUAL_ARRIVAL')")
     @PostMapping("/{cruiseStopId}/actual-arrival")
     public ApiResponse<CruiseStopResponse> recordActualArrival(
             @Parameter(description = "ID của điểm dừng", required = true) @PathVariable UUID cruiseStopId,
@@ -89,6 +98,7 @@ public class CruiseStopController {
     }
 
     @Operation(summary = "Ghi nhận thời gian đi thực tế", description = "Ghi nhận thời gian tàu rời cảng thực tế")
+    @PreAuthorize("hasAuthority('CRUISE_STOP_ACTUAL_DEPARTURE')")
     @PostMapping("/{cruiseStopId}/actual-departure")
     public ApiResponse<CruiseStopResponse> recordActualDeparture(
             @Parameter(description = "ID của điểm dừng", required = true) @PathVariable UUID cruiseStopId,
@@ -97,6 +107,7 @@ public class CruiseStopController {
     }
 
     @Operation(summary = "Bỏ qua điểm dừng", description = "Đánh dấu điểm dừng bị bỏ qua (OMITTED) kèm lý do")
+    @PreAuthorize("hasAuthority('CRUISE_STOP_OMIT')")
     @PostMapping("/{cruiseStopId}/omit")
     public ApiResponse<CruiseStopResponse> omit(
             @Parameter(description = "ID của điểm dừng", required = true) @PathVariable UUID cruiseStopId,
@@ -105,6 +116,7 @@ public class CruiseStopController {
     }
 
     @Operation(summary = "Thay thế điểm dừng", description = "Thay thế điểm dừng hiện tại bằng điểm dừng khác")
+    @PreAuthorize("hasAuthority('CRUISE_STOP_SUBSTITUTE')")
     @PostMapping("/{cruiseStopId}/substitute")
     public ApiResponse<CruiseStopResponse> substitute(
             @Parameter(description = "ID của điểm dừng", required = true) @PathVariable UUID cruiseStopId,
@@ -113,6 +125,7 @@ public class CruiseStopController {
     }
 
     @Operation(summary = "Kiểm tra tính hợp lệ điểm dừng", description = "Xác minh tính hợp lệ của dữ liệu điểm dừng")
+    @PreAuthorize("hasAuthority('CRUISE_STOP_VALIDATE')")
     @PostMapping("/{cruiseStopId}/validate")
     public ApiResponse<Void> validateStop(
             @Parameter(description = "ID của điểm dừng", required = true) @PathVariable UUID cruiseStopId) {
@@ -121,6 +134,7 @@ public class CruiseStopController {
     }
 
     @Operation(summary = "Đặt thời gian dự kiến đến", description = "Cập nhật thời gian dự kiến đến cảng")
+    @PreAuthorize("hasAuthority('CRUISE_STOP_TIME_MANAGE')")
     @PostMapping("/{cruiseStopId}/planned-arrival")
     public ApiResponse<CruiseStopResponse> setPlannedArrival(
             @Parameter(description = "ID của điểm dừng", required = true) @PathVariable UUID cruiseStopId,
@@ -129,6 +143,7 @@ public class CruiseStopController {
     }
 
     @Operation(summary = "Đặt thời gian dự kiến đi", description = "Cập nhật thời gian dự kiến rời cảng")
+    @PreAuthorize("hasAuthority('CRUISE_STOP_TIME_MANAGE')")
     @PostMapping("/{cruiseStopId}/planned-departure")
     public ApiResponse<CruiseStopResponse> setPlannedDeparture(
             @Parameter(description = "ID của điểm dừng", required = true) @PathVariable UUID cruiseStopId,
@@ -137,6 +152,7 @@ public class CruiseStopController {
     }
 
     @Operation(summary = "Tính thời lượng dừng cảng", description = "Tính thời lượng dừng tại cảng (phút)")
+    @PreAuthorize("hasAuthority('CRUISE_STOP_READ')")
     @GetMapping("/{cruiseStopId}/duration")
     public ApiResponse<Long> calculateStopDuration(
             @Parameter(description = "ID của điểm dừng", required = true) @PathVariable UUID cruiseStopId) {
@@ -144,6 +160,7 @@ public class CruiseStopController {
     }
 
     @Operation(summary = "Kiểm tra sự khả dụng của cảng", description = "Kiểm tra xem cảng có sẵn sàng trong khoảng thời gian không")
+    @PreAuthorize("hasAuthority('CRUISE_STOP_READ')")
     @GetMapping("/{cruiseStopId}/port-availability")
     public ApiResponse<Boolean> checkPortAvailability(
             @Parameter(description = "ID của điểm dừng", required = true) @PathVariable UUID cruiseStopId) {
