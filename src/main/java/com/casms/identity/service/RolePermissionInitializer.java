@@ -19,19 +19,19 @@ import java.util.Set;
 @RequiredArgsConstructor
 public class RolePermissionInitializer implements CommandLineRunner {
 
-    private final RolePermissionRepository rolePermissionRepository;
+        private final RolePermissionRepository rolePermissionRepository;
 
-    @Override
-    @Transactional
-    public void run(String... args) {
-        initializeRolePermissions();
-    }
+        @Override
+        @Transactional
+        public void run(String... args) {
+                initializeRolePermissions();
+        }
 
     @Transactional
     public void initializeRolePermissions() {
         log.info("Initializing role permissions...");
 
-        // ADMIN: toàn quyền chức năng
+        // ADMIN: toàn bộ quyền chức năng
         saveRolePermission(
                 Role.ADMIN,
                 EnumSet.allOf(Permission.class)
@@ -51,6 +51,7 @@ public class RolePermissionInitializer implements CommandLineRunner {
                 Permission.CRUISE_START,
                 Permission.CRUISE_COMPLETE,
                 Permission.CRUISE_CANCEL,
+                Permission.CRUISE_STATUS_CHANGE,
 
                 Permission.ITINERARY_CREATE,
                 Permission.ITINERARY_READ,
@@ -87,10 +88,19 @@ public class RolePermissionInitializer implements CommandLineRunner {
 
                 Permission.PORT_READ,
                 Permission.DESTINATION_READ,
+
+                Permission.CRUISE_REGULATION_ASSIGN,
+                Permission.CRUISE_REGULATION_READ,
+                Permission.CRUISE_REGULATION_REMOVE,
+                Permission.REGULATION_READ,
+
+                Permission.ITINERARY_CHANGE_RECORD,
+                Permission.ITINERARY_CHANGE_READ,
+
                 Permission.REPORT_GENERATE
         ));
 
-        // SHIP_MANAGER: quản lý tàu, boong, cabin
+        // SHIP_MANAGER: quản lý tàu, boong, cabin và quy định tàu
         saveRolePermission(Role.SHIP_MANAGER, EnumSet.of(
                 Permission.SHIP_CREATE,
                 Permission.SHIP_READ,
@@ -114,10 +124,18 @@ public class RolePermissionInitializer implements CommandLineRunner {
                 Permission.CABIN_BLOCK,
                 Permission.CABIN_RELEASE,
                 Permission.CABIN_ASSIGNMENTS_VIEW,
+                Permission.CABIN_AVAILABILITY,
 
                 Permission.SHIP_CAPACITY_SUMMARY,
+
+                Permission.SHIP_REGULATION_ASSIGN,
+                Permission.SHIP_REGULATION_READ,
+                Permission.SHIP_REGULATION_REMOVE,
+                Permission.REGULATION_READ,
+
                 Permission.REPORT_GENERATE,
 
+                // Tra cứu thông tin chuyến đi
                 Permission.CRUISE_READ,
                 Permission.ITINERARY_READ,
                 Permission.ITINERARY_DAY_READ,
@@ -126,7 +144,75 @@ public class RolePermissionInitializer implements CommandLineRunner {
                 Permission.DESTINATION_READ
         ));
 
-        // BOOKING_AGENT: booking, tư vấn chuyến đi, check-in
+        // OPERATIONS_MANAGER: giám sát vận hành và xử lý sự cố
+        saveRolePermission(Role.OPERATIONS_MANAGER, EnumSet.of(
+                // Operational Issues
+                Permission.OPERATIONAL_ISSUE_CREATE,
+                Permission.OPERATIONAL_ISSUE_READ,
+                Permission.OPERATIONAL_ISSUE_UPDATE,
+                Permission.OPERATIONAL_ISSUE_RESOLVE,
+                Permission.OPERATIONAL_ISSUE_ESCALATE,
+                Permission.OPERATIONAL_ISSUE_ASSIGN,
+
+                // Ship monitoring
+                Permission.SHIP_READ,
+                Permission.SHIP_STATUS_CHANGE,
+                Permission.SHIP_SCHEDULE_CHECK,
+                Permission.SHIP_CAPACITY_SUMMARY,
+                Permission.SHIP_AFFECTED_CRUISES,
+
+                // Cruise monitoring
+                Permission.CRUISE_READ,
+                Permission.CRUISE_VALIDATE,
+                Permission.CRUISE_START,
+                Permission.CRUISE_COMPLETE,
+                Permission.CRUISE_STATUS_CHANGE,
+
+                // Itinerary and cruise stop monitoring
+                Permission.ITINERARY_READ,
+                Permission.ITINERARY_DAY_READ,
+                Permission.ITINERARY_DAYS_MANAGE,
+                Permission.CRUISE_STOP_READ,
+                Permission.CRUISE_STOP_ACTUAL_ARRIVAL,
+                Permission.CRUISE_STOP_ACTUAL_DEPARTURE,
+                Permission.CRUISE_STOP_OMIT,
+                Permission.CRUISE_STOP_SUBSTITUTE,
+                Permission.CRUISE_STOP_VALIDATE,
+                Permission.CRUISE_STOP_TIME_MANAGE,
+
+                // Port and destination
+                Permission.PORT_READ,
+                Permission.PORT_VALIDATE,
+                Permission.DESTINATION_READ,
+                Permission.DESTINATION_VALIDATE,
+
+                // Regulations
+                Permission.REGULATION_CREATE,
+                Permission.REGULATION_READ,
+                Permission.REGULATION_UPDATE,
+                Permission.REGULATION_DELETE,
+                Permission.REGULATION_ACTIVATE,
+                Permission.REGULATION_DEACTIVATE,
+                Permission.REGULATION_VALIDATE,
+
+                Permission.SHIP_REGULATION_ASSIGN,
+                Permission.SHIP_REGULATION_READ,
+                Permission.SHIP_REGULATION_REMOVE,
+
+                Permission.CRUISE_REGULATION_ASSIGN,
+                Permission.CRUISE_REGULATION_READ,
+                Permission.CRUISE_REGULATION_REMOVE,
+
+                // Itinerary history
+                Permission.ITINERARY_CHANGE_RECORD,
+                Permission.ITINERARY_CHANGE_READ,
+
+                // Reports
+                Permission.REPORT_GENERATE,
+                Permission.REPORT_EXPORT
+        ));
+
+        // BOOKING_AGENT: booking, hợp đồng, cabin và check-in
         saveRolePermission(Role.BOOKING_AGENT, EnumSet.of(
                 Permission.BOOKING_CREATE,
                 Permission.BOOKING_READ,
@@ -138,6 +224,8 @@ public class RolePermissionInitializer implements CommandLineRunner {
                 Permission.CABIN_READ,
                 Permission.CABIN_SEARCH,
                 Permission.CABIN_STATUS_CHANGE,
+                Permission.CABIN_ASSIGNMENTS_VIEW,
+                Permission.CABIN_AVAILABILITY,
 
                 Permission.CHECKIN_CREATE,
                 Permission.CHECKIN_READ,
@@ -147,10 +235,10 @@ public class RolePermissionInitializer implements CommandLineRunner {
                 Permission.CHECKIN_DOCUMENT_VERIFY,
                 Permission.CHECKIN_PAYMENT_VERIFY,
                 Permission.CHECKIN_BOARDING,
-                Permission.CABIN_ASSIGNMENTS_VIEW,
 
                 Permission.NOTIFICATION_SEND,
 
+                // Tra cứu lịch trình để tư vấn khách
                 Permission.CRUISE_READ,
                 Permission.ITINERARY_READ,
                 Permission.ITINERARY_DAY_READ,
@@ -207,7 +295,7 @@ public class RolePermissionInitializer implements CommandLineRunner {
                 Permission.DESTINATION_READ
         ));
 
-        // FINANCE_OFFICER: thanh toán, hóa đơn, quyết toán
+        // FINANCE_OFFICER: thanh toán, hóa đơn và quyết toán
         saveRolePermission(Role.FINANCE_OFFICER, EnumSet.of(
                 Permission.PAYMENT_PROCESS,
                 Permission.PAYMENT_REFUND,
@@ -247,13 +335,14 @@ public class RolePermissionInitializer implements CommandLineRunner {
                 Permission.DESTINATION_READ
         ));
 
-        // PASSENGER: chỉ truy cập chức năng dành cho du khách
+        // PASSENGER: chức năng dành cho du khách
         saveRolePermission(Role.PASSENGER, EnumSet.of(
                 Permission.BOOKING_READ,
 
                 Permission.CHECKIN_CREATE,
                 Permission.CHECKIN_READ,
 
+                // Xem thông tin chuyến tàu và lịch trình
                 Permission.CRUISE_READ,
                 Permission.ITINERARY_READ,
                 Permission.ITINERARY_DAY_READ,
@@ -261,34 +350,31 @@ public class RolePermissionInitializer implements CommandLineRunner {
                 Permission.PORT_READ,
                 Permission.DESTINATION_READ,
 
-                Permission.ACTIVITY_READ,
-                Permission.ACTIVITY_REGISTRATION,
 
-                Permission.EXCURSION_READ,
-                Permission.EXCURSION_BOOKING,
+           
+                    Permission.ACT
+                    Permission.EXCURSION_READ,
+           
+        
+                            // Tha
+                            Permission.NOTIFICATION   
+                )); 
+                                ermissions initialized successfu
 
-                Permission.NOTIFICATION_READ,
-                Permission.PAYMENT_PROCESS
-        ));
+                
 
-        log.info("Role permissions initialized successfully");
-    }
+                ưu hoặc cập nhật tập quyền cho
+                                tương ứng một bản ghi
+                                                
+                                                ePermission(  
 
-    /**
-     * Upsert quyền theo role.
-     * Mỗi role chỉ có một bản ghi RolePermission.
-     */
-    private void saveRolePermission(
-            Role role,
-            Set<Permission> permissions
-    ) {
-        RolePermission rolePermission =
-                rolePermissionRepository.findByRole(role)
-                        .orElseGet(RolePermission::new);
+                
 
-        rolePermission.setRole(role);
-
-        rolePermission.setPermissions(
+                        r
+                                        .orElseGet(RolePermission::new);
+                                
+                                ission.setRole(rol
+            rolePermission.setPermissions(
                 permissions.isEmpty()
                         ? EnumSet.noneOf(Permission.class)
                         : EnumSet.copyOf(permissions)

@@ -16,6 +16,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
@@ -31,6 +32,7 @@ public class OperationalIssueController {
     private final OperationalIssueService issueService;
 
     @Operation(summary = "Báo cáo sự cố mới", description = "Tạo báo cáo sự cố vận hành mới phát sinh trên tàu hoặc chuyến đi")
+    @PreAuthorize("hasAuthority('OPERATIONAL_ISSUE_CREATE')")
     @PostMapping
     public ResponseEntity<ApiResponse<OperationalIssueResponse>> report(
             @Valid @RequestBody OperationalIssueRequest request,
@@ -50,6 +52,7 @@ public class OperationalIssueController {
     }
 
     @Operation(summary = "Danh sách sự cố", description = "Lấy danh sách các sự cố vận hành theo bộ lọc (trạng thái, tàu, chuyến đi)")
+    @PreAuthorize("hasAuthority('OPERATIONAL_ISSUE_READ')")
     @GetMapping
     public ResponseEntity<ApiResponse<List<OperationalIssueResponse>>> list(
             @RequestParam(required = false) OperationalIssueStatus status,
@@ -60,6 +63,7 @@ public class OperationalIssueController {
     }
 
     @Operation(summary = "Chi tiết sự cố", description = "Lấy thông tin chi tiết của một sự cố vận hành theo ID")
+    @PreAuthorize("hasAuthority('OPERATIONAL_ISSUE_READ')")
     @GetMapping("/{issueId}")
     public ResponseEntity<ApiResponse<OperationalIssueResponse>> detail(
             @PathVariable UUID issueId) {
@@ -67,6 +71,7 @@ public class OperationalIssueController {
     }
 
     @Operation(summary = "Cập nhật sự cố đang mở", description = "Cập nhật thông tin mô tả, mức độ nghiêm trọng khi sự cố còn ở trạng thái mở")
+    @PreAuthorize("hasAuthority('OPERATIONAL_ISSUE_UPDATE')")
     @PutMapping("/{issueId}")
     public ResponseEntity<ApiResponse<OperationalIssueResponse>> update(
             @PathVariable UUID issueId,
@@ -76,6 +81,7 @@ public class OperationalIssueController {
     }
 
     @Operation(summary = "Gán người xử lý sự cố", description = "Phân công nhân sự chịu trách nhiệm xử lý sự cố")
+    @PreAuthorize("hasAuthority('OPERATIONAL_ISSUE_ASSIGN')")
     @PatchMapping("/{issueId}/assign")
     public ResponseEntity<ApiResponse<OperationalIssueResponse>> assignHandler(
             @PathVariable UUID issueId,
@@ -85,6 +91,7 @@ public class OperationalIssueController {
     }
 
     @Operation(summary = "Bắt đầu xử lý sự cố", description = "Chuyển trạng thái sự cố sang đang tiến hành xử lý (IN_PROGRESS)")
+    @PreAuthorize("hasAuthority('OPERATIONAL_ISSUE_UPDATE')")
     @PatchMapping("/{issueId}/start")
     public ResponseEntity<ApiResponse<OperationalIssueResponse>> startHandling(
             @PathVariable UUID issueId) {
@@ -93,6 +100,7 @@ public class OperationalIssueController {
     }
 
     @Operation(summary = "Ghi nhận giải pháp xử lý", description = "Ghi nhận giải pháp và kết quả khắc phục sự cố")
+    @PreAuthorize("hasAuthority('OPERATIONAL_ISSUE_RESOLVE')")
     @PostMapping("/{issueId}/resolution")
     public ResponseEntity<ApiResponse<OperationalIssueResponse>> recordResolution(
             @PathVariable UUID issueId,
@@ -106,6 +114,7 @@ public class OperationalIssueController {
     }
 
     @Operation(summary = "Xác minh giải pháp khắc phục", description = "Xác minh và nghiệm thu kết quả xử lý sự cố")
+    @PreAuthorize("hasAuthority('OPERATIONAL_ISSUE_RESOLVE')")
     @PatchMapping("/{issueId}/verify")
     public ResponseEntity<ApiResponse<OperationalIssueResponse>> verifyResolution(
             @PathVariable UUID issueId,
@@ -118,6 +127,7 @@ public class OperationalIssueController {
     }
 
     @Operation(summary = "Đóng sự cố", description = "Đóng sự cố sau khi đã hoàn tất xử lý và xác minh")
+    @PreAuthorize("hasAuthority('OPERATIONAL_ISSUE_RESOLVE')")
     @PatchMapping("/{issueId}/close")
     public ResponseEntity<ApiResponse<OperationalIssueResponse>> close(
             @PathVariable UUID issueId) {
@@ -125,6 +135,7 @@ public class OperationalIssueController {
     }
 
     @Operation(summary = "Mở lại sự cố", description = "Mở lại sự cố nếu phát sinh vấn đề hoặc tái diễn")
+    @PreAuthorize("hasAuthority('OPERATIONAL_ISSUE_UPDATE')")
     @PatchMapping("/{issueId}/reopen")
     public ResponseEntity<ApiResponse<OperationalIssueResponse>> reopen(
             @PathVariable UUID issueId) {
@@ -132,6 +143,7 @@ public class OperationalIssueController {
     }
 
     @Operation(summary = "Kiểm tra tính hợp lệ sự cố", description = "Kiểm tra tính hợp lệ của dữ liệu sự cố")
+    @PreAuthorize("hasAuthority('OPERATIONAL_ISSUE_READ')")
     @PostMapping("/{issueId}/validate")
     public ResponseEntity<Void> validate(
             @PathVariable UUID issueId) {

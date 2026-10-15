@@ -46,6 +46,7 @@ public enum Permission {
     CRUISE_START,
     CRUISE_COMPLETE,
     CRUISE_CANCEL,
+    CRUISE_STATUS_CHANGE,
 
     // Itinerary permissions
     ITINERARY_CREATE,
@@ -150,5 +151,36 @@ public enum Permission {
 
     // Report permissions
     REPORT_GENERATE,
-    REPORT_EXPORT
+    REPORT_EXPORT,
+
+    // Operational Issue permissions
+    OPERATIONAL_ISSUE_CREATE,
+    OPERATIONAL_ISSUE_READ,
+    OPERATIONAL_ISSUE_UPDATE,
+    OPERATIONAL_ISSUE_RESOLVE,
+    OPERATIONAL_ISSUE_ESCALATE,
+    OPERATIONAL_ISSUE_ASSIGN,
+
+    // Regulation permissions
+    REGULATION_CREATE,
+    REGULATION_READ,
+    REGULATION_UPDATE,
+    REGULATION_DELETE,
+    REGULATION_ACTIVATE,
+    REGULATION_DEACTIVATE,
+    REGULATION_VALIDATE,
+
+    // Ship Regulation permissions
+    SHIP_REGULATION_ASSIGN,
+    SHIP_REGULATION_READ,
+    SHIP_REGULATION_REMOVE,
+
+    // Cruise Regulation permissions
+    CRUISE_REGULATION_ASSIGN,
+    CRUISE_REGULATION_READ,
+    CRUISE_REGULATION_REMOVE,
+
+    // Itinerary Change History permissions
+    ITINERARY_CHANGE_RECORD,
+    ITINERARY_CHANGE_READ
 }

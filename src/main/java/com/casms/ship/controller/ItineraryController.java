@@ -14,6 +14,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -28,6 +29,7 @@ public class ItineraryController {
     private final ItineraryService service;
 
     @Operation(summary = "Tạo lịch trình mới", description = "Tạo lịch trình mới cho một chuyến đi (mặc định trạng thái DRAFT)")
+    @PreAuthorize("hasAuthority('ITINERARY_CREATE')")
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<ItineraryResponse> create(@RequestBody @Valid ItineraryCreateRequest request) {
@@ -35,12 +37,14 @@ public class ItineraryController {
     }
 
     @Operation(summary = "Danh sách lịch trình", description = "Lấy danh sách các lịch trình (hỗ trợ phân trang)")
+    @PreAuthorize("hasAuthority('ITINERARY_READ')")
     @GetMapping
     public ApiResponse<Page<ItineraryResponse>> list(Pageable pageable) {
         return ApiResponse.success(service.list(pageable));
     }
 
     @Operation(summary = "Chi tiết lịch trình", description = "Lấy thông tin chi tiết của một lịch trình theo ID")
+    @PreAuthorize("hasAuthority('ITINERARY_READ')")
     @GetMapping("/{itineraryId}")
     public ApiResponse<ItineraryResponse> detail(
             @Parameter(description = "ID của lịch trình", required = true) @PathVariable UUID itineraryId) {
@@ -48,6 +52,7 @@ public class ItineraryController {
     }
 
     @Operation(summary = "Cập nhật bản nháp lịch trình", description = "Cập nhật thông tin lịch trình (chỉ khi lịch trình ở trạng thái DRAFT)")
+    @PreAuthorize("hasAuthority('ITINERARY_UPDATE_DRAFT')")
     @PatchMapping("/{itineraryId}/draft")
     public ApiResponse<ItineraryResponse> updateDraft(
             @Parameter(description = "ID của lịch trình", required = true) @PathVariable UUID itineraryId,
@@ -56,6 +61,7 @@ public class ItineraryController {
     }
 
     @Operation(summary = "Xóa bản nháp lịch trình", description = "Xóa lịch trình ở trạng thái DRAFT và chưa có ngày nào")
+    @PreAuthorize("hasAuthority('ITINERARY_DELETE_DRAFT')")
     @DeleteMapping("/{itineraryId}/draft")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public ApiResponse<Void> deleteDraft(
@@ -65,6 +71,7 @@ public class ItineraryController {
     }
 
     @Operation(summary = "Kiểm tra tính khả thi", description = "Kiểm tra tính khả thi của lịch trình (khoảng ngày, ngày tuần tự, phù hợp với chuyến đi)")
+    @PreAuthorize("hasAuthority('ITINERARY_VALIDATE')")
     @PostMapping("/{itineraryId}/validate-feasibility")
     public ApiResponse<Void> validateFeasibility(
             @Parameter(description = "ID của lịch trình", required = true) @PathVariable UUID itineraryId) {
@@ -73,6 +80,7 @@ public class ItineraryController {
     }
 
     @Operation(summary = "Gửi phê duyệt", description = "Gửi lịch trình từ DRAFT sang PENDING_APPROVAL")
+    @PreAuthorize("hasAuthority('ITINERARY_SUBMIT')")
     @PostMapping("/{itineraryId}/submit")
     public ApiResponse<ItineraryResponse> submit(
             @Parameter(description = "ID của lịch trình", required = true) @PathVariable UUID itineraryId) {
@@ -80,6 +88,7 @@ public class ItineraryController {
     }
 
     @Operation(summary = "Phê duyệt lịch trình", description = "Phê duyệt lịch trình từ PENDING_APPROVAL sang APPROVED")
+    @PreAuthorize("hasAuthority('ITINERARY_APPROVE')")
     @PostMapping("/{itineraryId}/approve")
     public ApiResponse<ItineraryResponse> approve(
             @Parameter(description = "ID của lịch trình", required = true) @PathVariable UUID itineraryId,
@@ -88,6 +97,7 @@ public class ItineraryController {
     }
 
     @Operation(summary = "Từ chối lịch trình", description = "Từ chối lịch trình từ PENDING_APPROVAL sang REJECTED")
+    @PreAuthorize("hasAuthority('ITINERARY_REJECT')")
     @PostMapping("/{itineraryId}/reject")
     public ApiResponse<ItineraryResponse> reject(
             @Parameter(description = "ID của lịch trình", required = true) @PathVariable UUID itineraryId,
@@ -97,6 +107,7 @@ public class ItineraryController {
     }
 
     @Operation(summary = "Áp dụng thay đổi", description = "Áp dụng thay đổi cho lịch trình đã được phê duyệt")
+    @PreAuthorize("hasAuthority('ITINERARY_APPLY_CHANGE')")
     @PostMapping("/{itineraryId}/apply-change")
     public ApiResponse<ItineraryResponse> applyChange(
             @Parameter(description = "ID của lịch trình", required = true) @PathVariable UUID itineraryId,
@@ -105,6 +116,7 @@ public class ItineraryController {
     }
 
     @Operation(summary = "Kiểm tra cấu trúc lịch trình", description = "Kiểm tra cấu trúc lịch trình (có ít nhất 1 ngày, ngày liên tục, số thứ tự tuần tự)")
+    @PreAuthorize("hasAuthority('ITINERARY_VALIDATE')")
     @PostMapping("/{itineraryId}/validate-structure")
     public ApiResponse<Void> validateStructure(
             @Parameter(description = "ID của lịch trình", required = true) @PathVariable UUID itineraryId) {
@@ -113,6 +125,7 @@ public class ItineraryController {
     }
 
     @Operation(summary = "Kiểm tra tính tuần tự ngày", description = "Kiểm tra các ngày trong lịch trình được đánh số tuần tự từ 1")
+    @PreAuthorize("hasAuthority('ITINERARY_VALIDATE')")
     @PostMapping("/{itineraryId}/validate-sequence")
     public ApiResponse<Void> validateSequence(
             @Parameter(description = "ID của lịch trình", required = true) @PathVariable UUID itineraryId) {
@@ -121,6 +134,7 @@ public class ItineraryController {
     }
 
     @Operation(summary = "Phát hành lịch trình", description = "Phát hành lịch trình từ APPROVED sang OPEN_FOR_SALE")
+    @PreAuthorize("hasAuthority('ITINERARY_PUBLISH')")
     @PostMapping("/{itineraryId}/publish")
     public ApiResponse<ItineraryResponse> publish(
             @Parameter(description = "ID của lịch trình", required = true) @PathVariable UUID itineraryId) {
@@ -128,6 +142,7 @@ public class ItineraryController {
     }
 
     @Operation(summary = "Hủy lịch trình", description = "Hủy lịch trình (không thể hủy lịch trình đã hoàn tất)")
+    @PreAuthorize("hasAuthority('ITINERARY_CANCEL')")
     @PostMapping("/{itineraryId}/cancel")
     public ApiResponse<ItineraryResponse> cancel(
             @Parameter(description = "ID của lịch trình", required = true) @PathVariable UUID itineraryId) {
@@ -135,6 +150,7 @@ public class ItineraryController {
     }
 
     @Operation(summary = "Danh sách ngày trong lịch trình", description = "Lấy danh sách tất cả ngày trong một lịch trình")
+    @PreAuthorize("hasAuthority('ITINERARY_READ')")
     @GetMapping("/{itineraryId}/days")
     public ApiResponse<List<ItineraryDayResponse>> listDays(
             @Parameter(description = "ID của lịch trình", required = true) @PathVariable UUID itineraryId) {

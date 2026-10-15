@@ -7,9 +7,11 @@ import com.casms.identity.repository.RolePermissionRepository;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -29,7 +31,29 @@ public class CasmsPrincipal implements UserDetails {
 
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
-        return List.of();
+        Set<GrantedAuthority> authorities = new HashSet<>();
+        if (user.getRoles() != null) {
+            for (Role role : user.getRoles()) {
+                authorities.add(new SimpleGrantedAuthority("ROLE_" + role.name()));
+                authorities.add(new SimpleGrantedAuthority(role.name()));
+            }
+        }
+        if (user.isAdmin()) {
+            for (Permission p : Permission.values()) {
+                authorities.add(new SimpleGrantedAuthority(p.name()));
+            }
+        } else if (user.getRoles() != null && rolePermissionRepository != null) {
+            for (Role role : user.getRoles()) {
+                rolePermissionRepository.findByRole(role).ifPresent(rp -> {
+                    if (rp.getPermissions() != null) {
+                        for (Permission p : rp.getPermissions()) {
+                            authorities.add(new SimpleGrantedAuthority(p.name()));
+                        }
+                    }
+                });
+            }
+        }
+        return authorities;
     }
 
     @Override
