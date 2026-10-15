@@ -25,13 +25,24 @@ public class RolePermission {
     @Enumerated(EnumType.STRING)
     @CollectionTable(name = "\"RolePermissionMapping\"", joinColumns = @JoinColumn(name = "role"))
     @Column(name = "permission")
-    private Set<Permission> permissions = EnumSet.noneOf(Permission.class);
+    private Set<Permission> permissions = new java.util.HashSet<>();
 
     public RolePermission() {}
 
     public RolePermission(Role role, Set<Permission> permissions) {
         this.role = role;
-        this.permissions = EnumSet.copyOf(permissions);
+        setPermissions(permissions);
+    }
+
+    public void setPermissions(Set<Permission> permissions) {
+        if (this.permissions == null) {
+            this.permissions = new java.util.HashSet<>();
+        } else {
+            this.permissions.clear();
+        }
+        if (permissions != null) {
+            this.permissions.addAll(permissions);
+        }
     }
 
     public void addPermission(Permission permission) {

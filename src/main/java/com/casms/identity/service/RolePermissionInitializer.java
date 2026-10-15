@@ -165,10 +165,13 @@ public class RolePermissionInitializer implements CommandLineRunner {
     }
 
     private void saveRolePermission(Role role, Set<Permission> permissions) {
-        RolePermission rp = new RolePermission();
-        rp.setRole(role);
+        RolePermission rp = rolePermissionRepository.findByRole(role).orElseGet(() -> {
+            RolePermission newRp = new RolePermission();
+            newRp.setRole(role);
+            return newRp;
+        });
         rp.setPermissions(permissions);
-        // In a real implementation, you'd save to database
+        rolePermissionRepository.save(rp);
         log.info("Configured permissions for role: {} ({} permissions)", role, permissions.size());
     }
 }
