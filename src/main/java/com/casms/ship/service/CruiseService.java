@@ -92,7 +92,20 @@ public class CruiseService {
 
     @Transactional(readOnly = true)
     public Page<CruiseResponse> list(CruiseStatus status, UUID shipId, CruiseCruiseType cruiseType, Pageable pageable) {
-        return cruiseRepository.findAllWithFilters(status, shipId, cruiseType, pageable).map(this::mapToResponse);
+        org.springframework.data.jpa.domain.Specification<Cruise> spec = (root, query, cb) -> {
+            List<jakarta.persistence.criteria.Predicate> predicates = new ArrayList<>();
+            if (status != null) {
+                predicates.add(cb.equal(root.get("status"), status));
+            }
+            if (shipId != null) {
+                predicates.add(cb.equal(root.get("ship").get("shipId"), shipId));
+            }
+            if (cruiseType != null) {
+                predicates.add(cb.equal(root.get("cruiseType"), cruiseType));
+            }
+            return cb.and(predicates.toArray(new jakarta.persistence.criteria.Predicate[0]));
+        };
+        return cruiseRepository.findAll(spec, pageable).map(this::mapToResponse);
     }
 
     @Transactional(readOnly = true)
