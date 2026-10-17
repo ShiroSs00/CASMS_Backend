@@ -4,13 +4,18 @@ import com.casms.activity.dto.request.SupplierRequest;
 import com.casms.activity.dto.request.SupplierVerificationRequest;
 import com.casms.activity.entity.Supplier;
 import com.casms.activity.service.SupplierService;
+import com.casms.common.exception.BusinessException;
 import com.casms.common.response.ApiResponse;
+import com.casms.security.principal.CasmsPrincipal;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -95,16 +100,10 @@ public class SupplierController {
     @PostMapping("/{id}/verification")
     public ResponseEntity<ApiResponse<Supplier>> recordVerification(
             @Parameter(description = "ID nhà cung cấp", required = true) @PathVariable UUID id,
-            @Valid @RequestBody SupplierVerificationRequest request
+            @Valid @RequestBody SupplierVerificationRequest request,
+            @AuthenticationPrincipal CasmsPrincipal principal
     ) {
-        /*
-         * TODO: Lấy employeeId từ tài khoản đã xác thực
-         * trong Spring Security, không lấy từ request của client.
-         *
-         * Thay dòng dưới bằng ID của nhân viên đăng nhập
-         * theo cơ chế xác thực thực tế của CASMS.
-         */
-        UUID employeeId = getAuthenticatedEmployeeId();
+        UUID employeeId = getAuthenticatedEmployeeId(principal);
 
         return ResponseEntity.ok(
                 ApiResponse.success(supplierService.recordVerification(
@@ -125,13 +124,28 @@ public class SupplierController {
         )));
     }
 
-    /*
-     * Thay bằng cách lấy ID từ SecurityContext/JWT
-     * theo cấu trúc xác thực của dự án.
-     */
+    private UUID getAuthenticatedEmployeeId(CasmsPrincipal principal) {
+        if (principal != null && principal.getUserId() != null) {
+            return principal.getUserId();
+        }
+        return getAuthenticatedEmployeeId();
+    }
+
     private UUID getAuthenticatedEmployeeId() {
-        throw new UnsupportedOperationException(
-                "Implement using the project's authentication mechanism"
-        );
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication != null && authentication.isAuthenticated()) {
+            Object principal = authentication.getPrincipal();
+            if (principal instanceof CasmsPrincipal casmsPrincipal) {
+                return casmsPrincipal.getUserId();
+            } else if (principal instanceof com.casms.identity.entity.User user) {
+                return user.getUserId();
+            } else if (principal instanceof String str) {
+                try {
+                    return UUID.fromString(str);
+                } catch (IllegalArgumentException ignored) {
+                }
+            }
+        }
+        throw new BusinessException(HttpStatus.UNAUTHORIZED, "AUTH_REQUIRED", "Yêu cầu xác thực tài khoản nhân viên");
     }
 }

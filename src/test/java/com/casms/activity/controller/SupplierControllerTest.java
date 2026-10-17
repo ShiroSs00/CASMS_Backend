@@ -1,10 +1,13 @@
 package com.casms.activity.controller;
 
 import com.casms.activity.dto.request.SupplierRequest;
+import com.casms.activity.dto.request.SupplierVerificationRequest;
 import com.casms.activity.entity.Supplier;
 import com.casms.activity.enums.SupplierStatus;
 import com.casms.activity.service.SupplierService;
 import com.casms.common.response.ApiResponse;
+import com.casms.identity.entity.User;
+import com.casms.security.principal.CasmsPrincipal;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -170,4 +173,80 @@ class SupplierControllerTest {
         assertEquals("Supplier information is valid", response.getBody().getData().get("message"));
         verify(supplierService).validateSupplier(supplierId);
     }
+
+    @Test
+    void recordVerification_withPrincipal_returnsApiResponseWithVerifiedSupplier() {
+        UUID employeeId = UUID.randomUUID();
+        User employee = new User();
+        employee.setUserId(employeeId);
+        CasmsPrincipal principal = new CasmsPrincipal(employee, null);
+
+        SupplierVerificationRequest request = new SupplierVerificationRequest(
+                com.casms.activity.enums.SupplierVerificationStatus.VERIFIED,
+                "All documents verified"
+        );
+
+        when(supplierService.recordVerification(eq(supplierId), eq(request), eq(employeeId)))
+                .thenReturn(sampleSupplier);
+
+        ResponseEntity<ApiResponse<Supplier>> response =
+                supplierController.recordVerification(supplierId, request, principal);
+
+        assertEquals(HttpStatus.OK, response.getStatusCode());
+        assertNotNull(response.getBody());
+        assertTrue(response.getBody().isSuccess());
+        verify(supplierService).recordVerification(supplierId, request, employeeId);
+    }
+
+    @Test
+    void recordVerification_withSecurityContextFallback_returnsApiResponseWithVerifiedSupplier() {
+        UUID employeeId = UUID.randomUUID();
+        User employee = new User();
+        employee.setUserId(employeeId);
+        CasmsPrincipal principal = new CasmsPrincipal(employee, null);
+
+        org.springframework.security.core.Authentication auth =
+                new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(
+                        principal, null, principal.getAuthorities());
+        org.springframework.security.core.context.SecurityContextHolder.getContext().setAuthentication(auth);
+
+        try {
+            SupplierVerificationRequest request = new SupplierVerificationRequest(
+                    com.casms.activity.enums.SupplierVerificationStatus.VERIFIED,
+                    "Verified via context"
+            );
+
+            when(supplierService.recordVerification(eq(supplierId), eq(request), eq(employeeId)))
+                    .thenReturn(sampleSupplier);
+
+            ResponseEntity<ApiResponse<Supplier>> response =
+                    supplierController.recordVerification(supplierId, request, null);
+
+            assertEquals(HttpStatus.OK, response.getStatusCode());
+            assertNotNull(response.getBody());
+            assertTrue(response.getBody().isSuccess());
+            verify(supplierService).recordVerification(supplierId, request, employeeId);
+        } finally {
+            org.springframework.security.core.context.SecurityContextHolder.clearContext();
+        }
+    }
+
+    @Test
+    void recordVerification_withoutAuthentication_throwsBusinessException() {
+        org.springframework.security.core.context.SecurityContextHolder.clearContext();
+
+        SupplierVerificationRequest request = new SupplierVerificationRequest(
+                com.casms.activity.enums.SupplierVerificationStatus.VERIFIED,
+                "No auth test"
+        );
+
+        com.casms.common.exception.BusinessException ex = assertThrows(
+                com.casms.common.exception.BusinessException.class,
+                () -> supplierController.recordVerification(supplierId, request, null)
+        );
+
+        assertEquals(HttpStatus.UNAUTHORIZED, ex.getStatus());
+        assertEquals("AUTH_REQUIRED", ex.getCode());
+    }
 }
+
