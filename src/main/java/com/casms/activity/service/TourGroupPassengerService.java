@@ -16,8 +16,8 @@ import com.casms.activity.repository.TourGroupRepository;
 import com.casms.identity.entity.Passenger;
 import com.casms.identity.repository.PassengerRepository;
 import jakarta.persistence.EntityNotFoundException;
-import jakarta.transaction.Transactional;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.List;
@@ -87,20 +87,26 @@ public class TourGroupPassengerService {
     }
 
     // READ / LIST
-    @Transactional(Transactional.TxType.SUPPORTS)
+    @Transactional(readOnly = true)
     public List<TourGroupPassengerResponse> list(
             UUID groupId,
             UUID passengerId,
             TourGroupPassengerAssignmentStatus status
     ) {
-        return assignmentRepository.search(groupId, passengerId, status)
-                .stream()
+        List<TourGroupPassenger> assignments;
+        if (groupId == null && passengerId == null && status == null) {
+            assignments = assignmentRepository.findAllWithDetails();
+        } else {
+            assignments = assignmentRepository.search(groupId, passengerId, status);
+        }
+
+        return assignments.stream()
                 .map(this::toResponse)
                 .toList();
     }
 
     // READ / DETAIL
-    @Transactional(Transactional.TxType.SUPPORTS)
+    @Transactional(readOnly = true)
     public TourGroupPassengerResponse detail(UUID assignmentId) {
         return toResponse(findAssignment(assignmentId));
     }
@@ -258,7 +264,7 @@ public class TourGroupPassengerService {
     }
 
     // VALIDATE ASSIGNMENT RULES
-    @Transactional(Transactional.TxType.SUPPORTS)
+    @Transactional(readOnly = true)
     public void validateAssignment(UUID groupId, UUID passengerId) {
         TourGroup group = findGroup(groupId);
         Passenger passenger = passengerRepository.findById(passengerId)
@@ -292,7 +298,7 @@ public class TourGroupPassengerService {
     }
 
     // CHECK REGISTRATION ELIGIBILITY
-    @Transactional(Transactional.TxType.SUPPORTS)
+    @Transactional(readOnly = true)
     public boolean checkPassengerEligibility(
             UUID passengerId,
             UUID excursionId
@@ -331,7 +337,7 @@ public class TourGroupPassengerService {
     }
 
     // CHECK GROUP CAPACITY
-    @Transactional(Transactional.TxType.SUPPORTS)
+    @Transactional(readOnly = true)
     public long checkGroupCapacity(UUID groupId) {
         TourGroup group = findGroup(groupId);
         long assigned = assignmentRepository.countActiveAssignments(

@@ -20,8 +20,11 @@ public interface TourGroupPassengerRepository
     @Query("""
         SELECT tp
         FROM TourGroupPassenger tp
-        WHERE (:groupId IS NULL OR tp.tourGroup.tourGroupId = :groupId)
-          AND (:passengerId IS NULL OR tp.passenger.passengerId = :passengerId)
+        JOIN FETCH tp.tourGroup tg
+        JOIN FETCH tg.shoreExcursion se
+        JOIN FETCH tp.passenger p
+        WHERE (:groupId IS NULL OR tg.tourGroupId = :groupId)
+          AND (:passengerId IS NULL OR p.passengerId = :passengerId)
           AND (:status IS NULL OR tp.assignmentStatus = :status)
         ORDER BY tp.createdAt DESC
         """)
@@ -30,6 +33,16 @@ public interface TourGroupPassengerRepository
             @Param("passengerId") UUID passengerId,
             @Param("status") TourGroupPassengerAssignmentStatus status
     );
+
+    @Query("""
+        SELECT tp
+        FROM TourGroupPassenger tp
+        JOIN FETCH tp.tourGroup tg
+        JOIN FETCH tg.shoreExcursion se
+        JOIN FETCH tp.passenger p
+        ORDER BY tp.createdAt DESC
+        """)
+    List<TourGroupPassenger> findAllWithDetails();
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("""
@@ -62,6 +75,7 @@ public interface TourGroupPassengerRepository
         SELECT tgp
         FROM TourGroupPassenger tgp
         JOIN FETCH tgp.tourGroup tg
+        JOIN FETCH tg.shoreExcursion se
         JOIN FETCH tgp.passenger p
         WHERE tgp.tourGroupPassengerId = :assignmentId
         """)
