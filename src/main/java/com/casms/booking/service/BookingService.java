@@ -359,11 +359,14 @@ public class BookingService {
      */
     @Transactional(readOnly = true)
     public Page<BookingSummaryResponse> list(UUID cruiseId, BookingStatus status, Pageable pageable, CasmsPrincipal principal) {
-        boolean isStaffOrAgent = principal.getAuthorities().stream()
-                .anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN") || a.getAuthority().equals("ROLE_BOOKING_AGENT") || a.getAuthority().equals("BOOKING_READ"));
+        boolean isStaffOrAgent = principal != null && (principal.isStaff() || principal.isAdmin() ||
+                principal.getAuthorities().stream().anyMatch(a ->
+                        a.getAuthority().equals("ROLE_ADMIN") ||
+                        a.getAuthority().equals("ROLE_BOOKING_AGENT") ||
+                        a.getAuthority().equals("ROLE_CUSTOMER_SERVICE")));
 
         UUID filterUserId = null;
-        if (!isStaffOrAgent) {
+        if (!isStaffOrAgent && principal != null) {
             filterUserId = principal.getUserId();
         }
 
