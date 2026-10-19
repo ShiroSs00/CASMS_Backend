@@ -3,11 +3,13 @@ D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\activity\service\Shor
 D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\activity\service\SupplierServiceTest.java
 D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\activity\service\TourGroupPassengerServiceTest.java
 D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\activity\service\TourGroupServiceTest.java
+D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\booking\repository\BookingPostgresIntegrationTest.java
 D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\booking\service\BookingServiceTest.java
 D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\common\exception\GlobalExceptionHandlerTest.java
 D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\identity\service\AuthServiceTest.java
 D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\identity\service\IdentityServiceTest.java
 D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\identity\service\RolePermissionInitializerTest.java
+D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\ship\repository\ItineraryChangeHistoryPostgresIntegrationTest.java
 D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\ship\service\CruiseRegulationServiceTest.java
 D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\ship\service\CruiseServiceTest.java
 D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\ship\service\ItineraryChangeHistoryServiceTest.java
