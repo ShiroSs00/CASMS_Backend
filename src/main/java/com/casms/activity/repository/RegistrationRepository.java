@@ -30,4 +30,16 @@ public interface RegistrationRepository
             UUID shoreExcursionId,
             RegistrationStatus status
     );
+
+    @Query("""
+        SELECT r
+        FROM Registration r
+        JOIN FETCH r.passenger p
+        WHERE r.shoreExcursion.shoreExcursionId = :excursionId
+          AND r.status = :status
+        """)
+    java.util.List<Registration> findConfirmedRegistrationsByExcursion(
+            @Param("excursionId") UUID excursionId,
+            @Param("status") RegistrationStatus status
+    );
 }

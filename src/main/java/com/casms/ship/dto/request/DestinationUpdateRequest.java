@@ -5,7 +5,7 @@ import jakarta.validation.constraints.Size;
 import lombok.Data;
 
 @Data
-@Schema(description = "Yêu cầu cập nhật thông tin điểm đến")
+@Schema(description = "Yêu cầu cập nhật thông tin điểm đến. Lưu ý: countryCode là bất biến; chỉ destinationName và description có thể cập nhật. Trạng thái hoạt động quản lý qua activate/deactivate.")
 public class DestinationUpdateRequest {
 
     @Schema(description = "Tên điểm đến", example = "Vịnh Hạ Long")

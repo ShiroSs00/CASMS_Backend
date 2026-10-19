@@ -7,7 +7,7 @@ import lombok.Data;
 import java.math.BigDecimal;
 
 @Data
-@Schema(description = "Yêu cầu cập nhật thông tin cảng")
+@Schema(description = "Yêu cầu cập nhật thông tin cảng. Lưu ý: portCode và countryCode là bất biến; trạng thái cảng được quản lý qua endpoint activate/deactivate.")
 public class PortUpdateRequest {
 
     @Schema(description = "Tên cảng", example = "Cảng Hải Phòng Quốc tế")

@@ -5,8 +5,11 @@ com\casms\activity\service\TourGroupServiceTest.class
 com\casms\common\exception\GlobalExceptionHandlerTest.class
 com\casms\ship\service\OperationalIssueServiceTest.class
 com\casms\ship\service\OperationalRegulationServiceTest.class
+com\casms\identity\service\RolePermissionInitializerTest.class
+com\casms\identity\service\AuthServiceTest.class
 com\casms\ship\service\ShipServiceTest.class
 com\casms\ship\service\ItineraryChangeHistoryServiceTest.class
+com\casms\ship\service\ItineraryServiceTest.class
 com\casms\ship\service\CruiseRegulationServiceTest.class
 com\casms\ship\service\ShipRegulationServiceTest.class
 com\casms\activity\service\SupplierServiceTest.class

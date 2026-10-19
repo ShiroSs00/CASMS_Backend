@@ -93,7 +93,14 @@ public class RolePermissionInitializer implements CommandLineRunner {
                 Permission.ITINERARY_CHANGE_RECORD,
                 Permission.ITINERARY_CHANGE_READ,
 
-                Permission.REPORT_GENERATE
+                Permission.REPORT_GENERATE,
+
+                // Cross-module read permissions (BE-AUTH-02)
+                Permission.SHIP_READ,
+                Permission.OPERATIONAL_ISSUE_READ,
+                Permission.SUPPLIER_READ,
+                Permission.EXCURSION_READ,
+                Permission.TOUR_GROUP_READ
         ));
 
         // SHIP_MANAGER: quản lý tàu, boong, cabin và quy định tàu
@@ -105,6 +112,10 @@ public class RolePermissionInitializer implements CommandLineRunner {
                 Permission.SHIP_STATUS_CHANGE,
                 Permission.SHIP_SCHEDULE_CHECK,
                 Permission.SHIP_CAPACITY_SUMMARY,
+                Permission.SHIP_AFFECTED_CRUISES,
+                Permission.SHIP_CURRENT_CRUISE,
+                Permission.SHIP_VALIDATE,
+                Permission.SHIP_READINESS,
 
                 Permission.DECK_CREATE,
                 Permission.DECK_READ,
@@ -152,6 +163,8 @@ public class RolePermissionInitializer implements CommandLineRunner {
                 Permission.SHIP_SCHEDULE_CHECK,
                 Permission.SHIP_CAPACITY_SUMMARY,
                 Permission.SHIP_AFFECTED_CRUISES,
+                Permission.SHIP_CURRENT_CRUISE,
+                Permission.SHIP_READINESS,
 
                 Permission.CRUISE_READ,
                 Permission.CRUISE_VALIDATE,
@@ -195,7 +208,18 @@ public class RolePermissionInitializer implements CommandLineRunner {
                 Permission.ITINERARY_CHANGE_READ,
 
                 Permission.REPORT_GENERATE,
-                Permission.REPORT_EXPORT
+                Permission.REPORT_EXPORT,
+
+                // Supplier & Activity management (BE-SEC-01)
+                Permission.SUPPLIER_CREATE,
+                Permission.SUPPLIER_READ,
+                Permission.SUPPLIER_UPDATE,
+                Permission.SUPPLIER_STATUS_CHANGE,
+                Permission.SUPPLIER_VERIFY,
+                Permission.SUPPLIER_VALIDATE,
+                Permission.EXCURSION_READ,
+                Permission.TOUR_GROUP_READ,
+                Permission.TOUR_GROUP_PASSENGER_READ
         ));
 
         // BOOKING_AGENT: booking, cabin và check-in
@@ -229,7 +253,11 @@ public class RolePermissionInitializer implements CommandLineRunner {
                 Permission.ITINERARY_DAY_READ,
                 Permission.CRUISE_STOP_READ,
                 Permission.PORT_READ,
-                Permission.DESTINATION_READ
+                Permission.DESTINATION_READ,
+
+                // Cross-module reference read permissions (BE-AUTH-02)
+                Permission.SHIP_READ,
+                Permission.DECK_READ
         ));
 
         // CHECKIN_STAFF: xử lý check-in và lên tàu
@@ -253,7 +281,11 @@ public class RolePermissionInitializer implements CommandLineRunner {
                 Permission.ITINERARY_DAY_READ,
                 Permission.CRUISE_STOP_READ,
                 Permission.PORT_READ,
-                Permission.DESTINATION_READ
+                Permission.DESTINATION_READ,
+
+                // Cross-module reference read permissions (BE-AUTH-02)
+                Permission.SHIP_READ,
+                Permission.DECK_READ
         ));
 
         // ONBOARD_STAFF: hoạt động và tour trên tàu
@@ -267,7 +299,29 @@ public class RolePermissionInitializer implements CommandLineRunner {
                 Permission.EXCURSION_CREATE,
                 Permission.EXCURSION_READ,
                 Permission.EXCURSION_UPDATE,
+                Permission.EXCURSION_DELETE_DRAFT,
+                Permission.EXCURSION_STATUS_CHANGE,
+                Permission.EXCURSION_VALIDATE,
                 Permission.EXCURSION_BOOKING,
+
+                // Tour Group permissions
+                Permission.TOUR_GROUP_CREATE,
+                Permission.TOUR_GROUP_READ,
+                Permission.TOUR_GROUP_UPDATE,
+                Permission.TOUR_GROUP_GUIDE_ASSIGN,
+                Permission.TOUR_GROUP_STATUS_CHANGE,
+                Permission.TOUR_GROUP_VALIDATE,
+
+                // Tour Group Passenger permissions
+                Permission.TOUR_GROUP_PASSENGER_ASSIGN,
+                Permission.TOUR_GROUP_PASSENGER_READ,
+                Permission.TOUR_GROUP_PASSENGER_MOVE,
+                Permission.TOUR_GROUP_PASSENGER_REMOVE,
+                Permission.TOUR_GROUP_PASSENGER_ATTENDANCE,
+                Permission.TOUR_GROUP_PASSENGER_VALIDATE,
+
+                // Supplier read
+                Permission.SUPPLIER_READ,
 
                 Permission.NOTIFICATION_SEND,
                 Permission.CHECKOUT_PROCESS,
@@ -317,7 +371,13 @@ public class RolePermissionInitializer implements CommandLineRunner {
                 Permission.ITINERARY_DAY_READ,
                 Permission.CRUISE_STOP_READ,
                 Permission.PORT_READ,
-                Permission.DESTINATION_READ
+                Permission.DESTINATION_READ,
+
+                // Cross-module reference read permissions
+                Permission.SHIP_READ,
+                Permission.DECK_READ,
+                Permission.CABIN_READ,
+                Permission.EXCURSION_READ
         ));
 
         // PASSENGER: chức năng dành cho hành khách

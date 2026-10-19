@@ -1,6 +1,8 @@
 package com.casms.ship.controller;
 
+import com.casms.common.exception.BusinessException;
 import com.casms.common.response.ApiResponse;
+import com.casms.security.principal.CasmsPrincipal;
 import com.casms.ship.dto.request.ItineraryCreateRequest;
 import com.casms.ship.dto.request.ItineraryUpdateDraftRequest;
 import com.casms.ship.dto.response.ItineraryResponse;
@@ -15,6 +17,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -32,8 +35,16 @@ public class ItineraryController {
     @PreAuthorize("hasAuthority('ITINERARY_CREATE')")
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    public ApiResponse<ItineraryResponse> create(@RequestBody @Valid ItineraryCreateRequest request) {
-        return ApiResponse.success(service.create(request));
+    public ApiResponse<ItineraryResponse> create(
+            @RequestBody @Valid ItineraryCreateRequest request,
+            @AuthenticationPrincipal CasmsPrincipal principal) {
+        UUID creatorUserId = (principal != null && principal.getUserId() != null)
+                ? principal.getUserId()
+                : request.getCreatedByUserId();
+        if (creatorUserId == null) {
+            throw new BusinessException(HttpStatus.UNAUTHORIZED, "AUTH_REQUIRED", "Yêu cầu đăng nhập để tạo lịch trình");
+        }
+        return ApiResponse.success(service.create(request, creatorUserId));
     }
 
     @Operation(summary = "Danh sách lịch trình", description = "Lấy danh sách các lịch trình (hỗ trợ phân trang)")
@@ -92,8 +103,15 @@ public class ItineraryController {
     @PostMapping("/{itineraryId}/approve")
     public ApiResponse<ItineraryResponse> approve(
             @Parameter(description = "ID của lịch trình", required = true) @PathVariable UUID itineraryId,
-            @Parameter(description = "ID người phê duyệt", required = true) @RequestParam UUID approverId) {
-        return ApiResponse.success(service.approve(itineraryId, approverId));
+            @Parameter(description = "ID người phê duyệt (tùy chọn khi đã đăng nhập)") @RequestParam(required = false) UUID approverId,
+            @AuthenticationPrincipal CasmsPrincipal principal) {
+        UUID effectiveApproverId = (principal != null && principal.getUserId() != null)
+                ? principal.getUserId()
+                : approverId;
+        if (effectiveApproverId == null) {
+            throw new BusinessException(HttpStatus.UNAUTHORIZED, "AUTH_REQUIRED", "Yêu cầu đăng nhập để phê duyệt lịch trình");
+        }
+        return ApiResponse.success(service.approve(itineraryId, effectiveApproverId));
     }
 
     @Operation(summary = "Từ chối lịch trình", description = "Từ chối lịch trình từ PENDING_APPROVAL sang REJECTED")
@@ -101,9 +119,16 @@ public class ItineraryController {
     @PostMapping("/{itineraryId}/reject")
     public ApiResponse<ItineraryResponse> reject(
             @Parameter(description = "ID của lịch trình", required = true) @PathVariable UUID itineraryId,
-            @Parameter(description = "ID người phê duyệt", required = true) @RequestParam UUID approverId,
-            @Parameter(description = "Lý do từ chối", required = true) @RequestParam String reason) {
-        return ApiResponse.success(service.reject(itineraryId, approverId, reason));
+            @Parameter(description = "ID người phê duyệt (tùy chọn khi đã đăng nhập)") @RequestParam(required = false) UUID approverId,
+            @Parameter(description = "Lý do từ chối", required = true) @RequestParam String reason,
+            @AuthenticationPrincipal CasmsPrincipal principal) {
+        UUID effectiveApproverId = (principal != null && principal.getUserId() != null)
+                ? principal.getUserId()
+                : approverId;
+        if (effectiveApproverId == null) {
+            throw new BusinessException(HttpStatus.UNAUTHORIZED, "AUTH_REQUIRED", "Yêu cầu đăng nhập để từ chối lịch trình");
+        }
+        return ApiResponse.success(service.reject(itineraryId, effectiveApproverId, reason));
     }
 
     @Operation(summary = "Áp dụng thay đổi", description = "Áp dụng thay đổi cho lịch trình đã được phê duyệt")

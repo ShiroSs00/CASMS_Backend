@@ -13,6 +13,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -34,6 +35,7 @@ public class SupplierController {
     }
 
     @Operation(summary = "Tạo nhà cung cấp mới", description = "Đăng ký thông tin nhà cung cấp dịch vụ mới vào hệ thống")
+    @PreAuthorize("hasAuthority('SUPPLIER_CREATE')")
     @PostMapping
     public ResponseEntity<ApiResponse<Supplier>> create(
             @Valid @RequestBody SupplierRequest request
@@ -43,12 +45,14 @@ public class SupplierController {
     }
 
     @Operation(summary = "Danh sách nhà cung cấp", description = "Lấy danh sách tất cả các nhà cung cấp dịch vụ trong hệ thống")
+    @PreAuthorize("hasAuthority('SUPPLIER_READ')")
     @GetMapping
     public ResponseEntity<ApiResponse<List<Supplier>>> list() {
         return ResponseEntity.ok(ApiResponse.success(supplierService.list()));
     }
 
     @Operation(summary = "Chi tiết nhà cung cấp", description = "Xem thông tin chi tiết của một nhà cung cấp theo ID")
+    @PreAuthorize("hasAuthority('SUPPLIER_READ')")
     @GetMapping("/{id}")
     public ResponseEntity<ApiResponse<Supplier>> detail(
             @Parameter(description = "ID nhà cung cấp", required = true) @PathVariable UUID id
@@ -57,6 +61,7 @@ public class SupplierController {
     }
 
     @Operation(summary = "Cập nhật thông tin nhà cung cấp", description = "Cập nhật thông tin chi tiết của nhà cung cấp (tên, thông tin liên hệ, giấy phép)")
+    @PreAuthorize("hasAuthority('SUPPLIER_UPDATE')")
     @PutMapping("/{id}")
     public ResponseEntity<ApiResponse<Supplier>> update(
             @Parameter(description = "ID nhà cung cấp", required = true) @PathVariable UUID id,
@@ -68,6 +73,7 @@ public class SupplierController {
     }
 
     @Operation(summary = "Xóa nhà cung cấp chưa sử dụng", description = "Xóa nhà cung cấp nếu chưa liên kết với bất kỳ tour tham quan hay hợp đồng nào")
+    @PreAuthorize("hasAuthority('SUPPLIER_DELETE')")
     @DeleteMapping("/{id}")
     public ResponseEntity<ApiResponse<Void>> deleteUnused(
             @Parameter(description = "ID nhà cung cấp cần xóa", required = true) @PathVariable UUID id
@@ -77,6 +83,7 @@ public class SupplierController {
     }
 
     @Operation(summary = "Kích hoạt nhà cung cấp", description = "Chuyển trạng thái nhà cung cấp sang ACTIVE để có thể liên kết tour")
+    @PreAuthorize("hasAuthority('SUPPLIER_STATUS_CHANGE')")
     @PatchMapping("/{id}/activate")
     public ResponseEntity<ApiResponse<Supplier>> activate(
             @Parameter(description = "ID nhà cung cấp", required = true) @PathVariable UUID id
@@ -87,6 +94,7 @@ public class SupplierController {
     }
 
     @Operation(summary = "Ngừng kích hoạt nhà cung cấp", description = "Chuyển trạng thái nhà cung cấp sang INACTIVE để tạm dừng sử dụng dịch vụ")
+    @PreAuthorize("hasAuthority('SUPPLIER_STATUS_CHANGE')")
     @PatchMapping("/{id}/deactivate")
     public ResponseEntity<ApiResponse<Supplier>> deactivate(
             @Parameter(description = "ID nhà cung cấp", required = true) @PathVariable UUID id
@@ -97,6 +105,7 @@ public class SupplierController {
     }
 
     @Operation(summary = "Ghi nhận xác minh nhà cung cấp", description = "Ghi nhận lịch sử kiểm tra, đánh giá và xác minh năng lực nhà cung cấp bởi nhân viên")
+    @PreAuthorize("hasAuthority('SUPPLIER_VERIFY')")
     @PostMapping("/{id}/verification")
     public ResponseEntity<ApiResponse<Supplier>> recordVerification(
             @Parameter(description = "ID nhà cung cấp", required = true) @PathVariable UUID id,
@@ -113,6 +122,7 @@ public class SupplierController {
     }
 
     @Operation(summary = "Kiểm tra tính hợp lệ nhà cung cấp", description = "Xác thực tính hợp lệ của hồ sơ và thông tin nhà cung cấp")
+    @PreAuthorize("hasAuthority('SUPPLIER_VALIDATE')")
     @PostMapping("/{id}/validate")
     public ResponseEntity<ApiResponse<Map<String, String>>> validate(
             @Parameter(description = "ID nhà cung cấp cần kiểm tra", required = true) @PathVariable UUID id

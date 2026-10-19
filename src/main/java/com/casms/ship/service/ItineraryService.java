@@ -41,8 +41,12 @@ public class ItineraryService {
     private final UserRepository userRepository;
 
     @Transactional
-    public ItineraryResponse create(ItineraryCreateRequest request) {
+    public ItineraryResponse create(ItineraryCreateRequest request, UUID creatorUserId) {
         log.info("Creating new itinerary for cruise: {}", request.getCruiseId());
+
+        if (creatorUserId == null) {
+            throw new BusinessException(org.springframework.http.HttpStatus.UNAUTHORIZED, "AUTH_REQUIRED", "Creator user ID is required");
+        }
 
         Cruise cruise = cruiseRepository.findById(request.getCruiseId())
                 .orElseThrow(() -> new ResourceNotFoundException("Cruise", request.getCruiseId()));
@@ -51,8 +55,8 @@ public class ItineraryService {
             throw new BusinessException("ITINERARY_ALREADY_EXISTS", "Itinerary already exists for this cruise");
         }
 
-        User createdBy = userRepository.findById(request.getCreatedByUserId())
-                .orElseThrow(() -> new ResourceNotFoundException("User", request.getCreatedByUserId()));
+        User createdBy = userRepository.findById(creatorUserId)
+                .orElseThrow(() -> new ResourceNotFoundException("User", creatorUserId));
 
         if (!request.getEndDate().isAfter(request.getStartDate())) {
             throw new BusinessException("INVALID_DATE_RANGE", "End date must be after start date");
@@ -69,6 +73,11 @@ public class ItineraryService {
 
         itinerary = itineraryRepository.save(itinerary);
         return mapToResponse(itinerary);
+    }
+
+    @Transactional
+    public ItineraryResponse create(ItineraryCreateRequest request) {
+        return create(request, request.getCreatedByUserId());
     }
 
     @Transactional(readOnly = true)
@@ -104,12 +113,6 @@ public class ItineraryService {
         }
         if (request.getItineraryType() != null) {
             itinerary.setItineraryType(request.getItineraryType());
-        }
-        if (request.getApprovedByUserId() != null) {
-            User approver = userRepository.findById(request.getApprovedByUserId())
-                    .orElseThrow(() -> new ResourceNotFoundException("User", request.getApprovedByUserId()));
-            itinerary.setApprovedByUser(approver);
-            itinerary.setApprovedAt(Instant.now());
         }
 
         itinerary = itineraryRepository.save(itinerary);

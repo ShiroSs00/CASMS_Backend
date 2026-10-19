@@ -35,6 +35,7 @@ public class ItineraryCreateRequest {
     @NotNull(message = "Itinerary type is required")
     private ItineraryType itineraryType;
 
-    @Schema(description = "ID người tạo", example = "3fa85f64-5717-4562-b3fc-2c963f66afa6")
+    @Deprecated(since = "2026-10", forRemoval = true)
+    @Schema(description = "(Deprecated) ID người tạo - Mặc định được tự động lấy từ JWT principal của tài khoản đăng nhập", example = "3fa85f64-5717-4562-b3fc-2c963f66afa6")
     private UUID createdByUserId;
 }

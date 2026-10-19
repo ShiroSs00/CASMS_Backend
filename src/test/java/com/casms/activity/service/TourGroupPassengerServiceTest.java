@@ -151,4 +151,62 @@ class TourGroupPassengerServiceTest {
 
         verify(assignmentRepository, never()).save(assignment);
     }
+
+    @Test
+    void listEligiblePassengers_groupNotFound_throwsException() {
+        UUID groupId = UUID.randomUUID();
+        when(tourGroupRepository.findById(groupId)).thenReturn(Optional.empty());
+
+        assertThrows(EntityNotFoundException.class,
+                () -> service.listEligiblePassengers(groupId));
+    }
+
+    @Test
+    void listEligiblePassengers_returnsConfirmedRegistrationsExcludingAssigned() {
+        UUID groupId = UUID.randomUUID();
+        UUID excursionId = UUID.randomUUID();
+
+        ShoreExcursion excursion = mock(ShoreExcursion.class);
+        when(excursion.getShoreExcursionId()).thenReturn(excursionId);
+
+        TourGroup tourGroup = mock(TourGroup.class);
+        when(tourGroup.getShoreExcursion()).thenReturn(excursion);
+
+        when(tourGroupRepository.findById(groupId)).thenReturn(Optional.of(tourGroup));
+
+        UUID passenger1Id = UUID.randomUUID();
+        UUID passenger2Id = UUID.randomUUID();
+
+        Passenger p1 = new Passenger();
+        p1.setPassengerId(passenger1Id);
+        p1.setFullName("Nguyen Van A");
+
+        Passenger p2 = new Passenger();
+        p2.setPassengerId(passenger2Id);
+        p2.setFullName("Tran Thi B");
+
+        com.casms.activity.entity.Registration reg1 = new com.casms.activity.entity.Registration();
+        reg1.setRegistrationId(UUID.randomUUID());
+        reg1.setPassenger(p1);
+        reg1.setStatus(com.casms.activity.enums.RegistrationStatus.CONFIRMED);
+
+        com.casms.activity.entity.Registration reg2 = new com.casms.activity.entity.Registration();
+        reg2.setRegistrationId(UUID.randomUUID());
+        reg2.setPassenger(p2);
+        reg2.setStatus(com.casms.activity.enums.RegistrationStatus.CONFIRMED);
+
+        when(registrationRepository.findConfirmedRegistrationsByExcursion(eq(excursionId), any()))
+                .thenReturn(java.util.List.of(reg1, reg2));
+
+        // Passenger 1 is already assigned in an active status
+        when(assignmentRepository.findAssignedPassengerIdsByExcursion(eq(excursionId), any()))
+                .thenReturn(java.util.List.of(passenger1Id));
+
+        var result = service.listEligiblePassengers(groupId);
+
+        assertNotNull(result);
+        assertEquals(1, result.size());
+        assertEquals(passenger2Id, result.get(0).passengerId());
+        assertEquals("Tran Thi B", result.get(0).fullName());
+    }
 }
