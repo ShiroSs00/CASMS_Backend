@@ -35,6 +35,9 @@ public class RolePermissionInitializer implements CommandLineRunner {
 
         // CRUISE_MANAGER: quản lý chuyến đi và lịch trình
         saveRolePermission(Role.CRUISE_MANAGER, EnumSet.of(
+                Permission.SERVICE_CREATE, Permission.SERVICE_READ, Permission.SERVICE_UPDATE, Permission.SERVICE_DELETE_UNUSED,
+                Permission.SERVICE_ACTIVATE, Permission.SERVICE_SUSPEND, Permission.SERVICE_REQUEST_READ,
+                Permission.TOUR_PACKAGE_MANAGE, Permission.PACKAGE_COMPONENT_MANAGE,
                 Permission.CRUISE_CREATE,
                 Permission.CRUISE_READ,
                 Permission.CRUISE_UPDATE_DRAFT,
@@ -200,6 +203,7 @@ public class RolePermissionInitializer implements CommandLineRunner {
 
         // BOOKING_AGENT: booking, cabin và check-in
         saveRolePermission(Role.BOOKING_AGENT, EnumSet.of(
+                Permission.SERVICE_READ, Permission.SERVICE_REQUEST_READ, Permission.TOUR_PACKAGE_ASSIGN,
                 Permission.BOOKING_CREATE,
                 Permission.BOOKING_READ,
                 Permission.BOOKING_UPDATE,
@@ -258,6 +262,11 @@ public class RolePermissionInitializer implements CommandLineRunner {
 
         // ONBOARD_STAFF: hoạt động và tour trên tàu
         saveRolePermission(Role.ONBOARD_STAFF, EnumSet.of(
+                Permission.SERVICE_READ, Permission.SERVICE_REQUEST_READ, Permission.SERVICE_REQUEST_ASSIGN,
+                Permission.SERVICE_REQUEST_EXECUTE, Permission.PRODUCT_MANAGE, Permission.PRODUCT_SALE,
+                Permission.TOUR_PACKAGE_MANAGE,
+                Permission.TOUR_PACKAGE_ASSIGN, Permission.PACKAGE_COMPONENT_MANAGE, Permission.ACTIVITY_LIFECYCLE,
+                Permission.REGISTRATION_MANAGE, Permission.PARTICIPATION_ATTENDANCE,
                 Permission.ACTIVITY_CREATE,
                 Permission.ACTIVITY_READ,
                 Permission.ACTIVITY_UPDATE,
@@ -300,6 +309,7 @@ public class RolePermissionInitializer implements CommandLineRunner {
 
         // CUSTOMER_SERVICE: hỗ trợ khách hàng
         saveRolePermission(Role.CUSTOMER_SERVICE, EnumSet.of(
+                Permission.SERVICE_READ, Permission.SERVICE_REQUEST_READ,
                 Permission.USER_READ,
                 Permission.USER_UPDATE,
 
@@ -322,6 +332,8 @@ public class RolePermissionInitializer implements CommandLineRunner {
 
         // PASSENGER: chức năng dành cho hành khách
         saveRolePermission(Role.PASSENGER, EnumSet.of(
+                Permission.SERVICE_READ, Permission.SERVICE_REQUEST_CREATE,
+                Permission.TOUR_PACKAGE_ASSIGN, Permission.ACTIVITY_READ,
                 Permission.BOOKING_READ,
 
                 Permission.CHECKIN_CREATE,
@@ -359,11 +371,10 @@ public class RolePermissionInitializer implements CommandLineRunner {
                 .orElseGet(RolePermission::new);
 
         rolePermission.setRole(role);
-        rolePermission.setPermissions(
-                permissions.isEmpty()
-                        ? EnumSet.noneOf(Permission.class)
-                        : EnumSet.copyOf(permissions)
-        );
+        Set<Permission> merged = EnumSet.noneOf(Permission.class);
+        if (rolePermission.getPermissions() != null) merged.addAll(rolePermission.getPermissions());
+        merged.addAll(permissions);
+        rolePermission.setPermissions(merged);
 
         rolePermissionRepository.save(rolePermission);
 

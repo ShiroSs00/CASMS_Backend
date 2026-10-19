@@ -47,8 +47,9 @@ public class CruiseService {
     public CruiseResponse create(CruiseCreateRequest request) {
         log.info("Creating new cruise with code: {}", request.getCruiseCode());
 
-        if (!request.getReturnDatetime().isAfter(request.getDepartureDatetime())) {
-            throw new BusinessException("INVALID_SCHEDULE", "Return datetime must be after departure datetime");
+        if (request.getDepartureDatetime() == null || request.getReturnDatetime() == null
+                || !request.getReturnDatetime().isAfter(request.getDepartureDatetime())) {
+            throw new BusinessException("INVALID_SCHEDULE", "Departure and return datetimes are required; return must be after departure");
         }
 
         if (cruiseRepository.existsByCruiseCode(request.getCruiseCode())) {
@@ -125,8 +126,8 @@ public class CruiseService {
         Instant effectiveDeparture = request.getDepartureDatetime() != null ? request.getDepartureDatetime() : cruise.getDepartureDatetime();
         Instant effectiveReturn = request.getReturnDatetime() != null ? request.getReturnDatetime() : cruise.getReturnDatetime();
 
-        if (!effectiveReturn.isAfter(effectiveDeparture)) {
-            throw new BusinessException("INVALID_SCHEDULE", "Return datetime must be after departure datetime");
+        if (effectiveDeparture == null || effectiveReturn == null || !effectiveReturn.isAfter(effectiveDeparture)) {
+            throw new BusinessException("INVALID_SCHEDULE", "Departure and return datetimes are required; return must be after departure");
         }
 
         if (cruise.getShip() != null && (request.getDepartureDatetime() != null || request.getReturnDatetime() != null)) {

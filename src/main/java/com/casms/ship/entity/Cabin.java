@@ -28,8 +28,8 @@ public class Cabin {
     @JoinColumn(name = "ship_id", nullable = false)
     private Ship ship;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "deck_id", nullable = false)
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "deck_id", referencedColumnName = "deck_id", nullable = false)
     private Deck deck;
 
     @Column(name = "cabin_number", nullable = false, length = 10)

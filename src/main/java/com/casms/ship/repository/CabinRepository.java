@@ -15,6 +15,9 @@ import java.util.UUID;
 public interface CabinRepository extends JpaRepository<Cabin, UUID> {
     long countByShipShipId(UUID shipId);
     long countByShipShipIdAndStatus(UUID shipId, CabinStatus status);
+
+    @Query("SELECT COALESCE(SUM(c.capacity), 0) FROM Cabin c WHERE c.ship.shipId = :shipId")
+    Long sumCapacityByShipId(@Param("shipId") UUID shipId);
     boolean existsByDeckDeckId(UUID deckId);
     List<Cabin> findByDeckDeckId(UUID deckId);
     long countByDeckDeckId(UUID deckId);

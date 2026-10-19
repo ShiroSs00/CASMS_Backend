@@ -1,11 +1,15 @@
 com\casms\activity\service\ShoreExcursionServiceTest.class
+com\casms\servicepackage\service\ServicepackageWorkflowTest.class
 com\casms\activity\controller\SupplierControllerTest.class
 com\casms\activity\service\TourGroupPassengerServiceTest.class
 com\casms\activity\service\TourGroupServiceTest.class
 com\casms\common\exception\GlobalExceptionHandlerTest.class
 com\casms\ship\service\OperationalIssueServiceTest.class
 com\casms\ship\service\OperationalRegulationServiceTest.class
+com\casms\ship\entity\HibernateMappingBootstrapTest.class
 com\casms\ship\service\ShipServiceTest.class
+com\casms\activity\service\ActivityRegistrationWorkflowTest.class
+com\casms\servicepackage\service\ServiceRequestServiceTest.class
 com\casms\ship\service\ItineraryChangeHistoryServiceTest.class
 com\casms\ship\service\CruiseRegulationServiceTest.class
 com\casms\ship\service\ShipRegulationServiceTest.class

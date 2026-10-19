@@ -5,6 +5,7 @@ import com.casms.servicepackage.enums.BenefitType;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
+import lombok.EqualsAndHashCode;
 
 import java.io.Serializable;
 import java.util.UUID;
@@ -32,6 +33,7 @@ public class TourPackageActivity {
 
     @Getter
     @Setter
+    @EqualsAndHashCode
     public static class TourPackageActivityId implements Serializable {
         private UUID tourPackage;
         private UUID onboardActivity;

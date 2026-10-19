@@ -8,4 +8,5 @@ import java.util.UUID;
 
 @Repository
 public interface TourPackageRepository extends JpaRepository<TourPackage, UUID> {
+    boolean existsByPackageCodeAndTourPackageIdNot(String packageCode, UUID id);
 }

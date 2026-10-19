@@ -8,7 +8,11 @@ spring:
         stringtype: unspecified
 
   flyway:
-    clean-on-validation-error: true
+    enabled: false
+
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
 
 logging:
   level:

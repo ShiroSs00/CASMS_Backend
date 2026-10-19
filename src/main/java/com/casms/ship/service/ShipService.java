@@ -37,14 +37,18 @@ public class ShipService {
 
     @Transactional
     public ShipResponse create(ShipCreateRequest request) {
-        log.info("Creating new ship with code: {}", request.getShipCode());
-        
-        // Business Rule: ship_code must be unique
-        // Ideally handled by unique constraint or existsByShipCode, but for now we rely on DB constraint or add a simple check if we had the repository method
-        
+        String shipCode = request.getShipCode().trim();
+        String shipName = request.getShipName().trim();
+        if (shipRepository.existsByShipCode(shipCode)) {
+            throw new BusinessException("DUPLICATE_SHIP_CODE", "Ship code already exists: " + shipCode);
+        }
+        validateShipDimensions(request.getTotalCapacity(), request.getTotalDecks());
+        validateCommissionDate(request.getCommissionDate());
+
+        log.info("Creating new ship with code: {}", shipCode);
         Ship ship = new Ship();
-        ship.setShipCode(request.getShipCode());
-        ship.setShipName(request.getShipName());
+        ship.setShipCode(shipCode);
+        ship.setShipName(shipName);
         ship.setStatus(request.getStatus());
         ship.setTotalCapacity(request.getTotalCapacity());
         ship.setTotalDecks(request.getTotalDecks());
@@ -68,12 +72,41 @@ public class ShipService {
     @Transactional
     public ShipResponse update(UUID shipId, ShipUpdateRequest request) {
         Ship ship = getShipById(shipId);
-        
-        if (request.getShipName() != null) ship.setShipName(request.getShipName());
-        if (request.getTotalCapacity() != null) ship.setTotalCapacity(request.getTotalCapacity());
-        if (request.getTotalDecks() != null) ship.setTotalDecks(request.getTotalDecks());
-        if (request.getCommissionDate() != null) ship.setCommissionDate(request.getCommissionDate());
-        
+
+        if (request.getShipName() != null) {
+            String shipName = request.getShipName().trim();
+            if (shipName.isEmpty()) {
+                throw new BusinessException("INVALID_SHIP_NAME", "Ship name must not be blank");
+            }
+            ship.setShipName(shipName);
+        }
+        if (request.getTotalCapacity() != null) {
+            if (request.getTotalCapacity() < 1) {
+                throw new BusinessException("INVALID_SHIP_CAPACITY", "Total capacity must be greater than zero");
+            }
+            Long configuredCabinCapacity = cabinRepository.sumCapacityByShipId(shipId);
+            if (configuredCabinCapacity != null && request.getTotalCapacity() < configuredCabinCapacity) {
+                throw new BusinessException("SHIP_CAPACITY_BELOW_CABIN_CAPACITY",
+                        "Total ship capacity cannot be lower than the combined capacity of its cabins");
+            }
+            ship.setTotalCapacity(request.getTotalCapacity());
+        }
+        if (request.getTotalDecks() != null) {
+            if (request.getTotalDecks() < 1) {
+                throw new BusinessException("INVALID_TOTAL_DECKS", "Total decks must be greater than zero");
+            }
+            int highestDeckNumber = deckRepository.findMaxDeckNumberByShipId(shipId);
+            if (request.getTotalDecks() < highestDeckNumber) {
+                throw new BusinessException("TOTAL_DECKS_BELOW_CONFIGURED_DECK",
+                        "Total decks cannot be lower than the highest configured deck number");
+            }
+            ship.setTotalDecks(request.getTotalDecks());
+        }
+        if (request.getCommissionDate() != null) {
+            validateCommissionDate(request.getCommissionDate());
+            ship.setCommissionDate(request.getCommissionDate());
+        }
+
         ship = shipRepository.save(ship);
         return mapToResponse(ship);
     }
@@ -86,7 +119,10 @@ public class ShipService {
         if (cruiseRepository.existsByShip(ship)) {
             throw new BusinessException("SHIP_IN_USE", "Cannot delete ship because it is assigned to one or more cruises");
         }
-        
+        if (deckRepository.countByShipShipId(shipId) > 0 || cabinRepository.countByShipShipId(shipId) > 0) {
+            throw new BusinessException("SHIP_HAS_CONFIGURATION", "Cannot delete a ship while decks or cabins are configured");
+        }
+
         shipRepository.delete(ship);
         log.info("Deleted unused ship: {}", shipId);
     }
@@ -94,7 +130,9 @@ public class ShipService {
     @Transactional
     public ShipResponse changeStatus(UUID shipId, ShipStatus newStatus) {
         Ship ship = getShipById(shipId);
-        
+        if (newStatus == null) {
+            throw new BusinessException("INVALID_SHIP_STATUS", "Ship status is required");
+        }
         if (ship.getStatus() == newStatus) {
             return mapToResponse(ship);
         }
@@ -116,10 +154,7 @@ public class ShipService {
     public boolean checkScheduleAvailability(UUID shipId, Instant start, Instant end) {
         getShipById(shipId); // Ensure ship exists
         
-        if (start.isAfter(end)) {
-            throw new BusinessException("INVALID_DATE_RANGE", "Start time must be before end time");
-        }
-        
+        validateScheduleRange(start, end);
         return !cruiseRepository.existsOverlappingCruises(shipId, start, end);
     }
 
@@ -146,6 +181,7 @@ public class ShipService {
     @Transactional(readOnly = true)
     public List<CruiseSummaryResponse> getAffectedCruises(UUID shipId, Instant start, Instant end) {
         getShipById(shipId);
+        validateScheduleRange(start, end);
         return cruiseRepository.findAffectedCruises(shipId, start, end).stream()
                 .map(this::mapToCruiseResponse)
                 .collect(Collectors.toList());
@@ -190,6 +226,27 @@ public class ShipService {
         
         // Additional operational regulation checks can be added here
         return true;
+    }
+
+    private void validateShipDimensions(Integer totalCapacity, Integer totalDecks) {
+        if (totalCapacity == null || totalCapacity < 1) {
+            throw new BusinessException("INVALID_SHIP_CAPACITY", "Total capacity must be greater than zero");
+        }
+        if (totalDecks == null || totalDecks < 1) {
+            throw new BusinessException("INVALID_TOTAL_DECKS", "Total decks must be greater than zero");
+        }
+    }
+
+    private void validateCommissionDate(java.time.LocalDate commissionDate) {
+        if (commissionDate != null && commissionDate.isAfter(java.time.LocalDate.now())) {
+            throw new BusinessException("INVALID_COMMISSION_DATE", "Commission date cannot be in the future");
+        }
+    }
+
+    private void validateScheduleRange(Instant start, Instant end) {
+        if (start == null || end == null || !end.isAfter(start)) {
+            throw new BusinessException("INVALID_DATE_RANGE", "Start time and end time are required, and end must be after start");
+        }
     }
 
     private Ship getShipById(UUID shipId) {

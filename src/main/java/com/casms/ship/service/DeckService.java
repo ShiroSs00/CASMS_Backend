@@ -36,6 +36,9 @@ public class DeckService {
         Ship ship = shipRepository.findById(request.getShipId())
                 .orElseThrow(() -> new ResourceNotFoundException("Ship", request.getShipId()));
 
+        if (request.getDeckNumber() == null || request.getDeckNumber() < 1) {
+            throw new BusinessException("INVALID_DECK_NUMBER", "Deck number must be at least 1");
+        }
         if (request.getDeckNumber() > ship.getTotalDecks()) {
             throw new BusinessException("INVALID_DECK_NUMBER", "Deck number cannot exceed ship's total decks limit");
         }
@@ -69,6 +72,9 @@ public class DeckService {
         Deck deck = getDeckById(deckId);
 
         if (request.getDeckNumber() != null && !request.getDeckNumber().equals(deck.getDeckNumber())) {
+            if (request.getDeckNumber() < 1) {
+                throw new BusinessException("INVALID_DECK_NUMBER", "Deck number must be at least 1");
+            }
             if (request.getDeckNumber() > deck.getShip().getTotalDecks()) {
                 throw new BusinessException("INVALID_DECK_NUMBER", "Deck number cannot exceed ship's total decks limit");
             }

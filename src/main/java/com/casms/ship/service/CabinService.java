@@ -50,10 +50,17 @@ public class CabinService {
             throw new BusinessException("DUPLICATE_CABIN", "Cabin number already exists on this ship");
         }
 
+        if (request.getCapacity() == null || request.getCapacity() < 1) {
+            throw new BusinessException("INVALID_CABIN_CAPACITY", "Cabin capacity must be greater than zero");
+        }
+        if (request.getCabinNumber() == null || request.getCabinNumber().trim().isEmpty()) {
+            throw new BusinessException("INVALID_CABIN_NUMBER", "Cabin number is required");
+        }
+
         Cabin cabin = new Cabin();
         cabin.setShip(ship);
         cabin.setDeck(deck);
-        cabin.setCabinNumber(request.getCabinNumber());
+        cabin.setCabinNumber(request.getCabinNumber().trim());
         cabin.setCabinType(request.getCabinType());
         cabin.setCapacity(request.getCapacity());
         cabin.setStatus(request.getStatus());
@@ -78,7 +85,12 @@ public class CabinService {
         Cabin cabin = getCabinById(cabinId);
 
         if (request.getCabinType() != null) cabin.setCabinType(request.getCabinType());
-        if (request.getCapacity() != null) cabin.setCapacity(request.getCapacity());
+        if (request.getCapacity() != null) {
+            if (request.getCapacity() < 1) {
+                throw new BusinessException("INVALID_CABIN_CAPACITY", "Cabin capacity must be greater than zero");
+            }
+            cabin.setCapacity(request.getCapacity());
+        }
         if (request.getIsAccessible() != null) cabin.setIsAccessible(request.getIsAccessible());
 
         cabin = cabinRepository.save(cabin);
@@ -127,12 +139,22 @@ public class CabinService {
     public CabinSummaryResponse changeOperationalStatus(UUID cabinId, CabinStatus newStatus) {
         Cabin cabin = getCabinById(cabinId);
 
-        // Disallow changing to OUT_OF_SERVICE or MAINTENANCE if it's currently OCCUPIED
-        if (cabin.getStatus() == CabinStatus.OCCUPIED && 
-            (newStatus == CabinStatus.MAINTENANCE || newStatus == CabinStatus.OUT_OF_SERVICE)) {
-            throw new BusinessException("CABIN_OCCUPIED", "Cannot change status to " + newStatus + " because cabin is occupied");
+        if (newStatus == null) {
+            throw new BusinessException("INVALID_CABIN_STATUS", "Cabin status is required");
         }
-
+        if (newStatus == CabinStatus.OCCUPIED && cabin.getStatus() != CabinStatus.OCCUPIED) {
+            throw new BusinessException("CABIN_OCCUPANCY_REQUIRES_ASSIGNMENT",
+                    "A cabin can only become OCCUPIED through the passenger assignment/booking workflow");
+        }
+        if (cabin.getStatus() == CabinStatus.OCCUPIED && newStatus != CabinStatus.OCCUPIED) {
+            boolean hasActiveAssignment = cabinAssignmentRepository
+                    .findByCabinCabinIdOrderByValidFromDesc(cabinId).stream()
+                    .anyMatch(assignment -> assignment.getValidTo() == null);
+            if (hasActiveAssignment) {
+                throw new BusinessException("CABIN_HAS_ACTIVE_ASSIGNMENT",
+                        "Cannot change status while an active passenger assignment exists");
+            }
+        }
         cabin.setStatus(newStatus);
         cabin = cabinRepository.save(cabin);
         return mapToResponse(cabin);
@@ -162,8 +184,8 @@ public class CabinService {
 
     @Transactional
     public CabinSummaryResponse blockCabin(UUID cabinId, CabinStatus reasonStatus) {
-        if (reasonStatus != CabinStatus.OCCUPIED && reasonStatus != CabinStatus.MAINTENANCE) {
-            throw new BusinessException("INVALID_BLOCK_REASON", "Cabin can only be blocked as OCCUPIED or MAINTENANCE");
+        if (reasonStatus != CabinStatus.MAINTENANCE && reasonStatus != CabinStatus.OUT_OF_SERVICE) {
+            throw new BusinessException("INVALID_BLOCK_REASON", "Cabin can only be blocked as MAINTENANCE or OUT_OF_SERVICE");
         }
         Cabin cabin = getCabinById(cabinId);
         if (cabin.getStatus() != CabinStatus.AVAILABLE) {
@@ -178,6 +200,18 @@ public class CabinService {
         Cabin cabin = getCabinById(cabinId);
         if (cabin.getStatus() == CabinStatus.AVAILABLE) {
             return mapToResponse(cabin);
+        }
+        if (cabin.getStatus() == CabinStatus.OCCUPIED) {
+            boolean hasActiveAssignment = cabinAssignmentRepository
+                    .findByCabinCabinIdOrderByValidFromDesc(cabinId).stream()
+                    .anyMatch(assignment -> assignment.getValidTo() == null);
+            if (hasActiveAssignment) {
+                throw new BusinessException("CABIN_HAS_ACTIVE_ASSIGNMENT",
+                        "Cannot release an occupied cabin while an active passenger assignment exists");
+            }
+        } else if (cabin.getStatus() != CabinStatus.MAINTENANCE
+                && cabin.getStatus() != CabinStatus.OUT_OF_SERVICE) {
+            throw new BusinessException("INVALID_CABIN_RELEASE", "Cabin cannot be released from its current status");
         }
         cabin.setStatus(CabinStatus.AVAILABLE);
         return mapToResponse(cabinRepository.save(cabin));

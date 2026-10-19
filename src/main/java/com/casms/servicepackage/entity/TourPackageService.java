@@ -4,6 +4,7 @@ import com.casms.servicepackage.enums.BenefitType;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
+import lombok.EqualsAndHashCode;
 
 import java.io.Serializable;
 import java.util.UUID;
@@ -31,6 +32,7 @@ public class TourPackageService {
 
     @Getter
     @Setter
+    @EqualsAndHashCode
     public static class TourPackageServiceId implements Serializable {
         private UUID tourPackage;
         private UUID service;

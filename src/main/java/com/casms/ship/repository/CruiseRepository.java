@@ -26,7 +26,7 @@ public interface CruiseRepository extends JpaRepository<Cruise, UUID>, JpaSpecif
 
     @Query("SELECT COUNT(c) > 0 FROM Cruise c WHERE c.ship.shipId = :shipId " +
            "AND c.status NOT IN ('CANCELLED', 'COMPLETED') " +
-           "AND (c.departureDatetime <= :end AND c.returnDatetime >= :start)")
+           "AND (c.departureDatetime < :end AND c.returnDatetime > :start)")
     boolean existsOverlappingCruises(@Param("shipId") UUID shipId,
                                      @Param("start") Instant start,
                                      @Param("end") Instant end);
@@ -34,7 +34,7 @@ public interface CruiseRepository extends JpaRepository<Cruise, UUID>, JpaSpecif
     @Query("SELECT COUNT(c) > 0 FROM Cruise c WHERE c.ship.shipId = :shipId " +
            "AND c.cruiseId != :excludeCruiseId " +
            "AND c.status NOT IN ('CANCELLED', 'COMPLETED') " +
-           "AND (c.departureDatetime <= :end AND c.returnDatetime >= :start)")
+           "AND (c.departureDatetime < :end AND c.returnDatetime > :start)")
     boolean existsOverlappingCruisesExcluding(@Param("shipId") UUID shipId,
                                              @Param("excludeCruiseId") UUID excludeCruiseId,
                                              @Param("start") Instant start,
@@ -42,7 +42,7 @@ public interface CruiseRepository extends JpaRepository<Cruise, UUID>, JpaSpecif
 
     @Query("SELECT c FROM Cruise c WHERE c.ship.shipId = :shipId " +
            "AND c.status NOT IN ('CANCELLED') " +
-           "AND (c.departureDatetime <= :end AND c.returnDatetime >= :start)")
+           "AND (c.departureDatetime < :end AND c.returnDatetime > :start)")
     List<Cruise> findAffectedCruises(@Param("shipId") UUID shipId,
                                      @Param("start") Instant start,
                                      @Param("end") Instant end);

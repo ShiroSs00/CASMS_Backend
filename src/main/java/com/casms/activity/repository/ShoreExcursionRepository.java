@@ -13,6 +13,10 @@ import java.util.UUID;
 public interface ShoreExcursionRepository
         extends JpaRepository<ShoreExcursion, UUID> {
 
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @org.springframework.data.jpa.repository.Query("select e from ShoreExcursion e where e.shoreExcursionId = :id")
+    java.util.Optional<ShoreExcursion> lockById(@org.springframework.data.repository.query.Param("id") UUID id);
+
     boolean existsBySupplier_SupplierId(UUID supplierId);
 
     boolean existsByExcursionCodeIgnoreCaseAndCruiseStop_CruiseStopId(

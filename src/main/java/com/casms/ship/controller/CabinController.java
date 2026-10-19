@@ -131,12 +131,12 @@ public class CabinController {
         return ApiResponse.success(service.checkAvailability(cabinId));
     }
 
-    @Operation(summary = "Khóa phòng", description = "Khóa phòng từ AVAILABLE sang trạng thái OCCUPIED hoặc MAINTENANCE")
+    @Operation(summary = "Khóa phòng", description = "Chuyển phòng từ AVAILABLE sang MAINTENANCE hoặc OUT_OF_SERVICE; trạng thái OCCUPIED chỉ được cập nhật qua quy trình gán phòng")
     @PreAuthorize("hasAuthority('CABIN_BLOCK')")
     @PostMapping("/{cabinId}/block")
     public ApiResponse<CabinSummaryResponse> blockCabin(
             @Parameter(description = "ID của phòng", required = true) @PathVariable UUID cabinId,
-            @Parameter(description = "Trạng thái khóa (chỉ chấp nhận OCCUPIED hoặc MAINTENANCE)", required = true) @RequestParam CabinStatus reasonStatus) {
+            @Parameter(description = "Trạng thái khóa (chỉ chấp nhận MAINTENANCE hoặc OUT_OF_SERVICE)", required = true) @RequestParam CabinStatus reasonStatus) {
         return ApiResponse.success(service.blockCabin(cabinId, reasonStatus));
     }
 

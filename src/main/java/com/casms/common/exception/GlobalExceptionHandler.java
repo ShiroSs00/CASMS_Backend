@@ -110,6 +110,12 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.error("Access denied", "ACCESS_DENIED"));
     }
 
+    @ExceptionHandler(UnsupportedOperationException.class)
+    public ResponseEntity<ApiResponse<Void>> handleUnsupported(UnsupportedOperationException ex) {
+        return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED)
+                .body(ApiResponse.error(ex.getMessage(), "OPERATION_NOT_SUPPORTED"));
+    }
+
     @ExceptionHandler(AuthenticationException.class)
     public ResponseEntity<ApiResponse<Void>> handleAuthentication(AuthenticationException ex) {
         log.warn("Authentication required: {}", ex.getMessage());

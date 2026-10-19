@@ -36,6 +36,7 @@ public class ShoreExcursionService {
     private static final List<RegistrationStatus> CAPACITY_STATUSES =
             List.of(
                     RegistrationStatus.CONFIRMED,
+                    RegistrationStatus.PENDING,
                     RegistrationStatus.COMPLETED
             );
 
