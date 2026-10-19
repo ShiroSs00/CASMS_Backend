@@ -15,4 +15,6 @@ public interface BookingPassengerRepository extends JpaRepository<BookingPasseng
     @Query("SELECT COUNT(bp) FROM BookingPassenger bp WHERE bp.booking.cruise.cruiseId = :cruiseId " +
            "AND bp.participationStatus = 'Active' AND bp.booking.bookingStatus != 'Cancelled'")
     long countActivePassengersByCruiseId(@Param("cruiseId") UUID cruiseId);
+
+    java.util.List<BookingPassenger> findByBookingBookingId(UUID bookingId);
 }

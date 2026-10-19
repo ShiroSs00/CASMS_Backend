@@ -47,8 +47,11 @@ public class SecurityConfig {
                                 "/swagger-resources/**",
                                 "/webjars/**",
                                 "/auth/**",
-                                "/h2-console/**"
+                                "/h2-console/**",
+                                "/booking/available-cabins",
+                                "/booking/lookup"
                         ).permitAll()
+                        .requestMatchers(org.springframework.http.HttpMethod.POST, "/booking").permitAll()
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);

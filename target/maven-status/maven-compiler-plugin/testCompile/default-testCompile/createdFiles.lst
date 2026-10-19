@@ -1,4 +1,6 @@
 com\casms\activity\service\ShoreExcursionServiceTest.class
+com\casms\booking\service\BookingServiceTest.class
+com\casms\ship\service\CruiseServiceTest.class
 com\casms\activity\controller\SupplierControllerTest.class
 com\casms\activity\service\TourGroupPassengerServiceTest.class
 com\casms\activity\service\TourGroupServiceTest.class

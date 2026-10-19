@@ -27,6 +27,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 @Slf4j
@@ -336,12 +337,15 @@ public class CruiseService {
             issues.add("Cảng đi hoặc cảng về đang không ở trạng thái hoạt động (ACTIVE)");
         }
 
-        boolean itineraryConfigured = itineraryRepository.existsByCruiseCruiseId(cruiseId);
+        Optional<com.casms.ship.entity.Itinerary> itineraryOpt = itineraryRepository.findByCruiseCruiseId(cruiseId);
+        boolean itineraryConfigured = itineraryOpt.isPresent();
         if (!itineraryConfigured) {
             issues.add("Chuyến đi chưa được liên kết hải trình (Itinerary)");
+        } else if (itineraryOpt.get().getStatus() != com.casms.ship.enums.ItineraryStatus.APPROVED) {
+            issues.add("Hải trình của chuyến đi chưa được phê duyệt (Trạng thái hiện tại: " + itineraryOpt.get().getStatus() + ")");
         }
 
-        boolean ready = shipAssigned && shipActive && shipConfigValid && scheduleValid && portsActive;
+        boolean ready = issues.isEmpty();
 
         CruiseReadinessResponse response = new CruiseReadinessResponse();
         response.setCruiseId(cruiseId);
@@ -351,7 +355,7 @@ public class CruiseService {
         response.setShipConfigurationValid(shipConfigValid);
         response.setScheduleValid(scheduleValid);
         response.setPortsActive(portsActive);
-        response.setItineraryConfigured(itineraryConfigured);
+        response.setItineraryConfigured(itineraryConfigured && itineraryOpt.get().getStatus() == com.casms.ship.enums.ItineraryStatus.APPROVED);
         response.setIssues(issues);
 
         return response;

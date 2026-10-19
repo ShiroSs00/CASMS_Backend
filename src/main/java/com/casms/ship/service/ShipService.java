@@ -39,12 +39,13 @@ public class ShipService {
     public ShipResponse create(ShipCreateRequest request) {
         log.info("Creating new ship with code: {}", request.getShipCode());
         
-        // Business Rule: ship_code must be unique
-        // Ideally handled by unique constraint or existsByShipCode, but for now we rely on DB constraint or add a simple check if we had the repository method
+        if (shipRepository.existsByShipCode(request.getShipCode().trim())) {
+            throw new BusinessException("DUPLICATE_SHIP_CODE", "Ship code already exists: " + request.getShipCode());
+        }
         
         Ship ship = new Ship();
-        ship.setShipCode(request.getShipCode());
-        ship.setShipName(request.getShipName());
+        ship.setShipCode(request.getShipCode().trim());
+        ship.setShipName(request.getShipName().trim());
         ship.setStatus(request.getStatus());
         ship.setTotalCapacity(request.getTotalCapacity());
         ship.setTotalDecks(request.getTotalDecks());
@@ -69,9 +70,16 @@ public class ShipService {
     public ShipResponse update(UUID shipId, ShipUpdateRequest request) {
         Ship ship = getShipById(shipId);
         
-        if (request.getShipName() != null) ship.setShipName(request.getShipName());
+        if (request.getShipName() != null) ship.setShipName(request.getShipName().trim());
         if (request.getTotalCapacity() != null) ship.setTotalCapacity(request.getTotalCapacity());
-        if (request.getTotalDecks() != null) ship.setTotalDecks(request.getTotalDecks());
+        if (request.getTotalDecks() != null) {
+            long currentDeckCount = deckRepository.countByShipShipId(shipId);
+            if (request.getTotalDecks() < currentDeckCount) {
+                throw new BusinessException("INVALID_TOTAL_DECKS",
+                        "Total decks cannot be less than existing configured decks (" + currentDeckCount + ")");
+            }
+            ship.setTotalDecks(request.getTotalDecks());
+        }
         if (request.getCommissionDate() != null) ship.setCommissionDate(request.getCommissionDate());
         
         ship = shipRepository.save(ship);
