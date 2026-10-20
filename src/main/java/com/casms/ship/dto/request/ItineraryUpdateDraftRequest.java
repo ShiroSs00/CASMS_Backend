@@ -24,7 +24,4 @@ public class ItineraryUpdateDraftRequest {
 
     @Schema(description = "Loại lịch trình mới", example = "ONE_WAY")
     private ItineraryType itineraryType;
-
-    @Schema(description = "ID người phê duyệt", example = "3fa85f64-5717-4562-b3fc-2c963f66afa6")
-    private UUID approvedByUserId;
 }

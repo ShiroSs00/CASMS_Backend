@@ -31,4 +31,7 @@ public class LoginResponse {
 
     @Schema(description = "Danh sách vai trò", example = "[\"ADMIN\", \"CRUISE_MANAGER\"]", requiredMode = Schema.RequiredMode.REQUIRED)
     private Set<Role> roles;
+
+    @Schema(description = "Danh sách quyền hiệu lực thực tế", example = "[\"CRUISE_READ\", \"ITINERARY_CREATE\"]", requiredMode = Schema.RequiredMode.REQUIRED)
+    private Set<String> effectivePermissions;
 }

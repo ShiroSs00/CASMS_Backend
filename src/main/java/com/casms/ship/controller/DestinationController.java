@@ -93,4 +93,20 @@ public class DestinationController {
         service.validateDestination(destinationId);
         return ApiResponse.success("Destination validation passed", null);
     }
+
+    @Operation(summary = "Kích hoạt điểm đến", description = "Chuyển trạng thái điểm đến sang ACTIVE")
+    @PreAuthorize("hasAuthority('DESTINATION_UPDATE')")
+    @PatchMapping("/{destinationId}/activate")
+    public ApiResponse<DestinationResponse> activate(
+            @Parameter(description = "ID của điểm đến", required = true) @PathVariable UUID destinationId) {
+        return ApiResponse.success(service.activate(destinationId));
+    }
+
+    @Operation(summary = "Ngừng kích hoạt điểm đến", description = "Chuyển trạng thái điểm đến sang INACTIVE")
+    @PreAuthorize("hasAuthority('DESTINATION_UPDATE')")
+    @PatchMapping("/{destinationId}/deactivate")
+    public ApiResponse<DestinationResponse> deactivate(
+            @Parameter(description = "ID của điểm đến", required = true) @PathVariable UUID destinationId) {
+        return ApiResponse.success(service.deactivate(destinationId));
+    }
 }

@@ -146,6 +146,14 @@ public class OperationalIssueService {
             );
         }
 
+        if (!com.casms.identity.service.IdentityService.isEligibleOperationalHandler(handler)) {
+            throw new BusinessException(
+                    HttpStatus.BAD_REQUEST,
+                    "HANDLER_NOT_ELIGIBLE",
+                    "User is not eligible to handle operational issues"
+            );
+        }
+
         issue.setAssignedTo(handler);
 
         return toResponse(issueRepository.save(issue));

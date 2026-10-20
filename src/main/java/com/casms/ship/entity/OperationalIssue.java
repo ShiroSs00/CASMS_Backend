@@ -39,11 +39,11 @@ public class OperationalIssue {
     private Cabin cabin;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "issue_type", nullable = false)
+    @Column(name = "issue_type", nullable = false, columnDefinition = "\"OperationalIssue_issue_type\"")
     private OperationalIssueType issueType;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "severity", nullable = false)
+    @Column(name = "severity", nullable = false, columnDefinition = "\"OperationalIssue_severity\"")
     private OperationalIssueSeverity severity;
 
     @Column(name = "description", nullable = false, columnDefinition = "text")
@@ -56,7 +56,7 @@ public class OperationalIssue {
     private Instant resolvedAt;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "status", nullable = false)
+    @Column(name = "status", nullable = false, columnDefinition = "\"OperationalIssue_status\"")
     private OperationalIssueStatus status;
 
     @ManyToOne(fetch = FetchType.LAZY)

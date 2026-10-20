@@ -100,7 +100,7 @@ public class User {
 
     public boolean isStaff() {
         return hasAnyRole(Role.ADMIN, Role.CRUISE_MANAGER, Role.SHIP_MANAGER, 
-                Role.BOOKING_AGENT, Role.CHECKIN_STAFF, Role.ONBOARD_STAFF,
-                Role.FINANCE_OFFICER, Role.CUSTOMER_SERVICE);
+                Role.OPERATIONS_MANAGER, Role.BOOKING_AGENT, Role.CHECKIN_STAFF, 
+                Role.ONBOARD_STAFF, Role.FINANCE_OFFICER, Role.CUSTOMER_SERVICE);
     }
 }

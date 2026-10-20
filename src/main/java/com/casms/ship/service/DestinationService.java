@@ -115,6 +115,24 @@ public class DestinationService {
         // Additional validation logic can be added here
     }
 
+    @Transactional
+    public DestinationResponse activate(UUID destinationId) {
+        Destination destination = getDestinationById(destinationId);
+        destination.setStatus(DestinationStatus.ACTIVE);
+        destination = destinationRepository.save(destination);
+        log.info("Activated destination: {}", destinationId);
+        return mapToResponse(destination);
+    }
+
+    @Transactional
+    public DestinationResponse deactivate(UUID destinationId) {
+        Destination destination = getDestinationById(destinationId);
+        destination.setStatus(DestinationStatus.INACTIVE);
+        destination = destinationRepository.save(destination);
+        log.info("Deactivated destination: {}", destinationId);
+        return mapToResponse(destination);
+    }
+
     private Destination getDestinationById(UUID destinationId) {
         return destinationRepository.findById(destinationId)
                 .orElseThrow(() -> new ResourceNotFoundException("Destination", destinationId));

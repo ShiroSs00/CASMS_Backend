@@ -2,6 +2,7 @@ package com.casms.identity.service;
 
 import com.casms.identity.dto.UserLookupResponse;
 import com.casms.identity.entity.User;
+import com.casms.identity.enums.Role;
 import com.casms.identity.enums.UserStatus;
 import com.casms.identity.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -23,11 +24,18 @@ public class IdentityService {
         UserStatus targetStatus = status != null ? status : UserStatus.ACTIVE;
         List<User> users = userRepository.findByStatus(targetStatus);
 
-        String capabilityLabel = "OPERATIONAL_ISSUE".equalsIgnoreCase(assignableFor)
+        boolean isOpIssue = "OPERATIONAL_ISSUE".equalsIgnoreCase(assignableFor);
+        String capabilityLabel = isOpIssue
                 ? "Operational Issue Handler"
                 : null;
 
         return users.stream()
+                .filter(u -> {
+                    if (isOpIssue) {
+                        return isEligibleOperationalHandler(u);
+                    }
+                    return u.isStaff();
+                })
                 .map(u -> UserLookupResponse.builder()
                         .id(u.getUserId())
                         .displayName(u.getUsername())
@@ -36,5 +44,18 @@ public class IdentityService {
                         .capabilityLabel(capabilityLabel)
                         .build())
                 .toList();
+    }
+
+    public static boolean isEligibleOperationalHandler(User user) {
+        if (user == null || user.getStatus() != UserStatus.ACTIVE) {
+            return false;
+        }
+        return user.hasAnyRole(
+                Role.ADMIN,
+                Role.OPERATIONS_MANAGER,
+                Role.SHIP_MANAGER,
+                Role.CRUISE_MANAGER,
+                Role.ONBOARD_STAFF
+        );
     }
 }

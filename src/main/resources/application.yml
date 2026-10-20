@@ -3,7 +3,7 @@
       name: CASMS
 
     datasource:
-      url: ${DB_URL:jdbc:postgresql://localhost:5432/casms?stringtype=unspecified}
+      url: jdbc:postgresql://localhost:5432/casms?stringtype=unspecified
       username: ${DB_USERNAME:postgres}
       password: ${DB_PASSWORD:12345}
       driver-class-name: org.postgresql.Driver

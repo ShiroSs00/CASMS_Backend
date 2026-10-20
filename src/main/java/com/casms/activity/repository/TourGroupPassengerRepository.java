@@ -112,4 +112,15 @@ public interface TourGroupPassengerRepository
             @Param("excursionId") UUID excursionId,
             @Param("status") TourGroupPassengerAssignmentStatus status
     );
+
+    @Query("""
+    SELECT tp.passenger.passengerId
+    FROM TourGroupPassenger tp
+    WHERE tp.tourGroup.shoreExcursion.shoreExcursionId = :excursionId
+      AND tp.assignmentStatus IN :statuses
+    """)
+    List<UUID> findAssignedPassengerIdsByExcursion(
+            @Param("excursionId") UUID excursionId,
+            @Param("statuses") List<TourGroupPassengerAssignmentStatus> statuses
+    );
 }

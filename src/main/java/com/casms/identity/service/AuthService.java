@@ -6,6 +6,11 @@ import com.casms.identity.dto.LoginResponse;
 import com.casms.identity.entity.User;
 import com.casms.identity.repository.UserRepository;
 import com.casms.security.jwt.JwtService;
+import com.casms.identity.dto.UserMeResponse;
+import com.casms.identity.enums.Permission;
+import com.casms.identity.enums.Role;
+import com.casms.identity.repository.RolePermissionRepository;
+import com.casms.security.principal.CasmsPrincipal;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -17,8 +22,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
-import java.util.Set;
-import java.util.UUID;
+import java.util.*;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -26,6 +31,7 @@ import java.util.UUID;
 public class AuthService {
 
     private final UserRepository userRepository;
+    private final RolePermissionRepository rolePermissionRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final AuthenticationManager authenticationManager;
@@ -70,6 +76,7 @@ public class AuthService {
         response.setUsername(user.getUsername());
         response.setEmail(user.getEmail());
         response.setRoles(user.getRoles());
+        response.setEffectivePermissions(getEffectivePermissions(user));
 
         log.info("User {} logged in successfully", user.getUsername());
         return response;
@@ -100,7 +107,46 @@ public class AuthService {
         response.setUsername(user.getUsername());
         response.setEmail(user.getEmail());
         response.setRoles(user.getRoles());
+        response.setEffectivePermissions(getEffectivePermissions(user));
 
         return response;
+    }
+
+    public Set<String> getEffectivePermissions(User user) {
+        if (user == null) {
+            return Collections.emptySet();
+        }
+        if (user.isAdmin()) {
+            return Arrays.stream(Permission.values())
+                    .map(Enum::name)
+                    .collect(Collectors.toCollection(TreeSet::new));
+        }
+        Set<String> permissions = new TreeSet<>();
+        if (user.getRoles() != null && rolePermissionRepository != null) {
+            for (Role role : user.getRoles()) {
+                rolePermissionRepository.findByRole(role).ifPresent(rp -> {
+                    if (rp.getPermissions() != null) {
+                        for (Permission p : rp.getPermissions()) {
+                            permissions.add(p.name());
+                        }
+                    }
+                });
+            }
+        }
+        return permissions;
+    }
+
+    @Transactional(readOnly = true)
+    public UserMeResponse getCurrentUser(CasmsPrincipal principal) {
+        User user = principal.getUser();
+        User freshUser = userRepository.findById(user.getUserId()).orElse(user);
+        return UserMeResponse.builder()
+                .userId(freshUser.getUserId())
+                .username(freshUser.getUsername())
+                .email(freshUser.getEmail())
+                .status(freshUser.getStatus())
+                .roles(freshUser.getRoles())
+                .effectivePermissions(getEffectivePermissions(freshUser))
+                .build();
     }
 }

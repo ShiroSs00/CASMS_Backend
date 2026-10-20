@@ -12,6 +12,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -28,6 +29,7 @@ public class ShoreExcursionController {
 
     // CREATE
     @Operation(summary = "Tạo tour tham quan trên bờ", description = "Tạo mới thông tin tour tham quan trên bờ (Shore Excursion) ở trạng thái DRAFT")
+    @PreAuthorize("hasAuthority('EXCURSION_CREATE')")
     @PostMapping
     public ResponseEntity<ShoreExcursionResponse> create(
             @Valid @RequestBody ShoreExcursionRequest request
@@ -38,6 +40,7 @@ public class ShoreExcursionController {
 
     // READ ALL + FILTER
     @Operation(summary = "Danh sách tour tham quan trên bờ", description = "Lấy danh sách các tour tham quan trên bờ theo bộ lọc (điểm dừng cruiseStopId, nhà cung cấp supplierId, trạng thái)")
+    @PreAuthorize("hasAuthority('EXCURSION_READ')")
     @GetMapping
     public ResponseEntity<List<ShoreExcursionResponse>> list(
             @Parameter(description = "ID điểm dừng du thuyền") @RequestParam(required = false) UUID cruiseStopId,
@@ -53,6 +56,7 @@ public class ShoreExcursionController {
 
     // READ DETAIL
     @Operation(summary = "Chi tiết tour tham quan trên bờ", description = "Lấy thông tin chi tiết của một tour tham quan trên bờ theo ID")
+    @PreAuthorize("hasAuthority('EXCURSION_READ')")
     @GetMapping("/{id}")
     public ResponseEntity<ShoreExcursionResponse> detail(
             @Parameter(description = "ID tour tham quan trên bờ", required = true) @PathVariable UUID id
@@ -64,6 +68,7 @@ public class ShoreExcursionController {
 
     // UPDATE
     @Operation(summary = "Cập nhật tour tham quan trên bờ", description = "Cập nhật thông tin tour tham quan trên bờ khi ở trạng thái hợp lệ (DRAFT, OPEN)")
+    @PreAuthorize("hasAuthority('EXCURSION_UPDATE')")
     @PutMapping("/{id}")
     public ResponseEntity<ShoreExcursionResponse> update(
             @Parameter(description = "ID tour tham quan trên bờ", required = true) @PathVariable UUID id,
@@ -76,6 +81,7 @@ public class ShoreExcursionController {
 
     // DELETE DRAFT
     @Operation(summary = "Xóa tour tham quan nháp", description = "Xóa tour tham quan trên bờ khi đang ở trạng thái DRAFT và chưa có phát sinh dữ liệu")
+    @PreAuthorize("hasAuthority('EXCURSION_DELETE_DRAFT')")
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteDraft(
             @Parameter(description = "ID tour tham quan nháp cần xóa", required = true) @PathVariable UUID id
@@ -86,6 +92,7 @@ public class ShoreExcursionController {
 
     // VALIDATE
     @Operation(summary = "Kiểm tra tính hợp lệ của tour", description = "Xác thực các điều kiện, thời gian và dữ liệu cấu hình của tour tham quan trên bờ")
+    @PreAuthorize("hasAuthority('EXCURSION_VALIDATE')")
     @PostMapping("/{id}/validate")
     public ResponseEntity<Map<String, String>> validate(
             @Parameter(description = "ID tour tham quan cần kiểm tra", required = true) @PathVariable UUID id
@@ -99,6 +106,7 @@ public class ShoreExcursionController {
 
     // CHECK AVAILABILITY
     @Operation(summary = "Kiểm tra tính khả dụng và chỗ trống", description = "Kiểm tra xem tour tham quan có đủ chỗ trống cho số lượng người tham gia yêu cầu không")
+    @PreAuthorize("hasAuthority('EXCURSION_READ')")
     @GetMapping("/{id}/availability")
     public ResponseEntity<ShoreExcursionResponse> checkAvailability(
             @Parameter(description = "ID tour tham quan", required = true) @PathVariable UUID id,
@@ -111,6 +119,7 @@ public class ShoreExcursionController {
 
     // REFRESH CAPACITY STATUS
     @Operation(summary = "Làm mới trạng thái sức chứa", description = "Cập nhật và tính toán lại sức chứa khả dụng của tour tham quan")
+    @PreAuthorize("hasAuthority('EXCURSION_STATUS_CHANGE')")
     @PatchMapping("/{id}/refresh-capacity")
     public ResponseEntity<ShoreExcursionResponse> refreshCapacity(
             @Parameter(description = "ID tour tham quan", required = true) @PathVariable UUID id
@@ -122,6 +131,7 @@ public class ShoreExcursionController {
 
     // CONFIRM / OPEN FOR REGISTRATION
     @Operation(summary = "Xác nhận và mở đăng ký tour", description = "Chuyển trạng thái tour sang OPEN để hành khách có thể đăng ký tham gia")
+    @PreAuthorize("hasAuthority('EXCURSION_STATUS_CHANGE')")
     @PatchMapping("/{id}/confirm")
     public ResponseEntity<ShoreExcursionResponse> confirm(
             @Parameter(description = "ID tour tham quan", required = true) @PathVariable UUID id
@@ -133,6 +143,7 @@ public class ShoreExcursionController {
 
     // CLOSE REGISTRATION
     @Operation(summary = "Đóng đăng ký tour", description = "Đóng cổng đăng ký tour tham quan trên bờ (chuyển sang trạng thái CLOSED)")
+    @PreAuthorize("hasAuthority('EXCURSION_STATUS_CHANGE')")
     @PatchMapping("/{id}/close")
     public ResponseEntity<ShoreExcursionResponse> close(
             @Parameter(description = "ID tour tham quan", required = true) @PathVariable UUID id
@@ -144,6 +155,7 @@ public class ShoreExcursionController {
 
     // START
     @Operation(summary = "Bắt đầu tour tham quan", description = "Bắt đầu khởi hành tour tham quan trên bờ (chuyển sang trạng thái IN_PROGRESS)")
+    @PreAuthorize("hasAuthority('EXCURSION_STATUS_CHANGE')")
     @PatchMapping("/{id}/start")
     public ResponseEntity<ShoreExcursionResponse> start(
             @Parameter(description = "ID tour tham quan", required = true) @PathVariable UUID id
@@ -155,6 +167,7 @@ public class ShoreExcursionController {
 
     // COMPLETE
     @Operation(summary = "Hoàn thành tour tham quan", description = "Đánh dấu tour tham quan trên bờ đã kết thúc thành công (chuyển sang trạng thái COMPLETED)")
+    @PreAuthorize("hasAuthority('EXCURSION_STATUS_CHANGE')")
     @PatchMapping("/{id}/complete")
     public ResponseEntity<ShoreExcursionResponse> complete(
             @Parameter(description = "ID tour tham quan", required = true) @PathVariable UUID id
@@ -166,6 +179,7 @@ public class ShoreExcursionController {
 
     // CANCEL
     @Operation(summary = "Hủy tour tham quan trên bờ", description = "Hủy tour tham quan trên bờ kèm lý do hủy (chuyển sang trạng thái CANCELLED)")
+    @PreAuthorize("hasAuthority('EXCURSION_STATUS_CHANGE')")
     @PatchMapping("/{id}/cancel")
     public ResponseEntity<ShoreExcursionResponse> cancel(
             @Parameter(description = "ID tour tham quan", required = true) @PathVariable UUID id,

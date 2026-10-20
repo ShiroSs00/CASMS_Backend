@@ -1,6 +1,7 @@
 package com.casms.activity.service;
 
 import com.casms.activity.dto.request.TourGroupPassengerAssignRequest;
+import com.casms.activity.dto.response.EligiblePassengerResponse;
 import com.casms.activity.dto.response.TourGroupPassengerResponse;
 import com.casms.activity.entity.Registration;
 import com.casms.activity.entity.ShoreExcursion;
@@ -20,7 +21,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 @Service
@@ -437,6 +440,41 @@ public class TourGroupPassengerService {
                 .orElseThrow(() -> new EntityNotFoundException(
                         "Shore excursion not found: " + excursionId
                 ));
+    }
+
+    @Transactional(readOnly = true)
+    public List<EligiblePassengerResponse> listEligiblePassengers(UUID groupId) {
+        TourGroup group = tourGroupRepository.findById(groupId)
+                .orElseThrow(() -> new EntityNotFoundException("TourGroup not found: " + groupId));
+
+        UUID excursionId = group.getShoreExcursion().getShoreExcursionId();
+
+        List<Registration> confirmedRegistrations = registrationRepository
+                .findConfirmedRegistrationsByExcursion(excursionId, RegistrationStatus.CONFIRMED);
+
+        List<TourGroupPassengerAssignmentStatus> activeStatuses = List.of(
+                TourGroupPassengerAssignmentStatus.ASSIGNED,
+                TourGroupPassengerAssignmentStatus.CHECKED_IN,
+                TourGroupPassengerAssignmentStatus.COMPLETED
+        );
+
+        List<UUID> assignedPassengerIds = assignmentRepository
+                .findAssignedPassengerIdsByExcursion(excursionId, activeStatuses);
+        Set<UUID> assignedSet = new HashSet<>(assignedPassengerIds);
+
+        return confirmedRegistrations.stream()
+                .filter(r -> r.getPassenger() != null && !assignedSet.contains(r.getPassenger().getPassengerId()))
+                .map(r -> EligiblePassengerResponse.builder()
+                        .passengerId(r.getPassenger().getPassengerId())
+                        .fullName(r.getPassenger().getFullName())
+                        .email(r.getPassenger().getEmail())
+                        .phoneNumber(r.getPassenger().getPhoneNumber())
+                        .nationality(r.getPassenger().getNationality())
+                        .registrationId(r.getRegistrationId())
+                        .quantity(r.getQuantity())
+                        .registrationTime(r.getRegistrationTime())
+                        .build())
+                .toList();
     }
 
     private TourGroupPassengerResponse toResponse(
