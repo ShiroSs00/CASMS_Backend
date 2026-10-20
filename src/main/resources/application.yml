@@ -17,7 +17,7 @@
           physical-strategy: org.hibernate.boot.model.naming.PhysicalNamingStrategyStandardImpl
       # Keep existing development data when the application restarts.
       # Controlled deployments should apply the versioned SQL migrations and validate the schema.
-      ddl-auto: update
+      ddl-auto: create
       show-sql: false
       properties:
         hibernate:
