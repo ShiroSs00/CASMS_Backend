@@ -39,6 +39,17 @@ public class ShipModel {
     @Column(name = "checksum_sha256", length = 64)
     private String checksumSha256;
 
+    /** Coordinate frame used by the GLB nodes and configuration transforms. */
+    @Column(name = "coordinate_system", nullable = false, length = 30)
+    private String coordinateSystem = "MODEL_LOCAL";
+
+    /** GLB values are model units; the demo does not establish a physical unit. */
+    @Column(name = "coordinate_unit", nullable = false, length = 30)
+    private String coordinateUnit = "model_unit";
+
+    @Column(name = "model_units_per_meter", nullable = false)
+    private Double modelUnitsPerMeter = 1.0;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 20)
     private ShipModelStatus status = ShipModelStatus.DRAFT;

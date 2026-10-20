@@ -11,6 +11,8 @@ import com.casms.ship.entity.Ship;
 import com.casms.ship.repository.CabinRepository;
 import com.casms.ship.repository.DeckRepository;
 import com.casms.ship.repository.ShipRepository;
+import com.casms.ship.repository.ShipModelObjectRepository;
+import com.casms.ship.repository.LocationDeviceRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -30,6 +32,8 @@ public class DeckService {
     private final DeckRepository deckRepository;
     private final ShipRepository shipRepository;
     private final CabinRepository cabinRepository;
+    private final ShipModelObjectRepository shipModelObjectRepository;
+    private final LocationDeviceRepository locationDeviceRepository;
 
     @Transactional
     public DeckResponse create(DeckCreateRequest request) {
@@ -51,6 +55,8 @@ public class DeckService {
         deck.setShip(ship);
         deck.setDeckNumber(request.getDeckNumber());
         deck.setDeckName(request.getDeckName());
+        applyModelTransform(deck, request.getModelPositionX(), request.getModelPositionY(), request.getModelPositionZ(),
+                request.getModelRotationX(), request.getModelRotationY(), request.getModelRotationZ());
 
         deck = deckRepository.save(deck);
         return mapToResponse(deck);
@@ -59,6 +65,12 @@ public class DeckService {
     @Transactional(readOnly = true)
     public Page<DeckResponse> list(Pageable pageable) {
         return deckRepository.findAll(pageable).map(this::mapToResponse);
+    }
+
+    @Transactional(readOnly = true)
+    public Page<DeckResponse> listByShip(UUID shipId, Pageable pageable) {
+        if (!shipRepository.existsById(shipId)) throw new ResourceNotFoundException("Ship", shipId);
+        return deckRepository.findByShipShipId(shipId, pageable).map(this::mapToResponse);
     }
 
     @Transactional(readOnly = true)
@@ -87,6 +99,20 @@ public class DeckService {
         if (request.getDeckName() != null) {
             deck.setDeckName(request.getDeckName());
         }
+        Double px = request.getModelPositionX() == null ? deck.getModelPositionX() : request.getModelPositionX();
+        Double py = request.getModelPositionY() == null ? deck.getModelPositionY() : request.getModelPositionY();
+        Double pz = request.getModelPositionZ() == null ? deck.getModelPositionZ() : request.getModelPositionZ();
+        Double rx = request.getModelRotationX() == null ? deck.getModelRotationX() : request.getModelRotationX();
+        Double ry = request.getModelRotationY() == null ? deck.getModelRotationY() : request.getModelRotationY();
+        Double rz = request.getModelRotationZ() == null ? deck.getModelRotationZ() : request.getModelRotationZ();
+        validateTriplet(px, py, pz, "position");
+        validateTriplet(rx, ry, rz, "rotation");
+        if (px != null) deck.setModelPositionX(coordinate(px));
+        if (py != null) deck.setModelPositionY(coordinate(py));
+        if (pz != null) deck.setModelPositionZ(coordinate(pz));
+        if (rx != null) deck.setModelRotationX(coordinate(rx));
+        if (ry != null) deck.setModelRotationY(coordinate(ry));
+        if (rz != null) deck.setModelRotationZ(coordinate(rz));
 
         deck = deckRepository.save(deck);
         return mapToResponse(deck);
@@ -98,6 +124,9 @@ public class DeckService {
         
         if (cabinRepository.existsByDeckDeckId(deckId)) {
             throw new BusinessException("DECK_IN_USE", "Cannot delete deck because it contains cabins");
+        }
+        if (shipModelObjectRepository.existsByDeckDeckId(deckId) || locationDeviceRepository.existsByDeckDeckId(deckId)) {
+            throw new BusinessException("DECK_IN_USE", "Cannot delete deck while a model mapping or BLE anchor references it");
         }
 
         deckRepository.delete(deck);
@@ -156,9 +185,39 @@ public class DeckService {
         res.setShipId(deck.getShip().getShipId());
         res.setDeckNumber(deck.getDeckNumber());
         res.setDeckName(deck.getDeckName());
+        res.setModelPositionX(deck.getModelPositionX());
+        res.setModelPositionY(deck.getModelPositionY());
+        res.setModelPositionZ(deck.getModelPositionZ());
+        res.setModelRotationX(deck.getModelRotationX());
+        res.setModelRotationY(deck.getModelRotationY());
+        res.setModelRotationZ(deck.getModelRotationZ());
         res.setCreatedAt(deck.getCreatedAt());
         res.setUpdatedAt(deck.getUpdatedAt());
         return res;
+    }
+
+    private void applyModelTransform(Deck deck, Double x, Double y, Double z, Double rx, Double ry, Double rz) {
+        validateTriplet(x, y, z, "position");
+        validateTriplet(rx, ry, rz, "rotation");
+        deck.setModelPositionX(x == null ? null : coordinate(x));
+        deck.setModelPositionY(y == null ? null : coordinate(y));
+        deck.setModelPositionZ(z == null ? null : coordinate(z));
+        deck.setModelRotationX(rx == null ? null : coordinate(rx));
+        deck.setModelRotationY(ry == null ? null : coordinate(ry));
+        deck.setModelRotationZ(rz == null ? null : coordinate(rz));
+    }
+
+    private void validateTriplet(Double x, Double y, Double z, String name) {
+        if ((x == null || y == null || z == null) && (x != null || y != null || z != null)) {
+            throw new BusinessException("INCOMPLETE_MODEL_TRANSFORM", "Model " + name + " requires x, y and z values together");
+        }
+    }
+
+    private Double coordinate(Double value) {
+        if (!Double.isFinite(value) || Math.abs(value) > 1000) {
+            throw new BusinessException("INVALID_MODEL_TRANSFORM", "Model coordinates and rotations must be finite and within ±1000 model units");
+        }
+        return value;
     }
 
     private CabinSummaryResponse mapToCabinResponse(Cabin cabin) {

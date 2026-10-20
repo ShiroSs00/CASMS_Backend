@@ -18,4 +18,14 @@ public class CabinUpdateRequest {
 
     @Schema(description = "Cập nhật cờ hỗ trợ người khuyết tật", example = "false")
     private Boolean isAccessible;
+
+    private Double modelPositionX;
+    private Double modelPositionY;
+    private Double modelPositionZ;
+    private Double modelRotationX;
+    private Double modelRotationY;
+    private Double modelRotationZ;
+    private Double modelWidth;
+    private Double modelHeight;
+    private Double modelDepth;
 }

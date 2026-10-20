@@ -12,6 +12,8 @@ import com.casms.ship.repository.CabinRepository;
 import com.casms.ship.repository.CruiseRepository;
 import com.casms.ship.repository.DeckRepository;
 import com.casms.ship.repository.ShipRepository;
+import com.casms.ship.repository.ShipModelRepository;
+import com.casms.ship.repository.LocationDeviceRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -34,6 +36,8 @@ public class ShipService {
     private final CruiseRepository cruiseRepository;
     private final DeckRepository deckRepository;
     private final CabinRepository cabinRepository;
+    private final ShipModelRepository shipModelRepository;
+    private final LocationDeviceRepository locationDeviceRepository;
 
     @Transactional
     public ShipResponse create(ShipCreateRequest request) {
@@ -120,6 +124,10 @@ public class ShipService {
         }
         if (deckRepository.countByShipShipId(shipId) > 0 || cabinRepository.countByShipShipId(shipId) > 0) {
             throw new BusinessException("SHIP_HAS_CONFIGURATION", "Cannot delete a ship while decks or cabins are configured");
+        }
+        if (!shipModelRepository.findByShipShipIdOrderByCreatedAtDesc(shipId).isEmpty()
+                || !locationDeviceRepository.findByShipShipId(shipId).isEmpty()) {
+            throw new BusinessException("SHIP_HAS_CONFIGURATION", "Cannot delete a ship while 3D models or BLE devices are configured");
         }
 
         shipRepository.delete(ship);

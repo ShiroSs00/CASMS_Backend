@@ -13,6 +13,7 @@ import com.casms.ship.entity.Ship;
 import com.casms.ship.repository.CabinRepository;
 import com.casms.ship.repository.DeckRepository;
 import com.casms.ship.repository.ShipRepository;
+import com.casms.ship.repository.ShipModelObjectRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -33,6 +34,7 @@ public class CabinService {
     private final ShipRepository shipRepository;
     private final DeckRepository deckRepository;
     private final CabinAssignmentRepository cabinAssignmentRepository;
+    private final ShipModelObjectRepository shipModelObjectRepository;
 
     @Transactional
     public CabinSummaryResponse create(CabinCreateRequest request) {
@@ -65,6 +67,9 @@ public class CabinService {
         cabin.setCapacity(request.getCapacity());
         cabin.setStatus(request.getStatus());
         cabin.setIsAccessible(request.getIsAccessible());
+        applyModelTransform(cabin, request.getModelPositionX(), request.getModelPositionY(), request.getModelPositionZ(),
+                request.getModelRotationX(), request.getModelRotationY(), request.getModelRotationZ(),
+                request.getModelWidth(), request.getModelHeight(), request.getModelDepth());
 
         cabin = cabinRepository.save(cabin);
         return mapToResponse(cabin);
@@ -73,6 +78,18 @@ public class CabinService {
     @Transactional(readOnly = true)
     public Page<CabinSummaryResponse> list(Pageable pageable) {
         return cabinRepository.findAll(pageable).map(this::mapToResponse);
+    }
+
+    @Transactional(readOnly = true)
+    public Page<CabinSummaryResponse> listByShip(UUID shipId, Pageable pageable) {
+        if (!shipRepository.existsById(shipId)) throw new ResourceNotFoundException("Ship", shipId);
+        return cabinRepository.findByShipShipId(shipId, pageable).map(this::mapToResponse);
+    }
+
+    @Transactional(readOnly = true)
+    public Page<CabinSummaryResponse> listByDeck(UUID deckId, Pageable pageable) {
+        if (!deckRepository.existsById(deckId)) throw new ResourceNotFoundException("Deck", deckId);
+        return cabinRepository.findByDeckDeckId(deckId, pageable).map(this::mapToResponse);
     }
 
     @Transactional(readOnly = true)
@@ -92,6 +109,9 @@ public class CabinService {
             cabin.setCapacity(request.getCapacity());
         }
         if (request.getIsAccessible() != null) cabin.setIsAccessible(request.getIsAccessible());
+        applyModelTransform(cabin, request.getModelPositionX(), request.getModelPositionY(), request.getModelPositionZ(),
+                request.getModelRotationX(), request.getModelRotationY(), request.getModelRotationZ(),
+                request.getModelWidth(), request.getModelHeight(), request.getModelDepth());
 
         cabin = cabinRepository.save(cabin);
         return mapToResponse(cabin);
@@ -103,6 +123,9 @@ public class CabinService {
 
         if (cabinAssignmentRepository.existsByCabinCabinId(cabinId)) {
             throw new BusinessException("CABIN_IN_USE", "Cannot delete cabin because it has been assigned to bookings");
+        }
+        if (shipModelObjectRepository.existsByCabinCabinId(cabinId)) {
+            throw new BusinessException("CABIN_IN_USE", "Cannot delete cabin while a 3D model mapping references it");
         }
 
         cabinRepository.delete(cabin);
@@ -232,7 +255,57 @@ public class CabinService {
         res.setCapacity(cabin.getCapacity());
         res.setStatus(cabin.getStatus());
         res.setIsAccessible(cabin.getIsAccessible());
+        res.setModelPositionX(cabin.getModelPositionX());
+        res.setModelPositionY(cabin.getModelPositionY());
+        res.setModelPositionZ(cabin.getModelPositionZ());
+        res.setModelRotationX(cabin.getModelRotationX());
+        res.setModelRotationY(cabin.getModelRotationY());
+        res.setModelRotationZ(cabin.getModelRotationZ());
+        res.setModelWidth(cabin.getModelWidth());
+        res.setModelHeight(cabin.getModelHeight());
+        res.setModelDepth(cabin.getModelDepth());
         return res;
+    }
+
+    private void applyModelTransform(Cabin cabin, Double x, Double y, Double z, Double rx, Double ry, Double rz,
+                                     Double width, Double height, Double depth) {
+        Double px = x == null ? cabin.getModelPositionX() : x;
+        Double py = y == null ? cabin.getModelPositionY() : y;
+        Double pz = z == null ? cabin.getModelPositionZ() : z;
+        Double rotx = rx == null ? cabin.getModelRotationX() : rx;
+        Double roty = ry == null ? cabin.getModelRotationY() : ry;
+        Double rotz = rz == null ? cabin.getModelRotationZ() : rz;
+        validateTriplet(px, py, pz, "position");
+        validateTriplet(rotx, roty, rotz, "rotation");
+        cabin.setModelPositionX(px == null ? null : coordinate(px));
+        cabin.setModelPositionY(py == null ? null : coordinate(py));
+        cabin.setModelPositionZ(pz == null ? null : coordinate(pz));
+        cabin.setModelRotationX(rotx == null ? null : coordinate(rotx));
+        cabin.setModelRotationY(roty == null ? null : coordinate(roty));
+        cabin.setModelRotationZ(rotz == null ? null : coordinate(rotz));
+        cabin.setModelWidth(width == null ? cabin.getModelWidth() : dimension(width));
+        cabin.setModelHeight(height == null ? cabin.getModelHeight() : dimension(height));
+        cabin.setModelDepth(depth == null ? cabin.getModelDepth() : dimension(depth));
+    }
+
+    private void validateTriplet(Double x, Double y, Double z, String name) {
+        if ((x == null || y == null || z == null) && (x != null || y != null || z != null)) {
+            throw new BusinessException("INCOMPLETE_MODEL_TRANSFORM", "Model " + name + " requires x, y and z values together");
+        }
+    }
+
+    private Double coordinate(Double value) {
+        if (!Double.isFinite(value) || Math.abs(value) > 1000) {
+            throw new BusinessException("INVALID_MODEL_TRANSFORM", "Model coordinates and rotations must be finite and within ±1000 model units");
+        }
+        return value;
+    }
+
+    private Double dimension(Double value) {
+        if (!Double.isFinite(value) || value <= 0 || value > 1000) {
+            throw new BusinessException("INVALID_MODEL_DIMENSION", "Model dimensions must be greater than 0 and at most 1000 model units");
+        }
+        return value;
     }
 
     private CabinAssignmentHistoryResponse mapToAssignmentResponse(CabinAssignment assign) {

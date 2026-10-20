@@ -34,4 +34,14 @@ public class CabinSummaryResponse {
 
     @Schema(description = "Có hỗ trợ người khuyết tật", example = "true")
     private Boolean isAccessible;
+
+    private Double modelPositionX;
+    private Double modelPositionY;
+    private Double modelPositionZ;
+    private Double modelRotationX;
+    private Double modelRotationY;
+    private Double modelRotationZ;
+    private Double modelWidth;
+    private Double modelHeight;
+    private Double modelDepth;
 }

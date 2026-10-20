@@ -11,4 +11,9 @@ public interface ShipModelObjectRepository extends JpaRepository<ShipModelObject
     List<ShipModelObject> findByShipModelShipModelId(UUID shipModelId);
     Optional<ShipModelObject> findByShipModelShipModelIdAndNodeKey(UUID shipModelId, String nodeKey);
     boolean existsByShipModelShipModelIdAndNodeKey(UUID shipModelId, String nodeKey);
+    boolean existsByShipModelShipModelIdAndNodeKeyAndShipModelObjectIdNot(UUID shipModelId, String nodeKey, UUID objectId);
+    boolean existsByShipModelShipModelIdAndDeckDeckId(UUID shipModelId, UUID deckId);
+    boolean existsByShipModelShipModelIdAndCabinCabinId(UUID shipModelId, UUID cabinId);
+    boolean existsByDeckDeckId(UUID deckId);
+    boolean existsByCabinCabinId(UUID cabinId);
 }
