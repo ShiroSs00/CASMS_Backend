@@ -10,10 +10,7 @@ import java.util.UUID;
 @Repository
 public interface ShipRepository extends JpaRepository<Ship, UUID> {
     boolean existsByShipCode(String shipCode);
-<<<<<<< HEAD
     boolean existsByShipCodeAndShipIdNot(String shipCode, UUID shipId);
-=======
     Optional<Ship> findByShipCode(String shipCode);
->>>>>>> main
 }
 

@@ -42,11 +42,8 @@ public interface RegistrationRepository
             UUID shoreExcursionId,
             RegistrationStatus status
     );
-<<<<<<< HEAD
     boolean existsByBookingPassenger_BookingPassengerIdAndShoreExcursion_ShoreExcursionIdAndStatusIn(
             UUID bookingPassengerId, UUID shoreExcursionId, Collection<RegistrationStatus> statuses);
-}
-=======
 
     @Query("""
         SELECT r
@@ -60,4 +57,3 @@ public interface RegistrationRepository
             @Param("status") RegistrationStatus status
     );
 }
->>>>>>> main

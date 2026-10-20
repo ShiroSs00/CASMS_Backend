@@ -392,12 +392,9 @@ public class RolePermissionInitializer implements CommandLineRunner {
 
         // PASSENGER: chức năng dành cho hành khách
         saveRolePermission(Role.PASSENGER, EnumSet.of(
-<<<<<<< HEAD
                 Permission.SERVICE_READ, Permission.SERVICE_REQUEST_CREATE,
                 Permission.TOUR_PACKAGE_ASSIGN, Permission.ACTIVITY_READ,
-=======
                 Permission.BOOKING_CREATE,
->>>>>>> main
                 Permission.BOOKING_READ,
                 Permission.BOOKING_CANCEL,
 

@@ -37,7 +37,6 @@ public class ShipService {
 
     @Transactional
     public ShipResponse create(ShipCreateRequest request) {
-<<<<<<< HEAD
         String shipCode = request.getShipCode().trim();
         String shipName = request.getShipName().trim();
         if (shipRepository.existsByShipCode(shipCode)) {
@@ -50,17 +49,6 @@ public class ShipService {
         Ship ship = new Ship();
         ship.setShipCode(shipCode);
         ship.setShipName(shipName);
-=======
-        log.info("Creating new ship with code: {}", request.getShipCode());
-        
-        if (shipRepository.existsByShipCode(request.getShipCode().trim())) {
-            throw new BusinessException("DUPLICATE_SHIP_CODE", "Ship code already exists: " + request.getShipCode());
-        }
-        
-        Ship ship = new Ship();
-        ship.setShipCode(request.getShipCode().trim());
-        ship.setShipName(request.getShipName().trim());
->>>>>>> main
         ship.setStatus(request.getStatus());
         ship.setTotalCapacity(request.getTotalCapacity());
         ship.setTotalDecks(request.getTotalDecks());
@@ -84,8 +72,6 @@ public class ShipService {
     @Transactional
     public ShipResponse update(UUID shipId, ShipUpdateRequest request) {
         Ship ship = getShipById(shipId);
-<<<<<<< HEAD
-
         if (request.getShipName() != null) {
             String shipName = request.getShipName().trim();
             if (shipName.isEmpty()) {
@@ -120,21 +106,6 @@ public class ShipService {
             ship.setCommissionDate(request.getCommissionDate());
         }
 
-=======
-        
-        if (request.getShipName() != null) ship.setShipName(request.getShipName().trim());
-        if (request.getTotalCapacity() != null) ship.setTotalCapacity(request.getTotalCapacity());
-        if (request.getTotalDecks() != null) {
-            long currentDeckCount = deckRepository.countByShipShipId(shipId);
-            if (request.getTotalDecks() < currentDeckCount) {
-                throw new BusinessException("INVALID_TOTAL_DECKS",
-                        "Total decks cannot be less than existing configured decks (" + currentDeckCount + ")");
-            }
-            ship.setTotalDecks(request.getTotalDecks());
-        }
-        if (request.getCommissionDate() != null) ship.setCommissionDate(request.getCommissionDate());
-        
->>>>>>> main
         ship = shipRepository.save(ship);
         return mapToResponse(ship);
     }
