@@ -37,4 +37,10 @@ public class AvailableCabinResponse {
 
     @Schema(description = "Phòng có hỗ trợ người khuyết tật không", example = "false")
     private Boolean isAccessible;
+
+    @Schema(description = "Hệ số giá tầng boong (mặc định 1.00)", example = "1.15")
+    private java.math.BigDecimal priceMultiplier;
+
+    @Schema(description = "Giá tham chiếu ước tính cho 1 khách đối với phòng này (đã nhân hệ số tầng)", example = "747.50")
+    private java.math.BigDecimal estimatedPrice;
 }

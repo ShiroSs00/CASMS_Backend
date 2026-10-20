@@ -21,6 +21,9 @@ public class DeckResponse {
     @Schema(description = "Tên hiển thị của tầng", example = "Promenade Deck")
     private String deckName;
 
+    @Schema(description = "Hệ số giá tầng boong (mặc định 1.00)", example = "1.15")
+    private java.math.BigDecimal priceMultiplier;
+
     private Double modelPositionX;
     private Double modelPositionY;
     private Double modelPositionZ;

@@ -15,6 +15,11 @@ public class DeckUpdateRequest {
     @Schema(description = "Tên hiển thị mới của tầng", example = "Sky Deck")
     private String deckName;
 
+    @Schema(description = "Hệ số giá tầng boong mới (ví dụ 1.20 là +20%)", example = "1.20")
+    @jakarta.validation.constraints.DecimalMin(value = "0.50", message = "Price multiplier must be at least 0.50")
+    @jakarta.validation.constraints.DecimalMax(value = "5.00", message = "Price multiplier cannot exceed 5.00")
+    private java.math.BigDecimal priceMultiplier;
+
     private Double modelPositionX;
     private Double modelPositionY;
     private Double modelPositionZ;

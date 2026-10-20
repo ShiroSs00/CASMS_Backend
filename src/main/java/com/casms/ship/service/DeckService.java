@@ -55,6 +55,7 @@ public class DeckService {
         deck.setShip(ship);
         deck.setDeckNumber(request.getDeckNumber());
         deck.setDeckName(request.getDeckName());
+        deck.setPriceMultiplier(request.getPriceMultiplier() != null ? request.getPriceMultiplier() : java.math.BigDecimal.valueOf(1.00));
         applyModelTransform(deck, request.getModelPositionX(), request.getModelPositionY(), request.getModelPositionZ(),
                 request.getModelRotationX(), request.getModelRotationY(), request.getModelRotationZ());
 
@@ -98,6 +99,9 @@ public class DeckService {
 
         if (request.getDeckName() != null) {
             deck.setDeckName(request.getDeckName());
+        }
+        if (request.getPriceMultiplier() != null) {
+            deck.setPriceMultiplier(request.getPriceMultiplier());
         }
         Double px = request.getModelPositionX() == null ? deck.getModelPositionX() : request.getModelPositionX();
         Double py = request.getModelPositionY() == null ? deck.getModelPositionY() : request.getModelPositionY();
@@ -185,6 +189,7 @@ public class DeckService {
         res.setShipId(deck.getShip().getShipId());
         res.setDeckNumber(deck.getDeckNumber());
         res.setDeckName(deck.getDeckName());
+        res.setPriceMultiplier(deck.getPriceMultiplier() != null ? deck.getPriceMultiplier() : java.math.BigDecimal.valueOf(1.00));
         res.setModelPositionX(deck.getModelPositionX());
         res.setModelPositionY(deck.getModelPositionY());
         res.setModelPositionZ(deck.getModelPositionZ());

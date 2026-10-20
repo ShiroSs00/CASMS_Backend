@@ -45,6 +45,9 @@ public class Deck {
     @Column(name = "model_rotation_z")
     private Double modelRotationZ;
 
+    @Column(name = "price_multiplier", nullable = false, precision = 5, scale = 2)
+    private java.math.BigDecimal priceMultiplier;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -53,6 +56,9 @@ public class Deck {
 
     @PrePersist
     protected void onCreate() {
+        if (priceMultiplier == null) {
+            priceMultiplier = java.math.BigDecimal.valueOf(1.00);
+        }
         createdAt = Instant.now();
         updatedAt = Instant.now();
     }
