@@ -83,6 +83,9 @@ public class ShipModelService {
     @Transactional
     public ShipModelResponse setReady(UUID shipId, UUID modelId) {
         ShipModel model = getModel(shipId, modelId);
+        if (model.getModelKey() != null) {
+            throw new BusinessException("SHIP_MODEL_ASSET_ACTIVATION_REQUIRED", "Registered asset bundles must use the model asset activation API");
+        }
         if (model.getStatus() != ShipModelStatus.DRAFT && model.getStatus() != ShipModelStatus.PROCESSING) {
             throw new BusinessException("INVALID_MODEL_TRANSITION", "Only draft or processing models can be marked ready");
         }
@@ -168,7 +171,7 @@ public class ShipModelService {
     @Transactional(readOnly = true)
     public Ship3dConfigurationResponse configuration(UUID shipId) {
         Ship ship = ships.findById(shipId).orElseThrow(() -> new ResourceNotFoundException("Ship", shipId));
-        ShipModel model = models.findByShipShipIdAndStatusOrderByCreatedAtDesc(shipId, ShipModelStatus.READY)
+        ShipModel model = models.findLegacyByShipAndStatus(shipId, ShipModelStatus.READY)
                 .stream().findFirst().orElseThrow(() -> new BusinessException("SHIP_MODEL_NOT_READY", "No ready 3D model has been published for this ship"));
         List<ShipModelObject> modelObjects = objects.findByShipModelShipModelId(model.getShipModelId());
         Map<UUID, ShipModelObject> cabinNodes = new HashMap<>();
@@ -269,6 +272,9 @@ public class ShipModelService {
     }
     private ShipModel getEditableModel(UUID shipId, UUID modelId) {
         ShipModel m = getModel(shipId, modelId);
+        if (m.getModelKey() != null) {
+            throw new BusinessException("SHIP_MODEL_ASSET_MANAGED", "Registered asset bundles are managed through the model asset API");
+        }
         if (m.getStatus() == ShipModelStatus.READY || m.getStatus() == ShipModelStatus.ARCHIVED) {
             throw new BusinessException("SHIP_MODEL_IMMUTABLE", "Ready or archived models are immutable; create a new version to change configuration");
         }

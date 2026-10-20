@@ -27,8 +27,18 @@ public class ShipModel {
     @JoinColumn(name = "ship_id", nullable = false)
     private Ship ship;
 
-    @Column(name = "version", nullable = false, length = 50)
+    @Column(name = "version", nullable = false, length = 161)
     private String version;
+
+    /** Optional identity for a versioned, server-hosted model asset bundle. */
+    @Column(name = "model_key", length = 80)
+    private String modelKey;
+
+    @Column(name = "asset_revision", length = 160)
+    private String assetRevision;
+
+    @Column(name = "asset_version", length = 80)
+    private String assetVersion;
 
     @Column(name = "file_uri", nullable = false, length = 1000)
     private String fileUri;
