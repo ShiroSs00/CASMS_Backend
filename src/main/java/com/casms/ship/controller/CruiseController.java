@@ -40,22 +40,31 @@ public class CruiseController {
     }
 
     @Operation(summary = "Danh sách chuyến đi", description = "Lấy danh sách các chuyến đi (hỗ trợ phân trang và lọc theo trạng thái, tàu, loại chuyến)")
-    @PreAuthorize("hasAuthority('CRUISE_READ')")
+    @PreAuthorize("hasAuthority('CRUISE_READ') or authentication == null or !isAuthenticated()")
     @GetMapping
     public ApiResponse<Page<CruiseResponse>> list(
             @Parameter(description = "Lọc theo trạng thái chuyến đi") @RequestParam(required = false) CruiseStatus status,
             @Parameter(description = "Lọc theo ID tàu") @RequestParam(required = false) UUID shipId,
             @Parameter(description = "Lọc theo loại chuyến đi (ONE_DAY, MULTI_DAYS)") @RequestParam(required = false) CruiseCruiseType cruiseType,
-            Pageable pageable) {
-        return ApiResponse.success(service.list(status, shipId, cruiseType, pageable));
+            Pageable pageable,
+            org.springframework.security.core.Authentication auth) {
+        boolean hasCruiseRead = auth != null && auth.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("CRUISE_READ"));
+        CruiseStatus effectiveStatus = hasCruiseRead ? status : CruiseStatus.PUBLISHED;
+        return ApiResponse.success(service.list(effectiveStatus, shipId, cruiseType, pageable));
     }
 
     @Operation(summary = "Chi tiết chuyến đi", description = "Lấy thông tin chi tiết của một chuyến đi theo ID")
-    @PreAuthorize("hasAuthority('CRUISE_READ')")
+    @PreAuthorize("hasAuthority('CRUISE_READ') or authentication == null or !isAuthenticated()")
     @GetMapping("/{cruiseId}")
     public ApiResponse<CruiseResponse> detail(
-            @Parameter(description = "ID chuyến đi", required = true) @PathVariable UUID cruiseId) {
-        return ApiResponse.success(service.detail(cruiseId));
+            @Parameter(description = "ID chuyến đi", required = true) @PathVariable UUID cruiseId,
+            org.springframework.security.core.Authentication auth) {
+        CruiseResponse response = service.detail(cruiseId);
+        boolean hasCruiseRead = auth != null && auth.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("CRUISE_READ"));
+        if (!hasCruiseRead && response.getStatus() != CruiseStatus.PUBLISHED) {
+            throw new org.springframework.security.access.AccessDeniedException("Access denied to non-published cruise");
+        }
+        return ApiResponse.success(response);
     }
 
     @Operation(summary = "Cập nhật bản nháp chuyến đi", description = "Cập nhật thông tin chuyến đi (chỉ áp dụng khi chuyến ở trạng thái DRAFT)")

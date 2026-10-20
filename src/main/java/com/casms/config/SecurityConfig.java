@@ -51,6 +51,12 @@ public class SecurityConfig {
                                 "/booking/available-cabins",
                                 "/booking/lookup"
                         ).permitAll()
+                        .requestMatchers(org.springframework.http.HttpMethod.GET,
+                                "/cruise",
+                                "/cruise/**",
+                                "/servicepackage/packages",
+                                "/servicepackage/packages/**"
+                        ).permitAll()
                         .requestMatchers(org.springframework.http.HttpMethod.POST, "/booking").permitAll()
                         .anyRequest().authenticated()
                 )
