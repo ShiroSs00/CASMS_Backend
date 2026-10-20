@@ -35,11 +35,11 @@ public interface CabinRepository extends JpaRepository<Cabin, UUID> {
     boolean existsByShipShipIdAndCabinNumber(UUID shipId, String cabinNumber);
 
     @Query("SELECT c FROM Cabin c WHERE c.status = 'AVAILABLE' " +
-           "AND (:shipId IS NULL OR c.ship.shipId = :shipId) " +
-           "AND (:deckId IS NULL OR c.deck.deckId = :deckId) " +
-           "AND (:cabinType IS NULL OR c.cabinType = :cabinType) " +
-           "AND (:minCapacity IS NULL OR c.capacity >= :minCapacity) " +
-           "AND (:isAccessible IS NULL OR c.isAccessible = :isAccessible)")
+           "AND (cast(:shipId as uuid) IS NULL OR c.ship.shipId = :shipId) " +
+           "AND (cast(:deckId as uuid) IS NULL OR c.deck.deckId = :deckId) " +
+           "AND (cast(:cabinType as string) IS NULL OR c.cabinType = :cabinType) " +
+           "AND (cast(:minCapacity as integer) IS NULL OR c.capacity >= :minCapacity) " +
+           "AND (cast(:isAccessible as boolean) IS NULL OR c.isAccessible = :isAccessible)")
     List<Cabin> searchAvailable(@Param("shipId") UUID shipId,
                                 @Param("deckId") UUID deckId,
                                 @Param("cabinType") CabinType cabinType,

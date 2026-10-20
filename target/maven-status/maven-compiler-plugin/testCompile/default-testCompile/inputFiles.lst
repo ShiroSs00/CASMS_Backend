@@ -9,11 +9,14 @@ D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\booking\service\Booki
 D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\common\exception\GlobalExceptionHandlerTest.java
 D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\identity\service\AuthServiceTest.java
 D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\identity\service\IdentityServiceTest.java
+D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\identity\service\PassengerBleIdentityServiceTest.java
+D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\identity\service\PermissionConstraintInitializerTest.java
 D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\identity\service\RolePermissionInitializerTest.java
 D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\servicepackage\service\ServicepackageWorkflowTest.java
 D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\servicepackage\service\ServiceRequestServiceTest.java
 D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\ship\entity\HibernateMappingBootstrapTest.java
 D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\ship\repository\ItineraryChangeHistoryPostgresIntegrationTest.java
+D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\ship\service\BleRuntimeServiceTest.java
 D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\ship\service\CruiseRegulationServiceTest.java
 D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\ship\service\CruiseServiceTest.java
 D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\ship\service\ItineraryChangeHistoryServiceTest.java

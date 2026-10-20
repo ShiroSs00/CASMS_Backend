@@ -10,6 +10,7 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.server.ResponseStatusException;
@@ -131,12 +132,25 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(status).body(ApiResponse.error(message, status.name()));
     }
 
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ApiResponse<Void>> handleMethodArgumentTypeMismatch(MethodArgumentTypeMismatchException ex) {
+        String msg = String.format("Invalid parameter '%s': value '%s' is not valid for type '%s'",
+                ex.getName(), ex.getValue(), ex.getRequiredType() != null ? ex.getRequiredType().getSimpleName() : "unknown");
+        log.warn("Method argument type mismatch: {}", msg);
+        return ResponseEntity.badRequest()
+                .body(ApiResponse.error(msg, "INVALID_PARAMETER"));
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiResponse<Void>> handleGeneral(Exception ex) {
         String traceId = UUID.randomUUID().toString();
         log.error("Unhandled exception [traceId: {}]", traceId, ex);
+        String msg = (ex.getMessage() != null ? ex.getMessage() : ex.getClass().getSimpleName());
+        if (ex.getCause() != null && ex.getCause().getMessage() != null) {
+            msg += " | Cause: " + ex.getCause().getMessage();
+        }
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(ApiResponse.error("Internal server error", "INTERNAL_ERROR", traceId));
+                .body(ApiResponse.error(msg, "INTERNAL_ERROR", traceId));
     }
 
     private String resolveNotFoundCode(String message) {
