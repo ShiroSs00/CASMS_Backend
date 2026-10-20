@@ -1,6 +1,7 @@
 package com.casms.ship.repository;
 
 import com.casms.ship.entity.LocationDevice;
+import com.casms.ship.enums.LocationDeviceStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.List;
@@ -9,6 +10,12 @@ import java.util.UUID;
 
 public interface LocationDeviceRepository extends JpaRepository<LocationDevice, UUID> {
     Optional<LocationDevice> findByDeviceCode(String deviceCode);
-    List<LocationDevice> findByShipShipId(UUID shipId);
     boolean existsByDeviceCode(String deviceCode);
+    List<LocationDevice> findByShipShipIdAndDeviceTypeOrderByDeviceCode(UUID shipId, com.casms.ship.enums.LocationDeviceType deviceType);
+    List<LocationDevice> findByShipShipIdAndDeckDeckId(UUID shipId, UUID deckId);
+    boolean existsByShipShipIdAndBleIdentifier(UUID shipId, String bleIdentifier);
+    Optional<LocationDevice> findByLocationDeviceIdAndShipShipId(UUID deviceId, UUID shipId);
+    boolean existsByShipShipIdAndStatus(UUID shipId, LocationDeviceStatus status);
+    boolean existsByDeckDeckId(UUID deckId);
+    List<LocationDevice> findByShipShipId(UUID shipId);
 }

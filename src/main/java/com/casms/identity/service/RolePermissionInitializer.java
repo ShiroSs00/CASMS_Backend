@@ -120,11 +120,35 @@ public class RolePermissionInitializer implements CommandLineRunner {
                 Permission.SHIP_VALIDATE,
                 Permission.SHIP_READINESS,
 
+                Permission.SHIP_MODEL_CREATE,
+                Permission.SHIP_MODEL_READ,
+                Permission.SHIP_MODEL_UPDATE,
+                Permission.SHIP_MODEL_DELETE,
+                Permission.SHIP_MODEL_PUBLISH,
+                Permission.SHIP_MODEL_OBJECT_CREATE,
+                Permission.SHIP_MODEL_OBJECT_UPDATE,
+                Permission.SHIP_MODEL_OBJECT_DELETE,
+                Permission.SHIP_CONFIGURATION_READ,
+                Permission.SHIP_CONFIGURATION_VALIDATE,
+
+                Permission.BLE_ANCHOR_CREATE,
+                Permission.BLE_ANCHOR_READ,
+                Permission.BLE_ANCHOR_UPDATE,
+                Permission.BLE_ANCHOR_DELETE,
+                Permission.BLE_ANCHOR_ACTIVATE,
+                Permission.BLE_ANCHOR_DEACTIVATE,
+                Permission.BLE_ANCHOR_RETIRE,
+                Permission.BLE_ANCHOR_INSTALL,
+                Permission.BLE_ANCHOR_VALIDATE,
+                Permission.BLE_TELEMETRY_RECEIVE,
+                Permission.BLE_TELEMETRY_READ,
+
                 Permission.DECK_CREATE,
                 Permission.DECK_READ,
                 Permission.DECK_UPDATE,
                 Permission.DECK_DELETE,
                 Permission.DECK_CABINS_VIEW,
+                Permission.DECK_VALIDATE,
 
                 Permission.CABIN_CREATE,
                 Permission.CABIN_READ,
@@ -136,6 +160,7 @@ public class RolePermissionInitializer implements CommandLineRunner {
                 Permission.CABIN_RELEASE,
                 Permission.CABIN_ASSIGNMENTS_VIEW,
                 Permission.CABIN_AVAILABILITY,
+                Permission.CABIN_VALIDATE,
 
                 Permission.SHIP_REGULATION_ASSIGN,
                 Permission.SHIP_REGULATION_READ,
@@ -162,6 +187,10 @@ public class RolePermissionInitializer implements CommandLineRunner {
                 Permission.OPERATIONAL_ISSUE_ASSIGN,
 
                 Permission.SHIP_READ,
+                Permission.SHIP_MODEL_READ,
+                Permission.SHIP_CONFIGURATION_READ,
+                Permission.BLE_ANCHOR_READ,
+                Permission.BLE_TELEMETRY_READ,
                 Permission.SHIP_STATUS_CHANGE,
                 Permission.SHIP_SCHEDULE_CHECK,
                 Permission.SHIP_CAPACITY_SUMMARY,
@@ -261,6 +290,8 @@ public class RolePermissionInitializer implements CommandLineRunner {
 
                 // Cross-module reference read permissions (BE-AUTH-02)
                 Permission.SHIP_READ,
+                Permission.SHIP_MODEL_READ,
+                Permission.SHIP_CONFIGURATION_READ,
                 Permission.DECK_READ
         ));
 
@@ -275,6 +306,10 @@ public class RolePermissionInitializer implements CommandLineRunner {
                 Permission.CHECKIN_PAYMENT_VERIFY,
                 Permission.CHECKIN_BOARDING,
                 Permission.CHECKOUT_PROCESS,
+                Permission.PASSENGER_BLE_ASSIGN,
+                Permission.PASSENGER_BLE_READ,
+                Permission.PASSENGER_BLE_REVOKE,
+                Permission.PASSENGER_BLE_HISTORY,
 
                 Permission.CABIN_READ,
                 Permission.CABIN_SEARCH,
@@ -334,6 +369,7 @@ public class RolePermissionInitializer implements CommandLineRunner {
 
                 Permission.NOTIFICATION_SEND,
                 Permission.CHECKOUT_PROCESS,
+                Permission.BLE_TELEMETRY_READ,
 
                 Permission.CRUISE_READ,
                 Permission.ITINERARY_READ,
@@ -393,7 +429,7 @@ public class RolePermissionInitializer implements CommandLineRunner {
         // PASSENGER: chức năng dành cho hành khách
         saveRolePermission(Role.PASSENGER, EnumSet.of(
                 Permission.SERVICE_READ, Permission.SERVICE_REQUEST_CREATE,
-                Permission.TOUR_PACKAGE_ASSIGN, Permission.ACTIVITY_READ,
+                Permission.TOUR_PACKAGE_ASSIGN,
                 Permission.BOOKING_CREATE,
                 Permission.BOOKING_READ,
                 Permission.BOOKING_CANCEL,

@@ -21,4 +21,11 @@ public class DeckCreateRequest {
 
     @Schema(description = "Tên hiển thị của tầng", example = "Promenade Deck")
     private String deckName;
+
+    private Double modelPositionX;
+    private Double modelPositionY;
+    private Double modelPositionZ;
+    private Double modelRotationX;
+    private Double modelRotationY;
+    private Double modelRotationZ;
 }

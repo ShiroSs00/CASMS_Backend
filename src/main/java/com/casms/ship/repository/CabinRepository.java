@@ -7,12 +7,18 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 
 import java.util.List;
 import java.util.UUID;
+import java.util.List;
 
 @Repository
 public interface CabinRepository extends JpaRepository<Cabin, UUID> {
+    List<Cabin> findByShipShipIdOrderByDeckDeckNumberAscCabinNumberAsc(UUID shipId);
+    Page<Cabin> findByShipShipId(UUID shipId, Pageable pageable);
+    Page<Cabin> findByDeckDeckId(UUID deckId, Pageable pageable);
     long countByShipShipId(UUID shipId);
     long countByShipShipIdAndStatus(UUID shipId, CabinStatus status);
 

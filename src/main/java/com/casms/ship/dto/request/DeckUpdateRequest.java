@@ -14,4 +14,11 @@ public class DeckUpdateRequest {
 
     @Schema(description = "Tên hiển thị mới của tầng", example = "Sky Deck")
     private String deckName;
+
+    private Double modelPositionX;
+    private Double modelPositionY;
+    private Double modelPositionZ;
+    private Double modelRotationX;
+    private Double modelRotationY;
+    private Double modelRotationZ;
 }

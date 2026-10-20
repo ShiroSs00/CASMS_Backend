@@ -32,6 +32,19 @@ public class Deck {
     @Column(name = "deck_name", length = 50)
     private String deckName;
 
+    @Column(name = "model_position_x")
+    private Double modelPositionX;
+    @Column(name = "model_position_y")
+    private Double modelPositionY;
+    @Column(name = "model_position_z")
+    private Double modelPositionZ;
+    @Column(name = "model_rotation_x")
+    private Double modelRotationX;
+    @Column(name = "model_rotation_y")
+    private Double modelRotationY;
+    @Column(name = "model_rotation_z")
+    private Double modelRotationZ;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 

@@ -44,6 +44,12 @@ public class DeckController {
         return ApiResponse.success(service.list(pageable));
     }
 
+    @PreAuthorize("hasAuthority('DECK_READ')")
+    @GetMapping("/by-ship/{shipId}")
+    public ApiResponse<Page<DeckResponse>> listByShip(@PathVariable UUID shipId, Pageable pageable) {
+        return ApiResponse.success(service.listByShip(shipId, pageable));
+    }
+
     @Operation(summary = "Chi tiết tầng", description = "Lấy thông tin chi tiết của một tầng theo ID")
     @PreAuthorize("hasAuthority('DECK_READ')")
     @GetMapping("/{deckId}")
@@ -89,7 +95,7 @@ public class DeckController {
     }
 
     @Operation(summary = "Kiểm tra tính hợp lệ của tầng", description = "Xác minh số thứ tự tầng không vượt quá giới hạn tổng số boong của tàu")
-    @PreAuthorize("hasAuthority('DECK_READ')")
+    @PreAuthorize("hasAuthority('DECK_VALIDATE')")
     @PostMapping("/{deckId}/validate")
     public ApiResponse<Void> validateDeck(
             @Parameter(description = "ID của tầng", required = true) @PathVariable UUID deckId) {

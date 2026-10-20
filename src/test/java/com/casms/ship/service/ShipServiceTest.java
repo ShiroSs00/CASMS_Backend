@@ -23,6 +23,8 @@ class ShipServiceTest {
  @Mock CruiseRepository cruiseRepository;
  @Mock DeckRepository deckRepository;
  @Mock CabinRepository cabinRepository;
+ @Mock ShipModelRepository shipModelRepository;
+ @Mock LocationDeviceRepository locationDeviceRepository;
  @InjectMocks ShipService service;
 
  @Test void create_savesAndReturnsShip() {

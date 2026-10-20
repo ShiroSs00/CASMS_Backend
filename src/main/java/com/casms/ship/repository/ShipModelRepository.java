@@ -9,6 +9,7 @@ import java.util.UUID;
 
 public interface ShipModelRepository extends JpaRepository<ShipModel, UUID> {
     List<ShipModel> findByShipShipIdOrderByCreatedAtDesc(UUID shipId);
+    List<ShipModel> findByShipShipIdAndStatusOrderByCreatedAtDesc(UUID shipId, ShipModelStatus status);
     boolean existsByShipShipIdAndVersion(UUID shipId, String version);
     boolean existsByShipModelIdAndStatus(UUID shipModelId, ShipModelStatus status);
 }

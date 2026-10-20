@@ -42,4 +42,14 @@ public class CabinCreateRequest {
     @Schema(description = "Phòng có hỗ trợ người khuyết tật/tiếp cận xe lăn hay không", example = "true", requiredMode = Schema.RequiredMode.REQUIRED)
     @NotNull(message = "Accessibility flag is required")
     private Boolean isAccessible;
+
+    private Double modelPositionX;
+    private Double modelPositionY;
+    private Double modelPositionZ;
+    private Double modelRotationX;
+    private Double modelRotationY;
+    private Double modelRotationZ;
+    private Double modelWidth;
+    private Double modelHeight;
+    private Double modelDepth;
 }

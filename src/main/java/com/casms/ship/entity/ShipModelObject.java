@@ -49,6 +49,25 @@ public class ShipModelObject {
     @Column(name = "metadata_json", columnDefinition = "text")
     private String metadataJson;
 
+    @Column(name = "position_x")
+    private Double positionX;
+    @Column(name = "position_y")
+    private Double positionY;
+    @Column(name = "position_z")
+    private Double positionZ;
+    @Column(name = "rotation_x")
+    private Double rotationX;
+    @Column(name = "rotation_y")
+    private Double rotationY;
+    @Column(name = "rotation_z")
+    private Double rotationZ;
+    @Column(name = "scale_x", nullable = false)
+    private Double scaleX = 1.0;
+    @Column(name = "scale_y", nullable = false)
+    private Double scaleY = 1.0;
+    @Column(name = "scale_z", nullable = false)
+    private Double scaleZ = 1.0;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 

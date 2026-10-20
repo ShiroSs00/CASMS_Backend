@@ -53,6 +53,16 @@ public class LocationRecord {
     @Column(name = "accuracy_meters", precision = 8, scale = 2)
     private BigDecimal accuracyMeters;
 
+    /** Radio measurement only; RSSI is not an absolute passenger location. */
+    @Column(name = "rssi_dbm")
+    private Integer rssiDbm;
+
+    @Column(name = "estimated_distance_meters", precision = 8, scale = 2)
+    private BigDecimal estimatedDistanceMeters;
+
+    @Column(name = "ble_identifier", length = 150)
+    private String bleIdentifier;
+
     @PrePersist
     protected void onCreate() {
         if (recordedAt == null) {
