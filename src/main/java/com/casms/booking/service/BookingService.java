@@ -112,6 +112,12 @@ public class BookingService {
                 res.setCapacity(cabin.getCapacity());
                 res.setRemainingCapacity(remaining);
                 res.setIsAccessible(cabin.getIsAccessible());
+                java.math.BigDecimal multiplier = (cabin.getDeck() != null && cabin.getDeck().getPriceMultiplier() != null)
+                        ? cabin.getDeck().getPriceMultiplier()
+                        : java.math.BigDecimal.valueOf(1.00);
+                res.setPriceMultiplier(multiplier);
+                java.math.BigDecimal baseFare = getBaseCabinFare(cabin.getCabinType());
+                res.setEstimatedPrice(baseFare.multiply(multiplier).setScale(2, java.math.RoundingMode.HALF_UP));
                 results.add(res);
             }
         }
@@ -223,7 +229,12 @@ public class BookingService {
 
         for (PassengerBookingItemRequest pReq : request.getPassengers()) {
             Cabin cabin = validatedCabins.get(pReq.getCabinId());
-            totalCabinBaseAmount = totalCabinBaseAmount.add(getBaseCabinFare(cabin.getCabinType()));
+            java.math.BigDecimal baseFare = getBaseCabinFare(cabin.getCabinType());
+            java.math.BigDecimal multiplier = (cabin.getDeck() != null && cabin.getDeck().getPriceMultiplier() != null)
+                    ? cabin.getDeck().getPriceMultiplier()
+                    : java.math.BigDecimal.valueOf(1.00);
+            java.math.BigDecimal cabinPrice = baseFare.multiply(multiplier).setScale(2, java.math.RoundingMode.HALF_UP);
+            totalCabinBaseAmount = totalCabinBaseAmount.add(cabinPrice);
 
             if (pReq.getTourPackageId() != null) {
                 TourPackage pkg = tourPackageRepository.findById(pReq.getTourPackageId())
