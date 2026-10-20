@@ -1,7 +1,6 @@
 package com.casms.ship.controller;
 
 import com.casms.common.response.ApiResponse;
-import com.casms.identity.enums.Permission;
 import com.casms.ship.dto.request.ShipCreateRequest;
 import com.casms.ship.dto.request.ShipUpdateRequest;
 import com.casms.ship.dto.response.CruiseSummaryResponse;

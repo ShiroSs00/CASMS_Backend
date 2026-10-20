@@ -56,45 +56,146 @@ public class ActivityController {
     public record ActivityScheduleCheckView(UUID activityId,boolean conflictFree,long conflicts){}
 
     @Operation(summary = "Danh sách hoạt động", description = "Lấy danh sách các hoạt động trên tàu")
-    @PreAuthorize("hasPermission(T(com.casms.identity.enums.Permission).ACTIVITY_READ)") @GetMapping public ApiResponse<List<ActivityView>> list() { return ApiResponse.success(service.listActivities().stream().map(ActivityView::of).toList()); }
+    @PreAuthorize("hasAuthority('ACTIVITY_READ')")
+    @GetMapping
+    public ApiResponse<List<ActivityView>> list() {
+        return ApiResponse.success(service.listActivities().stream().map(ActivityView::of).toList());
+    }
+
     @Operation(summary = "Chi tiết hoạt động", description = "Lấy thông tin một hoạt động theo ID")
-    @PreAuthorize("hasPermission(T(com.casms.identity.enums.Permission).ACTIVITY_READ)") @GetMapping("/{id}") public ApiResponse<ActivityView> get(@Parameter(description = "ID hoạt động", required = true) @PathVariable UUID id) { return ApiResponse.success(ActivityView.of(service.activity(id))); }
+    @PreAuthorize("hasAuthority('ACTIVITY_READ')")
+    @GetMapping("/{id}")
+    public ApiResponse<ActivityView> get(@Parameter(description = "ID hoạt động", required = true) @PathVariable UUID id) {
+        return ApiResponse.success(ActivityView.of(service.activity(id)));
+    }
+
     @Operation(summary = "Kiểm tra chỗ còn trống", description = "Trả về sức chứa, số chỗ còn lại và trạng thái hoạt động")
-    @PreAuthorize("hasPermission(T(com.casms.identity.enums.Permission).ACTIVITY_READ)") @GetMapping("/{id}/availability") public ApiResponse<ActivityAvailabilityView> availability(@Parameter(description = "ID hoạt động", required = true) @PathVariable UUID id){OnboardActivity a=service.activity(id);return ApiResponse.success(new ActivityAvailabilityView(id,a.getCapacity(),service.availableSeats(id),a.getStatus().name()));}
+    @PreAuthorize("hasAuthority('ACTIVITY_READ')")
+    @GetMapping("/{id}/availability")
+    public ApiResponse<ActivityAvailabilityView> availability(@Parameter(description = "ID hoạt động", required = true) @PathVariable UUID id) {
+        OnboardActivity a = service.activity(id);
+        return ApiResponse.success(new ActivityAvailabilityView(id, a.getCapacity(), service.availableSeats(id), a.getStatus().name()));
+    }
+
     @Operation(summary = "Kiểm tra lịch hoạt động", description = "Kiểm tra xung đột lịch của hoạt động tại cùng địa điểm trên cùng chuyến")
-    @PreAuthorize("hasPermission(T(com.casms.identity.enums.Permission).ACTIVITY_READ)") @GetMapping("/{id}/schedule-check") public ApiResponse<ActivityScheduleCheckView> scheduleCheck(@Parameter(description = "ID hoạt động", required = true) @PathVariable UUID id){long conflicts=service.scheduleConflicts(id);return ApiResponse.success(new ActivityScheduleCheckView(id,conflicts==0,conflicts));}
+    @PreAuthorize("hasAuthority('ACTIVITY_READ')")
+    @GetMapping("/{id}/schedule-check")
+    public ApiResponse<ActivityScheduleCheckView> scheduleCheck(@Parameter(description = "ID hoạt động", required = true) @PathVariable UUID id) {
+        long conflicts = service.scheduleConflicts(id);
+        return ApiResponse.success(new ActivityScheduleCheckView(id, conflicts == 0, conflicts));
+    }
+
     @Operation(summary = "Tạo hoạt động", description = "Tạo hoạt động mới trên chuyến du thuyền")
-    @PreAuthorize("hasPermission(T(com.casms.identity.enums.Permission).ACTIVITY_CREATE)") @PostMapping @ResponseStatus(HttpStatus.CREATED) public ApiResponse<ActivityView> create(@jakarta.validation.Valid @RequestBody ActivityRequest r) {
-        OnboardActivity a = new OnboardActivity(); apply(a,r); return ApiResponse.success(ActivityView.of(service.createActivity(a,r.cruiseId())));
+    @PreAuthorize("hasAuthority('ACTIVITY_CREATE')")
+    @PostMapping
+    @ResponseStatus(HttpStatus.CREATED)
+    public ApiResponse<ActivityView> create(@jakarta.validation.Valid @RequestBody ActivityRequest r) {
+        OnboardActivity a = new OnboardActivity();
+        apply(a, r);
+        return ApiResponse.success(ActivityView.of(service.createActivity(a, r.cruiseId())));
     }
+
     @Operation(summary = "Cập nhật hoạt động", description = "Cập nhật thông tin hoạt động theo ID")
-    @PreAuthorize("hasPermission(T(com.casms.identity.enums.Permission).ACTIVITY_UPDATE)") @PutMapping("/{id}") public ApiResponse<ActivityView> update(@Parameter(description = "ID hoạt động", required = true) @PathVariable UUID id, @jakarta.validation.Valid @RequestBody ActivityRequest r) {
-        OnboardActivity a=new OnboardActivity(); apply(a,r); return ApiResponse.success(ActivityView.of(service.updateActivity(id,a)));
+    @PreAuthorize("hasAuthority('ACTIVITY_UPDATE')")
+    @PutMapping("/{id}")
+    public ApiResponse<ActivityView> update(@Parameter(description = "ID hoạt động", required = true) @PathVariable UUID id, @jakarta.validation.Valid @RequestBody ActivityRequest r) {
+        OnboardActivity a = new OnboardActivity();
+        apply(a, r);
+        return ApiResponse.success(ActivityView.of(service.updateActivity(id, a)));
     }
+
     @Operation(summary = "Xóa hoạt động", description = "Xóa hoạt động theo ID khi đáp ứng các điều kiện nghiệp vụ")
-    @PreAuthorize("hasPermission(T(com.casms.identity.enums.Permission).ACTIVITY_UPDATE)") @DeleteMapping("/{id}") @ResponseStatus(HttpStatus.NO_CONTENT) public void delete(@Parameter(description = "ID hoạt động", required = true) @PathVariable UUID id) { service.deleteActivity(id); }
+    @PreAuthorize("hasAuthority('ACTIVITY_UPDATE')")
+    @DeleteMapping("/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void delete(@Parameter(description = "ID hoạt động", required = true) @PathVariable UUID id) {
+        service.deleteActivity(id);
+    }
+
     @Operation(summary = "Chuyển trạng thái hoạt động", description = "Thực hiện hành động vòng đời hoạt động: open, start, complete hoặc cancel")
-    @PreAuthorize("hasPermission(T(com.casms.identity.enums.Permission).ACTIVITY_LIFECYCLE)") @PostMapping("/{id}/actions/{action}") public ApiResponse<ActivityView> lifecycle(@Parameter(description = "ID hoạt động", required = true) @PathVariable UUID id, @Parameter(description = "Hành động: open, start, complete hoặc cancel", required = true) @PathVariable String action) { return ApiResponse.success(ActivityView.of(service.lifecycle(id,action))); }
+    @PreAuthorize("hasAuthority('ACTIVITY_LIFECYCLE')")
+    @PostMapping("/{id}/actions/{action}")
+    public ApiResponse<ActivityView> lifecycle(@Parameter(description = "ID hoạt động", required = true) @PathVariable UUID id, @Parameter(description = "Hành động: open, start, complete hoặc cancel", required = true) @PathVariable String action) {
+        return ApiResponse.success(ActivityView.of(service.lifecycle(id, action)));
+    }
 
     @Operation(summary = "Danh sách đăng ký", description = "Lấy danh sách đăng ký; hành khách chỉ xem đăng ký của mình, nhân viên có thể lọc theo hoạt động")
-    @PreAuthorize("hasAnyPermission(T(com.casms.identity.enums.Permission).ACTIVITY_ATTENDANCE, T(com.casms.identity.enums.Permission).ACTIVITY_REGISTRATION)") @GetMapping("/registrations") public ApiResponse<List<RegistrationView>> registrations(@Parameter(description = "Lọc theo ID hoạt động") @RequestParam(required=false) UUID activityId,org.springframework.security.core.Authentication auth) { var p=(com.casms.security.principal.CasmsPrincipal)auth.getPrincipal();return ApiResponse.success(service.listRegistrations(activityId,p.getUserId(),p.isStaff()).stream().map(RegistrationView::of).toList()); }
+    @PreAuthorize("hasAnyAuthority('ACTIVITY_ATTENDANCE', 'ACTIVITY_REGISTRATION')")
+    @GetMapping("/registrations")
+    public ApiResponse<List<RegistrationView>> registrations(@Parameter(description = "Lọc theo ID hoạt động") @RequestParam(required = false) UUID activityId, org.springframework.security.core.Authentication auth) {
+        var p = (com.casms.security.principal.CasmsPrincipal) auth.getPrincipal();
+        return ApiResponse.success(service.listRegistrations(activityId, p.getUserId(), p.isStaff()).stream().map(RegistrationView::of).toList());
+    }
+
     @Operation(summary = "Chi tiết đăng ký", description = "Lấy thông tin đăng ký theo ID với kiểm tra quyền sở hữu")
-    @PreAuthorize("hasAnyPermission(T(com.casms.identity.enums.Permission).ACTIVITY_ATTENDANCE, T(com.casms.identity.enums.Permission).ACTIVITY_REGISTRATION)") @GetMapping("/registrations/{id}") public ApiResponse<RegistrationView> registration(@Parameter(description = "ID đăng ký", required = true) @PathVariable UUID id,org.springframework.security.core.Authentication auth) { var p=(com.casms.security.principal.CasmsPrincipal)auth.getPrincipal();return ApiResponse.success(RegistrationView.of(service.getRegistration(id,p.getUserId(),p.isStaff()))); }
+    @PreAuthorize("hasAnyAuthority('ACTIVITY_ATTENDANCE', 'ACTIVITY_REGISTRATION')")
+    @GetMapping("/registrations/{id}")
+    public ApiResponse<RegistrationView> registration(@Parameter(description = "ID đăng ký", required = true) @PathVariable UUID id, org.springframework.security.core.Authentication auth) {
+        var p = (com.casms.security.principal.CasmsPrincipal) auth.getPrincipal();
+        return ApiResponse.success(RegistrationView.of(service.getRegistration(id, p.getUserId(), p.isStaff())));
+    }
+
     @Operation(summary = "Đăng ký hoạt động trên tàu", description = "Tạo đăng ký tham gia hoạt động cho hành khách trong booking")
-    @PreAuthorize("hasPermission(T(com.casms.identity.enums.Permission).ACTIVITY_REGISTRATION)") @PostMapping("/{id}/registrations") @ResponseStatus(HttpStatus.CREATED) public ApiResponse<RegistrationView> register(@Parameter(description = "ID hoạt động", required = true) @PathVariable UUID id, @jakarta.validation.Valid @RequestBody RegistrationRequest r,org.springframework.security.core.Authentication auth) { var p=(com.casms.security.principal.CasmsPrincipal)auth.getPrincipal();return ApiResponse.success(RegistrationView.of(service.register(r.bookingPassengerId(),id,r.quantity(),p.getUserId(),p.isStaff()))); }
+    @PreAuthorize("hasAuthority('ACTIVITY_REGISTRATION')")
+    @PostMapping("/{id}/registrations")
+    @ResponseStatus(HttpStatus.CREATED)
+    public ApiResponse<RegistrationView> register(@Parameter(description = "ID hoạt động", required = true) @PathVariable UUID id, @jakarta.validation.Valid @RequestBody RegistrationRequest r, org.springframework.security.core.Authentication auth) {
+        var p = (com.casms.security.principal.CasmsPrincipal) auth.getPrincipal();
+        return ApiResponse.success(RegistrationView.of(service.register(r.bookingPassengerId(), id, r.quantity(), p.getUserId(), p.isStaff())));
+    }
+
     @Operation(summary = "Đăng ký tour tham quan", description = "Tạo đăng ký tour trên bờ cho hành khách trong booking")
-    @PreAuthorize("hasPermission(T(com.casms.identity.enums.Permission).EXCURSION_BOOKING)") @PostMapping("/excursions/{id}/registrations") @ResponseStatus(HttpStatus.CREATED) public ApiResponse<RegistrationView> registerExcursion(@Parameter(description = "ID tour tham quan", required = true) @PathVariable UUID id,@jakarta.validation.Valid @RequestBody RegistrationRequest r,org.springframework.security.core.Authentication auth){var p=(com.casms.security.principal.CasmsPrincipal)auth.getPrincipal();return ApiResponse.success(RegistrationView.of(service.registerExcursion(r.bookingPassengerId(),id,r.quantity(),p.getUserId(),p.isStaff())));}
+    @PreAuthorize("hasAuthority('EXCURSION_BOOKING')")
+    @PostMapping("/excursions/{id}/registrations")
+    @ResponseStatus(HttpStatus.CREATED)
+    public ApiResponse<RegistrationView> registerExcursion(@Parameter(description = "ID tour tham quan", required = true) @PathVariable UUID id, @jakarta.validation.Valid @RequestBody RegistrationRequest r, org.springframework.security.core.Authentication auth) {
+        var p = (com.casms.security.principal.CasmsPrincipal) auth.getPrincipal();
+        return ApiResponse.success(RegistrationView.of(service.registerExcursion(r.bookingPassengerId(), id, r.quantity(), p.getUserId(), p.isStaff())));
+    }
+
     @Operation(summary = "Xác nhận đăng ký", description = "Xác nhận đăng ký đang chờ và tạo bản ghi tham gia")
-    @PreAuthorize("hasPermission(T(com.casms.identity.enums.Permission).ACTIVITY_REGISTRATION)") @PostMapping("/registrations/{id}/confirm") public ApiResponse<RegistrationView> confirm(@Parameter(description = "ID đăng ký", required = true) @PathVariable UUID id,org.springframework.security.core.Authentication auth) { var p=(com.casms.security.principal.CasmsPrincipal)auth.getPrincipal();return ApiResponse.success(RegistrationView.of(service.confirmRegistration(id,p.getUserId(),p.isStaff()))); }
+    @PreAuthorize("hasAuthority('ACTIVITY_REGISTRATION')")
+    @PostMapping("/registrations/{id}/confirm")
+    public ApiResponse<RegistrationView> confirm(@Parameter(description = "ID đăng ký", required = true) @PathVariable UUID id, org.springframework.security.core.Authentication auth) {
+        var p = (com.casms.security.principal.CasmsPrincipal) auth.getPrincipal();
+        return ApiResponse.success(RegistrationView.of(service.confirmRegistration(id, p.getUserId(), p.isStaff())));
+    }
+
     @Operation(summary = "Cập nhật đăng ký", description = "Cập nhật số lượng hoặc ghi chú khi đăng ký còn ở trạng thái chờ")
-    @PreAuthorize("hasPermission(T(com.casms.identity.enums.Permission).ACTIVITY_REGISTRATION)") @PutMapping("/registrations/{id}") public ApiResponse<RegistrationView> updateRegistration(@Parameter(description = "ID đăng ký", required = true) @PathVariable UUID id,@jakarta.validation.Valid @RequestBody RegistrationUpdateRequest r,org.springframework.security.core.Authentication auth){var p=(com.casms.security.principal.CasmsPrincipal)auth.getPrincipal();return ApiResponse.success(RegistrationView.of(service.updatePending(id,r.quantity(),r.notes(),p.getUserId(),p.isStaff())));}
+    @PreAuthorize("hasAuthority('ACTIVITY_REGISTRATION')")
+    @PutMapping("/registrations/{id}")
+    public ApiResponse<RegistrationView> updateRegistration(@Parameter(description = "ID đăng ký", required = true) @PathVariable UUID id, @jakarta.validation.Valid @RequestBody RegistrationUpdateRequest r, org.springframework.security.core.Authentication auth) {
+        var p = (com.casms.security.principal.CasmsPrincipal) auth.getPrincipal();
+        return ApiResponse.success(RegistrationView.of(service.updatePending(id, r.quantity(), r.notes(), p.getUserId(), p.isStaff())));
+    }
+
     @Operation(summary = "Hủy đăng ký", description = "Hủy đăng ký tham gia kèm lý do tùy chọn")
-    @PreAuthorize("hasPermission(T(com.casms.identity.enums.Permission).ACTIVITY_REGISTRATION)") @PostMapping("/registrations/{id}/cancel") public ApiResponse<RegistrationView> cancel(@Parameter(description = "ID đăng ký", required = true) @PathVariable UUID id, @Parameter(description = "Lý do hủy") @RequestParam(required=false) String reason,org.springframework.security.core.Authentication auth) { var p=(com.casms.security.principal.CasmsPrincipal)auth.getPrincipal();return ApiResponse.success(RegistrationView.of(service.cancelRegistration(id,reason,p.getUserId(),p.isStaff()))); }
+    @PreAuthorize("hasAuthority('ACTIVITY_REGISTRATION')")
+    @PostMapping("/registrations/{id}/cancel")
+    public ApiResponse<RegistrationView> cancel(@Parameter(description = "ID đăng ký", required = true) @PathVariable UUID id, @Parameter(description = "Lý do hủy") @RequestParam(required = false) String reason, org.springframework.security.core.Authentication auth) {
+        var p = (com.casms.security.principal.CasmsPrincipal) auth.getPrincipal();
+        return ApiResponse.success(RegistrationView.of(service.cancelRegistration(id, reason, p.getUserId(), p.isStaff())));
+    }
+
     @Operation(summary = "Danh sách lượt tham gia", description = "Lấy danh sách bản ghi tham gia hoạt động")
-    @PreAuthorize("hasPermission(T(com.casms.identity.enums.Permission).ACTIVITY_ATTENDANCE)") @GetMapping("/participations") public ApiResponse<List<ParticipationView>> participations() { return ApiResponse.success(service.listParticipations().stream().map(ParticipationView::of).toList()); }
+    @PreAuthorize("hasAuthority('ACTIVITY_ATTENDANCE')")
+    @GetMapping("/participations")
+    public ApiResponse<List<ParticipationView>> participations() {
+        return ApiResponse.success(service.listParticipations().stream().map(ParticipationView::of).toList());
+    }
+
     @Operation(summary = "Chi tiết lượt tham gia", description = "Lấy trạng thái điểm danh của một lượt tham gia theo ID")
-    @PreAuthorize("hasPermission(T(com.casms.identity.enums.Permission).ACTIVITY_ATTENDANCE)") @GetMapping("/participations/{id}") public ApiResponse<ParticipationView> participation(@Parameter(description = "ID lượt tham gia", required = true) @PathVariable UUID id) { return ApiResponse.success(ParticipationView.of(service.participation(id))); }
+    @PreAuthorize("hasAuthority('ACTIVITY_ATTENDANCE')")
+    @GetMapping("/participations/{id}")
+    public ApiResponse<ParticipationView> participation(@Parameter(description = "ID lượt tham gia", required = true) @PathVariable UUID id) {
+        return ApiResponse.success(ParticipationView.of(service.participation(id)));
+    }
+
     @Operation(summary = "Cập nhật điểm danh", description = "Thực hiện check-in, checkout, complete hoặc no-show cho lượt tham gia")
-    @PreAuthorize("hasPermission(T(com.casms.identity.enums.Permission).ACTIVITY_ATTENDANCE)") @PostMapping("/participations/{id}/{action}") public ApiResponse<ParticipationView> attendance(@Parameter(description = "ID lượt tham gia", required = true) @PathVariable UUID id,@Parameter(description = "Hành động: check-in, checkout, complete hoặc no-show", required = true) @PathVariable String action) { return ApiResponse.success(ParticipationView.of(service.attendance(id,action))); }
+    @PreAuthorize("hasAuthority('ACTIVITY_ATTENDANCE')")
+    @PostMapping("/participations/{id}/{action}")
+    public ApiResponse<ParticipationView> attendance(@Parameter(description = "ID lượt tham gia", required = true) @PathVariable UUID id, @Parameter(description = "Hành động: check-in, checkout, complete hoặc no-show", required = true) @PathVariable String action) {
+        return ApiResponse.success(ParticipationView.of(service.attendance(id, action)));
+    }
     private static void apply(OnboardActivity a, ActivityRequest r) { a.setActivityCode(r.activityCode()); a.setActivityName(r.activityName()); a.setDescription(r.description()); a.setStartTime(r.startTime()); a.setEndTime(r.endTime()); a.setLocation(r.location()); a.setCapacity(r.capacity()); a.setPrice(r.price()); a.setCurrencyCode(r.currencyCode()); }
 }
