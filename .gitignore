@@ -23,3 +23,6 @@ logs/
 # OS
 .DS_Store
 Thumbs.db
+
+# Large ship model assets are deployed separately
+/model-assets/

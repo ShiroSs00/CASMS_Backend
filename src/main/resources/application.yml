@@ -1,6 +1,11 @@
-﻿  spring:
+  spring:
     application:
       name: CASMS
+
+    servlet:
+      multipart:
+        max-file-size: 2GB
+        max-request-size: 2GB
 
     datasource:
       url: jdbc:postgresql://localhost:5432/casms?stringtype=unspecified
@@ -15,9 +20,8 @@
       hibernate:
         naming:
           physical-strategy: org.hibernate.boot.model.naming.PhysicalNamingStrategyStandardImpl
-      # Keep existing development data when the application restarts.
-      # Controlled deployments should apply the versioned SQL migrations and validate the schema.
-      ddl-auto: create
+      # Preserve persisted assets and business data; apply versioned migrations before startup.
+      ddl-auto: validate
       show-sql: false
       properties:
         hibernate:
