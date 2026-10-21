@@ -7,6 +7,7 @@ D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\activity\service\Tour
 D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\booking\repository\BookingPostgresIntegrationTest.java
 D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\booking\service\BookingServiceTest.java
 D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\common\exception\GlobalExceptionHandlerTest.java
+D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\common\util\CodeGeneratorTest.java
 D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\identity\service\AuthServiceTest.java
 D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\identity\service\IdentityServiceTest.java
 D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\identity\service\PassengerBleIdentityServiceTest.java

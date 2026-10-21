@@ -13,6 +13,7 @@ import java.util.UUID;
 @Repository
 public interface OnboardActivityRepository extends JpaRepository<OnboardActivity, UUID> {
     Optional<OnboardActivity> findByActivityCode(String activityCode);
+    boolean existsByActivityCode(String activityCode);
     @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
     @org.springframework.data.jpa.repository.Query("select a from OnboardActivity a where a.onboardActivityId = :id")
     Optional<OnboardActivity> lockActivity(@org.springframework.data.repository.query.Param("id") UUID id);

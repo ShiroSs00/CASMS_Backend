@@ -38,14 +38,18 @@ public class CabinService {
 
     @Transactional
     public CabinSummaryResponse create(CabinCreateRequest request) {
-        Ship ship = shipRepository.findById(request.getShipId())
-                .orElseThrow(() -> new ResourceNotFoundException("Ship", request.getShipId()));
-
         Deck deck = deckRepository.findById(request.getDeckId())
                 .orElseThrow(() -> new ResourceNotFoundException("Deck", request.getDeckId()));
 
-        if (!deck.getShip().getShipId().equals(ship.getShipId())) {
-            throw new BusinessException("DECK_SHIP_MISMATCH", "The deck does not belong to the specified ship");
+        Ship ship;
+        if (request.getShipId() != null) {
+            ship = shipRepository.findById(request.getShipId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Ship", request.getShipId()));
+            if (!deck.getShip().getShipId().equals(ship.getShipId())) {
+                throw new BusinessException("DECK_SHIP_MISMATCH", "The deck does not belong to the specified ship");
+            }
+        } else {
+            ship = deck.getShip();
         }
 
         if (cabinRepository.existsByShipShipIdAndCabinNumber(ship.getShipId(), request.getCabinNumber())) {
@@ -59,14 +63,17 @@ public class CabinService {
             throw new BusinessException("INVALID_CABIN_NUMBER", "Cabin number is required");
         }
 
+        CabinStatus status = request.getStatus() == null ? CabinStatus.AVAILABLE : request.getStatus();
+        Boolean isAccessible = request.getIsAccessible() == null ? Boolean.FALSE : request.getIsAccessible();
+
         Cabin cabin = new Cabin();
         cabin.setShip(ship);
         cabin.setDeck(deck);
         cabin.setCabinNumber(request.getCabinNumber().trim());
         cabin.setCabinType(request.getCabinType());
         cabin.setCapacity(request.getCapacity());
-        cabin.setStatus(request.getStatus());
-        cabin.setIsAccessible(request.getIsAccessible());
+        cabin.setStatus(status);
+        cabin.setIsAccessible(isAccessible);
         applyModelTransform(cabin, request.getModelPositionX(), request.getModelPositionY(), request.getModelPositionZ(),
                 request.getModelRotationX(), request.getModelRotationY(), request.getModelRotationZ(),
                 request.getModelWidth(), request.getModelHeight(), request.getModelDepth());

@@ -39,6 +39,15 @@ public class ActivityService {
 
     public OnboardActivity createActivity(OnboardActivity a, UUID cruiseId) {
         a.setCruise(cruises.findById(cruiseId).orElseThrow(() -> missing("Cruise", cruiseId)));
+        if (a.getActivityCode() == null || a.getActivityCode().isBlank()) {
+            a.setActivityCode(com.casms.common.util.CodeGenerator.generate("ACTIVITY", activities.count() + 1, activities::existsByActivityCode));
+        }
+        if (a.getCurrencyCode() == null || a.getCurrencyCode().isBlank()) {
+            a.setCurrencyCode("USD");
+        }
+        if (a.getPrice() == null) {
+            a.setPrice(java.math.BigDecimal.ZERO);
+        }
         validateActivity(a, null);
         a.setStatus(OnboardActivityStatus.PLANNED);
         return activities.save(a);
@@ -88,21 +97,21 @@ public class ActivityService {
     public Registration getRegistration(UUID id,UUID userId,boolean staff){Registration r=registration(id);assertRegistrationOwner(r,userId,staff);return r;}
     public Registration register(UUID bookingPassengerId, UUID activityId, Integer quantity, UUID userId, boolean staff) {
         BookingPassenger bp = bookingPassengers.findById(bookingPassengerId).orElseThrow(() -> missing("Booking passenger", bookingPassengerId));
-        if (quantity==null || quantity<1) throw new IllegalArgumentException("Quantity must be positive");
+        int effectiveQuantity = (quantity == null || quantity < 1) ? 1 : quantity;
         assertBookingPassengerOwner(bp,userId,staff);
         if (bp.getBooking().getBookingStatus() != BookingStatus.Confirmed) throw new IllegalStateException("Booking is not confirmed");
         OnboardActivity a = activities.lockActivity(activityId).orElseThrow(() -> missing("Activity", activityId));
         if(!bp.getBooking().getCruise().getCruiseId().equals(a.getCruise().getCruiseId()))throw new IllegalStateException("Activity does not belong to the passenger's booking cruise");
         if (a.getStatus()!=OnboardActivityStatus.OPEN || !a.getEndTime().isAfter(Instant.now())) throw new IllegalStateException("Activity is not open for registration");
         if (registrations.existsByBookingPassenger_BookingPassengerIdAndOnboardActivity_OnboardActivityIdAndStatusIn(bookingPassengerId, activityId, List.of(RegistrationStatus.PENDING, RegistrationStatus.CONFIRMED))) throw new IllegalStateException("Passenger is already registered");
-        if (occupied(activityId) + quantity > a.getCapacity()) throw new IllegalStateException("Activity capacity exceeded");
-        Registration r=new Registration(); r.setPassenger(bp.getPassenger()); r.setBookingPassenger(bp); r.setOnboardActivity(a); r.setRegistrationTime(Instant.now()); r.setQuantity(quantity); r.setStatus(RegistrationStatus.PENDING);
+        if (occupied(activityId) + effectiveQuantity > a.getCapacity()) throw new IllegalStateException("Activity capacity exceeded");
+        Registration r=new Registration(); r.setPassenger(bp.getPassenger()); r.setBookingPassenger(bp); r.setOnboardActivity(a); r.setRegistrationTime(Instant.now()); r.setQuantity(effectiveQuantity); r.setStatus(RegistrationStatus.PENDING);
         Registration saved=registrations.save(r);
         if (occupied(activityId) >= a.getCapacity()) a.setStatus(OnboardActivityStatus.FULL);
         return saved;
     }
     public Registration registerExcursion(UUID bookingPassengerId,UUID excursionId,Integer quantity,UUID userId,boolean staff){
-        BookingPassenger bp=bookingPassengers.findById(bookingPassengerId).orElseThrow(()->missing("Booking passenger",bookingPassengerId));assertBookingPassengerOwner(bp,userId,staff);if(bp.getBooking().getBookingStatus()!=BookingStatus.Confirmed)throw new IllegalStateException("Booking is not confirmed");if(quantity==null||quantity<1)throw new IllegalArgumentException("Quantity must be positive");var e=excursions.lockById(excursionId).orElseThrow(()->missing("Excursion",excursionId));if(!bp.getBooking().getCruise().getCruiseId().equals(e.getCruiseStop().getItinerary().getCruise().getCruiseId()))throw new IllegalStateException("Excursion does not belong to the passenger's booking cruise");if(e.getStatus()!=ShoreExcursionStatus.OPEN||!e.getPlannedReturnTime().isAfter(Instant.now()))throw new IllegalStateException("Excursion is not open for registration");if(registrations.existsByBookingPassenger_BookingPassengerIdAndShoreExcursion_ShoreExcursionIdAndStatusIn(bookingPassengerId,excursionId,List.of(RegistrationStatus.PENDING,RegistrationStatus.CONFIRMED)))throw new IllegalStateException("Passenger is already registered");if(occupiedExcursion(excursionId)+quantity>e.getMaximumCapacity())throw new IllegalStateException("Excursion capacity exceeded");Registration r=new Registration();r.setPassenger(bp.getPassenger());r.setBookingPassenger(bp);r.setShoreExcursion(e);r.setRegistrationTime(Instant.now());r.setQuantity(quantity);r.setStatus(RegistrationStatus.PENDING);Registration saved=registrations.save(r);if(occupiedExcursion(excursionId)>=e.getMaximumCapacity())e.setStatus(ShoreExcursionStatus.FULL);return saved;
+        BookingPassenger bp=bookingPassengers.findById(bookingPassengerId).orElseThrow(()->missing("Booking passenger",bookingPassengerId));assertBookingPassengerOwner(bp,userId,staff);if(bp.getBooking().getBookingStatus()!=BookingStatus.Confirmed)throw new IllegalStateException("Booking is not confirmed");int effectiveQuantity=(quantity==null||quantity<1)?1:quantity;var e=excursions.lockById(excursionId).orElseThrow(()->missing("Excursion",excursionId));if(!bp.getBooking().getCruise().getCruiseId().equals(e.getCruiseStop().getItinerary().getCruise().getCruiseId()))throw new IllegalStateException("Excursion does not belong to the passenger's booking cruise");if(e.getStatus()!=ShoreExcursionStatus.OPEN||!e.getPlannedReturnTime().isAfter(Instant.now()))throw new IllegalStateException("Excursion is not open for registration");if(registrations.existsByBookingPassenger_BookingPassengerIdAndShoreExcursion_ShoreExcursionIdAndStatusIn(bookingPassengerId,excursionId,List.of(RegistrationStatus.PENDING,RegistrationStatus.CONFIRMED)))throw new IllegalStateException("Passenger is already registered");if(occupiedExcursion(excursionId)+effectiveQuantity>e.getMaximumCapacity())throw new IllegalStateException("Excursion capacity exceeded");Registration r=new Registration();r.setPassenger(bp.getPassenger());r.setBookingPassenger(bp);r.setShoreExcursion(e);r.setRegistrationTime(Instant.now());r.setQuantity(effectiveQuantity);r.setStatus(RegistrationStatus.PENDING);Registration saved=registrations.save(r);if(occupiedExcursion(excursionId)>=e.getMaximumCapacity())e.setStatus(ShoreExcursionStatus.FULL);return saved;
     }
     public Registration confirmRegistration(UUID id,UUID userId,boolean staff) {
         Registration r=registrations.lockById(id).orElseThrow(()->missing("Registration",id)); assertRegistrationOwner(r,userId,staff);if(r.getStatus()!=RegistrationStatus.PENDING)invalid();

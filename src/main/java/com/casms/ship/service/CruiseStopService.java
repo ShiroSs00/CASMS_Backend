@@ -10,6 +10,7 @@ import com.casms.ship.entity.Destination;
 import com.casms.ship.entity.Itinerary;
 import com.casms.ship.entity.ItineraryDay;
 import com.casms.ship.entity.Port;
+import com.casms.ship.enums.CruiseStopArrivalMethod;
 import com.casms.ship.enums.CruiseStopCallType;
 import com.casms.ship.enums.CruiseStopStatus;
 import com.casms.ship.enums.ItineraryStatus;
@@ -68,8 +69,22 @@ public class CruiseStopService {
         Port port = portRepository.findById(request.getPortId())
                 .orElseThrow(() -> new ResourceNotFoundException("Port", request.getPortId()));
 
-        if (cruiseStopRepository.existsByItineraryItineraryIdAndStopOrder(request.getItineraryId(), request.getStopOrder())) {
+        if (request.getStopOrder() == null) {
+            int maxOrder = cruiseStopRepository.findByItineraryItineraryIdOrderByStopOrderAsc(request.getItineraryId())
+                    .stream().mapToInt(CruiseStop::getStopOrder).max().orElse(0);
+            request.setStopOrder(maxOrder + 1);
+        } else if (cruiseStopRepository.existsByItineraryItineraryIdAndStopOrder(request.getItineraryId(), request.getStopOrder())) {
             throw new BusinessException("DUPLICATE_STOP_ORDER", "Stop order already exists in this itinerary");
+        }
+
+        if (request.getCallType() == null) {
+            request.setCallType(CruiseStopCallType.NORMAL);
+        }
+        if (request.getArrivalMethod() == null) {
+            request.setArrivalMethod(CruiseStopArrivalMethod.BERTH);
+        }
+        if (request.getAllAboardTime() == null && request.getPlannedDeparture() != null) {
+            request.setAllAboardTime(request.getPlannedDeparture().minus(30, java.time.temporal.ChronoUnit.MINUTES));
         }
 
         if (request.getPlannedDeparture().isBefore(request.getPlannedArrival()) || 

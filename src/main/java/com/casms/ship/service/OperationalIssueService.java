@@ -13,6 +13,7 @@ import com.casms.ship.entity.Cabin;
 import com.casms.ship.entity.Cruise;
 import com.casms.ship.entity.OperationalIssue;
 import com.casms.ship.entity.Ship;
+import com.casms.ship.enums.OperationalIssueSeverity;
 import com.casms.ship.enums.OperationalIssueStatus;
 import com.casms.ship.repository.CabinRepository;
 import com.casms.ship.repository.CruiseRepository;
@@ -46,14 +47,31 @@ public class OperationalIssueService {
             @Valid OperationalIssueRequest request,
             UUID reporterId) {
 
-        if (issueRepository.existsByIssueCode(request.getIssueCode().trim())) {
+        if (request.getIssueCode() == null || request.getIssueCode().isBlank()) {
+            request.setIssueCode(com.casms.common.util.CodeGenerator.generate("ISSUE", issueRepository.count() + 1, issueRepository::existsByIssueCode));
+        } else if (issueRepository.existsByIssueCode(request.getIssueCode().trim())) {
             throw new IllegalArgumentException("Issue code already exists: " + request.getIssueCode());
         }
 
+        if (request.getSeverity() == null) {
+            request.setSeverity(OperationalIssueSeverity.MEDIUM);
+        }
+
         User reporter = findUser(reporterId);
-        Ship ship = findShip(request.getShipId());
-        Cruise cruise = findOptionalCruise(request.getCruiseId());
         Cabin cabin = findOptionalCabin(request.getCabinId());
+        Cruise cruise = findOptionalCruise(request.getCruiseId());
+
+        UUID effectiveShipId = request.getShipId();
+        if (effectiveShipId == null) {
+            if (cabin != null && cabin.getShip() != null) {
+                effectiveShipId = cabin.getShip().getShipId();
+            } else if (cruise != null && cruise.getShip() != null) {
+                effectiveShipId = cruise.getShip().getShipId();
+            } else {
+                throw new IllegalArgumentException("Ship ID is required when cabin or cruise is not specified.");
+            }
+        }
+        Ship ship = findShip(effectiveShipId);
 
         validateLocation(ship, cruise, cabin);
 

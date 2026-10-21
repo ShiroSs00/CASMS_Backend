@@ -21,4 +21,6 @@ public interface BookingPassengerRepository extends JpaRepository<BookingPasseng
     long countActivePassengersByCruiseId(@Param("cruiseId") UUID cruiseId);
 
     java.util.List<BookingPassenger> findByBookingBookingId(UUID bookingId);
+    java.util.List<BookingPassenger> findByPassenger_PassengerId(UUID passengerId);
+    java.util.List<BookingPassenger> findByPassenger_User_UserId(UUID userId);
 }

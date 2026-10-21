@@ -40,21 +40,29 @@ public class DeckService {
         Ship ship = shipRepository.findById(request.getShipId())
                 .orElseThrow(() -> new ResourceNotFoundException("Ship", request.getShipId()));
 
-        if (request.getDeckNumber() == null || request.getDeckNumber() < 1) {
+        Integer deckNumber = request.getDeckNumber();
+        if (deckNumber == null) {
+            Integer maxDeck = deckRepository.findMaxDeckNumberByShipId(ship.getShipId());
+            deckNumber = (maxDeck != null ? maxDeck : 0) + 1;
+        } else if (deckNumber < 1) {
             throw new BusinessException("INVALID_DECK_NUMBER", "Deck number must be at least 1");
         }
-        if (request.getDeckNumber() > ship.getTotalDecks()) {
+        if (deckNumber > ship.getTotalDecks()) {
             throw new BusinessException("INVALID_DECK_NUMBER", "Deck number cannot exceed ship's total decks limit");
         }
 
-        if (deckRepository.existsByShipShipIdAndDeckNumber(ship.getShipId(), request.getDeckNumber())) {
+        if (deckRepository.existsByShipShipIdAndDeckNumber(ship.getShipId(), deckNumber)) {
             throw new BusinessException("DUPLICATE_DECK", "Deck number already exists on this ship");
         }
 
+        String deckName = (request.getDeckName() != null && !request.getDeckName().isBlank())
+                ? request.getDeckName().trim()
+                : "Deck " + deckNumber;
+
         Deck deck = new Deck();
         deck.setShip(ship);
-        deck.setDeckNumber(request.getDeckNumber());
-        deck.setDeckName(request.getDeckName());
+        deck.setDeckNumber(deckNumber);
+        deck.setDeckName(deckName);
         deck.setPriceMultiplier(request.getPriceMultiplier() != null ? request.getPriceMultiplier() : java.math.BigDecimal.valueOf(1.00));
         applyModelTransform(deck, request.getModelPositionX(), request.getModelPositionY(), request.getModelPositionZ(),
                 request.getModelRotationX(), request.getModelRotationY(), request.getModelRotationZ());

@@ -18,21 +18,17 @@ public class ItineraryCreateRequest {
     @NotNull(message = "Cruise ID is required")
     private UUID cruiseId;
 
-    @Schema(description = "Tên lịch trình", example = "Lịch trình Hạ Long 3N2Đ", requiredMode = Schema.RequiredMode.REQUIRED)
-    @NotBlank(message = "Itinerary name is required")
+    @Schema(description = "Tên lịch trình (Nếu để trống, tự động sinh theo tên chuyến đi)", example = "Lịch trình Hạ Long 3N2Đ")
     @Size(max = 200, message = "Itinerary name must not exceed 200 characters")
     private String itineraryName;
 
-    @Schema(description = "Ngày bắt đầu", example = "2026-01-15", requiredMode = Schema.RequiredMode.REQUIRED)
-    @NotNull(message = "Start date is required")
+    @Schema(description = "Ngày bắt đầu (Nếu để trống, tự động lấy từ ngày khởi hành của chuyến đi)", example = "2026-01-15")
     private LocalDate startDate;
 
-    @Schema(description = "Ngày kết thúc", example = "2026-01-17", requiredMode = Schema.RequiredMode.REQUIRED)
-    @NotNull(message = "End date is required")
+    @Schema(description = "Ngày kết thúc (Nếu để trống, tự động lấy từ ngày kết thúc của chuyến đi)", example = "2026-01-17")
     private LocalDate endDate;
 
-    @Schema(description = "Loại lịch trình", example = "ROUND_TRIP", requiredMode = Schema.RequiredMode.REQUIRED)
-    @NotNull(message = "Itinerary type is required")
+    @Schema(description = "Loại lịch trình (Nếu để trống, tự động suy luận: ROUND_TRIP nếu cảng đi = cảng về, ngược lại ONE_WAY)", example = "ROUND_TRIP")
     private ItineraryType itineraryType;
 
     @Deprecated(since = "2026-10", forRemoval = true)

@@ -13,16 +13,15 @@ import java.time.LocalDate;
 @Schema(description = "Yêu cầu tạo mới tàu")
 public class ShipCreateRequest {
 
-    @Schema(description = "Mã định danh nghiệp vụ duy nhất của tàu", example = "SH-001", requiredMode = Schema.RequiredMode.REQUIRED)
-    @NotBlank(message = "Ship code is required")
+    @Schema(description = "Mã định danh nghiệp vụ duy nhất của tàu (Nếu để trống, hệ thống tự động sinh theo định dạng SHIP-XXX)", example = "SHIP-001")
+    @jakarta.validation.constraints.Size(max = 20, message = "Ship code must not exceed 20 characters")
     private String shipCode;
 
     @Schema(description = "Tên tàu", example = "Ocean Voyager", requiredMode = Schema.RequiredMode.REQUIRED)
     @NotBlank(message = "Ship name is required")
     private String shipName;
 
-    @Schema(description = "Trạng thái hoạt động ban đầu", example = "ACTIVE", requiredMode = Schema.RequiredMode.REQUIRED)
-    @NotNull(message = "Status is required")
+    @Schema(description = "Trạng thái hoạt động ban đầu (mặc định ACTIVE)", example = "ACTIVE")
     private ShipStatus status;
 
     @Schema(description = "Tổng sức chứa hành khách tối đa", example = "2500", requiredMode = Schema.RequiredMode.REQUIRED)

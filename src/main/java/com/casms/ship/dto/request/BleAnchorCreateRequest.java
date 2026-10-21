@@ -10,15 +10,15 @@ import java.util.UUID;
 
 @Data
 public class BleAnchorCreateRequest {
-    @NotBlank @Size(max = 100) private String deviceCode;
+    @Size(max = 100) private String deviceCode;
     @Size(max = 120) private String deviceName;
     @Size(max = 150) private String bleIdentifier;
     @Size(max = 200) private String modelNodeKey;
     @NotNull private LocationDeviceType deviceType;
     @NotNull private UUID deckId;
-    @NotNull private Double x;
-    @NotNull private Double y;
-    @NotNull private Double z;
+    private Double x = 0.0;
+    private Double y = 0.0;
+    private Double z = 0.0;
     private Double rotationX;
     private Double rotationY;
     private Double rotationZ;

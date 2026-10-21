@@ -14,8 +14,7 @@ public class DeckCreateRequest {
     @NotNull(message = "Ship ID is required")
     private UUID shipId;
 
-    @Schema(description = "Số thứ tự tầng (bắt đầu từ 1, không vượt quá tổng số boong của tàu)", example = "3", requiredMode = Schema.RequiredMode.REQUIRED)
-    @NotNull(message = "Deck number is required")
+    @Schema(description = "Số thứ tự tầng (Nếu để trống, tự động tăng)", example = "3")
     @Min(value = 1, message = "Deck number must be at least 1")
     private Integer deckNumber;
 

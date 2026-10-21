@@ -37,8 +37,13 @@ public class ServicepackageService {
     @Transactional(readOnly=true) public List<com.casms.servicepackage.entity.Service> services() { return serviceRepo.findAll(); }
     @Transactional(readOnly=true) public com.casms.servicepackage.entity.Service service(UUID id) { return serviceRepo.findById(id).orElseThrow(()->missing("Service",id)); }
     public com.casms.servicepackage.entity.Service saveService(com.casms.servicepackage.entity.Service s) {
-        if(s.getServiceCode()==null||s.getServiceCode().isBlank()||s.getServiceName()==null||s.getServiceName().isBlank()) throw new IllegalArgumentException("Service code and name are required");
-        if(s.getPrice()!=null&&(s.getPrice().signum()<0||s.getCurrencyCode()==null||s.getCurrencyCode().isBlank())) throw new IllegalArgumentException("Non-negative service price requires currency");
+        if(s.getServiceCode()==null||s.getServiceCode().isBlank()) {
+            s.setServiceCode(com.casms.common.util.CodeGenerator.generate("SERVICE", serviceRepo.count() + 1, code -> serviceRepo.existsByServiceCodeAndServiceIdNot(code, s.getServiceId() == null ? new UUID(0,0) : s.getServiceId())));
+        }
+        if(s.getServiceName()==null||s.getServiceName().isBlank()) throw new IllegalArgumentException("Service code and name are required");
+        if(s.getCurrencyCode()==null||s.getCurrencyCode().isBlank()) s.setCurrencyCode("USD");
+        if(s.getPrice()==null) s.setPrice(BigDecimal.ZERO);
+        if(s.getPrice().signum()<0) throw new IllegalArgumentException("Non-negative service price requires currency");
         if(s.getCapacity()!=null&&s.getCapacity()<1) throw new IllegalArgumentException("Capacity must be positive");
         if(serviceRepo.existsByServiceCodeAndServiceIdNot(s.getServiceCode(),s.getServiceId()==null?new UUID(0,0):s.getServiceId())) throw new IllegalArgumentException("Service code already exists");
         if(s.getStatus()==null) s.setStatus(ServiceStatus.ACTIVE); return serviceRepo.save(s);
@@ -55,14 +60,33 @@ public class ServicepackageService {
 
     @Transactional(readOnly=true) public List<Product> products(){return productRepo.findAll();}
     @Transactional(readOnly=true) public Product product(UUID id){return productRepo.findById(id).orElseThrow(()->missing("Product",id));}
-    public Product saveProduct(Product p){ if(p.getProductCode()==null||p.getProductCode().isBlank()||p.getProductName()==null||p.getProductName().isBlank()) throw new IllegalArgumentException("Product code and name are required"); if(p.getUnitPrice()==null||p.getUnitPrice().signum()<0||p.getCurrencyCode()==null||p.getCurrencyCode().isBlank()) throw new IllegalArgumentException("Product requires a non-negative price and currency"); if(productRepo.existsByProductCodeAndProductIdNot(p.getProductCode(),p.getProductId()==null?new UUID(0,0):p.getProductId())) throw new IllegalArgumentException("Product code already exists"); if(p.getStatus()==null)p.setStatus(ProductStatus.ACTIVE); return productRepo.save(p); }
+    public Product saveProduct(Product p){
+        if(p.getProductCode()==null||p.getProductCode().isBlank()) {
+            p.setProductCode(com.casms.common.util.CodeGenerator.generate("PRODUCT", productRepo.count() + 1, code -> productRepo.existsByProductCodeAndProductIdNot(code, p.getProductId() == null ? new UUID(0,0) : p.getProductId())));
+        }
+        if(p.getProductName()==null||p.getProductName().isBlank()) throw new IllegalArgumentException("Product code and name are required");
+        if(p.getCurrencyCode()==null||p.getCurrencyCode().isBlank()) p.setCurrencyCode("USD");
+        if(p.getUnitPrice()==null||p.getUnitPrice().signum()<0) throw new IllegalArgumentException("Product requires a non-negative price and currency");
+        if(productRepo.existsByProductCodeAndProductIdNot(p.getProductCode(),p.getProductId()==null?new UUID(0,0):p.getProductId())) throw new IllegalArgumentException("Product code already exists");
+        if(p.getStatus()==null)p.setStatus(ProductStatus.ACTIVE); return productRepo.save(p);
+    }
     public Product productStatus(UUID id,String action){var p=product(id); switch(action){case "activate"->{if(p.getStatus()!=ProductStatus.INACTIVE)invalid();p.setStatus(ProductStatus.ACTIVE);} case "discontinue"->{if(p.getStatus()!=ProductStatus.ACTIVE)invalid();p.setStatus(ProductStatus.DISCONTINUED);} default->throw new IllegalArgumentException("Unknown product action");} return p;}
     public void deleteProduct(UUID id){productRepo.delete(product(id));}
     public void recordSale(UUID id){product(id); throw new UnsupportedOperationException("Product sales are not represented by a product sale/POS workflow in the current schema; use the established payment transaction workflow when a sale source is defined.");}
 
     @Transactional(readOnly=true) public List<TourPackage> packages(){return packageRepo.findAll();}
     @Transactional(readOnly=true) public TourPackage tourPackage(UUID id){return packageRepo.findById(id).orElseThrow(()->missing("Tour package",id));}
-    public TourPackage savePackage(TourPackage p){if(p.getPackageCode()==null||p.getPackageCode().isBlank()||p.getPackageName()==null||p.getPackageName().isBlank())throw new IllegalArgumentException("Package code and name are required"); if(p.getPrice()==null||p.getPrice().signum()<0||p.getCurrencyCode()==null||p.getCurrencyCode().isBlank())throw new IllegalArgumentException("Package requires non-negative price and currency"); if(p.getStartDate()!=null&&p.getEndDate()!=null&&p.getEndDate().isBefore(p.getStartDate()))throw new IllegalArgumentException("Package end date precedes start date"); if(packageRepo.existsByPackageCodeAndTourPackageIdNot(p.getPackageCode(),p.getTourPackageId()==null?new UUID(0,0):p.getTourPackageId()))throw new IllegalArgumentException("Package code already exists"); if(p.getStatus()==null)p.setStatus(TourPackageStatus.DRAFT); else if(p.getTourPackageId()==null&&p.getStatus()!=TourPackageStatus.DRAFT)throw new IllegalArgumentException("New packages must start as draft"); return packageRepo.save(p);}
+    public TourPackage savePackage(TourPackage p){
+        if(p.getPackageCode()==null||p.getPackageCode().isBlank()) {
+            p.setPackageCode(com.casms.common.util.CodeGenerator.generate("PACKAGE", packageRepo.count() + 1, code -> packageRepo.existsByPackageCodeAndTourPackageIdNot(code, p.getTourPackageId() == null ? new UUID(0,0) : p.getTourPackageId())));
+        }
+        if(p.getPackageName()==null||p.getPackageName().isBlank())throw new IllegalArgumentException("Package code and name are required");
+        if(p.getCurrencyCode()==null||p.getCurrencyCode().isBlank()) p.setCurrencyCode("USD");
+        if(p.getPrice()==null||p.getPrice().signum()<0)throw new IllegalArgumentException("Package requires non-negative price and currency");
+        if(p.getStartDate()!=null&&p.getEndDate()!=null&&p.getEndDate().isBefore(p.getStartDate()))throw new IllegalArgumentException("Package end date precedes start date");
+        if(packageRepo.existsByPackageCodeAndTourPackageIdNot(p.getPackageCode(),p.getTourPackageId()==null?new UUID(0,0):p.getTourPackageId()))throw new IllegalArgumentException("Package code already exists");
+        if(p.getStatus()==null)p.setStatus(TourPackageStatus.DRAFT); else if(p.getTourPackageId()==null&&p.getStatus()!=TourPackageStatus.DRAFT)throw new IllegalArgumentException("New packages must start as draft"); return packageRepo.save(p);
+    }
     public TourPackage packageStatus(UUID id,String action){var p=tourPackage(id); if("activate".equals(action)){if(p.getStatus()!=TourPackageStatus.DRAFT&&p.getStatus()!=TourPackageStatus.INACTIVE)invalid(); if(packageServiceRepo.countByTourPackage_TourPackageId(id)+packageActivityRepo.countByTourPackage_TourPackageId(id)+packageExcursionRepo.countByTourPackage_TourPackageId(id)==0)throw new IllegalStateException("Package requires at least one component before activation"); if(packageServiceRepo.findByTourPackage_TourPackageId(id).stream().anyMatch(x->x.getService().getStatus()!=ServiceStatus.ACTIVE))throw new IllegalStateException("Package contains an unavailable service");if(packageActivityRepo.findByTourPackage_TourPackageId(id).stream().anyMatch(x->x.getOnboardActivity().getStatus()!=com.casms.activity.enums.OnboardActivityStatus.PLANNED&&x.getOnboardActivity().getStatus()!=com.casms.activity.enums.OnboardActivityStatus.OPEN))throw new IllegalStateException("Package contains an unavailable activity");if(packageExcursionRepo.findByTourPackage_TourPackageId(id).stream().anyMatch(x->x.getShoreExcursion().getStatus()!=com.casms.activity.enums.ShoreExcursionStatus.PLANNED&&x.getShoreExcursion().getStatus()!=com.casms.activity.enums.ShoreExcursionStatus.OPEN))throw new IllegalStateException("Package contains an unavailable excursion");p.setStatus(TourPackageStatus.ACTIVE);}else if("deactivate".equals(action)){if(p.getStatus()!=TourPackageStatus.ACTIVE)invalid();p.setStatus(TourPackageStatus.INACTIVE);}else throw new IllegalArgumentException("Unknown package action"); return p;}
     public void deletePackage(UUID id){var p=tourPackage(id);if(p.getStatus()!=TourPackageStatus.DRAFT||assignmentRepo.existsByTourPackage_TourPackageId(id))throw new IllegalStateException("Only an unused draft package can be deleted");packageServiceRepo.deleteAll(packageServiceRepo.findByTourPackage_TourPackageId(id));packageActivityRepo.deleteAll(packageActivityRepo.findByTourPackage_TourPackageId(id));packageExcursionRepo.deleteAll(packageExcursionRepo.findByTourPackage_TourPackageId(id));packageRepo.delete(p);}
     @Transactional(readOnly=true) public BookingPassengerPackage packageAssignment(UUID bpId,UUID userId,boolean staff){BookingPassengerPackage a=assignmentRepo.findById(bpId).orElseThrow(()->missing("Package assignment",bpId));assertAssignmentAccess(a.getBookingPassenger(),userId,staff);return a;}

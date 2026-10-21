@@ -16,6 +16,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -39,20 +40,36 @@ public class ItineraryDayService {
             throw new BusinessException("ITINERARY_NOT_EDITABLE", "Cannot add days to itinerary with status: " + itinerary.getStatus());
         }
 
-        if (itineraryDayRepository.existsByItineraryItineraryIdAndDayNumber(itinerary.getItineraryId(), request.getDayNumber())) {
+        Integer dayNumber = request.getDayNumber();
+        if (dayNumber == null) {
+            int maxDay = itineraryDayRepository.findByItineraryItineraryIdOrderByDayNumberAsc(itinerary.getItineraryId())
+                    .stream().mapToInt(ItineraryDay::getDayNumber).max().orElse(0);
+            dayNumber = maxDay + 1;
+        } else if (itineraryDayRepository.existsByItineraryItineraryIdAndDayNumber(itinerary.getItineraryId(), dayNumber)) {
             throw new BusinessException("DUPLICATE_DAY_NUMBER", "Day number already exists in this itinerary");
         }
 
-        if (itineraryDayRepository.existsByItineraryItineraryIdAndDate(itinerary.getItineraryId(), request.getDate())) {
+        LocalDate date = request.getDate();
+        if (date == null) {
+            date = itinerary.getStartDate() != null ? itinerary.getStartDate().plusDays(dayNumber - 1) : LocalDate.now();
+        }
+        if (itineraryDayRepository.existsByItineraryItineraryIdAndDate(itinerary.getItineraryId(), date)) {
             throw new BusinessException("DUPLICATE_DATE", "Date already exists in this itinerary");
+        }
+
+        ItineraryDayType dayType = request.getDayType() == null ? ItineraryDayType.PORT_DAY : request.getDayType();
+
+        String tz = request.getShipTimeZoneId();
+        if (tz == null && itinerary.getCruise() != null && itinerary.getCruise().getDeparturePort() != null) {
+            tz = itinerary.getCruise().getDeparturePort().getTimeZoneId();
         }
 
         ItineraryDay day = new ItineraryDay();
         day.setItinerary(itinerary);
-        day.setDayNumber(request.getDayNumber());
-        day.setDate(request.getDate());
-        day.setDayType(request.getDayType());
-        day.setShipTimeZoneId(request.getShipTimeZoneId());
+        day.setDayNumber(dayNumber);
+        day.setDate(date);
+        day.setDayType(dayType);
+        day.setShipTimeZoneId(tz);
         day.setDescription(request.getDescription());
 
         day = itineraryDayRepository.save(day);

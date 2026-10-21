@@ -58,16 +58,32 @@ public class ItineraryService {
         User createdBy = userRepository.findById(creatorUserId)
                 .orElseThrow(() -> new ResourceNotFoundException("User", creatorUserId));
 
-        if (!request.getEndDate().isAfter(request.getStartDate())) {
+        LocalDate startDate = request.getStartDate() != null ? request.getStartDate()
+                : cruise.getDepartureDatetime().atZone(java.time.ZoneOffset.UTC).toLocalDate();
+        LocalDate endDate = request.getEndDate() != null ? request.getEndDate()
+                : cruise.getReturnDatetime().atZone(java.time.ZoneOffset.UTC).toLocalDate();
+
+        if (!endDate.isAfter(startDate)) {
             throw new BusinessException("INVALID_DATE_RANGE", "End date must be after start date");
+        }
+
+        String name = (request.getItineraryName() != null && !request.getItineraryName().isBlank())
+                ? request.getItineraryName().trim()
+                : "Lịch trình " + cruise.getCruiseName();
+
+        ItineraryType type = request.getItineraryType();
+        if (type == null) {
+            boolean samePort = cruise.getDeparturePort() != null && cruise.getReturnPort() != null
+                    && cruise.getDeparturePort().getPortId().equals(cruise.getReturnPort().getPortId());
+            type = samePort ? ItineraryType.ROUND_TRIP : ItineraryType.ONE_WAY;
         }
 
         Itinerary itinerary = new Itinerary();
         itinerary.setCruise(cruise);
-        itinerary.setItineraryName(request.getItineraryName());
-        itinerary.setStartDate(request.getStartDate());
-        itinerary.setEndDate(request.getEndDate());
-        itinerary.setItineraryType(request.getItineraryType());
+        itinerary.setItineraryName(name);
+        itinerary.setStartDate(startDate);
+        itinerary.setEndDate(endDate);
+        itinerary.setItineraryType(type);
         itinerary.setStatus(ItineraryStatus.DRAFT);
         itinerary.setCreatedByUser(createdBy);
 
