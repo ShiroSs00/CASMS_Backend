@@ -74,4 +74,7 @@ public class BookingPassengerResponse {
 
     @Schema(description = "Giá gói dịch vụ đã chốt", example = "250.0000")
     private BigDecimal agreedPackagePrice;
+
+    @Schema(description = "Cờ đánh dấu hành khách này có liên kết với tài khoản đang đăng nhập hay không", example = "true")
+    private Boolean ownedByCurrentUser;
 }

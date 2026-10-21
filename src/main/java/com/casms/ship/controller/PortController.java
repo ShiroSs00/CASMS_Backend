@@ -43,14 +43,14 @@ public class PortController {
     }
 
     @Operation(summary = "Danh sách cảng hoạt động", description = "Lấy danh sách tất cả cảng đang ACTIVE (không phân trang)")
-    @PreAuthorize("hasAuthority('PORT_READ')")
+    @PreAuthorize("permitAll()")
     @GetMapping("/active")
     public ApiResponse<List<PortResponse>> listActive() {
         return ApiResponse.success(service.listAllActive());
     }
 
     @Operation(summary = "Chi tiết cảng", description = "Lấy thông tin chi tiết của một cảng theo ID")
-    @PreAuthorize("hasAuthority('PORT_READ')")
+    @PreAuthorize("permitAll()")
     @GetMapping("/{portId}")
     public ApiResponse<PortResponse> detail(
             @Parameter(description = "ID của cảng", required = true) @PathVariable UUID portId) {

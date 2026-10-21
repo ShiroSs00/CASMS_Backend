@@ -3,6 +3,27 @@
 -- Fix role check constraints & insert default users and permissions for CASMS
 -- ==============================================================================
 
+-- 0. TẠO CÁC BẢNG QUYỀN VÀ USER NẾU CHƯA CÓ (TRÁNH PHỤ THUỘC HIBERNATE SCHEMA GENERATION)
+CREATE TABLE IF NOT EXISTS "RolePermission" (
+    "role" varchar(50) PRIMARY KEY NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS "RolePermissionMapping" (
+    "role" varchar(50) NOT NULL,
+    "permission" varchar(100) NOT NULL,
+    PRIMARY KEY ("role", "permission"),
+    CONSTRAINT "fk_role_permission_mapping_role" 
+        FOREIGN KEY ("role") REFERENCES "RolePermission" ("role") ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS "UserRole" (
+    "user_id" uuid NOT NULL,
+    "role" varchar(50) NOT NULL,
+    PRIMARY KEY ("user_id", "role"),
+    CONSTRAINT "fk_user_role_user_id" 
+        FOREIGN KEY ("user_id") REFERENCES "User" ("user_id") ON DELETE CASCADE
+);
+
 -- 1. SỬA CÁC CHECK CONSTRAINTS DO HIBERNATE TẠO THIẾU ENUM MỚI
 ALTER TABLE "UserRole" DROP CONSTRAINT IF EXISTS "UserRole_role_check";
 ALTER TABLE "UserRole" ADD CONSTRAINT "UserRole_role_check" CHECK (

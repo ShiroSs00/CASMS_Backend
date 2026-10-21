@@ -681,6 +681,26 @@ CREATE TABLE "User" (
   "updated_at" timestamptz NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS "RolePermission" (
+  "role" varchar(50) PRIMARY KEY NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS "RolePermissionMapping" (
+  "role" varchar(50) NOT NULL,
+  "permission" varchar(100) NOT NULL,
+  PRIMARY KEY ("role", "permission"),
+  CONSTRAINT "fk_role_permission_mapping_role" 
+    FOREIGN KEY ("role") REFERENCES "RolePermission" ("role") ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS "UserRole" (
+  "user_id" uuid NOT NULL,
+  "role" varchar(50) NOT NULL,
+  PRIMARY KEY ("user_id", "role"),
+  CONSTRAINT "fk_user_role_user_id" 
+    FOREIGN KEY ("user_id") REFERENCES "User" ("user_id") ON DELETE CASCADE
+);
+
 CREATE TABLE "Passenger" (
   "passenger_id" uuid PRIMARY KEY NOT NULL,
   "user_id" uuid UNIQUE,

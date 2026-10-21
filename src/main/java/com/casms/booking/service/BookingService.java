@@ -283,8 +283,17 @@ public class BookingService {
         for (PassengerBookingItemRequest pReq : request.getPassengers()) {
             Cabin cabin = validatedCabins.get(pReq.getCabinId());
 
-            // Lưu hồ sơ Passenger
-            Passenger passenger = new Passenger();
+            // Lưu hồ sơ Passenger (nếu là hành khách đại diện đầu tiên và có bookedByUser thì liên kết user)
+            Passenger passenger;
+            if (representative == null && bookedByUser != null) {
+                passenger = passengerRepository.findByUser_UserId(bookedByUser.getUserId()).orElseGet(() -> {
+                    Passenger p = new Passenger();
+                    p.setUser(bookedByUser);
+                    return p;
+                });
+            } else {
+                passenger = new Passenger();
+            }
             passenger.setFullName(pReq.getFullName().trim());
             passenger.setDateOfBirth(pReq.getDateOfBirth());
             passenger.setNationality(pReq.getNationality() != null ? pReq.getNationality().trim().toUpperCase() : null);
@@ -562,6 +571,11 @@ public class BookingService {
                 pRes.setDocumentNumber(p.getDocumentNumberProtected());
                 pRes.setEmail(p.getEmail());
                 pRes.setPhoneNumber(p.getPhoneNumber());
+                boolean owned = (p.getUser() != null && booking.getBookedByUser() != null
+                        && p.getUser().getUserId().equals(booking.getBookedByUser().getUserId()));
+                pRes.setOwnedByCurrentUser(owned);
+            } else {
+                pRes.setOwnedByCurrentUser(false);
             }
 
             pRes.setParticipationStatus(bp.getParticipationStatus());

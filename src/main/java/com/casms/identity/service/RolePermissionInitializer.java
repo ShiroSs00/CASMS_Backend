@@ -439,6 +439,8 @@ public class RolePermissionInitializer implements CommandLineRunner {
 
                 // Xem chuyến tàu, hải trình, lịch trình và lịch sử thay đổi
                 Permission.CRUISE_READ,
+                Permission.CABIN_READ,
+                Permission.DECK_READ,
                 Permission.ITINERARY_READ,
                 Permission.ITINERARY_DAY_READ,
                 Permission.CRUISE_STOP_READ,
