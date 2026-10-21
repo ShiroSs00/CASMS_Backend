@@ -571,7 +571,13 @@ public class BookingService {
                 pRes.setDocumentNumber(p.getDocumentNumberProtected());
                 pRes.setEmail(p.getEmail());
                 pRes.setPhoneNumber(p.getPhoneNumber());
-                boolean owned = (p.getUser() != null && booking.getBookedByUser() != null
+                UUID currentUserId = null;
+                var auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+                if (auth != null && auth.getPrincipal() instanceof com.casms.security.principal.CasmsPrincipal principal) {
+                    currentUserId = principal.getUserId();
+                }
+                boolean owned = (p.getUser() != null && currentUserId != null && p.getUser().getUserId().equals(currentUserId))
+                        || (p.getUser() != null && currentUserId == null && booking.getBookedByUser() != null
                         && p.getUser().getUserId().equals(booking.getBookedByUser().getUserId()));
                 pRes.setOwnedByCurrentUser(owned);
             } else {

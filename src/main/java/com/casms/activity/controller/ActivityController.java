@@ -46,8 +46,8 @@ public class ActivityController {
             String location, Integer capacity, BigDecimal price, String currencyCode, String status, UUID cruiseId) {
         static ActivityView of(OnboardActivity a) { return new ActivityView(a.getOnboardActivityId(), a.getActivityCode(), a.getActivityName(), a.getDescription(), a.getStartTime(), a.getEndTime(), a.getLocation(), a.getCapacity(), a.getPrice(), a.getCurrencyCode(), a.getStatus().name(), a.getCruise().getCruiseId()); }
     }
-    public record RegistrationView(UUID id, UUID passengerId, UUID bookingPassengerId, UUID activityId,UUID excursionId, Integer quantity, String status, Instant registeredAt) {
-        static RegistrationView of(Registration r) { return new RegistrationView(r.getRegistrationId(), r.getPassenger().getPassengerId(), r.getBookingPassenger().getBookingPassengerId(), r.getOnboardActivity()==null?null:r.getOnboardActivity().getOnboardActivityId(),r.getShoreExcursion()==null?null:r.getShoreExcursion().getShoreExcursionId(), r.getQuantity(), r.getStatus().name(), r.getRegistrationTime()); }
+    public record RegistrationView(UUID id, UUID passengerId, UUID bookingPassengerId, UUID activityId, UUID excursionId, Integer quantity, String status, String notes, Instant registeredAt) {
+        static RegistrationView of(Registration r) { return new RegistrationView(r.getRegistrationId(), r.getPassenger().getPassengerId(), r.getBookingPassenger().getBookingPassengerId(), r.getOnboardActivity()==null?null:r.getOnboardActivity().getOnboardActivityId(), r.getShoreExcursion()==null?null:r.getShoreExcursion().getShoreExcursionId(), r.getQuantity(), r.getStatus().name(), r.getNotes(), r.getRegistrationTime()); }
     }
     public record ParticipationView(UUID id, UUID registrationId, String status, Instant checkInTime, Instant checkOutTime) {
         static ParticipationView of(Participation p) { return new ParticipationView(p.getParticipationId(), p.getRegistration().getRegistrationId(), p.getStatus().name(), p.getCheckInTime(), p.getCheckOutTime()); }

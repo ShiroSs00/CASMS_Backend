@@ -58,6 +58,12 @@ public class SecurityConfig {
                                 "/destinations/**",
                                 "/ports",
                                 "/ports/**",
+                                "/ships/**",
+                                "/itineraries",
+                                "/itineraries/**",
+                                "/cruise-stops/**",
+                                "/decks/**",
+                                "/cabins/**",
                                 "/servicepackage/packages",
                                 "/servicepackage/packages/**"
                         ).permitAll()
