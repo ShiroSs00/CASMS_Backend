@@ -9,6 +9,7 @@ import com.casms.identity.entity.User;
 import com.casms.identity.enums.Permission;
 import com.casms.identity.enums.Role;
 import com.casms.identity.enums.UserStatus;
+import com.casms.identity.repository.PassengerRepository;
 import com.casms.identity.repository.RolePermissionRepository;
 import com.casms.identity.repository.UserRepository;
 import com.casms.security.jwt.JwtService;
@@ -38,6 +39,9 @@ class AuthServiceTest {
 
     @Mock
     private RolePermissionRepository rolePermissionRepository;
+
+    @Mock
+    private PassengerRepository passengerRepository;
 
     @Mock
     private PasswordEncoder passwordEncoder;

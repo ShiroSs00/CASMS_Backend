@@ -143,9 +143,11 @@ public class AuthService {
     public UserMeResponse getCurrentUser(CasmsPrincipal principal) {
         User user = principal.getUser();
         User freshUser = userRepository.findById(user.getUserId()).orElse(user);
-        UUID passengerId = passengerRepository.findByUser_UserId(freshUser.getUserId())
-                .map(Passenger::getPassengerId)
-                .orElse(null);
+        UUID passengerId = (passengerRepository != null)
+                ? passengerRepository.findByUser_UserId(freshUser.getUserId())
+                        .map(Passenger::getPassengerId)
+                        .orElse(null)
+                : null;
         return UserMeResponse.builder()
                 .userId(freshUser.getUserId())
                 .username(freshUser.getUsername())
