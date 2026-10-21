@@ -44,14 +44,14 @@ public class DestinationController {
     }
 
     @Operation(summary = "Danh sách điểm đến hoạt động", description = "Lấy danh sách tất cả điểm đến đang ACTIVE (không phân trang)")
-    @PreAuthorize("hasAuthority('DESTINATION_READ')")
+    @PreAuthorize("permitAll()")
     @GetMapping("/active")
     public ApiResponse<List<DestinationResponse>> listActive() {
         return ApiResponse.success(service.listAllActive());
     }
 
     @Operation(summary = "Chi tiết điểm đến", description = "Lấy thông tin chi tiết của một điểm đến theo ID")
-    @PreAuthorize("hasAuthority('DESTINATION_READ')")
+    @PreAuthorize("permitAll()")
     @GetMapping("/{destinationId}")
     public ApiResponse<DestinationResponse> detail(
             @Parameter(description = "ID của điểm đến", required = true) @PathVariable UUID destinationId) {

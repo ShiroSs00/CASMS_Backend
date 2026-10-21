@@ -54,6 +54,16 @@ public class SecurityConfig {
                         .requestMatchers(org.springframework.http.HttpMethod.GET,
                                 "/cruise",
                                 "/cruise/**",
+                                "/destinations",
+                                "/destinations/**",
+                                "/ports",
+                                "/ports/**",
+                                "/ships/**",
+                                "/itineraries",
+                                "/itineraries/**",
+                                "/cruise-stops/**",
+                                "/decks/**",
+                                "/cabins/**",
                                 "/servicepackage/packages",
                                 "/servicepackage/packages/**"
                         ).permitAll()

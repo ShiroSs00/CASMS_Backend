@@ -3,7 +3,9 @@ package com.casms.identity.service;
 import com.casms.common.exception.BusinessException;
 import com.casms.identity.dto.LoginRequest;
 import com.casms.identity.dto.LoginResponse;
+import com.casms.identity.entity.Passenger;
 import com.casms.identity.entity.User;
+import com.casms.identity.repository.PassengerRepository;
 import com.casms.identity.repository.UserRepository;
 import com.casms.security.jwt.JwtService;
 import com.casms.identity.dto.UserMeResponse;
@@ -32,6 +34,7 @@ public class AuthService {
 
     private final UserRepository userRepository;
     private final RolePermissionRepository rolePermissionRepository;
+    private final PassengerRepository passengerRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final AuthenticationManager authenticationManager;
@@ -140,6 +143,11 @@ public class AuthService {
     public UserMeResponse getCurrentUser(CasmsPrincipal principal) {
         User user = principal.getUser();
         User freshUser = userRepository.findById(user.getUserId()).orElse(user);
+        UUID passengerId = (passengerRepository != null)
+                ? passengerRepository.findByUser_UserId(freshUser.getUserId())
+                        .map(Passenger::getPassengerId)
+                        .orElse(null)
+                : null;
         return UserMeResponse.builder()
                 .userId(freshUser.getUserId())
                 .username(freshUser.getUsername())
@@ -147,6 +155,7 @@ public class AuthService {
                 .status(freshUser.getStatus())
                 .roles(freshUser.getRoles())
                 .effectivePermissions(getEffectivePermissions(freshUser))
+                .passengerId(passengerId)
                 .build();
     }
 }

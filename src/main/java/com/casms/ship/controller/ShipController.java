@@ -48,7 +48,7 @@ public class ShipController {
     }
 
     @Operation(summary = "Chi tiết tàu", description = "Xem thông tin chi tiết của một tàu theo ID")
-    @PreAuthorize("hasAuthority('SHIP_READ')")
+    @PreAuthorize("permitAll()")
     @GetMapping("/{shipId}")
     public ApiResponse<ShipResponse> detail(
             @Parameter(description = "ID của tàu", required = true) @PathVariable UUID shipId) {

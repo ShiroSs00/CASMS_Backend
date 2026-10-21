@@ -40,7 +40,7 @@ public class CruiseController {
     }
 
     @Operation(summary = "Danh sách chuyến đi", description = "Lấy danh sách các chuyến đi (hỗ trợ phân trang và lọc theo trạng thái, tàu, loại chuyến)")
-    @PreAuthorize("hasAuthority('CRUISE_READ') or authentication == null or !isAuthenticated()")
+    @PreAuthorize("permitAll()")
     @GetMapping
     public ApiResponse<Page<CruiseResponse>> list(
             @Parameter(description = "Lọc theo trạng thái chuyến đi") @RequestParam(required = false) CruiseStatus status,
@@ -54,7 +54,7 @@ public class CruiseController {
     }
 
     @Operation(summary = "Chi tiết chuyến đi", description = "Lấy thông tin chi tiết của một chuyến đi theo ID")
-    @PreAuthorize("hasAuthority('CRUISE_READ') or authentication == null or !isAuthenticated()")
+    @PreAuthorize("permitAll()")
     @GetMapping("/{cruiseId}")
     public ApiResponse<CruiseResponse> detail(
             @Parameter(description = "ID chuyến đi", required = true) @PathVariable UUID cruiseId,

@@ -48,14 +48,14 @@ public class ItineraryController {
     }
 
     @Operation(summary = "Danh sách lịch trình", description = "Lấy danh sách các lịch trình (hỗ trợ phân trang)")
-    @PreAuthorize("hasAuthority('ITINERARY_READ')")
+    @PreAuthorize("permitAll()")
     @GetMapping
     public ApiResponse<Page<ItineraryResponse>> list(Pageable pageable) {
         return ApiResponse.success(service.list(pageable));
     }
 
     @Operation(summary = "Chi tiết lịch trình", description = "Lấy thông tin chi tiết của một lịch trình theo ID")
-    @PreAuthorize("hasAuthority('ITINERARY_READ')")
+    @PreAuthorize("permitAll()")
     @GetMapping("/{itineraryId}")
     public ApiResponse<ItineraryResponse> detail(
             @Parameter(description = "ID của lịch trình", required = true) @PathVariable UUID itineraryId) {
@@ -175,7 +175,7 @@ public class ItineraryController {
     }
 
     @Operation(summary = "Danh sách ngày trong lịch trình", description = "Lấy danh sách tất cả ngày trong một lịch trình")
-    @PreAuthorize("hasAuthority('ITINERARY_READ')")
+    @PreAuthorize("permitAll()")
     @GetMapping("/{itineraryId}/days")
     public ApiResponse<List<ItineraryDayResponse>> listDays(
             @Parameter(description = "ID của lịch trình", required = true) @PathVariable UUID itineraryId) {

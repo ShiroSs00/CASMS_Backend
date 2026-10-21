@@ -36,7 +36,7 @@ public class CruiseStopController {
     }
 
     @Operation(summary = "Danh sách điểm dừng theo lịch trình", description = "Lấy danh sách tất cả điểm dừng trong một lịch trình (đã sắp xếp theo thứ tự)")
-    @PreAuthorize("hasAuthority('CRUISE_STOP_READ')")
+    @PreAuthorize("permitAll()")
     @GetMapping("/by-itinerary/{itineraryId}")
     public ApiResponse<List<CruiseStopResponse>> listByItinerary(
             @Parameter(description = "ID của lịch trình", required = true) @PathVariable UUID itineraryId) {
@@ -44,7 +44,7 @@ public class CruiseStopController {
     }
 
     @Operation(summary = "Chi tiết điểm dừng", description = "Lấy thông tin chi tiết của một điểm dừng theo ID")
-    @PreAuthorize("hasAuthority('CRUISE_STOP_READ')")
+    @PreAuthorize("permitAll()")
     @GetMapping("/{cruiseStopId}")
     public ApiResponse<CruiseStopResponse> detail(
             @Parameter(description = "ID của điểm dừng", required = true) @PathVariable UUID cruiseStopId) {
