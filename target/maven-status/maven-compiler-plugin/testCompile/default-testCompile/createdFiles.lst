@@ -4,6 +4,7 @@ com\casms\activity\controller\SupplierControllerTest.class
 com\casms\activity\service\TourGroupServiceTest.class
 com\casms\ship\service\OperationalIssueServiceTest.class
 com\casms\activity\service\ActivityRegistrationWorkflowTest.class
+com\casms\common\util\CodeGeneratorTest.class
 com\casms\servicepackage\service\ServiceRequestServiceTest.class
 com\casms\ship\service\ItineraryServiceTest.class
 com\casms\ship\service\CruiseRegulationServiceTest.class

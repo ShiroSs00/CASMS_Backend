@@ -14,8 +14,7 @@ import java.util.UUID;
 @Schema(description = "Yêu cầu tạo mới phòng/cabin")
 public class CabinCreateRequest {
 
-    @Schema(description = "ID của tàu sở hữu phòng", example = "3fa85f64-5717-4562-b3fc-2c963f66afa6", requiredMode = Schema.RequiredMode.REQUIRED)
-    @NotNull(message = "Ship ID is required")
+    @Schema(description = "ID của tàu sở hữu phòng (Nếu để trống, tự động lấy từ thông tin tầng Deck)", example = "3fa85f64-5717-4562-b3fc-2c963f66afa6")
     private UUID shipId;
 
     @Schema(description = "ID của tầng chứa phòng này", example = "3fa85f64-5717-4562-b3fc-2c963f66afa6", requiredMode = Schema.RequiredMode.REQUIRED)
@@ -35,12 +34,10 @@ public class CabinCreateRequest {
     @Min(value = 1, message = "Capacity must be at least 1")
     private Integer capacity;
 
-    @Schema(description = "Trạng thái ban đầu của phòng (AVAILABLE, OCCUPIED, MAINTENANCE, OUT_OF_SERVICE)", example = "AVAILABLE", requiredMode = Schema.RequiredMode.REQUIRED)
-    @NotNull(message = "Status is required")
+    @Schema(description = "Trạng thái ban đầu của phòng (mặc định AVAILABLE)", example = "AVAILABLE")
     private CabinStatus status;
 
-    @Schema(description = "Phòng có hỗ trợ người khuyết tật/tiếp cận xe lăn hay không", example = "true", requiredMode = Schema.RequiredMode.REQUIRED)
-    @NotNull(message = "Accessibility flag is required")
+    @Schema(description = "Phòng có hỗ trợ người khuyết tật/tiếp cận xe lăn hay không (mặc định false)", example = "false")
     private Boolean isAccessible;
 
     private Double modelPositionX;

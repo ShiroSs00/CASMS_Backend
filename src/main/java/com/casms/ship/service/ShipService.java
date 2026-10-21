@@ -41,11 +41,17 @@ public class ShipService {
 
     @Transactional
     public ShipResponse create(ShipCreateRequest request) {
-        String shipCode = request.getShipCode().trim();
         String shipName = request.getShipName().trim();
-        if (shipRepository.existsByShipCode(shipCode)) {
-            throw new BusinessException("DUPLICATE_SHIP_CODE", "Ship code already exists: " + shipCode);
+        String shipCode;
+        if (request.getShipCode() == null || request.getShipCode().isBlank()) {
+            shipCode = com.casms.common.util.CodeGenerator.generate("SHIP", shipRepository.count() + 1, shipRepository::existsByShipCode);
+        } else {
+            shipCode = request.getShipCode().trim();
+            if (shipRepository.existsByShipCode(shipCode)) {
+                throw new BusinessException("DUPLICATE_SHIP_CODE", "Ship code already exists: " + shipCode);
+            }
         }
+        ShipStatus status = request.getStatus() == null ? ShipStatus.ACTIVE : request.getStatus();
         validateShipDimensions(request.getTotalCapacity(), request.getTotalDecks());
         validateCommissionDate(request.getCommissionDate());
 
@@ -53,7 +59,7 @@ public class ShipService {
         Ship ship = new Ship();
         ship.setShipCode(shipCode);
         ship.setShipName(shipName);
-        ship.setStatus(request.getStatus());
+        ship.setStatus(status);
         ship.setTotalCapacity(request.getTotalCapacity());
         ship.setTotalDecks(request.getTotalDecks());
         ship.setCommissionDate(request.getCommissionDate());

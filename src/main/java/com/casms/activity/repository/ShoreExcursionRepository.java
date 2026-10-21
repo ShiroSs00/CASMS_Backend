@@ -18,6 +18,7 @@ public interface ShoreExcursionRepository
     java.util.Optional<ShoreExcursion> lockById(@org.springframework.data.repository.query.Param("id") UUID id);
 
     boolean existsBySupplier_SupplierId(UUID supplierId);
+    boolean existsByExcursionCode(String excursionCode);
 
     boolean existsByExcursionCodeIgnoreCaseAndCruiseStop_CruiseStopId(
             String excursionCode,

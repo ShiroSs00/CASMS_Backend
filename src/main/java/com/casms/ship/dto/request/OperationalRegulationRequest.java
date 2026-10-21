@@ -15,7 +15,6 @@ import java.time.Instant;
 @Setter
 public class OperationalRegulationRequest {
 
-    @NotBlank(message = "Regulation code is required")
     @Size(max = 30, message = "Regulation code must not exceed 30 characters")
     private String regulationCode;
 

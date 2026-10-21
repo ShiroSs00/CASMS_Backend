@@ -15,13 +15,11 @@ import java.util.UUID;
 @Setter
 public class OperationalIssueRequest {
 
-    @NotBlank
     @Size(max = 30)
     private String issueCode;
 
     private UUID cruiseId;
 
-    @NotNull
     private UUID shipId;
 
     private UUID cabinId;
@@ -29,7 +27,6 @@ public class OperationalIssueRequest {
     @NotNull
     private OperationalIssueType issueType;
 
-    @NotNull
     private OperationalIssueSeverity severity;
 
     @NotBlank

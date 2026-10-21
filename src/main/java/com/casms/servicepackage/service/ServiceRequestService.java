@@ -39,10 +39,21 @@ public class ServiceRequestService {
   Passenger passenger=passengers.findByUser_UserId(userId).orElseThrow(()->new IllegalStateException("Authenticated user has no passenger profile"));
   var s=services.findById(serviceId).orElseThrow(()->missing("Service",serviceId));
   if(s.getStatus()!=com.casms.servicepackage.enums.ServiceStatus.ACTIVE) throw new IllegalStateException("Service is not available");
-  if(quantity==null||quantity<1) throw new IllegalArgumentException("Quantity must be positive");
-  if(s.getCapacity()!=null&&quantity>s.getCapacity())throw new IllegalStateException("Requested quantity exceeds service capacity");
-  BookingPassenger bp=null; if(bookingPassengerId!=null){bp=bookingPassengers.findById(bookingPassengerId).orElseThrow(()->missing("Booking passenger",bookingPassengerId)); assertSamePassenger(bp,passenger); if(bp.getBooking().getBookingStatus()!=BookingStatus.Confirmed)throw new IllegalStateException("Booking is not confirmed");}
-  ServiceRequest r=new ServiceRequest(); r.setPassenger(passenger); r.setService(s); r.setBookingPassenger(bp); r.setBooking(bp==null?null:bp.getBooking()); r.setQuantity(quantity); r.setNote(note); r.setRequestTime(Instant.now()); r.setStatus(ServiceRequestStatus.REQUESTED); return requests.save(r);
+  int effectiveQuantity = (quantity==null||quantity<1) ? 1 : quantity;
+  if(s.getCapacity()!=null&&effectiveQuantity>s.getCapacity())throw new IllegalStateException("Requested quantity exceeds service capacity");
+  BookingPassenger bp=null;
+  if(bookingPassengerId!=null){
+      bp=bookingPassengers.findById(bookingPassengerId).orElseThrow(()->missing("Booking passenger",bookingPassengerId));
+      assertSamePassenger(bp,passenger);
+      if(bp.getBooking().getBookingStatus()!=BookingStatus.Confirmed)throw new IllegalStateException("Booking is not confirmed");
+  } else {
+      var candidates = bookingPassengers.findByPassenger_PassengerId(passenger.getPassengerId())
+          .stream().filter(b -> b.getBooking().getBookingStatus() == BookingStatus.Confirmed).toList();
+      if (candidates.size() == 1) {
+          bp = candidates.get(0);
+      }
+  }
+  ServiceRequest r=new ServiceRequest(); r.setPassenger(passenger); r.setService(s); r.setBookingPassenger(bp); r.setBooking(bp==null?null:bp.getBooking()); r.setQuantity(effectiveQuantity); r.setNote(note); r.setRequestTime(Instant.now()); r.setStatus(ServiceRequestStatus.REQUESTED); return requests.save(r);
  }
  public ServiceRequest updatePending(UUID id, UUID userId, boolean staff, Integer quantity, String note) {
   ServiceRequest r=requests.lockById(id).orElseThrow(()->missing("Service request",id));assertOwner(r,userId,staff); if(r.getStatus()!=ServiceRequestStatus.REQUESTED)throw new IllegalStateException("Only requested service requests may be edited");

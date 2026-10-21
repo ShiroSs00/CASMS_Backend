@@ -26,15 +26,15 @@ public class ActivityController {
 
     @Schema(name = "ActivityRequest", description = "Thông tin tạo hoặc cập nhật hoạt động trên tàu")
     public record ActivityRequest(
-            @Schema(description = "Mã hoạt động", example = "ACT-YOGA-01") @NotBlank @jakarta.validation.constraints.Size(max=50) String activityCode,
+            @Schema(description = "Mã hoạt động (Nếu để trống, hệ thống tự động sinh theo định dạng ACTIVITY-XXX)", example = "ACTIVITY-001") @jakarta.validation.constraints.Size(max=50) String activityCode,
             @Schema(description = "Tên hoạt động", example = "Yoga buổi sáng") @NotBlank @jakarta.validation.constraints.Size(max=200) String activityName,
             @Schema(description = "Mô tả hoạt động") @jakarta.validation.constraints.Size(max=1000) String description,
             @Schema(description = "Thời gian bắt đầu (ISO-8601)") @NotNull Instant startTime,
             @Schema(description = "Thời gian kết thúc (ISO-8601)") @NotNull Instant endTime,
             @Schema(description = "Địa điểm tổ chức") @jakarta.validation.constraints.Size(max=250) String location,
             @Schema(description = "Sức chứa tối đa", example = "30") @NotNull @Positive Integer capacity,
-            @Schema(description = "Giá tham gia") @DecimalMin("0.0") BigDecimal price,
-            @Schema(description = "Mã tiền tệ gồm 3 ký tự", example = "USD") @jakarta.validation.constraints.Size(min=3,max=3) String currencyCode,
+            @Schema(description = "Giá tham gia (mặc định 0.0)") @DecimalMin("0.0") BigDecimal price,
+            @Schema(description = "Mã tiền tệ gồm 3 ký tự (mặc định USD)", example = "USD") @jakarta.validation.constraints.Size(min=3,max=3) String currencyCode,
             @Schema(description = "ID chuyến du thuyền") @NotNull UUID cruiseId) {}
     @Schema(name = "ActivityRegistrationRequest", description = "Thông tin đăng ký hoạt động hoặc tour tham quan")
     public record RegistrationRequest(@Schema(description = "ID hành khách trong booking") @NotNull UUID bookingPassengerId,

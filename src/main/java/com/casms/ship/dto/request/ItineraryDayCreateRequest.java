@@ -17,16 +17,13 @@ public class ItineraryDayCreateRequest {
     @NotNull(message = "Itinerary ID is required")
     private UUID itineraryId;
 
-    @Schema(description = "Số thứ tự ngày", example = "1", requiredMode = Schema.RequiredMode.REQUIRED)
-    @NotNull(message = "Day number is required")
+    @Schema(description = "Số thứ tự ngày (Nếu để trống, tự động tăng)", example = "1")
     private Integer dayNumber;
 
-    @Schema(description = "Ngày", example = "2026-01-15", requiredMode = Schema.RequiredMode.REQUIRED)
-    @NotNull(message = "Date is required")
+    @Schema(description = "Ngày (Nếu để trống, tự tính = itinerary.startDate + dayNumber - 1)", example = "2026-01-15")
     private LocalDate date;
 
-    @Schema(description = "Loại ngày", example = "PORT_DAY", requiredMode = Schema.RequiredMode.REQUIRED)
-    @NotNull(message = "Day type is required")
+    @Schema(description = "Loại ngày (mặc định PORT_DAY)", example = "PORT_DAY")
     private ItineraryDayType dayType;
 
     @Schema(description = "Múi giờ tàu", example = "Asia/Ho_Chi_Minh")

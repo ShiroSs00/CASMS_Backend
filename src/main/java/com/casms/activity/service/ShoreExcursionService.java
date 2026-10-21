@@ -483,17 +483,21 @@ public class ShoreExcursionService {
 
         excursion.setCruiseStop(stop);
         excursion.setSupplier(supplier);
-        excursion.setExcursionCode(blankToNull(request.excursionCode()));
+        String code = blankToNull(request.excursionCode());
+        if (code == null) {
+            code = com.casms.common.util.CodeGenerator.generate("EXCURSION", excursionRepository.count() + 1, excursionRepository::existsByExcursionCode);
+        }
+        excursion.setExcursionCode(code);
         excursion.setExcursionName(request.excursionName().trim());
         excursion.setStartTime(request.startTime());
         excursion.setPlannedReturnTime(request.plannedReturnTime());
         excursion.setMeetingPoint(request.meetingPoint().trim());
-        excursion.setMinimumParticipants(request.minimumParticipants());
+        excursion.setMinimumParticipants(request.minimumParticipants() == null ? 1 : request.minimumParticipants());
         excursion.setMaximumCapacity(request.maximumCapacity());
-        excursion.setPrice(request.price());
+        excursion.setPrice(request.price() == null ? java.math.BigDecimal.ZERO : request.price());
         excursion.setCurrencyCode(
-                request.currencyCode() == null
-                        ? null
+                (request.currencyCode() == null || request.currencyCode().isBlank())
+                        ? "USD"
                         : request.currencyCode().trim()
         );
     }

@@ -53,8 +53,15 @@ public class CruiseService {
             throw new BusinessException("INVALID_SCHEDULE", "Departure and return datetimes are required; return must be after departure");
         }
 
-        if (cruiseRepository.existsByCruiseCode(request.getCruiseCode())) {
+        if (request.getCruiseCode() == null || request.getCruiseCode().isBlank()) {
+            request.setCruiseCode(com.casms.common.util.CodeGenerator.generate("CRUISE", cruiseRepository.count() + 1, cruiseRepository::existsByCruiseCode));
+        } else if (cruiseRepository.existsByCruiseCode(request.getCruiseCode().trim())) {
             throw new BusinessException("DUPLICATE_CRUISE_CODE", "Cruise code already exists: " + request.getCruiseCode());
+        }
+
+        if (request.getCruiseType() == null) {
+            long hours = java.time.Duration.between(request.getDepartureDatetime(), request.getReturnDatetime()).toHours();
+            request.setCruiseType(hours <= 24 ? CruiseCruiseType.ONE_DAY : CruiseCruiseType.MULTI_DAYS);
         }
 
         Port departurePort = portRepository.findById(request.getDeparturePortId())

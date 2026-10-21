@@ -31,6 +31,6 @@ public record ItineraryChangeRequest(
         @Size(max = 1000)
         String reason,
 
-        @NotNull UUID changedByUserId
+        UUID changedByUserId
 ) {
 }

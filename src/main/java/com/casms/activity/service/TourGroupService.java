@@ -550,14 +550,17 @@ public class TourGroupService {
                 );
 
         group.setShoreExcursion(excursion);
-        group.setGroupCode(request.groupCode().trim());
-        group.setMaximumCapacity(request.maximumCapacity());
+        String code = (request.groupCode() == null || request.groupCode().isBlank())
+                ? com.casms.common.util.CodeGenerator.generate("TOURGROUP", tourGroupRepository.findByShoreExcursion_ShoreExcursionId(excursion.getShoreExcursionId()).size() + 1, c -> tourGroupRepository.existsByShoreExcursion_ShoreExcursionIdAndGroupCodeIgnoreCase(excursion.getShoreExcursionId(), c))
+                : request.groupCode().trim();
+        group.setGroupCode(code);
+        group.setMaximumCapacity(request.maximumCapacity() == null || request.maximumCapacity() < 1 ? excursion.getMaximumCapacity() : request.maximumCapacity());
         group.setGuideId(request.guideId());
         group.setVehicleId(request.vehicleId());
-        group.setMeetingPoint(request.meetingPoint());
-        group.setAssemblyTime(request.assemblyTime());
-        group.setPlannedDepartureTime(request.plannedDepartureTime());
-        group.setPlannedReturnTime(request.plannedReturnTime());
+        group.setMeetingPoint((request.meetingPoint() == null || request.meetingPoint().isBlank()) ? excursion.getMeetingPoint() : request.meetingPoint());
+        group.setAssemblyTime(request.assemblyTime() == null ? excursion.getStartTime() : request.assemblyTime());
+        group.setPlannedDepartureTime(request.plannedDepartureTime() == null ? excursion.getStartTime() : request.plannedDepartureTime());
+        group.setPlannedReturnTime(request.plannedReturnTime() == null ? excursion.getPlannedReturnTime() : request.plannedReturnTime());
         group.setNotes(request.notes());
     }
 

@@ -41,24 +41,31 @@ public class BleAnchorService {
         if (request.getDeviceType() != LocationDeviceType.BLE_BEACON && request.getDeviceType() != LocationDeviceType.BLE_RECEIVER) {
             throw new BusinessException("INVALID_BLE_DEVICE_TYPE", "A BLE anchor must be a BLE_BEACON or BLE_RECEIVER");
         }
-        validateTransform(request.getX(), request.getY(), request.getZ(), request.getRotationX(), request.getRotationY(), request.getRotationZ());
+        Double posX = request.getX() == null ? 0.0 : request.getX();
+        Double posY = request.getY() == null ? 0.0 : request.getY();
+        Double posZ = request.getZ() == null ? 0.0 : request.getZ();
+        validateTransform(posX, posY, posZ, request.getRotationX(), request.getRotationY(), request.getRotationZ());
         validateRadio(request.getTxPowerDbm(), request.getPathLossExponent(), request.getModelUnitsPerMeter());
-        String code = request.getDeviceCode().trim();
+        String code = (request.getDeviceCode() == null || request.getDeviceCode().isBlank())
+                ? com.casms.common.util.CodeGenerator.generate("ANCHOR", devices.count() + 1, devices::existsByDeviceCode)
+                : request.getDeviceCode().trim();
         if (devices.existsByDeviceCode(code)) throw new BusinessException("DUPLICATE_BLE_DEVICE_CODE", "Device code already exists");
         String identifier = normalizeBleIdentifier(request.getBleIdentifier());
         if (identifier != null && devices.existsByShipShipIdAndBleIdentifier(shipId, identifier)) {
             throw new BusinessException("DUPLICATE_BLE_IDENTIFIER", "BLE identifier already exists on this ship");
         }
+        String name = normalize(request.getDeviceName());
+        if (name == null) name = code;
         LocationDevice device = new LocationDevice();
         device.setShip(ship);
         device.setDeck(deck);
         device.setDeviceCode(code);
-        device.setDeviceName(normalize(request.getDeviceName()));
+        device.setDeviceName(name);
         device.setBleIdentifier(identifier);
         device.setModelNodeKey(normalize(request.getModelNodeKey()));
         device.setDeviceType(request.getDeviceType());
         device.setStatus(LocationDeviceStatus.INACTIVE);
-        applyTransform(device, request.getX(), request.getY(), request.getZ(), request.getRotationX(), request.getRotationY(), request.getRotationZ());
+        applyTransform(device, posX, posY, posZ, request.getRotationX(), request.getRotationY(), request.getRotationZ());
         device.setTxPowerDbm(request.getTxPowerDbm());
         device.setPathLossExponent(request.getPathLossExponent());
         device.setModelUnitsPerMeter(request.getModelUnitsPerMeter());

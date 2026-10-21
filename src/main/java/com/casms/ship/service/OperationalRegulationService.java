@@ -39,15 +39,17 @@ public class OperationalRegulationService {
     public OperationalRegulationResponse createRegulation(
             @Valid OperationalRegulationRequest request
     ) {
-        validateRequest(request);
-
-        if (regulationRepository.existsByRegulationCode(
+        if (request.getRegulationCode() == null || request.getRegulationCode().isBlank()) {
+            request.setRegulationCode(com.casms.common.util.CodeGenerator.generate("REGULATION", regulationRepository.count() + 1, regulationRepository::existsByRegulationCode));
+        } else if (regulationRepository.existsByRegulationCode(
                 request.getRegulationCode().trim()
         )) {
             throw new IllegalArgumentException(
                     "Regulation code already exists: " + request.getRegulationCode()
             );
         }
+
+        validateRequest(request);
 
         OperationalRegulation regulation = new OperationalRegulation();
         applyRequest(regulation, request);
@@ -82,6 +84,10 @@ public class OperationalRegulationService {
             @Valid OperationalRegulationRequest request
     ) {
         OperationalRegulation regulation = findRegulation(regulationId);
+        if (request.getRegulationCode() == null || request.getRegulationCode().isBlank()) {
+            request.setRegulationCode(regulation.getRegulationCode());
+        }
+
         validateRequest(request);
 
         if (regulationRepository.existsByRegulationCodeAndRegulationIdNot(

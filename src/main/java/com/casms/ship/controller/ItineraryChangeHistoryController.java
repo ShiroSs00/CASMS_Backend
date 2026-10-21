@@ -29,15 +29,25 @@ public class ItineraryChangeHistoryController {
         this.service = service;
     }
 
-    // APPEND / RECORD CHANGE
     @Operation(summary = "Ghi nhận thay đổi lịch trình", description = "Thêm bản ghi mới vào lịch sử điều chỉnh lịch trình chuyến đi")
     @PreAuthorize("hasAuthority('ITINERARY_CHANGE_RECORD')")
     @PostMapping
     public ResponseEntity<ItineraryChangeHistoryResponse> append(
-            @Valid @RequestBody ItineraryChangeRequest request
+            @Valid @RequestBody ItineraryChangeRequest request,
+            @org.springframework.security.core.annotation.AuthenticationPrincipal com.casms.security.principal.CasmsPrincipal principal
     ) {
+        UUID changedBy = (request.changedByUserId() != null)
+                ? request.changedByUserId()
+                : (principal != null ? principal.getUserId() : null);
+
+        ItineraryChangeRequest effectiveRequest = (request.changedByUserId() == null && changedBy != null)
+                ? new ItineraryChangeRequest(request.itineraryId(), request.cruiseStopId(), request.changedEntityType(),
+                    request.changedEntityId(), request.changeType(), request.beforeData(), request.afterData(),
+                    request.changeSummary(), request.reason(), changedBy)
+                : request;
+
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(service.recordItineraryChange(request));
+                .body(service.recordItineraryChange(effectiveRequest));
     }
 
     // LIST / FILTER

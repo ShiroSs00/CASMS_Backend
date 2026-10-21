@@ -33,8 +33,7 @@ public class CruiseStopCreateRequest {
     @Schema(description = "ID điểm đến", example = "3fa85f64-5717-4562-b3fc-2c963f66afa6")
     private UUID destinationId;
 
-    @Schema(description = "Thứ tự dừng", example = "1", requiredMode = Schema.RequiredMode.REQUIRED)
-    @NotNull(message = "Stop order is required")
+    @Schema(description = "Thứ tự dừng (Nếu để trống, tự động tăng)", example = "1")
     private Integer stopOrder;
 
     @Schema(description = "Thời gian dự kiến đến (ISO-8601)", example = "2026-01-15T08:00:00Z", requiredMode = Schema.RequiredMode.REQUIRED)
@@ -45,8 +44,7 @@ public class CruiseStopCreateRequest {
     @NotNull(message = "Planned departure is required")
     private Instant plannedDeparture;
 
-    @Schema(description = "Loại cuộc gọi cảng", example = "NORMAL", requiredMode = Schema.RequiredMode.REQUIRED)
-    @NotNull(message = "Call type is required")
+    @Schema(description = "Loại cuộc gọi cảng (mặc định NORMAL)", example = "NORMAL")
     private CruiseStopCallType callType;
 
     @Schema(description = "Phương pháp tiếp cận", example = "BERTH")
