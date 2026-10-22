@@ -26,7 +26,6 @@ public class ActivityController {
 
     @Schema(name = "ActivityRequest", description = "Thông tin tạo hoặc cập nhật hoạt động trên tàu")
     public record ActivityRequest(
-            @Schema(description = "Mã hoạt động (Nếu để trống, hệ thống tự động sinh theo định dạng ACTIVITY-XXX)", example = "ACTIVITY-001") @jakarta.validation.constraints.Size(max=50) String activityCode,
             @Schema(description = "Tên hoạt động", example = "Yoga buổi sáng") @NotBlank @jakarta.validation.constraints.Size(max=200) String activityName,
             @Schema(description = "Mô tả hoạt động") @jakarta.validation.constraints.Size(max=1000) String description,
             @Schema(description = "Thời gian bắt đầu (ISO-8601)") @NotNull Instant startTime,
@@ -197,5 +196,5 @@ public class ActivityController {
     public ApiResponse<ParticipationView> attendance(@Parameter(description = "ID lượt tham gia", required = true) @PathVariable UUID id, @Parameter(description = "Hành động: check-in, checkout, complete hoặc no-show", required = true) @PathVariable String action) {
         return ApiResponse.success(ParticipationView.of(service.attendance(id, action)));
     }
-    private static void apply(OnboardActivity a, ActivityRequest r) { a.setActivityCode(r.activityCode()); a.setActivityName(r.activityName()); a.setDescription(r.description()); a.setStartTime(r.startTime()); a.setEndTime(r.endTime()); a.setLocation(r.location()); a.setCapacity(r.capacity()); a.setPrice(r.price()); a.setCurrencyCode(r.currencyCode()); }
+    private static void apply(OnboardActivity a, ActivityRequest r) { a.setActivityName(r.activityName()); a.setDescription(r.description()); a.setStartTime(r.startTime()); a.setEndTime(r.endTime()); a.setLocation(r.location()); a.setCapacity(r.capacity()); a.setPrice(r.price()); a.setCurrencyCode(r.currencyCode()); }
 }

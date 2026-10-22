@@ -16,6 +16,20 @@ public interface RegistrationRepository
     boolean existsByBookingPassenger_BookingPassengerIdAndOnboardActivity_OnboardActivityIdAndStatusIn(UUID bookingPassengerId, UUID activityId, Collection<RegistrationStatus> statuses);
     java.util.List<Registration> findByOnboardActivity_OnboardActivityId(UUID activityId);
     java.util.List<Registration> findByBookingPassenger_Passenger_User_UserId(UUID userId);
+
+    @Query("""
+        SELECT r FROM Registration r
+        LEFT JOIN FETCH r.onboardActivity activity
+        LEFT JOIN FETCH activity.cruise
+        LEFT JOIN FETCH r.shoreExcursion excursion
+        LEFT JOIN FETCH excursion.cruiseStop stop
+        LEFT JOIN FETCH stop.itinerary
+        LEFT JOIN FETCH stop.port
+        WHERE r.bookingPassenger.bookingPassengerId IN :bookingPassengerIds
+        ORDER BY r.registrationTime ASC
+        """)
+    java.util.List<Registration> findTripRegistrations(
+            @Param("bookingPassengerIds") java.util.Collection<UUID> bookingPassengerIds);
     java.util.Optional<Registration> findByRegistrationId(UUID id);
     @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
     @org.springframework.data.jpa.repository.Query("select r from Registration r where r.registrationId = :id")

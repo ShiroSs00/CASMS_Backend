@@ -8,6 +8,7 @@ import com.casms.booking.enums.BookingStatus;
 import com.casms.booking.repository.BookingPassengerRepository;
 import com.casms.activity.repository.OnboardActivityRepository;
 import com.casms.activity.repository.ShoreExcursionRepository;
+import com.casms.common.service.BusinessCodeGenerator;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -33,13 +34,12 @@ public class ServicepackageService {
     private final OnboardActivityRepository activityRepo;
     private final ShoreExcursionRepository excursionRepo;
     private final FeedbackRepository feedbackRepo;
+    private final BusinessCodeGenerator businessCodeGenerator;
 
     @Transactional(readOnly=true) public List<com.casms.servicepackage.entity.Service> services() { return serviceRepo.findAll(); }
     @Transactional(readOnly=true) public com.casms.servicepackage.entity.Service service(UUID id) { return serviceRepo.findById(id).orElseThrow(()->missing("Service",id)); }
     public com.casms.servicepackage.entity.Service saveService(com.casms.servicepackage.entity.Service s) {
-        if(s.getServiceCode()==null||s.getServiceCode().isBlank()) {
-            s.setServiceCode(com.casms.common.util.CodeGenerator.generate("SERVICE", serviceRepo.count() + 1, code -> serviceRepo.existsByServiceCodeAndServiceIdNot(code, s.getServiceId() == null ? new UUID(0,0) : s.getServiceId())));
-        }
+        if(s.getServiceId()==null) s.setServiceCode(businessCodeGenerator.next("SV"));
         if(s.getServiceName()==null||s.getServiceName().isBlank()) throw new IllegalArgumentException("Service code and name are required");
         if(s.getCurrencyCode()==null||s.getCurrencyCode().isBlank()) s.setCurrencyCode("USD");
         if(s.getPrice()==null) s.setPrice(BigDecimal.ZERO);
@@ -61,9 +61,7 @@ public class ServicepackageService {
     @Transactional(readOnly=true) public List<Product> products(){return productRepo.findAll();}
     @Transactional(readOnly=true) public Product product(UUID id){return productRepo.findById(id).orElseThrow(()->missing("Product",id));}
     public Product saveProduct(Product p){
-        if(p.getProductCode()==null||p.getProductCode().isBlank()) {
-            p.setProductCode(com.casms.common.util.CodeGenerator.generate("PRODUCT", productRepo.count() + 1, code -> productRepo.existsByProductCodeAndProductIdNot(code, p.getProductId() == null ? new UUID(0,0) : p.getProductId())));
-        }
+        if(p.getProductId()==null) p.setProductCode(businessCodeGenerator.next("PR"));
         if(p.getProductName()==null||p.getProductName().isBlank()) throw new IllegalArgumentException("Product code and name are required");
         if(p.getCurrencyCode()==null||p.getCurrencyCode().isBlank()) p.setCurrencyCode("USD");
         if(p.getUnitPrice()==null||p.getUnitPrice().signum()<0) throw new IllegalArgumentException("Product requires a non-negative price and currency");
@@ -77,9 +75,7 @@ public class ServicepackageService {
     @Transactional(readOnly=true) public List<TourPackage> packages(){return packageRepo.findAll();}
     @Transactional(readOnly=true) public TourPackage tourPackage(UUID id){return packageRepo.findById(id).orElseThrow(()->missing("Tour package",id));}
     public TourPackage savePackage(TourPackage p){
-        if(p.getPackageCode()==null||p.getPackageCode().isBlank()) {
-            p.setPackageCode(com.casms.common.util.CodeGenerator.generate("PACKAGE", packageRepo.count() + 1, code -> packageRepo.existsByPackageCodeAndTourPackageIdNot(code, p.getTourPackageId() == null ? new UUID(0,0) : p.getTourPackageId())));
-        }
+        if(p.getTourPackageId()==null) p.setPackageCode(businessCodeGenerator.next("PK"));
         if(p.getPackageName()==null||p.getPackageName().isBlank())throw new IllegalArgumentException("Package code and name are required");
         if(p.getCurrencyCode()==null||p.getCurrencyCode().isBlank()) p.setCurrencyCode("USD");
         if(p.getPrice()==null||p.getPrice().signum()<0)throw new IllegalArgumentException("Package requires non-negative price and currency");

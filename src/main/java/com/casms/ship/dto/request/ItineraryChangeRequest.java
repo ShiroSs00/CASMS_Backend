@@ -29,8 +29,6 @@ public record ItineraryChangeRequest(
 
         @NotBlank
         @Size(max = 1000)
-        String reason,
-
-        UUID changedByUserId
+        String reason
 ) {
 }

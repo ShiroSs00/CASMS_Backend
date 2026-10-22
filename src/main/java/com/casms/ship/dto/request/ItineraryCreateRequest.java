@@ -31,7 +31,4 @@ public class ItineraryCreateRequest {
     @Schema(description = "Loại lịch trình (Nếu để trống, tự động suy luận: ROUND_TRIP nếu cảng đi = cảng về, ngược lại ONE_WAY)", example = "ROUND_TRIP")
     private ItineraryType itineraryType;
 
-    @Deprecated(since = "2026-10", forRemoval = true)
-    @Schema(description = "(Deprecated) ID người tạo - Mặc định được tự động lấy từ JWT principal của tài khoản đăng nhập", example = "3fa85f64-5717-4562-b3fc-2c963f66afa6")
-    private UUID createdByUserId;
 }

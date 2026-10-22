@@ -4,6 +4,7 @@ import com.casms.booking.repository.BookingPassengerRepository;
 import com.casms.booking.repository.BookingRepository;
 import com.casms.common.exception.BusinessException;
 import com.casms.common.exception.ResourceNotFoundException;
+import com.casms.common.service.BusinessCodeGenerator;
 import com.casms.ship.dto.request.CruiseCreateRequest;
 import com.casms.ship.dto.request.CruiseUpdateDraftRequest;
 import com.casms.ship.dto.response.CruiseCapacityValidationResponse;
@@ -43,20 +44,16 @@ public class CruiseService {
     private final ItineraryRepository itineraryRepository;
     private final BookingRepository bookingRepository;
     private final BookingPassengerRepository bookingPassengerRepository;
+    private final BusinessCodeGenerator businessCodeGenerator;
 
     @Transactional
     public CruiseResponse create(CruiseCreateRequest request) {
-        log.info("Creating new cruise with code: {}", request.getCruiseCode());
+        String cruiseCode = businessCodeGenerator.next("CR");
+        log.info("Creating new cruise with code: {}", cruiseCode);
 
         if (request.getDepartureDatetime() == null || request.getReturnDatetime() == null
                 || !request.getReturnDatetime().isAfter(request.getDepartureDatetime())) {
             throw new BusinessException("INVALID_SCHEDULE", "Departure and return datetimes are required; return must be after departure");
-        }
-
-        if (request.getCruiseCode() == null || request.getCruiseCode().isBlank()) {
-            request.setCruiseCode(com.casms.common.util.CodeGenerator.generate("CRUISE", cruiseRepository.count() + 1, cruiseRepository::existsByCruiseCode));
-        } else if (cruiseRepository.existsByCruiseCode(request.getCruiseCode().trim())) {
-            throw new BusinessException("DUPLICATE_CRUISE_CODE", "Cruise code already exists: " + request.getCruiseCode());
         }
 
         if (request.getCruiseType() == null) {
@@ -85,7 +82,7 @@ public class CruiseService {
         }
 
         Cruise cruise = new Cruise();
-        cruise.setCruiseCode(request.getCruiseCode());
+        cruise.setCruiseCode(cruiseCode);
         cruise.setCruiseName(request.getCruiseName());
         cruise.setShip(ship);
         cruise.setCruiseType(request.getCruiseType());

@@ -23,6 +23,7 @@ import com.casms.booking.repository.BookingRepository;
 import com.casms.booking.repository.CabinAssignmentRepository;
 import com.casms.common.exception.BusinessException;
 import com.casms.common.exception.ResourceNotFoundException;
+import com.casms.common.service.BusinessCodeGenerator;
 import com.casms.identity.entity.Passenger;
 import com.casms.identity.entity.User;
 import com.casms.identity.enums.Role;
@@ -60,7 +61,6 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Duration;
 import java.time.Instant;
-import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -82,6 +82,7 @@ public class BookingService {
     private final PasswordEncoder passwordEncoder;
     private final InstallmentRepository installmentRepository;
     private final NotificationRepository notificationRepository;
+    private final BusinessCodeGenerator businessCodeGenerator;
 
     /**
      * Tra cứu danh sách các phòng còn trống trên tàu của chuyến đi để khách hàng tự chọn.
@@ -273,7 +274,7 @@ public class BookingService {
         booking.setCurrency(currency);
         booking.setRequiredDepositAmount(requiredDepositAmount);
         booking.setFinalPaymentDueAt(finalPaymentDueAt);
-        booking.setBookingReference(generateBookingReference());
+        booking.setBookingReference(businessCodeGenerator.next("BK"));
         booking = bookingRepository.save(booking);
 
         // 6. Tạo danh sách hành khách, gán phòng tự chọn, gán gói dịch vụ
@@ -794,12 +795,6 @@ public class BookingService {
             case BALCONY -> BigDecimal.valueOf(650);
             case SUITE -> BigDecimal.valueOf(1100);
         };
-    }
-
-    private String generateBookingReference() {
-        String datePart = DateTimeFormatter.ofPattern("yyyyMMdd").withZone(java.time.ZoneOffset.UTC).format(Instant.now());
-        String randomPart = UUID.randomUUID().toString().substring(0, 4).toUpperCase();
-        return "BK-" + datePart + "-" + randomPart;
     }
 
     private Cruise getCruise(UUID cruiseId) {

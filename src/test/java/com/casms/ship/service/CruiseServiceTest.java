@@ -3,6 +3,7 @@ package com.casms.ship.service;
 import com.casms.booking.repository.BookingPassengerRepository;
 import com.casms.booking.repository.BookingRepository;
 import com.casms.common.exception.BusinessException;
+import com.casms.common.service.BusinessCodeGenerator;
 import com.casms.ship.dto.request.CruiseCreateRequest;
 import com.casms.ship.dto.response.CruiseReadinessResponse;
 import com.casms.ship.dto.response.CruiseResponse;
@@ -45,6 +46,8 @@ class CruiseServiceTest {
     private BookingRepository bookingRepository;
     @Mock
     private BookingPassengerRepository bookingPassengerRepository;
+    @Mock
+    private BusinessCodeGenerator businessCodeGenerator;
 
     @InjectMocks
     private CruiseService cruiseService;
@@ -94,7 +97,6 @@ class CruiseServiceTest {
     @DisplayName("Tạo cruise bản nháp thành công")
     void createCruise_success() {
         CruiseCreateRequest request = new CruiseCreateRequest();
-        request.setCruiseCode("CR-001");
         request.setCruiseName("Halong 3D2N Tour");
         request.setCruiseType(CruiseCruiseType.MULTI_DAYS);
         request.setDepartureDatetime(Instant.now().plus(5, ChronoUnit.DAYS));
@@ -102,7 +104,7 @@ class CruiseServiceTest {
         request.setDeparturePortId(depPort.getPortId());
         request.setReturnPortId(retPort.getPortId());
 
-        when(cruiseRepository.existsByCruiseCode("CR-001")).thenReturn(false);
+        when(businessCodeGenerator.next("CR")).thenReturn("CR-0001");
         when(portRepository.findById(depPort.getPortId())).thenReturn(Optional.of(depPort));
         when(portRepository.findById(retPort.getPortId())).thenReturn(Optional.of(retPort));
         when(cruiseRepository.save(any(Cruise.class))).thenAnswer(i -> {
@@ -114,7 +116,7 @@ class CruiseServiceTest {
         CruiseResponse response = cruiseService.create(request);
 
         assertNotNull(response);
-        assertEquals("CR-001", response.getCruiseCode());
+        assertEquals("CR-0001", response.getCruiseCode());
         assertEquals(CruiseStatus.DRAFT, response.getStatus());
         verify(cruiseRepository).save(any(Cruise.class));
     }

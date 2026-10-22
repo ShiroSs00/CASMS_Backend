@@ -15,6 +15,10 @@ public interface ItineraryDayRepository extends JpaRepository<ItineraryDay, UUID
 
     List<ItineraryDay> findByItineraryItineraryIdOrderByDayNumberAsc(UUID itineraryId);
 
+    @org.springframework.data.jpa.repository.EntityGraph(attributePaths = "itinerary")
+    List<ItineraryDay> findByItineraryItineraryIdInOrderByItineraryItineraryIdAscDayNumberAsc(
+            java.util.Collection<UUID> itineraryIds);
+
     @Query("SELECT id FROM ItineraryDay id WHERE id.itinerary.itineraryId = :itineraryId ORDER BY id.dayNumber ASC")
     List<ItineraryDay> findByItineraryOrderByDayNumber(@Param("itineraryId") UUID itineraryId);
 

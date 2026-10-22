@@ -12,6 +12,7 @@ import com.casms.activity.enums.SupplierVerificationStatus;
 import com.casms.activity.repository.RegistrationRepository;
 import com.casms.activity.repository.ShoreExcursionRepository;
 import com.casms.activity.repository.SupplierRepository;
+import com.casms.common.service.BusinessCodeGenerator;
 import com.casms.ship.entity.CruiseStop;
 import com.casms.ship.repository.CruiseStopRepository;
 import jakarta.persistence.EntityNotFoundException;
@@ -32,6 +33,7 @@ public class ShoreExcursionService {
     private final RegistrationRepository registrationRepository;
     private final SupplierRepository supplierRepository;
     private final CruiseStopRepository cruiseStopRepository;
+    private final BusinessCodeGenerator businessCodeGenerator;
 
     private static final List<RegistrationStatus> CAPACITY_STATUSES =
             List.of(
@@ -53,6 +55,7 @@ public class ShoreExcursionService {
 
     public ShoreExcursionResponse create(ShoreExcursionRequest request) {
         ShoreExcursion excursion = new ShoreExcursion();
+        excursion.setExcursionCode(businessCodeGenerator.next("EX"));
         applyRequest(excursion, request);
 
         excursion.setStatus(ShoreExcursionStatus.PLANNED);
@@ -483,11 +486,6 @@ public class ShoreExcursionService {
 
         excursion.setCruiseStop(stop);
         excursion.setSupplier(supplier);
-        String code = blankToNull(request.excursionCode());
-        if (code == null) {
-            code = com.casms.common.util.CodeGenerator.generate("EXCURSION", excursionRepository.count() + 1, excursionRepository::existsByExcursionCode);
-        }
-        excursion.setExcursionCode(code);
         excursion.setExcursionName(request.excursionName().trim());
         excursion.setStartTime(request.startTime());
         excursion.setPlannedReturnTime(request.plannedReturnTime());

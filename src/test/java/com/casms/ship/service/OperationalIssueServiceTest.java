@@ -1,5 +1,6 @@
 package com.casms.ship.service;
 import com.casms.identity.repository.UserRepository;
+import com.casms.common.service.BusinessCodeGenerator;
 import com.casms.ship.entity.OperationalIssue;
 import com.casms.ship.enums.OperationalIssueStatus;
 import com.casms.ship.repository.*;
@@ -18,6 +19,7 @@ class OperationalIssueServiceTest {
  @Mock CruiseRepository cruiseRepository;
  @Mock CabinRepository cabinRepository;
  @Mock UserRepository userRepository;
+ @Mock BusinessCodeGenerator businessCodeGenerator;
  @InjectMocks OperationalIssueService service;
 
  @Test void detail_missingIssue_throws() {

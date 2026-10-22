@@ -11,9 +11,7 @@ import java.util.UUID;
 public record TourGroupRequest(
         @NotNull UUID shoreExcursionId,
 
-        @Size(max = 50)
-        String groupCode,
-
+        @NotNull
         @Min(1)
         Integer maximumCapacity,
 

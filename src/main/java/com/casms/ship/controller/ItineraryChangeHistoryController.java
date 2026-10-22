@@ -4,6 +4,7 @@ import com.casms.ship.dto.request.ItineraryChangeRequest;
 import com.casms.ship.dto.response.ItineraryChangeHistoryResponse;
 import com.casms.ship.enums.ItineraryChangeType;
 import com.casms.ship.service.ItineraryChangeHistoryService;
+import com.casms.security.principal.CasmsPrincipal;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -11,6 +12,7 @@ import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -34,20 +36,14 @@ public class ItineraryChangeHistoryController {
     @PostMapping
     public ResponseEntity<ItineraryChangeHistoryResponse> append(
             @Valid @RequestBody ItineraryChangeRequest request,
-            @org.springframework.security.core.annotation.AuthenticationPrincipal com.casms.security.principal.CasmsPrincipal principal
+            @AuthenticationPrincipal CasmsPrincipal principal
     ) {
-        UUID changedBy = (request.changedByUserId() != null)
-                ? request.changedByUserId()
-                : (principal != null ? principal.getUserId() : null);
-
-        ItineraryChangeRequest effectiveRequest = (request.changedByUserId() == null && changedBy != null)
-                ? new ItineraryChangeRequest(request.itineraryId(), request.cruiseStopId(), request.changedEntityType(),
-                    request.changedEntityId(), request.changeType(), request.beforeData(), request.afterData(),
-                    request.changeSummary(), request.reason(), changedBy)
-                : request;
-
+        if (principal == null || principal.getUserId() == null) {
+            throw new com.casms.common.exception.BusinessException(
+                    HttpStatus.UNAUTHORIZED, "AUTH_REQUIRED", "Authentication required");
+        }
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(service.recordItineraryChange(effectiveRequest));
+                .body(service.recordItineraryChange(request, principal.getUserId()));
     }
 
     // LIST / FILTER

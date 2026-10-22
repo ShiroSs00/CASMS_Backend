@@ -91,11 +91,6 @@ public class ItineraryService {
         return mapToResponse(itinerary);
     }
 
-    @Transactional
-    public ItineraryResponse create(ItineraryCreateRequest request) {
-        return create(request, request.getCreatedByUserId());
-    }
-
     @Transactional(readOnly = true)
     public Page<ItineraryResponse> list(Pageable pageable) {
         return itineraryRepository.findAll(pageable).map(this::mapToResponse);

@@ -1,6 +1,7 @@
 package com.casms.ship.service;
 
 import com.casms.common.exception.BusinessException;
+import com.casms.common.service.BusinessCodeGenerator;
 import com.casms.ship.dto.request.OperationalRegulationRequest;
 import com.casms.ship.dto.response.OperationalRegulationResponse;
 import com.casms.ship.dto.response.RegulationConflictComparedItem;
@@ -33,26 +34,18 @@ public class OperationalRegulationService {
     private final OperationalRegulationRepository regulationRepository;
     private final ShipRegulationRepository shipRegulationRepository;
     private final CruiseRegulationRepository cruiseRegulationRepository;
+    private final BusinessCodeGenerator businessCodeGenerator;
 
     // ==================== CREATE ====================
 
     public OperationalRegulationResponse createRegulation(
             @Valid OperationalRegulationRequest request
     ) {
-        if (request.getRegulationCode() == null || request.getRegulationCode().isBlank()) {
-            request.setRegulationCode(com.casms.common.util.CodeGenerator.generate("REGULATION", regulationRepository.count() + 1, regulationRepository::existsByRegulationCode));
-        } else if (regulationRepository.existsByRegulationCode(
-                request.getRegulationCode().trim()
-        )) {
-            throw new IllegalArgumentException(
-                    "Regulation code already exists: " + request.getRegulationCode()
-            );
-        }
-
         validateRequest(request);
 
         OperationalRegulation regulation = new OperationalRegulation();
         applyRequest(regulation, request);
+        regulation.setRegulationCode(businessCodeGenerator.next("RG"));
         regulation.setStatus(RegulationStatus.DRAFT);
 
         return toResponse(regulationRepository.save(regulation));
@@ -84,21 +77,7 @@ public class OperationalRegulationService {
             @Valid OperationalRegulationRequest request
     ) {
         OperationalRegulation regulation = findRegulation(regulationId);
-        if (request.getRegulationCode() == null || request.getRegulationCode().isBlank()) {
-            request.setRegulationCode(regulation.getRegulationCode());
-        }
-
         validateRequest(request);
-
-        if (regulationRepository.existsByRegulationCodeAndRegulationIdNot(
-                request.getRegulationCode().trim(),
-                regulationId
-        )) {
-            throw new IllegalArgumentException(
-                    "Regulation code already exists: " + request.getRegulationCode()
-            );
-        }
-
         applyRequest(regulation, request);
 
         return toResponse(regulationRepository.save(regulation));
@@ -333,7 +312,6 @@ public class OperationalRegulationService {
         }
 
         validateRequiredFields(
-                request.getRegulationCode(),
                 request.getName(),
                 request.getRegulationType(),
                 request.getScope(),
@@ -348,8 +326,13 @@ public class OperationalRegulationService {
     }
 
     private void validateRequiredFields(OperationalRegulation regulation) {
+        if (regulation.getRegulationCode() == null || regulation.getRegulationCode().isBlank()) {
+            throw new IllegalArgumentException("Regulation code is required.");
+        }
+        if (regulation.getRegulationCode().trim().length() > 30) {
+            throw new IllegalArgumentException("Regulation code must not exceed 30 characters.");
+        }
         validateRequiredFields(
-                regulation.getRegulationCode(),
                 regulation.getName(),
                 regulation.getRegulationType(),
                 regulation.getScope(),
@@ -359,25 +342,12 @@ public class OperationalRegulationService {
     }
 
     private void validateRequiredFields(
-            String code,
             String name,
             Object type,
             Object scope,
             String value,
             Instant effectiveFrom
     ) {
-        if (code == null || code.isBlank()) {
-            throw new IllegalArgumentException(
-                    "Regulation code is required."
-            );
-        }
-
-        if (code.trim().length() > 30) {
-            throw new IllegalArgumentException(
-                    "Regulation code must not exceed 30 characters."
-            );
-        }
-
         if (name == null || name.isBlank()) {
             throw new IllegalArgumentException(
                     "Regulation name is required."
@@ -455,7 +425,6 @@ public class OperationalRegulationService {
             OperationalRegulation target,
             OperationalRegulationRequest request
     ) {
-        target.setRegulationCode(request.getRegulationCode().trim());
         target.setName(request.getName().trim());
         target.setDescription(request.getDescription());
         target.setRegulationType(request.getRegulationType());
