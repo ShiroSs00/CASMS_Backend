@@ -15,11 +15,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class PermissionConstraintInitializerTest {
 
     @Test
-    void migrationAllowlistMatchesEveryPermissionEnumValue() throws IOException {
+    void currentPermissionConstraintMigrationMatchesEveryPermissionEnumValue() throws IOException {
         String migration;
         try (var stream = getClass().getResourceAsStream(
-                "/db/migration/V13__add_booking_confirm_permission.sql")) {
-            assertTrue(stream != null, "V13 booking confirmation permission migration must be on the classpath");
+                "/db/migration/V19__sync_permission_allowlist_for_manifest.sql")) {
+            assertTrue(stream != null, "Current permission allowlist migration must be on the classpath");
             migration = new String(stream.readAllBytes(), StandardCharsets.UTF_8);
         }
 

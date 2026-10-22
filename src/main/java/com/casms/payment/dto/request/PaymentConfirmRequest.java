@@ -2,6 +2,7 @@ package com.casms.payment.dto.request;
 
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.NotBlank;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -15,5 +16,6 @@ public class PaymentConfirmRequest {
     @DecimalMin(value = "0.01", message = "Amount must be strictly positive")
     private BigDecimal confirmedAmount;
 
+    @NotBlank(message = "Payment processor or receipt reference is required")
     private String processorReference;
 }

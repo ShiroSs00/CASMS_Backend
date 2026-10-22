@@ -69,6 +69,7 @@ public enum Permission {
     // Cruise permissions
     CRUISE_CREATE,
     CRUISE_READ,
+    CRUISE_MANIFEST_READ,
     CRUISE_UPDATE_DRAFT,
     CRUISE_DELETE_DRAFT,
     CRUISE_ASSIGN_SHIP,

@@ -113,13 +113,13 @@ class PaymentServiceTest {
     }
 
     @Test
-    @DisplayName("Xác nhận thanh toán đủ tiền tự động chuyển Booking sang Confirmed")
-    void confirmPayment_FullAmount_AutoConfirmsBooking() {
+    @DisplayName("Xác nhận thanh toán không tự chuyển booking sang Confirmed")
+    void confirmPayment_DoesNotAutoConfirmBooking() {
         PaymentConfirmRequest req = new PaymentConfirmRequest();
         req.setConfirmedAmount(new BigDecimal("10000000"));
         req.setProcessorReference("TXN-PAYPAL-9999");
 
-        when(paymentRepository.findById(paymentId)).thenReturn(Optional.of(payment));
+        when(paymentRepository.findByIdForUpdate(paymentId)).thenReturn(Optional.of(payment));
 
         Payment confirmedPayment = new Payment();
         confirmedPayment.setPaymentId(paymentId);
@@ -129,14 +129,42 @@ class PaymentServiceTest {
         confirmedPayment.setConfirmedAt(Instant.now());
 
         when(paymentRepository.save(any(Payment.class))).thenReturn(confirmedPayment);
-        when(paymentRepository.findByBooking_BookingId(bookingId)).thenReturn(List.of(confirmedPayment));
-
         PaymentResponse resp = paymentService.confirmPayment(paymentId, req);
 
         assertNotNull(resp);
         assertEquals(PaymentStatus.Confirmed, resp.getStatus());
-        assertEquals(BookingStatus.Confirmed, booking.getBookingStatus());
-        verify(bookingRepository).save(booking);
+        assertEquals(BookingStatus.Draft, booking.getBookingStatus());
+        assertEquals("TXN-PAYPAL-9999", payment.getProcessorReference());
+        verify(bookingRepository, never()).save(any(Booking.class));
+    }
+
+    @Test
+    void confirmPayment_RejectsAmountAboveRequested() {
+        PaymentConfirmRequest req = new PaymentConfirmRequest();
+        req.setConfirmedAmount(new BigDecimal("10000001"));
+        req.setProcessorReference("TXN-OVER");
+        when(paymentRepository.findByIdForUpdate(paymentId)).thenReturn(Optional.of(payment));
+
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> paymentService.confirmPayment(paymentId, req));
+
+        assertEquals("INVALID_CONFIRMED_AMOUNT", ex.getCode());
+        verify(paymentRepository, never()).save(any(Payment.class));
+    }
+
+    @Test
+    void confirmPayment_RejectsCancelledBooking() {
+        booking.setBookingStatus(BookingStatus.Cancelled);
+        PaymentConfirmRequest req = new PaymentConfirmRequest();
+        req.setConfirmedAmount(new BigDecimal("10000000"));
+        req.setProcessorReference("TXN-CANCELLED");
+        when(paymentRepository.findByIdForUpdate(paymentId)).thenReturn(Optional.of(payment));
+
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> paymentService.confirmPayment(paymentId, req));
+
+        assertEquals("BOOKING_CANCELLED", ex.getCode());
+        verify(paymentRepository, never()).save(any(Payment.class));
     }
 
     @Test

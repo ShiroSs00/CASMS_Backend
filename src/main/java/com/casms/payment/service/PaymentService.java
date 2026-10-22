@@ -10,6 +10,7 @@ import com.casms.payment.dto.request.PaymentCreateRequest;
 import com.casms.payment.dto.response.PaymentResponse;
 import com.casms.payment.entity.Payment;
 import com.casms.payment.enums.PaymentOperationType;
+import com.casms.payment.enums.PaymentMethod;
 import com.casms.payment.enums.PaymentStatus;
 import com.casms.payment.repository.PaymentRepository;
 import lombok.RequiredArgsConstructor;
@@ -50,6 +51,12 @@ public class PaymentService {
         if (booking.getBookingStatus() == BookingStatus.Cancelled) {
             throw new BusinessException("BOOKING_CANCELLED", "Cannot initiate payment for a cancelled booking");
         }
+        String currency = request.getCurrency() != null ? request.getCurrency().trim() : booking.getCurrency();
+        if (booking.getCurrency() == null || currency == null
+                || !currency.equalsIgnoreCase(booking.getCurrency().trim())) {
+            throw new BusinessException("PAYMENT_CURRENCY_MISMATCH",
+                    "Payment currency must match the booking currency");
+        }
 
         // 3. Create payment record
         Payment payment = new Payment();
@@ -57,12 +64,10 @@ public class PaymentService {
         payment.setOperationType(PaymentOperationType.Collect);
         payment.setPaymentMethod(request.getPaymentMethod());
         payment.setRequestedAmount(request.getRequestedAmount());
-        payment.setCurrency(request.getCurrency() != null ? request.getCurrency() : booking.getCurrency());
+        payment.setCurrency(currency.toUpperCase(java.util.Locale.ROOT));
         payment.setRequestedAt(Instant.now());
         payment.setStatus(PaymentStatus.Pending);
         payment.setIdempotencyKey(request.getIdempotencyKey());
-        payment.setInternalReceiptReference("RCP-" + System.currentTimeMillis());
-
         Payment saved = paymentRepository.save(payment);
         return toResponse(saved);
     }
@@ -71,7 +76,7 @@ public class PaymentService {
     public PaymentResponse confirmPayment(UUID paymentId, PaymentConfirmRequest request) {
         log.info("Confirming payment {} with amount {}", paymentId, request.getConfirmedAmount());
 
-        Payment payment = paymentRepository.findById(paymentId)
+        Payment payment = paymentRepository.findByIdForUpdate(paymentId)
                 .orElseThrow(() -> new ResourceNotFoundException("Payment not found with id: " + paymentId));
 
         // Idempotent confirmation
@@ -80,34 +85,43 @@ public class PaymentService {
             return toResponse(payment);
         }
 
+        if (payment.getStatus() != PaymentStatus.Pending) {
+            throw new BusinessException("PAYMENT_NOT_PENDING", "Only pending payments can be confirmed");
+        }
+        if (payment.getOperationType() != PaymentOperationType.Collect || payment.getBooking() == null) {
+            throw new BusinessException("PAYMENT_NOT_BOOKING_COLLECTION",
+                    "Only booking collection payments can be confirmed through this endpoint");
+        }
+        if (payment.getBooking().getBookingStatus() == BookingStatus.Cancelled) {
+            throw new BusinessException("BOOKING_CANCELLED", "Cannot confirm payment for a cancelled booking");
+        }
+        BigDecimal confirmedAmount = request.getConfirmedAmount();
+        if (confirmedAmount == null || confirmedAmount.signum() <= 0
+                || payment.getRequestedAmount() == null
+                || confirmedAmount.compareTo(payment.getRequestedAmount()) > 0) {
+            throw new BusinessException("INVALID_CONFIRMED_AMOUNT",
+                    "Confirmed amount must be positive and cannot exceed the requested payment amount");
+        }
+        if (payment.getCurrency() == null || payment.getBooking().getCurrency() == null
+                || !payment.getCurrency().trim().equalsIgnoreCase(payment.getBooking().getCurrency().trim())) {
+            throw new BusinessException("PAYMENT_CURRENCY_MISMATCH",
+                    "Payment currency must match the booking currency");
+        }
+        if (request.getProcessorReference() == null || request.getProcessorReference().isBlank()) {
+            throw new BusinessException("PAYMENT_EVIDENCE_REQUIRED",
+                    "A processor or cash receipt reference is required to confirm payment");
+        }
+
         payment.setStatus(PaymentStatus.Confirmed);
-        payment.setConfirmedAmount(request.getConfirmedAmount());
+        payment.setConfirmedAmount(confirmedAmount);
         payment.setConfirmedAt(Instant.now());
-        if (request.getProcessorReference() != null) {
-            payment.setProcessorReference(request.getProcessorReference());
+        if (payment.getPaymentMethod() == PaymentMethod.Cash) {
+            payment.setInternalReceiptReference(request.getProcessorReference().trim());
+        } else {
+            payment.setProcessorReference(request.getProcessorReference().trim());
         }
 
         Payment updated = paymentRepository.save(payment);
-
-        // Auto-confirm booking if total confirmed amount covers the agreed fare
-        Booking booking = updated.getBooking();
-        if (booking != null && booking.getBookingStatus() != BookingStatus.Cancelled) {
-            List<Payment> bookingPayments = paymentRepository.findByBooking_BookingId(booking.getBookingId());
-            BigDecimal totalConfirmed = bookingPayments.stream()
-                    .filter(p -> p.getStatus() == PaymentStatus.Confirmed)
-                    .map(p -> p.getConfirmedAmount() != null ? p.getConfirmedAmount() : BigDecimal.ZERO)
-                    .reduce(BigDecimal.ZERO, BigDecimal::add);
-
-            if (totalConfirmed.compareTo(booking.getAgreedFareAmount()) >= 0
-                    || totalConfirmed.compareTo(booking.getRequiredDepositAmount()) >= 0) {
-                if (booking.getBookingStatus() == BookingStatus.Draft) {
-                    booking.setBookingStatus(BookingStatus.Confirmed);
-                    bookingRepository.save(booking);
-                    log.info("Booking {} successfully transitioned to Confirmed after payment", booking.getBookingId());
-                }
-            }
-        }
-
         return toResponse(updated);
     }
 

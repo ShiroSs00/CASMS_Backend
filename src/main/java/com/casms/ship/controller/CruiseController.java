@@ -256,7 +256,7 @@ public class CruiseController {
     // ==================== CRUISE MANIFEST ====================
 
     @Operation(summary = "Xuất báo cáo danh sách hành khách và thuyền viên (Cruise Manifest)", description = "Cung cấp danh sách hành khách đã đặt phòng, thủy thủ đoàn và thông số tải trọng cho cơ quan cảng vụ")
-    @PreAuthorize("hasAnyAuthority('CRUISE_READ', 'REPORT_GENERATE')")
+    @PreAuthorize("hasAuthority('CRUISE_MANIFEST_READ')")
     @GetMapping("/{cruiseId}/manifest")
     public ApiResponse<CruiseManifestResponse> getManifest(
             @Parameter(description = "ID chuyến đi", required = true) @PathVariable UUID cruiseId) {

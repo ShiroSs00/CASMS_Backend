@@ -179,6 +179,7 @@ public class RolePermissionInitializer implements CommandLineRunner {
                 Permission.REPORT_GENERATE,
 
                 Permission.CRUISE_READ,
+                Permission.CRUISE_MANIFEST_READ,
                 Permission.ITINERARY_READ,
                 Permission.ITINERARY_DAY_READ,
                 Permission.CRUISE_STOP_READ,
@@ -213,6 +214,7 @@ public class RolePermissionInitializer implements CommandLineRunner {
                 Permission.CABIN_AVAILABILITY,
 
                 Permission.CRUISE_READ,
+                Permission.CRUISE_MANIFEST_READ,
                 Permission.CRUISE_VALIDATE,
                 Permission.CRUISE_START,
                 Permission.CRUISE_COMPLETE,

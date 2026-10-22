@@ -70,6 +70,7 @@ class RolePermissionInitializerTest {
 
         // Positive checks: minimal cross-module reads
         assertTrue(perms.contains(Permission.CRUISE_READ));
+        assertFalse(perms.contains(Permission.CRUISE_MANIFEST_READ));
         assertTrue(perms.contains(Permission.SHIP_READ), "Cruise Manager must have SHIP_READ for assignment");
         assertTrue(perms.contains(Permission.OPERATIONAL_ISSUE_READ), "Cruise Manager must have OPERATIONAL_ISSUE_READ");
         assertTrue(perms.contains(Permission.SUPPLIER_READ), "Cruise Manager must have SUPPLIER_READ");
@@ -181,11 +182,19 @@ class RolePermissionInitializerTest {
         assertTrue(perms.contains(Permission.OPERATIONAL_ISSUE_UPDATE));
         assertTrue(perms.contains(Permission.BOOKING_READ));
         assertTrue(perms.contains(Permission.CABIN_READ));
+        assertTrue(perms.contains(Permission.CRUISE_MANIFEST_READ));
         assertTrue(perms.contains(Permission.PORT_CREATE));
         assertTrue(perms.contains(Permission.DESTINATION_UPDATE));
         assertTrue(perms.contains(Permission.CRUISE_STAFF_ASSIGN));
         assertTrue(perms.contains(Permission.ITINERARY_APPROVE));
         assertFalse(perms.contains(Permission.USER_ROLE_ASSIGN));
+    }
+
+    @Test
+    void shipManager_canReadManifest_butBookingAgentAndPassengerCannot() {
+        assertTrue(rolePermissionsMap.get(Role.SHIP_MANAGER).contains(Permission.CRUISE_MANIFEST_READ));
+        assertFalse(rolePermissionsMap.get(Role.BOOKING_AGENT).contains(Permission.CRUISE_MANIFEST_READ));
+        assertFalse(rolePermissionsMap.get(Role.PASSENGER).contains(Permission.CRUISE_MANIFEST_READ));
     }
 
     @Test

@@ -80,7 +80,7 @@ public class GuidanceSessionController {
     }
 
     @Operation(summary = "Danh sách hành khách tham gia buổi phổ cập", description = "Lấy danh sách chi tiết các hành khách được ghi danh và trạng thái điểm danh")
-    @PreAuthorize("permitAll()")
+    @PreAuthorize("hasAuthority('CHECKIN_UPDATE')")
     @GetMapping("/{sessionId}/participants")
     public ApiResponse<List<GuidanceParticipantResponse>> listParticipants(
             @Parameter(description = "ID buổi phổ cập", required = true) @PathVariable UUID sessionId) {
