@@ -40,6 +40,9 @@ class TourGroupServiceTest {
     @Mock
     private PassengerRepository passengerRepository;
 
+    @Mock
+    private com.casms.identity.repository.UserRepository userRepository;
+
     @InjectMocks
     private TourGroupService service;
 

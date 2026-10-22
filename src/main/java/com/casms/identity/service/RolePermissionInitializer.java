@@ -33,7 +33,7 @@ public class RolePermissionInitializer implements CommandLineRunner {
         // ADMIN: toàn bộ quyền
         saveRolePermission(Role.ADMIN, EnumSet.allOf(Permission.class));
 
-        // CRUISE_MANAGER: quản lý chuyến đi và lịch trình
+        // CRUISE_MANAGER: quản lý lịch trình chuyến đi và hải trình (Quản lý lịch trình)
         saveRolePermission(Role.CRUISE_MANAGER, EnumSet.of(
                 Permission.SERVICE_CREATE, Permission.SERVICE_READ, Permission.SERVICE_UPDATE, Permission.SERVICE_DELETE_UNUSED,
                 Permission.SERVICE_ACTIVATE, Permission.SERVICE_SUSPEND, Permission.SERVICE_REQUEST_READ,
@@ -85,8 +85,14 @@ public class RolePermissionInitializer implements CommandLineRunner {
                 Permission.CRUISE_STOP_VALIDATE,
                 Permission.CRUISE_STOP_TIME_MANAGE,
 
+                Permission.PORT_CREATE,
                 Permission.PORT_READ,
+                Permission.PORT_UPDATE,
+                Permission.PORT_VALIDATE,
+                Permission.DESTINATION_CREATE,
                 Permission.DESTINATION_READ,
+                Permission.DESTINATION_UPDATE,
+                Permission.DESTINATION_VALIDATE,
 
                 Permission.CRUISE_REGULATION_ASSIGN,
                 Permission.CRUISE_REGULATION_READ,
@@ -98,15 +104,16 @@ public class RolePermissionInitializer implements CommandLineRunner {
 
                 Permission.REPORT_GENERATE,
 
-                // Cross-module read permissions (BE-AUTH-02)
+                // Cross-module read permissions
                 Permission.SHIP_READ,
                 Permission.OPERATIONAL_ISSUE_READ,
                 Permission.SUPPLIER_READ,
                 Permission.EXCURSION_READ,
-                Permission.TOUR_GROUP_READ
+                Permission.TOUR_GROUP_READ,
+                Permission.BOOKING_READ
         ));
 
-        // SHIP_MANAGER: quản lý tàu, boong, cabin và quy định tàu
+        // SHIP_MANAGER: quản lý đội tàu, boong, cabin, 3D model và quy định tàu (Quản lý vận hành)
         saveRolePermission(Role.SHIP_MANAGER, EnumSet.of(
                 Permission.SHIP_CREATE,
                 Permission.SHIP_READ,
@@ -177,7 +184,7 @@ public class RolePermissionInitializer implements CommandLineRunner {
                 Permission.DESTINATION_READ
         ));
 
-        // OPERATIONS_MANAGER: giám sát vận hành và xử lý sự cố
+        // OPERATIONS_MANAGER: quản lý vận hành chung, sự cố, quy định, công suất và điều phối
         saveRolePermission(Role.OPERATIONS_MANAGER, EnumSet.of(
                 Permission.OPERATIONAL_ISSUE_CREATE,
                 Permission.OPERATIONAL_ISSUE_READ,
@@ -197,6 +204,11 @@ public class RolePermissionInitializer implements CommandLineRunner {
                 Permission.SHIP_AFFECTED_CRUISES,
                 Permission.SHIP_CURRENT_CRUISE,
                 Permission.SHIP_READINESS,
+
+                Permission.DECK_READ,
+                Permission.CABIN_READ,
+                Permission.CABIN_SEARCH,
+                Permission.CABIN_AVAILABILITY,
 
                 Permission.CRUISE_READ,
                 Permission.CRUISE_VALIDATE,
@@ -239,10 +251,12 @@ public class RolePermissionInitializer implements CommandLineRunner {
                 Permission.ITINERARY_CHANGE_RECORD,
                 Permission.ITINERARY_CHANGE_READ,
 
+                Permission.BOOKING_READ,
+
                 Permission.REPORT_GENERATE,
                 Permission.REPORT_EXPORT,
 
-                // Supplier & Activity management (BE-SEC-01)
+                // Cross-module
                 Permission.SUPPLIER_CREATE,
                 Permission.SUPPLIER_READ,
                 Permission.SUPPLIER_UPDATE,
@@ -251,10 +265,11 @@ public class RolePermissionInitializer implements CommandLineRunner {
                 Permission.SUPPLIER_VALIDATE,
                 Permission.EXCURSION_READ,
                 Permission.TOUR_GROUP_READ,
-                Permission.TOUR_GROUP_PASSENGER_READ
+                Permission.TOUR_GROUP_PASSENGER_READ,
+                Permission.SERVICE_READ
         ));
 
-        // BOOKING_AGENT: booking, cabin và check-in
+        // BOOKING_AGENT: tiếp nhận, cập nhật, điều phối phòng, hủy và xác nhận booking
         saveRolePermission(Role.BOOKING_AGENT, EnumSet.of(
                 Permission.SERVICE_READ, Permission.SERVICE_REQUEST_READ, Permission.TOUR_PACKAGE_ASSIGN,
                 Permission.BOOKING_CREATE,
@@ -268,6 +283,8 @@ public class RolePermissionInitializer implements CommandLineRunner {
                 Permission.CABIN_READ,
                 Permission.CABIN_SEARCH,
                 Permission.CABIN_STATUS_CHANGE,
+                Permission.CABIN_BLOCK,
+                Permission.CABIN_RELEASE,
                 Permission.CABIN_ASSIGNMENTS_VIEW,
                 Permission.CABIN_AVAILABILITY,
 
@@ -289,14 +306,53 @@ public class RolePermissionInitializer implements CommandLineRunner {
                 Permission.PORT_READ,
                 Permission.DESTINATION_READ,
 
-                // Cross-module reference read permissions (BE-AUTH-02)
+                // Cross-module reference read permissions
                 Permission.SHIP_READ,
                 Permission.SHIP_MODEL_READ,
                 Permission.SHIP_CONFIGURATION_READ,
-                Permission.DECK_READ
+                Permission.DECK_READ,
+                Permission.DECK_CABINS_VIEW,
+                Permission.REPORT_GENERATE
         ));
 
-        // CHECKIN_STAFF: xử lý check-in và lên tàu
+        // CUSTOMER_SERVICE: hỗ trợ khách hàng, thay đổi thông tin/phòng, hủy theo điều kiện
+        saveRolePermission(Role.CUSTOMER_SERVICE, EnumSet.of(
+                Permission.SERVICE_READ, Permission.SERVICE_REQUEST_READ, Permission.SERVICE_REQUEST_CREATE,
+                Permission.USER_READ,
+                Permission.USER_UPDATE,
+
+                Permission.BOOKING_READ,
+                Permission.BOOKING_UPDATE,
+                Permission.BOOKING_CANCEL,
+                Permission.CHECKIN_READ,
+                Permission.CHECKIN_UPDATE,
+
+                Permission.CABIN_READ,
+                Permission.CABIN_SEARCH,
+                Permission.CABIN_AVAILABILITY,
+                Permission.CABIN_ASSIGNMENTS_VIEW,
+
+                Permission.NOTIFICATION_SEND,
+                Permission.NOTIFICATION_READ,
+                Permission.FEEDBACK_READ,
+                Permission.FEEDBACK_REVIEW,
+                Permission.REPORT_GENERATE,
+
+                Permission.CRUISE_READ,
+                Permission.ITINERARY_READ,
+                Permission.ITINERARY_DAY_READ,
+                Permission.CRUISE_STOP_READ,
+                Permission.PORT_READ,
+                Permission.DESTINATION_READ,
+
+                // Cross-module reference read permissions
+                Permission.SHIP_READ,
+                Permission.DECK_READ,
+                Permission.EXCURSION_READ,
+                Permission.ACTIVITY_READ
+        ));
+
+        // CHECKIN_STAFF: xử lý check-in, xác minh danh tính, cấp boarding pass và quản lý BLE tag
         saveRolePermission(Role.CHECKIN_STAFF, EnumSet.of(
                 Permission.CHECKIN_CREATE,
                 Permission.CHECKIN_READ,
@@ -323,24 +379,57 @@ public class RolePermissionInitializer implements CommandLineRunner {
                 Permission.PORT_READ,
                 Permission.DESTINATION_READ,
 
-                // Cross-module reference read permissions (BE-AUTH-02)
+                // Cross-module reference read permissions
                 Permission.SHIP_READ,
                 Permission.DECK_READ
         ));
 
-        // ONBOARD_STAFF: hoạt động và tour trên tàu
-        saveRolePermission(Role.ONBOARD_STAFF, EnumSet.of(
-                Permission.SERVICE_READ, Permission.SERVICE_REQUEST_READ, Permission.SERVICE_REQUEST_ASSIGN,
-                Permission.SERVICE_REQUEST_EXECUTE, Permission.PRODUCT_MANAGE, Permission.PRODUCT_SALE,
-                Permission.TOUR_PACKAGE_MANAGE,
-                Permission.TOUR_PACKAGE_ASSIGN, Permission.PACKAGE_COMPONENT_MANAGE, Permission.ACTIVITY_LIFECYCLE,
-                Permission.REGISTRATION_MANAGE, Permission.PARTICIPATION_ATTENDANCE,
+        // ACTIVITY_MANAGER: Dịch vụ trên biển (Hoạt động, lịch, sức chứa, dịch vụ và gói tour)
+        saveRolePermission(Role.ACTIVITY_MANAGER, EnumSet.of(
                 Permission.ACTIVITY_CREATE,
                 Permission.ACTIVITY_READ,
                 Permission.ACTIVITY_UPDATE,
+                Permission.ACTIVITY_LIFECYCLE,
                 Permission.ACTIVITY_REGISTRATION,
                 Permission.ACTIVITY_ATTENDANCE,
+                Permission.REGISTRATION_MANAGE,
+                Permission.PARTICIPATION_ATTENDANCE,
 
+                Permission.SERVICE_CREATE,
+                Permission.SERVICE_READ,
+                Permission.SERVICE_UPDATE,
+                Permission.SERVICE_DELETE_UNUSED,
+                Permission.SERVICE_ACTIVATE,
+                Permission.SERVICE_SUSPEND,
+                Permission.PRODUCT_MANAGE,
+                Permission.PRODUCT_SALE,
+                Permission.TOUR_PACKAGE_MANAGE,
+                Permission.TOUR_PACKAGE_ASSIGN,
+                Permission.PACKAGE_COMPONENT_MANAGE,
+
+                Permission.SERVICE_REQUEST_CREATE,
+                Permission.SERVICE_REQUEST_READ,
+                Permission.SERVICE_REQUEST_ASSIGN,
+                Permission.SERVICE_REQUEST_EXECUTE,
+                Permission.FEEDBACK_READ,
+                Permission.FEEDBACK_REVIEW,
+
+                Permission.CRUISE_READ,
+                Permission.ITINERARY_READ,
+                Permission.ITINERARY_DAY_READ,
+                Permission.CRUISE_STOP_READ,
+                Permission.PORT_READ,
+                Permission.DESTINATION_READ,
+                Permission.SHIP_READ,
+                Permission.DECK_READ,
+                Permission.NOTIFICATION_SEND,
+                Permission.NOTIFICATION_READ,
+                Permission.REPORT_GENERATE,
+                Permission.REPORT_EXPORT
+        ));
+
+        // SHORE_MANAGER: Dịch vụ trên bờ (Tour bờ, nhà cung cấp bờ, nhóm khách, điều phối hướng dẫn viên & điểm danh)
+        saveRolePermission(Role.SHORE_MANAGER, EnumSet.of(
                 Permission.EXCURSION_CREATE,
                 Permission.EXCURSION_READ,
                 Permission.EXCURSION_UPDATE,
@@ -349,7 +438,14 @@ public class RolePermissionInitializer implements CommandLineRunner {
                 Permission.EXCURSION_VALIDATE,
                 Permission.EXCURSION_BOOKING,
 
-                // Tour Group permissions
+                Permission.SUPPLIER_CREATE,
+                Permission.SUPPLIER_READ,
+                Permission.SUPPLIER_UPDATE,
+                Permission.SUPPLIER_DELETE,
+                Permission.SUPPLIER_STATUS_CHANGE,
+                Permission.SUPPLIER_VERIFY,
+                Permission.SUPPLIER_VALIDATE,
+
                 Permission.TOUR_GROUP_CREATE,
                 Permission.TOUR_GROUP_READ,
                 Permission.TOUR_GROUP_UPDATE,
@@ -357,7 +453,6 @@ public class RolePermissionInitializer implements CommandLineRunner {
                 Permission.TOUR_GROUP_STATUS_CHANGE,
                 Permission.TOUR_GROUP_VALIDATE,
 
-                // Tour Group Passenger permissions
                 Permission.TOUR_GROUP_PASSENGER_ASSIGN,
                 Permission.TOUR_GROUP_PASSENGER_READ,
                 Permission.TOUR_GROUP_PASSENGER_MOVE,
@@ -365,22 +460,57 @@ public class RolePermissionInitializer implements CommandLineRunner {
                 Permission.TOUR_GROUP_PASSENGER_ATTENDANCE,
                 Permission.TOUR_GROUP_PASSENGER_VALIDATE,
 
-                // Supplier read
-                Permission.SUPPLIER_READ,
-
-                Permission.NOTIFICATION_SEND,
-                Permission.CHECKOUT_PROCESS,
-                Permission.BLE_TELEMETRY_READ,
-
                 Permission.CRUISE_READ,
                 Permission.ITINERARY_READ,
                 Permission.ITINERARY_DAY_READ,
                 Permission.CRUISE_STOP_READ,
                 Permission.PORT_READ,
-                Permission.DESTINATION_READ
+                Permission.DESTINATION_READ,
+                Permission.NOTIFICATION_SEND,
+                Permission.NOTIFICATION_READ,
+                Permission.REPORT_GENERATE,
+                Permission.REPORT_EXPORT
         ));
 
-        // FINANCE_OFFICER: thanh toán, hóa đơn và quyết toán
+        // ONBOARD_STAFF: Onboard Sales & Service Staff
+        // Tiếp nhận/thực hiện yêu cầu dịch vụ và bán hàng POS; KHÔNG sửa danh mục hoặc hoạt động.
+        saveRolePermission(Role.ONBOARD_STAFF, EnumSet.of(
+                // Tiếp nhận & thực hiện yêu cầu dịch vụ
+                Permission.SERVICE_READ,
+                Permission.SERVICE_REQUEST_READ,
+                Permission.SERVICE_REQUEST_ASSIGN,
+                Permission.SERVICE_REQUEST_EXECUTE,
+
+                // Bán hàng qua POS
+                Permission.PRODUCT_SALE,
+                Permission.PAYMENT_PROCESS,
+
+                // Điểm danh và kiểm tra hoạt động / tour bờ
+                Permission.ACTIVITY_READ,
+                Permission.ACTIVITY_ATTENDANCE,
+                Permission.PARTICIPATION_ATTENDANCE,
+                Permission.EXCURSION_READ,
+                Permission.TOUR_GROUP_READ,
+                Permission.TOUR_GROUP_PASSENGER_READ,
+                Permission.TOUR_GROUP_PASSENGER_ATTENDANCE,
+
+                // Vận hành checkout và BLE
+                Permission.CHECKOUT_PROCESS,
+                Permission.BLE_TELEMETRY_READ,
+
+                // Thông báo và tham chiếu chuyến
+                Permission.NOTIFICATION_SEND,
+                Permission.CRUISE_READ,
+                Permission.ITINERARY_READ,
+                Permission.ITINERARY_DAY_READ,
+                Permission.CRUISE_STOP_READ,
+                Permission.PORT_READ,
+                Permission.DESTINATION_READ,
+                Permission.SHIP_READ,
+                Permission.DECK_READ
+        ));
+
+        // FINANCE_OFFICER: thanh toán, hóa đơn, công nợ và quyết toán cuối chuyến
         saveRolePermission(Role.FINANCE_OFFICER, EnumSet.of(
                 Permission.BOOKING_CONFIRM,
                 Permission.PAYMENT_PROCESS,
@@ -399,39 +529,8 @@ public class RolePermissionInitializer implements CommandLineRunner {
                 Permission.CRUISE_STOP_READ
         ));
 
-        // CUSTOMER_SERVICE: hỗ trợ khách hàng
-        saveRolePermission(Role.CUSTOMER_SERVICE, EnumSet.of(
-                Permission.SERVICE_READ, Permission.SERVICE_REQUEST_READ,
-                Permission.USER_READ,
-                Permission.USER_UPDATE,
-
-                Permission.BOOKING_READ,
-                Permission.BOOKING_UPDATE,
-                Permission.CHECKIN_READ,
-                Permission.CHECKIN_UPDATE,
-
-                Permission.NOTIFICATION_SEND,
-                Permission.NOTIFICATION_READ,
-                Permission.REPORT_GENERATE,
-
-                Permission.CRUISE_READ,
-                Permission.ITINERARY_READ,
-                Permission.ITINERARY_DAY_READ,
-                Permission.CRUISE_STOP_READ,
-                Permission.PORT_READ,
-                Permission.DESTINATION_READ,
-
-                // Cross-module reference read permissions
-                Permission.SHIP_READ,
-                Permission.DECK_READ,
-                Permission.CABIN_READ,
-                Permission.EXCURSION_READ
-        ));
-
-        // PASSENGER: chức năng dành cho hành khách
+        // PASSENGER: chức năng dành cho hành khách (chỉ dữ liệu của mình, không tự confirm hoặc cấp boarding pass)
         saveRolePermission(Role.PASSENGER, EnumSet.of(
-                Permission.SERVICE_READ, Permission.SERVICE_REQUEST_CREATE,
-                Permission.TOUR_PACKAGE_ASSIGN,
                 Permission.BOOKING_CREATE,
                 Permission.BOOKING_READ,
                 Permission.BOOKING_CANCEL,
@@ -458,10 +557,13 @@ public class RolePermissionInitializer implements CommandLineRunner {
                 Permission.EXCURSION_READ,
                 Permission.EXCURSION_BOOKING,
 
-                // Dịch vụ
+                // Dịch vụ và phản hồi
                 Permission.SERVICE_READ,
                 Permission.SERVICE_REQUEST_CREATE,
                 Permission.SERVICE_REQUEST_READ,
+                Permission.TOUR_PACKAGE_ASSIGN,
+                Permission.FEEDBACK_SUBMIT,
+                Permission.FEEDBACK_READ,
 
                 // Thông báo và thanh toán
                 Permission.NOTIFICATION_READ,
@@ -472,7 +574,7 @@ public class RolePermissionInitializer implements CommandLineRunner {
     }
 
     /**
-     * Tạo mới hoặc cập nhật tập quyền của một role.
+     * Tạo mới hoặc cập nhật tập quyền chuẩn xác của một role.
      */
     private void saveRolePermission(Role role, Set<Permission> permissions) {
         RolePermission rolePermission = rolePermissionRepository
@@ -480,10 +582,7 @@ public class RolePermissionInitializer implements CommandLineRunner {
                 .orElseGet(RolePermission::new);
 
         rolePermission.setRole(role);
-        Set<Permission> merged = EnumSet.noneOf(Permission.class);
-        if (rolePermission.getPermissions() != null) merged.addAll(rolePermission.getPermissions());
-        merged.addAll(permissions);
-        rolePermission.setPermissions(merged);
+        rolePermission.setPermissions(EnumSet.copyOf(permissions));
 
         rolePermissionRepository.save(rolePermission);
 

@@ -1,0 +1,41 @@
+package com.casms.ship.repository;
+
+import com.casms.ship.entity.CruiseStaff;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+import org.springframework.stereotype.Repository;
+
+import java.time.Instant;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
+
+@Repository
+public interface CruiseStaffRepository extends JpaRepository<CruiseStaff, UUID> {
+
+    List<CruiseStaff> findByCruise_CruiseId(UUID cruiseId);
+
+    Optional<CruiseStaff> findByCruise_CruiseIdAndUser_UserId(UUID cruiseId, UUID userId);
+
+    boolean existsByCruise_CruiseIdAndUser_UserId(UUID cruiseId, UUID userId);
+
+    void deleteByCruise_CruiseIdAndUser_UserId(UUID cruiseId, UUID userId);
+
+    @Query("""
+        SELECT cs FROM CruiseStaff cs
+        JOIN cs.cruise c
+        WHERE cs.user.userId = :userId
+          AND cs.status = 'ACTIVE'
+          AND (:excludeCruiseId IS NULL OR c.cruiseId != :excludeCruiseId)
+          AND c.status NOT IN (com.casms.ship.enums.CruiseStatus.CANCELLED, com.casms.ship.enums.CruiseStatus.COMPLETED)
+          AND c.departureDatetime < :returnTime
+          AND c.returnDatetime > :departureTime
+    """)
+    List<CruiseStaff> findConflictingAssignments(
+            @Param("userId") UUID userId,
+            @Param("departureTime") Instant departureTime,
+            @Param("returnTime") Instant returnTime,
+            @Param("excludeCruiseId") UUID excludeCruiseId
+    );
+}
