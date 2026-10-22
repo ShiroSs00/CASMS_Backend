@@ -960,6 +960,10 @@ public class BookingService {
         if (reference == null || reference.isBlank()) {
             throw new BusinessException("REFERENCE_REQUIRED", "Booking reference is required for lookup");
         }
+        if ((email == null || email.isBlank()) && (phoneNumber == null || phoneNumber.isBlank())) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "LOOKUP_CREDENTIAL_REQUIRED",
+                    "Email or phone number is required for booking lookup");
+        }
         Booking booking = bookingRepository.findByBookingReference(reference.trim())
                 .orElseThrow(() -> new ResourceNotFoundException("Booking reference not found: " + reference));
 
@@ -984,8 +988,6 @@ public class BookingService {
                     }
                 }
             }
-        } else if (email == null && phoneNumber == null) {
-            matched = true;
         }
 
         if (!matched) {

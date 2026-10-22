@@ -129,6 +129,16 @@ class BookingServiceTest {
     }
 
     @Test
+    @DisplayName("Tra cứu booking công khai bắt buộc có email hoặc số điện thoại")
+    void lookupBooking_requiresContactCredential() {
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> bookingService.lookupBooking("BK-PRIVATE", " ", null));
+
+        assertEquals("LOOKUP_CREDENTIAL_REQUIRED", ex.getCode());
+        verify(bookingRepository, never()).findByBookingReference(any());
+    }
+
+    @Test
     @DisplayName("Đặt tour thành công cho khách vãng lai và tự động cấp tài khoản theo email")
     void createBooking_guestSuccess() {
         when(businessCodeGenerator.next("BK")).thenReturn("BK-0001");
