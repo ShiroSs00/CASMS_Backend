@@ -6,9 +6,11 @@ import com.casms.booking.dto.request.CabinChangeRequest;
 import com.casms.booking.dto.request.PassengerBookingItemRequest;
 import com.casms.booking.dto.response.BookingDetailResponse;
 import com.casms.booking.entity.Booking;
+import com.casms.booking.entity.BookingContract;
 import com.casms.booking.entity.BookingPassenger;
 import com.casms.booking.entity.CabinAssignment;
 import com.casms.booking.enums.BookingStatus;
+import com.casms.booking.enums.BookingContractStatus;
 import com.casms.booking.enums.PaymentPlan;
 import com.casms.booking.repository.BookingContractRepository;
 import com.casms.booking.repository.BookingPassengerRepository;
@@ -24,6 +26,12 @@ import com.casms.identity.repository.PassengerRepository;
 import com.casms.identity.repository.UserRepository;
 import com.casms.notification.repository.NotificationRepository;
 import com.casms.payment.repository.InstallmentRepository;
+import com.casms.payment.repository.PaymentRepository;
+import com.casms.payment.repository.RefundRepository;
+import com.casms.payment.entity.Payment;
+import com.casms.payment.enums.PaymentMethod;
+import com.casms.payment.enums.PaymentOperationType;
+import com.casms.payment.enums.PaymentStatus;
 import com.casms.security.principal.CasmsPrincipal;
 import com.casms.servicepackage.repository.BookingPassengerPackageRepository;
 import com.casms.servicepackage.repository.TourPackageRepository;
@@ -71,6 +79,8 @@ class BookingServiceTest {
     @Mock private UserRepository userRepository;
     @Mock private PasswordEncoder passwordEncoder;
     @Mock private InstallmentRepository installmentRepository;
+    @Mock private PaymentRepository paymentRepository;
+    @Mock private RefundRepository refundRepository;
     @Mock private NotificationRepository notificationRepository;
     @Mock private BusinessCodeGenerator businessCodeGenerator;
 
@@ -142,9 +152,9 @@ class BookingServiceTest {
         savedUser.setEmail("nguyenvana@example.com");
         when(userRepository.save(any(User.class))).thenReturn(savedUser);
 
-        when(cruiseRepository.findById(cruiseId)).thenReturn(Optional.of(cruise));
+        when(cruiseRepository.findByIdForUpdate(cruiseId)).thenReturn(Optional.of(cruise));
         when(bookingPassengerRepository.countActivePassengersByCruiseId(cruiseId)).thenReturn(10L);
-        when(cabinRepository.findById(cabinId)).thenReturn(Optional.of(cabin));
+        when(cabinRepository.findByIdForUpdate(cabinId)).thenReturn(Optional.of(cabin));
         when(cabinAssignmentRepository.countActiveAssignmentsByCabinAndCruise(cabinId, cruiseId)).thenReturn(0L);
 
         when(bookingRepository.save(any(Booking.class))).thenAnswer(i -> {
@@ -237,9 +247,9 @@ class BookingServiceTest {
         request.setPassengers(List.of(p1, p2, p3)); // 3 passengers, but cabin capacity is only 2
 
         when(userRepository.findByEmail("a@example.com")).thenReturn(Optional.of(new User()));
-        when(cruiseRepository.findById(cruiseId)).thenReturn(Optional.of(cruise));
+        when(cruiseRepository.findByIdForUpdate(cruiseId)).thenReturn(Optional.of(cruise));
         when(bookingPassengerRepository.countActivePassengersByCruiseId(cruiseId)).thenReturn(0L);
-        when(cabinRepository.findById(cabinId)).thenReturn(Optional.of(cabin));
+        when(cabinRepository.findByIdForUpdate(cabinId)).thenReturn(Optional.of(cabin));
         when(cabinAssignmentRepository.countActiveAssignmentsByCabinAndCruise(cabinId, cruiseId)).thenReturn(0L);
 
         BusinessException ex = assertThrows(BusinessException.class, () -> bookingService.createBooking(request, null));
@@ -261,7 +271,7 @@ class BookingServiceTest {
         booking.setBookingStatus(BookingStatus.Draft);
         booking.setCruise(cruise);
 
-        when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(booking));
+        when(bookingRepository.findByIdForUpdate(bookingId)).thenReturn(Optional.of(booking));
         when(bookingPassengerRepository.findByBookingBookingId(bookingId)).thenReturn(List.of());
         when(bookingRepository.save(any(Booking.class))).thenAnswer(i -> i.getArgument(0));
 
@@ -276,5 +286,134 @@ class BookingServiceTest {
 
         assertEquals(BookingStatus.Cancelled, response.getBookingStatus());
         assertEquals("Bận việc cá nhân", response.getCancellationReason());
+    }
+
+    @Test
+    @DisplayName("Hành khách có BOOKING_CREATE không thể xác nhận booking")
+    void confirmBooking_passengerPermissionDenied() {
+        UUID bookingId = UUID.randomUUID();
+        CasmsPrincipal principal = mock(CasmsPrincipal.class);
+        when(principal.getUserId()).thenReturn(UUID.randomUUID());
+        doReturn(List.of(new SimpleGrantedAuthority("BOOKING_CREATE"))).when(principal).getAuthorities();
+
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> bookingService.confirm(bookingId, principal));
+
+        assertEquals("BOOKING_CONFIRM_FORBIDDEN", ex.getCode());
+        verify(bookingRepository, never()).findByIdForUpdate(any());
+    }
+
+    @Test
+    @DisplayName("Giao dịch thanh toán thất bại không được tính là tiền đã thu")
+    void confirmBooking_failedPaymentIsRejected() {
+        UUID bookingId = UUID.randomUUID();
+        Booking booking = new Booking();
+        booking.setBookingId(bookingId);
+        booking.setBookingStatus(BookingStatus.Draft);
+        booking.setRequiredDepositAmount(new BigDecimal("100.00"));
+        booking.setCurrency("USD");
+        booking.setCruise(cruise);
+        BookingContract contract = new BookingContract();
+        contract.setStatus(BookingContractStatus.Accepted);
+
+        CasmsPrincipal principal = mock(CasmsPrincipal.class);
+        when(principal.getUserId()).thenReturn(UUID.randomUUID());
+        doReturn(List.of(new SimpleGrantedAuthority("BOOKING_CONFIRM"))).when(principal).getAuthorities();
+        when(bookingRepository.findByIdForUpdate(bookingId)).thenReturn(Optional.of(booking));
+        when(bookingContractRepository.findByBookingBookingId(bookingId)).thenReturn(Optional.of(contract));
+        when(cruiseRepository.findByIdForUpdate(cruise.getCruiseId())).thenReturn(Optional.of(cruise));
+        Payment failedPayment = new Payment();
+        failedPayment.setStatus(PaymentStatus.Failed);
+        failedPayment.setOperationType(PaymentOperationType.Collect);
+        failedPayment.setPaymentMethod(PaymentMethod.Cash);
+        failedPayment.setConfirmedAmount(new BigDecimal("100.00"));
+        failedPayment.setConfirmedAt(Instant.now());
+        failedPayment.setCurrency("USD");
+        failedPayment.setInternalReceiptReference("receipt-failed");
+        when(paymentRepository.findForBooking(bookingId)).thenReturn(List.of(failedPayment));
+
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> bookingService.confirm(bookingId, principal));
+
+        assertEquals("BOOKING_DEPOSIT_NOT_PAID", ex.getCode());
+        assertEquals(BookingStatus.Draft, booking.getBookingStatus());
+        verify(bookingRepository, never()).save(booking);
+    }
+
+    @Test
+    @DisplayName("Giao dịch đã xác nhận gắn trực tiếp với booking được tính vào khoản cọc")
+    void confirmBooking_verifiedDirectBookingPaymentIsAccepted() {
+        UUID bookingId = UUID.randomUUID();
+        User owner = new User();
+        owner.setUserId(UUID.randomUUID());
+        Booking booking = new Booking();
+        booking.setBookingId(bookingId);
+        booking.setBookingReference("BK-0001");
+        booking.setBookedByUser(owner);
+        booking.setBookingStatus(BookingStatus.Draft);
+        booking.setRequiredDepositAmount(new BigDecimal("100.00"));
+        booking.setAgreedFareAmount(new BigDecimal("300.00"));
+        booking.setCurrency("USD");
+        booking.setCruise(cruise);
+        BookingContract contract = new BookingContract();
+        contract.setStatus(BookingContractStatus.Accepted);
+
+        CasmsPrincipal principal = mock(CasmsPrincipal.class);
+        when(principal.getUserId()).thenReturn(UUID.randomUUID());
+        doReturn(List.of(new SimpleGrantedAuthority("BOOKING_CONFIRM"))).when(principal).getAuthorities();
+        when(bookingRepository.findByIdForUpdate(bookingId)).thenReturn(Optional.of(booking));
+        when(bookingContractRepository.findByBookingBookingId(bookingId)).thenReturn(Optional.of(contract));
+        when(cruiseRepository.findByIdForUpdate(cruise.getCruiseId())).thenReturn(Optional.of(cruise));
+        Payment payment = new Payment();
+        payment.setBooking(booking);
+        payment.setOperationType(PaymentOperationType.Collect);
+        payment.setPaymentMethod(PaymentMethod.Cash);
+        payment.setStatus(PaymentStatus.Confirmed);
+        payment.setConfirmedAmount(new BigDecimal("100.00"));
+        payment.setConfirmedAt(Instant.now());
+        payment.setInternalReceiptReference("receipt-1");
+        payment.setCurrency("USD");
+        when(paymentRepository.findForBooking(bookingId)).thenReturn(List.of(payment));
+        when(refundRepository.findForBooking(bookingId)).thenReturn(List.of());
+        when(bookingRepository.save(any(Booking.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        BookingDetailResponse response = bookingService.confirm(bookingId, principal);
+
+        assertEquals(BookingStatus.Confirmed, response.getBookingStatus());
+        verify(bookingRepository).save(booking);
+    }
+
+    @Test
+    @DisplayName("Lịch đặt sát ngày chỉ được chấp nhận khi các hạn thanh toán còn theo thứ tự")
+    void paymentSchedule_nearDepartureIsValidated() {
+        Instant createdAt = Instant.parse("2026-10-22T00:00:00Z");
+        for (int days : new int[]{1, 3, 7, 14, 30, 60}) {
+            Instant departure = createdAt.plus(days, ChronoUnit.DAYS);
+            Instant finalDue = departure.minus(7, ChronoUnit.DAYS);
+            if (finalDue.isBefore(createdAt)) finalDue = createdAt;
+            Instant validatedFinalDue = finalDue;
+            boolean supported = days >= 14;
+
+            if (supported) {
+                assertDoesNotThrow(() -> bookingService.validatePaymentSchedule(
+                        PaymentPlan.DEPOSIT, createdAt, validatedFinalDue, departure), "DEPOSIT at " + days + " days");
+                assertDoesNotThrow(() -> bookingService.validatePaymentSchedule(
+                        PaymentPlan.STAGES, createdAt, validatedFinalDue, departure), "STAGES at " + days + " days");
+            } else {
+                assertThrows(BusinessException.class, () -> bookingService.validatePaymentSchedule(
+                        PaymentPlan.DEPOSIT, createdAt, validatedFinalDue, departure), "DEPOSIT at " + days + " days");
+                assertThrows(BusinessException.class, () -> bookingService.validatePaymentSchedule(
+                        PaymentPlan.STAGES, createdAt, validatedFinalDue, departure), "STAGES at " + days + " days");
+            }
+        }
+
+        Instant exactlyTwoDays = createdAt.plus(2, ChronoUnit.DAYS);
+        assertThrows(BusinessException.class, () -> bookingService.validatePaymentSchedule(
+                PaymentPlan.FULL, createdAt, createdAt, exactlyTwoDays));
+        assertThrows(BusinessException.class, () -> bookingService.validatePaymentSchedule(
+                PaymentPlan.FULL, createdAt, createdAt, createdAt.minus(1, ChronoUnit.DAYS)));
+        Instant nineDays = createdAt.plus(9, ChronoUnit.DAYS);
+        assertDoesNotThrow(() -> bookingService.validatePaymentSchedule(
+                PaymentPlan.DEPOSIT, createdAt, nineDays.minus(7, ChronoUnit.DAYS), nineDays));
     }
 }

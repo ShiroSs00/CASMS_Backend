@@ -18,8 +18,8 @@ class PermissionConstraintInitializerTest {
     void migrationAllowlistMatchesEveryPermissionEnumValue() throws IOException {
         String migration;
         try (var stream = getClass().getResourceAsStream(
-                "/db/migration/V6__sync_role_permission_constraint.sql")) {
-            assertTrue(stream != null, "V6 permission constraint migration must be on the classpath");
+                "/db/migration/V13__add_booking_confirm_permission.sql")) {
+            assertTrue(stream != null, "V13 booking confirmation permission migration must be on the classpath");
             migration = new String(stream.readAllBytes(), StandardCharsets.UTF_8);
         }
 

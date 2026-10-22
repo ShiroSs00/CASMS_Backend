@@ -4,6 +4,7 @@ import com.casms.ship.entity.Cabin;
 import com.casms.ship.enums.CabinStatus;
 import com.casms.ship.enums.CabinType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -12,10 +13,13 @@ import org.springframework.data.domain.Pageable;
 
 import java.util.List;
 import java.util.UUID;
-import java.util.List;
+import jakarta.persistence.LockModeType;
 
 @Repository
 public interface CabinRepository extends JpaRepository<Cabin, UUID> {
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select c from Cabin c where c.cabinId = :cabinId")
+    java.util.Optional<Cabin> findByIdForUpdate(@Param("cabinId") UUID cabinId);
     List<Cabin> findByShipShipIdOrderByDeckDeckNumberAscCabinNumberAsc(UUID shipId);
     Page<Cabin> findByShipShipId(UUID shipId, Pageable pageable);
     Page<Cabin> findByDeckDeckId(UUID deckId, Pageable pageable);

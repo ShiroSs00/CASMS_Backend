@@ -44,7 +44,6 @@ ALTER TABLE "RolePermission" ADD CONSTRAINT "RolePermission_role_check" CHECK (
 );
 
 ALTER TABLE "RolePermissionMapping" DROP CONSTRAINT IF EXISTS "RolePermissionMapping_permission_check";
-DELETE FROM "RolePermissionMapping";
 ALTER TABLE "RolePermissionMapping" ADD CONSTRAINT "RolePermissionMapping_permission_check" CHECK (
     (permission)::text = ANY (ARRAY[
         'SHIP_CREATE', 'SHIP_READ', 'SHIP_UPDATE', 'SHIP_DELETE', 'SHIP_STATUS_CHANGE',
@@ -107,11 +106,12 @@ INSERT INTO "RolePermission" (role) VALUES
     ('PASSENGER')
 ON CONFLICT (role) DO NOTHING;
 
-DELETE FROM "RolePermissionMapping";
 
 -- CRUISE_MANAGER
-INSERT INTO "RolePermissionMapping" (role, permission) VALUES
-    ('CRUISE_MANAGER', 'CRUISE_CREATE'),
+INSERT INTO "RolePermissionMapping" (role, permission)
+SELECT incoming.role, incoming.permission
+FROM (VALUES
+('CRUISE_MANAGER', 'CRUISE_CREATE'),
     ('CRUISE_MANAGER', 'CRUISE_READ'),
     ('CRUISE_MANAGER', 'CRUISE_UPDATE_DRAFT'),
     ('CRUISE_MANAGER', 'CRUISE_DELETE_DRAFT'),
@@ -162,11 +162,19 @@ INSERT INTO "RolePermissionMapping" (role, permission) VALUES
     ('CRUISE_MANAGER', 'REGULATION_READ'),
     ('CRUISE_MANAGER', 'ITINERARY_CHANGE_RECORD'),
     ('CRUISE_MANAGER', 'ITINERARY_CHANGE_READ'),
-    ('CRUISE_MANAGER', 'REPORT_GENERATE');
+    ('CRUISE_MANAGER', 'REPORT_GENERATE')
+) AS incoming(role, permission)
+WHERE NOT EXISTS (
+    SELECT 1 FROM "RolePermissionMapping" existing
+    WHERE existing.role = incoming.role
+      AND existing.permission = incoming.permission
+);
 
 -- SHIP_MANAGER
-INSERT INTO "RolePermissionMapping" (role, permission) VALUES
-    ('SHIP_MANAGER', 'SHIP_CREATE'),
+INSERT INTO "RolePermissionMapping" (role, permission)
+SELECT incoming.role, incoming.permission
+FROM (VALUES
+('SHIP_MANAGER', 'SHIP_CREATE'),
     ('SHIP_MANAGER', 'SHIP_READ'),
     ('SHIP_MANAGER', 'SHIP_UPDATE'),
     ('SHIP_MANAGER', 'SHIP_DELETE'),
@@ -192,11 +200,19 @@ INSERT INTO "RolePermissionMapping" (role, permission) VALUES
     ('SHIP_MANAGER', 'SHIP_REGULATION_READ'),
     ('SHIP_MANAGER', 'SHIP_REGULATION_REMOVE'),
     ('SHIP_MANAGER', 'REGULATION_READ'),
-    ('SHIP_MANAGER', 'REPORT_GENERATE');
+    ('SHIP_MANAGER', 'REPORT_GENERATE')
+) AS incoming(role, permission)
+WHERE NOT EXISTS (
+    SELECT 1 FROM "RolePermissionMapping" existing
+    WHERE existing.role = incoming.role
+      AND existing.permission = incoming.permission
+);
 
 -- OPERATIONS_MANAGER
-INSERT INTO "RolePermissionMapping" (role, permission) VALUES
-    ('OPERATIONS_MANAGER', 'OPERATIONAL_ISSUE_CREATE'),
+INSERT INTO "RolePermissionMapping" (role, permission)
+SELECT incoming.role, incoming.permission
+FROM (VALUES
+('OPERATIONS_MANAGER', 'OPERATIONAL_ISSUE_CREATE'),
     ('OPERATIONS_MANAGER', 'OPERATIONAL_ISSUE_READ'),
     ('OPERATIONS_MANAGER', 'OPERATIONAL_ISSUE_UPDATE'),
     ('OPERATIONS_MANAGER', 'OPERATIONAL_ISSUE_RESOLVE'),
@@ -241,11 +257,19 @@ INSERT INTO "RolePermissionMapping" (role, permission) VALUES
     ('OPERATIONS_MANAGER', 'ITINERARY_CHANGE_RECORD'),
     ('OPERATIONS_MANAGER', 'ITINERARY_CHANGE_READ'),
     ('OPERATIONS_MANAGER', 'REPORT_GENERATE'),
-    ('OPERATIONS_MANAGER', 'REPORT_EXPORT');
+    ('OPERATIONS_MANAGER', 'REPORT_EXPORT')
+) AS incoming(role, permission)
+WHERE NOT EXISTS (
+    SELECT 1 FROM "RolePermissionMapping" existing
+    WHERE existing.role = incoming.role
+      AND existing.permission = incoming.permission
+);
 
 -- BOOKING_AGENT
-INSERT INTO "RolePermissionMapping" (role, permission) VALUES
-    ('BOOKING_AGENT', 'BOOKING_CREATE'),
+INSERT INTO "RolePermissionMapping" (role, permission)
+SELECT incoming.role, incoming.permission
+FROM (VALUES
+('BOOKING_AGENT', 'BOOKING_CREATE'),
     ('BOOKING_AGENT', 'BOOKING_READ'),
     ('BOOKING_AGENT', 'BOOKING_UPDATE'),
     ('BOOKING_AGENT', 'BOOKING_CANCEL'),
@@ -263,11 +287,19 @@ INSERT INTO "RolePermissionMapping" (role, permission) VALUES
     ('BOOKING_AGENT', 'CHECKIN_PAYMENT_VERIFY'),
     ('BOOKING_AGENT', 'CHECKIN_BOARDING'),
     ('BOOKING_AGENT', 'CABIN_ASSIGNMENTS_VIEW'),
-    ('BOOKING_AGENT', 'NOTIFICATION_SEND');
+    ('BOOKING_AGENT', 'NOTIFICATION_SEND')
+) AS incoming(role, permission)
+WHERE NOT EXISTS (
+    SELECT 1 FROM "RolePermissionMapping" existing
+    WHERE existing.role = incoming.role
+      AND existing.permission = incoming.permission
+);
 
 -- CHECKIN_STAFF
-INSERT INTO "RolePermissionMapping" (role, permission) VALUES
-    ('CHECKIN_STAFF', 'CHECKIN_CREATE'),
+INSERT INTO "RolePermissionMapping" (role, permission)
+SELECT incoming.role, incoming.permission
+FROM (VALUES
+('CHECKIN_STAFF', 'CHECKIN_CREATE'),
     ('CHECKIN_STAFF', 'CHECKIN_READ'),
     ('CHECKIN_STAFF', 'CHECKIN_UPDATE'),
     ('CHECKIN_STAFF', 'CHECKIN_STEP_UPDATE'),
@@ -278,11 +310,19 @@ INSERT INTO "RolePermissionMapping" (role, permission) VALUES
     ('CHECKIN_STAFF', 'CHECKOUT_PROCESS'),
     ('CHECKIN_STAFF', 'CABIN_READ'),
     ('CHECKIN_STAFF', 'CABIN_SEARCH'),
-    ('CHECKIN_STAFF', 'CABIN_AVAILABILITY');
+    ('CHECKIN_STAFF', 'CABIN_AVAILABILITY')
+) AS incoming(role, permission)
+WHERE NOT EXISTS (
+    SELECT 1 FROM "RolePermissionMapping" existing
+    WHERE existing.role = incoming.role
+      AND existing.permission = incoming.permission
+);
 
 -- ONBOARD_STAFF
-INSERT INTO "RolePermissionMapping" (role, permission) VALUES
-    ('ONBOARD_STAFF', 'ACTIVITY_CREATE'),
+INSERT INTO "RolePermissionMapping" (role, permission)
+SELECT incoming.role, incoming.permission
+FROM (VALUES
+('ONBOARD_STAFF', 'ACTIVITY_CREATE'),
     ('ONBOARD_STAFF', 'ACTIVITY_READ'),
     ('ONBOARD_STAFF', 'ACTIVITY_UPDATE'),
     ('ONBOARD_STAFF', 'ACTIVITY_REGISTRATION'),
@@ -292,11 +332,19 @@ INSERT INTO "RolePermissionMapping" (role, permission) VALUES
     ('ONBOARD_STAFF', 'EXCURSION_UPDATE'),
     ('ONBOARD_STAFF', 'EXCURSION_BOOKING'),
     ('ONBOARD_STAFF', 'NOTIFICATION_SEND'),
-    ('ONBOARD_STAFF', 'CHECKOUT_PROCESS');
+    ('ONBOARD_STAFF', 'CHECKOUT_PROCESS')
+) AS incoming(role, permission)
+WHERE NOT EXISTS (
+    SELECT 1 FROM "RolePermissionMapping" existing
+    WHERE existing.role = incoming.role
+      AND existing.permission = incoming.permission
+);
 
 -- FINANCE_OFFICER
-INSERT INTO "RolePermissionMapping" (role, permission) VALUES
-    ('FINANCE_OFFICER', 'PAYMENT_PROCESS'),
+INSERT INTO "RolePermissionMapping" (role, permission)
+SELECT incoming.role, incoming.permission
+FROM (VALUES
+('FINANCE_OFFICER', 'PAYMENT_PROCESS'),
     ('FINANCE_OFFICER', 'PAYMENT_REFUND'),
     ('FINANCE_OFFICER', 'PAYMENT_REPORT'),
     ('FINANCE_OFFICER', 'INVOICE_GENERATE'),
@@ -304,11 +352,19 @@ INSERT INTO "RolePermissionMapping" (role, permission) VALUES
     ('FINANCE_OFFICER', 'REPORT_GENERATE'),
     ('FINANCE_OFFICER', 'REPORT_EXPORT'),
     ('FINANCE_OFFICER', 'BOOKING_READ'),
-    ('FINANCE_OFFICER', 'CHECKIN_READ');
+    ('FINANCE_OFFICER', 'CHECKIN_READ')
+) AS incoming(role, permission)
+WHERE NOT EXISTS (
+    SELECT 1 FROM "RolePermissionMapping" existing
+    WHERE existing.role = incoming.role
+      AND existing.permission = incoming.permission
+);
 
 -- CUSTOMER_SERVICE
-INSERT INTO "RolePermissionMapping" (role, permission) VALUES
-    ('CUSTOMER_SERVICE', 'USER_READ'),
+INSERT INTO "RolePermissionMapping" (role, permission)
+SELECT incoming.role, incoming.permission
+FROM (VALUES
+('CUSTOMER_SERVICE', 'USER_READ'),
     ('CUSTOMER_SERVICE', 'USER_UPDATE'),
     ('CUSTOMER_SERVICE', 'BOOKING_READ'),
     ('CUSTOMER_SERVICE', 'BOOKING_UPDATE'),
@@ -316,11 +372,19 @@ INSERT INTO "RolePermissionMapping" (role, permission) VALUES
     ('CUSTOMER_SERVICE', 'CHECKIN_UPDATE'),
     ('CUSTOMER_SERVICE', 'NOTIFICATION_SEND'),
     ('CUSTOMER_SERVICE', 'NOTIFICATION_READ'),
-    ('CUSTOMER_SERVICE', 'REPORT_GENERATE');
+    ('CUSTOMER_SERVICE', 'REPORT_GENERATE')
+) AS incoming(role, permission)
+WHERE NOT EXISTS (
+    SELECT 1 FROM "RolePermissionMapping" existing
+    WHERE existing.role = incoming.role
+      AND existing.permission = incoming.permission
+);
 
 -- PASSENGER
-INSERT INTO "RolePermissionMapping" (role, permission) VALUES
-    ('PASSENGER', 'BOOKING_READ'),
+INSERT INTO "RolePermissionMapping" (role, permission)
+SELECT incoming.role, incoming.permission
+FROM (VALUES
+('PASSENGER', 'BOOKING_READ'),
     ('PASSENGER', 'CHECKIN_CREATE'),
     ('PASSENGER', 'CHECKIN_READ'),
     ('PASSENGER', 'CRUISE_READ'),
@@ -342,7 +406,16 @@ INSERT INTO "RolePermissionMapping" (role, permission) VALUES
     ('PASSENGER', 'SERVICE_REQUEST_CREATE'),
     ('PASSENGER', 'SERVICE_REQUEST_READ'),
     ('PASSENGER', 'NOTIFICATION_READ'),
-    ('PASSENGER', 'PAYMENT_PROCESS');
+    ('PASSENGER', 'PAYMENT_PROCESS')
+) AS incoming(role, permission)
+WHERE NOT EXISTS (
+    SELECT 1 FROM "RolePermissionMapping" existing
+    WHERE existing.role = incoming.role
+      AND existing.permission = incoming.permission
+);
+
+-- Keep this migration compatible with pre-existing User table variants.
+ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "user_type" varchar(50);
 
 -- 3. TẠO CÁC TÀI KHOẢN NGƯỜI DÙNG VỚI MẬT KHẨU BCRYPT ĐÚNG CHUẨN
 -- admin / admin123 -> $2a$10$kFRbMu8VP8UH76WNaVtrXefN8TldcFz8bi2TvDZVDd9a0J9xA85ku
@@ -372,32 +445,13 @@ INSERT INTO "User" (user_id, username, password_hash, email, status, user_type, 
     ('a0000000-0000-0000-0000-000000000012', 'super_admin', '$2a$10$kFRbMu8VP8UH76WNaVtrXefN8TldcFz8bi2TvDZVDd9a0J9xA85ku', 'super.admin@casms.com', 'ACTIVE', 'STAFF', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
     ('a0000000-0000-0000-0000-000000000013', 'john.doe', '$2a$10$RQuGxB.5.Ky.3zvUffOHsOVfYHnzGd3t/y9xpqt5E53lovUGNo8k2', 'john.doe@example.com', 'ACTIVE', 'PASSENGER', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
     ('a0000000-0000-0000-0000-000000000014', 'jane.smith', '$2a$10$RQuGxB.5.Ky.3zvUffOHsOVfYHnzGd3t/y9xpqt5E53lovUGNo8k2', 'jane.smith@example.com', 'ACTIVE', 'PASSENGER', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-ON CONFLICT (username) DO UPDATE SET
-    password_hash = EXCLUDED.password_hash,
-    status = EXCLUDED.status,
-    email = EXCLUDED.email,
-    updated_at = CURRENT_TIMESTAMP;
+ON CONFLICT DO NOTHING;
 
 -- 4. GÁN ROLE CHO TÀI KHOẢN TRONG BẢNG "UserRole"
-DELETE FROM "UserRole" WHERE user_id IN (
-    'a0000000-0000-0000-0000-000000000001',
-    'a0000000-0000-0000-0000-000000000002',
-    'a0000000-0000-0000-0000-000000000003',
-    'a0000000-0000-0000-0000-000000000004',
-    'a0000000-0000-0000-0000-000000000005',
-    'a0000000-0000-0000-0000-000000000006',
-    'a0000000-0000-0000-0000-000000000007',
-    'a0000000-0000-0000-0000-000000000008',
-    'a0000000-0000-0000-0000-000000000009',
-    'a0000000-0000-0000-0000-000000000010',
-    'a0000000-0000-0000-0000-000000000011',
-    'a0000000-0000-0000-0000-000000000012',
-    'a0000000-0000-0000-0000-000000000013',
-    'a0000000-0000-0000-0000-000000000014'
-);
-
-INSERT INTO "UserRole" (user_id, role) VALUES
-    ('a0000000-0000-0000-0000-000000000001', 'ADMIN'),
+INSERT INTO "UserRole" (user_id, role)
+SELECT incoming.user_id::uuid, incoming.role
+FROM (VALUES
+('a0000000-0000-0000-0000-000000000001', 'ADMIN'),
     ('a0000000-0000-0000-0000-000000000002', 'CRUISE_MANAGER'),
     ('a0000000-0000-0000-0000-000000000003', 'SHIP_MANAGER'),
     ('a0000000-0000-0000-0000-000000000004', 'OPERATIONS_MANAGER'),
@@ -414,7 +468,13 @@ INSERT INTO "UserRole" (user_id, role) VALUES
     ('a0000000-0000-0000-0000-000000000012', 'SHIP_MANAGER'),
     -- Test Passengers
     ('a0000000-0000-0000-0000-000000000013', 'PASSENGER'),
-    ('a0000000-0000-0000-0000-000000000014', 'PASSENGER');
+    ('a0000000-0000-0000-0000-000000000014', 'PASSENGER')
+) AS incoming(user_id, role)
+WHERE NOT EXISTS (
+    SELECT 1 FROM "UserRole" existing
+    WHERE existing.user_id = incoming.user_id::uuid
+      AND existing.role = incoming.role
+);
 
 -- 5. TẠO PROFILE HÀNH KHÁCH
 INSERT INTO "Passenger" (passenger_id, user_id, full_name, date_of_birth, nationality, document_type, document_number_protected, email, phone_number, created_at)

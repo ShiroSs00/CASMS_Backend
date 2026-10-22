@@ -12,10 +12,7 @@ public class DatabaseConfig {
 
     @Bean
     public FlywayMigrationStrategy flywayMigrationStrategy() {
-        return flyway -> {
-            flyway.repair();
-            flyway.migrate();
-        };
+        return Flyway::migrate;
     }
 }
 

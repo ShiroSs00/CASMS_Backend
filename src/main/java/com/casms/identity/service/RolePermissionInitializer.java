@@ -260,6 +260,7 @@ public class RolePermissionInitializer implements CommandLineRunner {
                 Permission.BOOKING_CREATE,
                 Permission.BOOKING_READ,
                 Permission.BOOKING_UPDATE,
+                Permission.BOOKING_CONFIRM,
                 Permission.BOOKING_CANCEL,
                 Permission.BOOKING_CONTRACT_MANAGE,
                 Permission.BOOKING_CABIN_ASSIGN,
@@ -381,6 +382,7 @@ public class RolePermissionInitializer implements CommandLineRunner {
 
         // FINANCE_OFFICER: thanh toán, hóa đơn và quyết toán
         saveRolePermission(Role.FINANCE_OFFICER, EnumSet.of(
+                Permission.BOOKING_CONFIRM,
                 Permission.PAYMENT_PROCESS,
                 Permission.PAYMENT_REFUND,
                 Permission.PAYMENT_REPORT,
