@@ -2,6 +2,7 @@ package com.casms.ship.service;
 
 import com.casms.common.exception.BusinessException;
 import com.casms.common.exception.ResourceNotFoundException;
+import com.casms.common.service.BusinessCodeGenerator;
 import com.casms.ship.dto.request.*;
 import com.casms.ship.dto.response.*;
 import com.casms.ship.enums.CabinStatus;
@@ -38,19 +39,12 @@ public class ShipService {
     private final CabinRepository cabinRepository;
     private final ShipModelRepository shipModelRepository;
     private final LocationDeviceRepository locationDeviceRepository;
+    private final BusinessCodeGenerator businessCodeGenerator;
 
     @Transactional
     public ShipResponse create(ShipCreateRequest request) {
         String shipName = request.getShipName().trim();
-        String shipCode;
-        if (request.getShipCode() == null || request.getShipCode().isBlank()) {
-            shipCode = com.casms.common.util.CodeGenerator.generate("SHIP", shipRepository.count() + 1, shipRepository::existsByShipCode);
-        } else {
-            shipCode = request.getShipCode().trim();
-            if (shipRepository.existsByShipCode(shipCode)) {
-                throw new BusinessException("DUPLICATE_SHIP_CODE", "Ship code already exists: " + shipCode);
-            }
-        }
+        String shipCode = businessCodeGenerator.next("SH");
         ShipStatus status = request.getStatus() == null ? ShipStatus.ACTIVE : request.getStatus();
         validateShipDimensions(request.getTotalCapacity(), request.getTotalDecks());
         validateCommissionDate(request.getCommissionDate());

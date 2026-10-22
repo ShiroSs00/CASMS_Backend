@@ -44,7 +44,7 @@ class ItineraryChangeHistoryServiceTest {
     void append_nullRequest_throwsException() {
         assertThrows(
                 IllegalArgumentException.class,
-                () -> service.append(null)
+                () -> service.append(null, null)
         );
     }
 

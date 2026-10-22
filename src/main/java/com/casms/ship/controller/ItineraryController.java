@@ -8,6 +8,8 @@ import com.casms.ship.dto.request.ItineraryUpdateDraftRequest;
 import com.casms.ship.dto.response.ItineraryResponse;
 import com.casms.ship.dto.response.ItineraryDayResponse;
 import com.casms.ship.service.ItineraryService;
+import com.casms.ship.service.PassengerItineraryService;
+import com.casms.ship.dto.response.PassengerItineraryResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -30,6 +32,18 @@ import java.util.UUID;
 public class ItineraryController {
 
     private final ItineraryService service;
+    private final PassengerItineraryService passengerItineraryService;
+
+    @Operation(summary = "Lịch trình của tôi", description = "Trả lịch trình chuyến đi của các booking gắn với hành khách đã xác thực, kèm riêng các hoạt động đã đăng ký.")
+    @PreAuthorize("hasAuthority('BOOKING_READ')")
+    @GetMapping("/mine")
+    public ApiResponse<List<PassengerItineraryResponse>> mine(
+            @AuthenticationPrincipal CasmsPrincipal principal) {
+        if (principal == null || principal.getUserId() == null) {
+            throw new BusinessException(HttpStatus.UNAUTHORIZED, "AUTH_REQUIRED", "Yêu cầu đăng nhập để xem lịch trình");
+        }
+        return ApiResponse.success(passengerItineraryService.mine(principal.getUserId()));
+    }
 
     @Operation(summary = "Tạo lịch trình mới", description = "Tạo lịch trình mới cho một chuyến đi (mặc định trạng thái DRAFT)")
     @PreAuthorize("hasAuthority('ITINERARY_CREATE')")
@@ -38,13 +52,10 @@ public class ItineraryController {
     public ApiResponse<ItineraryResponse> create(
             @RequestBody @Valid ItineraryCreateRequest request,
             @AuthenticationPrincipal CasmsPrincipal principal) {
-        UUID creatorUserId = (principal != null && principal.getUserId() != null)
-                ? principal.getUserId()
-                : request.getCreatedByUserId();
-        if (creatorUserId == null) {
+        if (principal == null || principal.getUserId() == null) {
             throw new BusinessException(HttpStatus.UNAUTHORIZED, "AUTH_REQUIRED", "Yêu cầu đăng nhập để tạo lịch trình");
         }
-        return ApiResponse.success(service.create(request, creatorUserId));
+        return ApiResponse.success(service.create(request, principal.getUserId()));
     }
 
     @Operation(summary = "Danh sách lịch trình", description = "Lấy danh sách các lịch trình (hỗ trợ phân trang)")
@@ -103,15 +114,11 @@ public class ItineraryController {
     @PostMapping("/{itineraryId}/approve")
     public ApiResponse<ItineraryResponse> approve(
             @Parameter(description = "ID của lịch trình", required = true) @PathVariable UUID itineraryId,
-            @Parameter(description = "ID người phê duyệt (tùy chọn khi đã đăng nhập)") @RequestParam(required = false) UUID approverId,
             @AuthenticationPrincipal CasmsPrincipal principal) {
-        UUID effectiveApproverId = (principal != null && principal.getUserId() != null)
-                ? principal.getUserId()
-                : approverId;
-        if (effectiveApproverId == null) {
+        if (principal == null || principal.getUserId() == null) {
             throw new BusinessException(HttpStatus.UNAUTHORIZED, "AUTH_REQUIRED", "Yêu cầu đăng nhập để phê duyệt lịch trình");
         }
-        return ApiResponse.success(service.approve(itineraryId, effectiveApproverId));
+        return ApiResponse.success(service.approve(itineraryId, principal.getUserId()));
     }
 
     @Operation(summary = "Từ chối lịch trình", description = "Từ chối lịch trình từ PENDING_APPROVAL sang REJECTED")
@@ -119,16 +126,12 @@ public class ItineraryController {
     @PostMapping("/{itineraryId}/reject")
     public ApiResponse<ItineraryResponse> reject(
             @Parameter(description = "ID của lịch trình", required = true) @PathVariable UUID itineraryId,
-            @Parameter(description = "ID người phê duyệt (tùy chọn khi đã đăng nhập)") @RequestParam(required = false) UUID approverId,
             @Parameter(description = "Lý do từ chối", required = true) @RequestParam String reason,
             @AuthenticationPrincipal CasmsPrincipal principal) {
-        UUID effectiveApproverId = (principal != null && principal.getUserId() != null)
-                ? principal.getUserId()
-                : approverId;
-        if (effectiveApproverId == null) {
+        if (principal == null || principal.getUserId() == null) {
             throw new BusinessException(HttpStatus.UNAUTHORIZED, "AUTH_REQUIRED", "Yêu cầu đăng nhập để từ chối lịch trình");
         }
-        return ApiResponse.success(service.reject(itineraryId, effectiveApproverId, reason));
+        return ApiResponse.success(service.reject(itineraryId, principal.getUserId(), reason));
     }
 
     @Operation(summary = "Áp dụng thay đổi", description = "Áp dụng thay đổi cho lịch trình đã được phê duyệt")

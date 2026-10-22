@@ -1,6 +1,7 @@
 package com.casms.ship.service;
 
 import com.casms.common.exception.BusinessException;
+import com.casms.common.service.BusinessCodeGenerator;
 import com.casms.identity.entity.User;
 import com.casms.identity.enums.UserStatus;
 import com.casms.identity.repository.UserRepository;
@@ -41,17 +42,12 @@ public class OperationalIssueService {
     private final CruiseRepository cruiseRepository;
     private final CabinRepository cabinRepository;
     private final UserRepository userRepository;
+    private final BusinessCodeGenerator businessCodeGenerator;
 
     // 1. Report
     public OperationalIssueResponse report(
             @Valid OperationalIssueRequest request,
             UUID reporterId) {
-
-        if (request.getIssueCode() == null || request.getIssueCode().isBlank()) {
-            request.setIssueCode(com.casms.common.util.CodeGenerator.generate("ISSUE", issueRepository.count() + 1, issueRepository::existsByIssueCode));
-        } else if (issueRepository.existsByIssueCode(request.getIssueCode().trim())) {
-            throw new IllegalArgumentException("Issue code already exists: " + request.getIssueCode());
-        }
 
         if (request.getSeverity() == null) {
             request.setSeverity(OperationalIssueSeverity.MEDIUM);
@@ -76,7 +72,7 @@ public class OperationalIssueService {
         validateLocation(ship, cruise, cabin);
 
         OperationalIssue issue = new OperationalIssue();
-        issue.setIssueCode(request.getIssueCode().trim());
+        issue.setIssueCode(businessCodeGenerator.next("OI"));
         issue.setShip(ship);
         issue.setCruise(cruise);
         issue.setCabin(cabin);

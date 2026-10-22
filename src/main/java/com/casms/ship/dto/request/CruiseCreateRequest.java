@@ -13,10 +13,6 @@ import java.util.UUID;
 @Schema(description = "Yêu cầu tạo mới chuyến đi du thuyền (Cruise)")
 public class CruiseCreateRequest {
 
-    @Schema(description = "Mã chuyến đi (duy nhất). Nếu để trống, hệ thống tự sinh mã theo định dạng CRUISE-XXX", example = "CRUISE-001")
-    @jakarta.validation.constraints.Size(max = 20, message = "Cruise code must not exceed 20 characters")
-    private String cruiseCode;
-
     @Schema(description = "Tên chuyến đi", example = "Hải trình khám phá Vịnh Hạ Long 3N2Đ", requiredMode = Schema.RequiredMode.REQUIRED)
     @NotBlank(message = "Cruise name is required")
     private String cruiseName;

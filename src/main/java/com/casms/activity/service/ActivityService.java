@@ -3,6 +3,7 @@ package com.casms.activity.service;
 import com.casms.activity.entity.*;
 import com.casms.activity.enums.*;
 import com.casms.activity.repository.*;
+import com.casms.common.service.BusinessCodeGenerator;
 import com.casms.booking.entity.BookingPassenger;
 import com.casms.booking.enums.BookingStatus;
 import com.casms.booking.repository.BookingPassengerRepository;
@@ -29,6 +30,7 @@ public class ActivityService {
     private final CruiseRepository cruises;
     private final ShoreExcursionRepository excursions;
     private final TourPackageActivityRepository packageActivities;
+    private final BusinessCodeGenerator businessCodeGenerator;
 
     @Transactional(readOnly = true)
     public List<OnboardActivity> listActivities() { return activities.findAll(); }
@@ -39,9 +41,7 @@ public class ActivityService {
 
     public OnboardActivity createActivity(OnboardActivity a, UUID cruiseId) {
         a.setCruise(cruises.findById(cruiseId).orElseThrow(() -> missing("Cruise", cruiseId)));
-        if (a.getActivityCode() == null || a.getActivityCode().isBlank()) {
-            a.setActivityCode(com.casms.common.util.CodeGenerator.generate("ACTIVITY", activities.count() + 1, activities::existsByActivityCode));
-        }
+        a.setActivityCode(businessCodeGenerator.next("AC"));
         if (a.getCurrencyCode() == null || a.getCurrencyCode().isBlank()) {
             a.setCurrencyCode("USD");
         }
@@ -55,7 +55,7 @@ public class ActivityService {
     public OnboardActivity updateActivity(UUID id, OnboardActivity input) {
         OnboardActivity a = activity(id);
         if (a.getStatus() != OnboardActivityStatus.PLANNED) throw new IllegalStateException("Only planned activities can be edited");
-        a.setActivityCode(input.getActivityCode()); a.setActivityName(input.getActivityName()); a.setDescription(input.getDescription());
+        a.setActivityName(input.getActivityName()); a.setDescription(input.getDescription());
         a.setStartTime(input.getStartTime()); a.setEndTime(input.getEndTime()); a.setLocation(input.getLocation()); a.setCapacity(input.getCapacity());
         a.setPrice(input.getPrice()); a.setCurrencyCode(input.getCurrencyCode()); validateActivity(a, id); return a;
     }

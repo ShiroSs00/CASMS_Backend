@@ -15,7 +15,7 @@ public class CruiseResponse {
     @Schema(description = "ID chuyến đi (UUID)", example = "3fa85f64-5717-4562-b3fc-2c963f66afa6")
     private UUID cruiseId;
 
-    @Schema(description = "Mã chuyến đi", example = "CR-2026-001")
+    @Schema(description = "Mã chuyến đi do hệ thống cấp", example = "CR-0001")
     private String cruiseCode;
 
     @Schema(description = "Tên chuyến đi", example = "Hải trình khám phá Vịnh Hạ Long 3N2Đ")
@@ -27,7 +27,7 @@ public class CruiseResponse {
     @Schema(description = "Tên của tàu được gán", example = "Ocean Voyager")
     private String shipName;
 
-    @Schema(description = "Mã của tàu được gán", example = "SH-001")
+    @Schema(description = "Mã của tàu được gán", example = "SH-0001")
     private String shipCode;
 
     @Schema(description = "Loại chuyến đi", example = "MULTI_DAYS")

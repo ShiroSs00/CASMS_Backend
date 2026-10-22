@@ -25,7 +25,7 @@ public class ShoreExcursion {
     @JoinColumn(name = "cruise_stop_id", nullable = false)
     private CruiseStop cruiseStop;
 
-    @Column(name = "excursion_code", length = 50)
+    @Column(name = "excursion_code", nullable = false, length = 50)
     private String excursionCode;
 
     @Column(name = "excursion_name", nullable = false, length = 250)

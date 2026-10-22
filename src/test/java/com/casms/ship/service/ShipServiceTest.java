@@ -1,6 +1,7 @@
 package com.casms.ship.service;
 import com.casms.common.exception.BusinessException;
 import com.casms.common.exception.ResourceNotFoundException;
+import com.casms.common.service.BusinessCodeGenerator;
 import com.casms.ship.dto.request.ShipCreateRequest;
 import com.casms.ship.dto.request.ShipUpdateRequest;
 import com.casms.ship.entity.Ship;
@@ -25,18 +26,19 @@ class ShipServiceTest {
  @Mock CabinRepository cabinRepository;
  @Mock ShipModelRepository shipModelRepository;
  @Mock LocationDeviceRepository locationDeviceRepository;
+ @Mock BusinessCodeGenerator businessCodeGenerator;
  @InjectMocks ShipService service;
 
  @Test void create_savesAndReturnsShip() {
   ShipCreateRequest req=mock(ShipCreateRequest.class);
-  when(req.getShipCode()).thenReturn("SH-01");
+  when(businessCodeGenerator.next("SH")).thenReturn("SH-0001");
   when(req.getShipName()).thenReturn("Test Ship");
   when(req.getStatus()).thenReturn(ShipStatus.values()[0]);
   when(req.getTotalCapacity()).thenReturn(100);
   when(req.getTotalDecks()).thenReturn(5);
   when(shipRepository.save(any(Ship.class))).thenAnswer(i -> { Ship s=i.getArgument(0); s.setShipId(UUID.randomUUID()); return s; });
   var res=service.create(req);
-  assertEquals("SH-01",res.getShipCode());
+  assertEquals("SH-0001",res.getShipCode());
   assertEquals("Test Ship",res.getShipName());
   verify(shipRepository).save(any(Ship.class));
  }

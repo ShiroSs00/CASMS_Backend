@@ -49,9 +49,13 @@ public class ItineraryChangeHistoryService {
 
     @Transactional
     public ItineraryChangeHistoryResponse append(
-            ItineraryChangeRequest request
+            ItineraryChangeRequest request,
+            UUID changedByUserId
     ) {
         validateRequest(request);
+        if (changedByUserId == null) {
+            throw new IllegalArgumentException("Authenticated actor is required");
+        }
 
         Itinerary itinerary = itineraryRepository
                 .findById(request.itineraryId())
@@ -84,9 +88,9 @@ public class ItineraryChangeHistoryService {
         );
 
         User changedByUser = userRepository
-                .findById(request.changedByUserId())
+                .findById(changedByUserId)
                 .orElseThrow(() -> new EntityNotFoundException(
-                        "User not found: " + request.changedByUserId()
+                        "User not found: " + changedByUserId
                 ));
 
         validateJson(request.beforeData(), "beforeData");
@@ -114,9 +118,10 @@ public class ItineraryChangeHistoryService {
 
     @Transactional
     public ItineraryChangeHistoryResponse recordItineraryChange(
-            ItineraryChangeRequest request
+            ItineraryChangeRequest request,
+            UUID changedByUserId
     ) {
-        return append(request);
+        return append(request, changedByUserId);
     }
 
     // LIST WITH OPTIONAL FILTERS
@@ -196,8 +201,7 @@ public class ItineraryChangeHistoryService {
 
         if (request.itineraryId() == null
                 || request.changedEntityId() == null
-                || request.changeType() == null
-                || request.changedByUserId() == null) {
+                || request.changeType() == null) {
             throw new IllegalArgumentException(
                     "Required change history fields must not be null"
             );

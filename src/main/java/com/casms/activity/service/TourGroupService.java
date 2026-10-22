@@ -14,6 +14,7 @@ import com.casms.activity.repository.RegistrationRepository;
 import com.casms.activity.repository.ShoreExcursionRepository;
 import com.casms.activity.repository.TourGroupPassengerRepository;
 import com.casms.activity.repository.TourGroupRepository;
+import com.casms.common.service.BusinessCodeGenerator;
 import com.casms.identity.entity.Passenger;
 import com.casms.identity.repository.PassengerRepository;
 import jakarta.persistence.EntityNotFoundException;
@@ -35,6 +36,7 @@ public class TourGroupService {
     private final ShoreExcursionRepository shoreExcursionRepository;
     private final RegistrationRepository registrationRepository;
     private final PassengerRepository passengerRepository;
+    private final BusinessCodeGenerator businessCodeGenerator;
 
     private static final List<TourGroupPassengerAssignmentStatus>
             CAPACITY_STATUSES = List.of(
@@ -550,10 +552,7 @@ public class TourGroupService {
                 );
 
         group.setShoreExcursion(excursion);
-        String code = (request.groupCode() == null || request.groupCode().isBlank())
-                ? com.casms.common.util.CodeGenerator.generate("TOURGROUP", tourGroupRepository.findByShoreExcursion_ShoreExcursionId(excursion.getShoreExcursionId()).size() + 1, c -> tourGroupRepository.existsByShoreExcursion_ShoreExcursionIdAndGroupCodeIgnoreCase(excursion.getShoreExcursionId(), c))
-                : request.groupCode().trim();
-        group.setGroupCode(code);
+        if (group.getTourGroupId() == null) group.setGroupCode(businessCodeGenerator.next("TG"));
         group.setMaximumCapacity(request.maximumCapacity() == null || request.maximumCapacity() < 1 ? excursion.getMaximumCapacity() : request.maximumCapacity());
         group.setGuideId(request.guideId());
         group.setVehicleId(request.vehicleId());

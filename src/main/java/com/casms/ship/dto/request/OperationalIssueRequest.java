@@ -15,9 +15,6 @@ import java.util.UUID;
 @Setter
 public class OperationalIssueRequest {
 
-    @Size(max = 30)
-    private String issueCode;
-
     private UUID cruiseId;
 
     private UUID shipId;

@@ -15,6 +15,11 @@ import java.util.UUID;
 @Repository
 public interface CruiseStopRepository extends JpaRepository<CruiseStop, UUID> {
 
+    @org.springframework.data.jpa.repository.EntityGraph(attributePaths = {
+            "itinerary", "arrivalItineraryDay", "departureItineraryDay", "port", "destination"})
+    List<CruiseStop> findByItineraryItineraryIdInOrderByItineraryItineraryIdAscStopOrderAsc(
+            java.util.Collection<UUID> itineraryIds);
+
     List<CruiseStop> findByItineraryItineraryIdOrderByStopOrderAsc(UUID itineraryId);
 
     boolean existsByItineraryItineraryIdAndStopOrder(UUID itineraryId, Integer stopOrder);

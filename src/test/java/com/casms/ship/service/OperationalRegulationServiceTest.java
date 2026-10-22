@@ -1,5 +1,6 @@
 package com.casms.ship.service;
 import com.casms.ship.entity.OperationalRegulation;
+import com.casms.common.service.BusinessCodeGenerator;
 import com.casms.ship.enums.RegulationStatus;
 import com.casms.ship.repository.*;
 import jakarta.persistence.EntityNotFoundException;
@@ -17,6 +18,7 @@ class OperationalRegulationServiceTest {
  @Mock OperationalRegulationRepository regulationRepository;
  @Mock ShipRegulationRepository shipRegulationRepository;
  @Mock CruiseRegulationRepository cruiseRegulationRepository;
+ @Mock BusinessCodeGenerator businessCodeGenerator;
  @InjectMocks OperationalRegulationService service;
 
  @Test void listRegulations_returnsMappedList() {

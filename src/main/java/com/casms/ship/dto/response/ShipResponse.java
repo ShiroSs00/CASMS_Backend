@@ -15,7 +15,7 @@ public class ShipResponse {
     @Schema(description = "ID duy nhất của tàu (UUID)", example = "3fa85f64-5717-4562-b3fc-2c963f66afa6")
     private UUID shipId;
 
-    @Schema(description = "Mã tàu", example = "SH-001")
+    @Schema(description = "Mã tàu do hệ thống cấp", example = "SH-0001")
     private String shipCode;
 
     @Schema(description = "Tên tàu", example = "Ocean Voyager")

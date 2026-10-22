@@ -36,19 +36,14 @@ public class OperationalIssueController {
     @PostMapping
     public ResponseEntity<ApiResponse<OperationalIssueResponse>> report(
             @Valid @RequestBody OperationalIssueRequest request,
-            @RequestParam(required = false) UUID reporterId,
             @AuthenticationPrincipal CasmsPrincipal principal) {
 
-        UUID effectiveReporterId = (principal != null && principal.getUserId() != null)
-                ? principal.getUserId()
-                : reporterId;
-
-        if (effectiveReporterId == null) {
-            throw new BusinessException(HttpStatus.BAD_REQUEST, "VALIDATION_FAILED", "reporterId is required");
+        if (principal == null || principal.getUserId() == null) {
+            throw new BusinessException(HttpStatus.UNAUTHORIZED, "AUTH_REQUIRED", "Authentication required");
         }
 
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(ApiResponse.success(issueService.report(request, effectiveReporterId)));
+                .body(ApiResponse.success(issueService.report(request, principal.getUserId())));
     }
 
     @Operation(summary = "Danh sách sự cố", description = "Lấy danh sách các sự cố vận hành theo bộ lọc (trạng thái, tàu, chuyến đi)")
@@ -104,11 +99,10 @@ public class OperationalIssueController {
     @PostMapping("/{issueId}/resolution")
     public ResponseEntity<ApiResponse<OperationalIssueResponse>> recordResolution(
             @PathVariable UUID issueId,
-            @RequestParam(required = false) UUID resolverId,
             @AuthenticationPrincipal CasmsPrincipal principal,
             @Valid @RequestBody OperationalIssueResolutionRequest request) {
 
-        UUID actorId = resolveActorId(principal, resolverId);
+        UUID actorId = resolveActorId(principal);
         return ResponseEntity.ok(ApiResponse.success(
                 issueService.recordResolution(issueId, actorId, request)));
     }
@@ -118,10 +112,9 @@ public class OperationalIssueController {
     @PatchMapping("/{issueId}/verify")
     public ResponseEntity<ApiResponse<OperationalIssueResponse>> verifyResolution(
             @PathVariable UUID issueId,
-            @RequestParam(required = false) UUID verifierId,
             @AuthenticationPrincipal CasmsPrincipal principal) {
 
-        UUID actorId = resolveActorId(principal, verifierId);
+        UUID actorId = resolveActorId(principal);
         return ResponseEntity.ok(ApiResponse.success(
                 issueService.verifyResolution(issueId, actorId)));
     }
@@ -151,14 +144,10 @@ public class OperationalIssueController {
         return ResponseEntity.noContent().build();
     }
 
-    private UUID resolveActorId(CasmsPrincipal principal, UUID clientActorId) {
+    private UUID resolveActorId(CasmsPrincipal principal) {
         if (principal == null || principal.getUserId() == null) {
             throw new BusinessException(HttpStatus.UNAUTHORIZED, "AUTH_REQUIRED", "Authentication required");
         }
-        UUID principalId = principal.getUserId();
-        if (clientActorId != null && !clientActorId.equals(principalId)) {
-            throw new BusinessException(HttpStatus.FORBIDDEN, "ACCESS_DENIED", "Cannot act on behalf of another user");
-        }
-        return principalId;
+        return principal.getUserId();
     }
 }

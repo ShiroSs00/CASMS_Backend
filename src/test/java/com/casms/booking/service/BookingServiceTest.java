@@ -15,6 +15,7 @@ import com.casms.booking.repository.BookingPassengerRepository;
 import com.casms.booking.repository.BookingRepository;
 import com.casms.booking.repository.CabinAssignmentRepository;
 import com.casms.common.exception.BusinessException;
+import com.casms.common.service.BusinessCodeGenerator;
 import com.casms.identity.entity.Passenger;
 import com.casms.identity.entity.User;
 import com.casms.identity.enums.PassengerDocumentType;
@@ -71,6 +72,7 @@ class BookingServiceTest {
     @Mock private PasswordEncoder passwordEncoder;
     @Mock private InstallmentRepository installmentRepository;
     @Mock private NotificationRepository notificationRepository;
+    @Mock private BusinessCodeGenerator businessCodeGenerator;
 
     @InjectMocks
     private BookingService bookingService;
@@ -119,6 +121,7 @@ class BookingServiceTest {
     @Test
     @DisplayName("Đặt tour thành công cho khách vãng lai và tự động cấp tài khoản theo email")
     void createBooking_guestSuccess() {
+        when(businessCodeGenerator.next("BK")).thenReturn("BK-0001");
         BookingCreateRequest request = new BookingCreateRequest();
         request.setCruiseId(cruiseId);
         request.setPaymentPlan(PaymentPlan.DEPOSIT);
