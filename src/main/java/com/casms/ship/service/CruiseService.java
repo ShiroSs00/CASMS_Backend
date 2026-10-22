@@ -472,4 +472,48 @@ public class CruiseService {
         res.setUpdatedAt(cruise.getUpdatedAt());
         return res;
     }
+
+    @Transactional(readOnly = true)
+    public com.casms.ship.dto.response.CruiseManifestResponse getManifest(UUID cruiseId) {
+        Cruise cruise = cruiseRepository.findById(cruiseId)
+                .orElseThrow(() -> new ResourceNotFoundException("Cruise not found with id: " + cruiseId));
+
+        Ship ship = cruise.getShip();
+        String shipName = ship != null ? ship.getShipName() : "UNASSIGNED";
+        Integer capacity = ship != null ? ship.getTotalCapacity() : 0;
+        long bookedCount = bookingPassengerRepository.countActivePassengersByCruiseId(cruiseId);
+
+        List<com.casms.booking.entity.BookingPassenger> activePassengers = bookingPassengerRepository.findActivePassengersByCruiseId(cruiseId);
+        List<com.casms.ship.dto.response.CruiseManifestResponse.PassengerManifestItem> passengerItems = activePassengers.stream()
+                .map(bp -> {
+                    var pass = bp.getPassenger();
+                    String fullName = pass != null ? pass.getFullName() : "N/A";
+                    String idNum = pass != null ? pass.getDocumentNumberProtected() : "N/A";
+                    String bookingCode = bp.getBooking() != null ? bp.getBooking().getBookingReference() : "N/A";
+                    return com.casms.ship.dto.response.CruiseManifestResponse.PassengerManifestItem.builder()
+                            .bookingPassengerId(bp.getBookingPassengerId())
+                            .bookingCode(bookingCode)
+                            .fullName(fullName)
+                            .identificationNumber(idNum)
+                            .cabinNumber("ASSIGNED")
+                            .deckName("MAIN")
+                            .build();
+                })
+                .toList();
+
+        return com.casms.ship.dto.response.CruiseManifestResponse.builder()
+                .cruiseId(cruise.getCruiseId())
+                .cruiseCode(cruise.getCruiseCode())
+                .cruiseName(cruise.getCruiseName())
+                .shipName(shipName)
+                .totalCapacity(capacity)
+                .bookedPassengers(bookedCount)
+                .departureTime(cruise.getDepartureDatetime())
+                .returnTime(cruise.getReturnDatetime())
+                .originPort(cruise.getDeparturePort() != null ? cruise.getDeparturePort().getPortName() : null)
+                .destinationPort(cruise.getReturnPort() != null ? cruise.getReturnPort().getPortName() : null)
+                .staffList(new ArrayList<>())
+                .passengerList(passengerItems)
+                .build();
+    }
 }

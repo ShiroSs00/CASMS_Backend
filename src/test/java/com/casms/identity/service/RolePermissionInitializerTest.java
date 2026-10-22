@@ -96,24 +96,80 @@ class RolePermissionInitializerTest {
     }
 
     @Test
-    void onboardStaff_hasActivityAndTourPermissions_andSupplierRead() {
+    void onboardStaff_hasSalesAndServicePermissions_noCatalogOrActivityMutations() {
         Set<Permission> perms = rolePermissionsMap.get(Role.ONBOARD_STAFF);
         assertNotNull(perms);
 
-        // Positive checks: Excursion, TourGroup, TourGroupPassenger, Supplier Read
-        assertTrue(perms.contains(Permission.SUPPLIER_READ));
-        assertTrue(perms.contains(Permission.EXCURSION_CREATE));
+        // Positive checks: Service execution, POS sales, Attendance, Read activities & excursions
+        assertTrue(perms.contains(Permission.SERVICE_READ));
+        assertTrue(perms.contains(Permission.SERVICE_REQUEST_READ));
+        assertTrue(perms.contains(Permission.SERVICE_REQUEST_EXECUTE));
+        assertTrue(perms.contains(Permission.PRODUCT_SALE));
+        assertTrue(perms.contains(Permission.PAYMENT_PROCESS));
+        assertTrue(perms.contains(Permission.ACTIVITY_READ));
+        assertTrue(perms.contains(Permission.ACTIVITY_ATTENDANCE));
         assertTrue(perms.contains(Permission.EXCURSION_READ));
-        assertTrue(perms.contains(Permission.TOUR_GROUP_CREATE));
         assertTrue(perms.contains(Permission.TOUR_GROUP_READ));
-        assertTrue(perms.contains(Permission.TOUR_GROUP_PASSENGER_ASSIGN));
         assertTrue(perms.contains(Permission.TOUR_GROUP_PASSENGER_ATTENDANCE));
 
-        // Negative checks: Supplier creation is managed by Operations/Admin, not Onboard staff
+        // Negative checks: Onboard staff must NOT modify catalog or activities
+        assertFalse(perms.contains(Permission.ACTIVITY_CREATE));
+        assertFalse(perms.contains(Permission.ACTIVITY_UPDATE));
+        assertFalse(perms.contains(Permission.EXCURSION_CREATE));
+        assertFalse(perms.contains(Permission.EXCURSION_UPDATE));
+        assertFalse(perms.contains(Permission.TOUR_GROUP_CREATE));
+        assertFalse(perms.contains(Permission.TOUR_GROUP_UPDATE));
+        assertFalse(perms.contains(Permission.SERVICE_CREATE));
+        assertFalse(perms.contains(Permission.SERVICE_UPDATE));
         assertFalse(perms.contains(Permission.SUPPLIER_CREATE));
         assertFalse(perms.contains(Permission.SHIP_CREATE));
         assertFalse(perms.contains(Permission.CRUISE_CREATE));
         assertFalse(perms.contains(Permission.ITINERARY_APPROVE));
+    }
+
+    @Test
+    void activityManager_hasSeaServiceAndActivityPermissions() {
+        Set<Permission> perms = rolePermissionsMap.get(Role.ACTIVITY_MANAGER);
+        assertNotNull(perms);
+
+        // Positive checks: Activities, services, tour packages
+        assertTrue(perms.contains(Permission.ACTIVITY_CREATE));
+        assertTrue(perms.contains(Permission.ACTIVITY_UPDATE));
+        assertTrue(perms.contains(Permission.ACTIVITY_LIFECYCLE));
+        assertTrue(perms.contains(Permission.SERVICE_CREATE));
+        assertTrue(perms.contains(Permission.SERVICE_UPDATE));
+        assertTrue(perms.contains(Permission.TOUR_PACKAGE_MANAGE));
+        assertTrue(perms.contains(Permission.PACKAGE_COMPONENT_MANAGE));
+        assertTrue(perms.contains(Permission.SERVICE_REQUEST_EXECUTE));
+
+        // Negative checks: Not managing shore excursions, suppliers or ship fleet
+        assertFalse(perms.contains(Permission.EXCURSION_CREATE));
+        assertFalse(perms.contains(Permission.SUPPLIER_CREATE));
+        assertFalse(perms.contains(Permission.TOUR_GROUP_CREATE));
+        assertFalse(perms.contains(Permission.SHIP_CREATE));
+    }
+
+    @Test
+    void shoreManager_hasShoreExcursionsSuppliersAndTourGroups() {
+        Set<Permission> perms = rolePermissionsMap.get(Role.SHORE_MANAGER);
+        assertNotNull(perms);
+
+        // Positive checks: Shore excursions, suppliers, tour groups, guides
+        assertTrue(perms.contains(Permission.EXCURSION_CREATE));
+        assertTrue(perms.contains(Permission.EXCURSION_UPDATE));
+        assertTrue(perms.contains(Permission.SUPPLIER_CREATE));
+        assertTrue(perms.contains(Permission.SUPPLIER_UPDATE));
+        assertTrue(perms.contains(Permission.SUPPLIER_VERIFY));
+        assertTrue(perms.contains(Permission.TOUR_GROUP_CREATE));
+        assertTrue(perms.contains(Permission.TOUR_GROUP_UPDATE));
+        assertTrue(perms.contains(Permission.TOUR_GROUP_GUIDE_ASSIGN));
+        assertTrue(perms.contains(Permission.TOUR_GROUP_PASSENGER_ASSIGN));
+
+        // Negative checks: Not managing onboard activities or ship fleet
+        assertFalse(perms.contains(Permission.ACTIVITY_CREATE));
+        assertFalse(perms.contains(Permission.SERVICE_CREATE));
+        assertFalse(perms.contains(Permission.SHIP_CREATE));
+        assertFalse(perms.contains(Permission.CABIN_CREATE));
     }
 
     @Test
@@ -127,6 +183,8 @@ class RolePermissionInitializerTest {
         assertTrue(perms.contains(Permission.SUPPLIER_VERIFY));
         assertTrue(perms.contains(Permission.OPERATIONAL_ISSUE_READ));
         assertTrue(perms.contains(Permission.OPERATIONAL_ISSUE_UPDATE));
+        assertTrue(perms.contains(Permission.BOOKING_READ));
+        assertTrue(perms.contains(Permission.CABIN_READ));
     }
 
     @Test
@@ -136,6 +194,8 @@ class RolePermissionInitializerTest {
         assertTrue(bookingPerms.contains(Permission.SHIP_READ));
         assertTrue(bookingPerms.contains(Permission.DECK_READ));
         assertTrue(bookingPerms.contains(Permission.CABIN_READ));
+        assertTrue(bookingPerms.contains(Permission.CABIN_BLOCK));
+        assertTrue(bookingPerms.contains(Permission.CABIN_RELEASE));
         assertFalse(bookingPerms.contains(Permission.SHIP_CREATE));
         assertFalse(bookingPerms.contains(Permission.CABIN_CREATE));
 
@@ -162,6 +222,8 @@ class RolePermissionInitializerTest {
         assertFalse(perms.contains(Permission.SHIP_CREATE));
         assertFalse(perms.contains(Permission.CRUISE_CREATE));
         assertFalse(perms.contains(Permission.ITINERARY_CREATE));
+        assertFalse(perms.contains(Permission.CHECKIN_BOARDING));
+        assertFalse(perms.contains(Permission.BOOKING_CONFIRM));
     }
 
     @Test

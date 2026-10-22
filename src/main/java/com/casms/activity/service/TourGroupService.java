@@ -16,7 +16,10 @@ import com.casms.activity.repository.TourGroupPassengerRepository;
 import com.casms.activity.repository.TourGroupRepository;
 import com.casms.common.service.BusinessCodeGenerator;
 import com.casms.identity.entity.Passenger;
+import com.casms.identity.entity.User;
+import com.casms.identity.enums.UserStatus;
 import com.casms.identity.repository.PassengerRepository;
+import com.casms.identity.repository.UserRepository;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -36,6 +39,7 @@ public class TourGroupService {
     private final ShoreExcursionRepository shoreExcursionRepository;
     private final RegistrationRepository registrationRepository;
     private final PassengerRepository passengerRepository;
+    private final UserRepository userRepository;
     private final BusinessCodeGenerator businessCodeGenerator;
 
     private static final List<TourGroupPassengerAssignmentStatus>
@@ -217,8 +221,13 @@ public class TourGroupService {
             throw new IllegalArgumentException("Guide ID is required.");
         }
 
-        // guideId là UUID thuần, schema hiện tại chưa có entity/repository
-        // để xác minh hướng dẫn viên có tồn tại hay đủ điều kiện.
+        // Verify that the guide exists as an active user
+        User guide = userRepository.findById(guideId)
+                .orElseThrow(() -> new EntityNotFoundException("Tour guide user not found with ID: " + guideId));
+        if (guide.getStatus() != UserStatus.ACTIVE) {
+            throw new IllegalStateException("Tour guide user is not active.");
+        }
+
         validateGuideSchedule(group, guideId);
 
         group.setGuideId(guideId);

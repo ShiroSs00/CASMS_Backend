@@ -33,6 +33,14 @@ public interface BookingPassengerRepository extends JpaRepository<BookingPasseng
            "AND bp.participationStatus = 'Active' AND bp.booking.bookingStatus != 'Cancelled'")
     long countActivePassengersByCruiseId(@Param("cruiseId") UUID cruiseId);
 
+    @Query("SELECT bp FROM BookingPassenger bp " +
+           "JOIN FETCH bp.passenger p " +
+           "JOIN FETCH bp.booking b " +
+           "WHERE b.cruise.cruiseId = :cruiseId " +
+           "AND bp.participationStatus = 'Active' " +
+           "AND b.bookingStatus != 'Cancelled'")
+    java.util.List<BookingPassenger> findActivePassengersByCruiseId(@Param("cruiseId") UUID cruiseId);
+
     java.util.List<BookingPassenger> findByBookingBookingId(UUID bookingId);
     java.util.List<BookingPassenger> findByPassenger_PassengerId(UUID passengerId);
     java.util.List<BookingPassenger> findByPassenger_User_UserId(UUID userId);

@@ -55,6 +55,8 @@ public class IdentityService {
                 Role.OPERATIONS_MANAGER,
                 Role.SHIP_MANAGER,
                 Role.CRUISE_MANAGER,
+                Role.ACTIVITY_MANAGER,
+                Role.SHORE_MANAGER,
                 Role.ONBOARD_STAFF
         );
     }
