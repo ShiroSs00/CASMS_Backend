@@ -11,8 +11,7 @@ import java.util.UUID;
 @Getter
 @Setter
 @Entity
-@Table(name = "\"CruiseStaff\"",
-       uniqueConstraints = @UniqueConstraint(columnNames = {"cruise_id", "user_id"}))
+@Table(name = "\"CruiseStaff\"")
 public class CruiseStaff {
 
     @Id
@@ -39,4 +38,15 @@ public class CruiseStaff {
 
     @Column(name = "notes", columnDefinition = "text")
     private String notes;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "assigned_by_user_id")
+    private User assignedBy;
+
+    @Column(name = "ended_at")
+    private Instant endedAt;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "ended_by_user_id")
+    private User endedBy;
 }

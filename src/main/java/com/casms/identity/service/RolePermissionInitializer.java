@@ -30,14 +30,24 @@ public class RolePermissionInitializer implements CommandLineRunner {
     public void initializeRolePermissions() {
         log.info("Initializing role permissions...");
 
-        // ADMIN: toàn bộ quyền
-        saveRolePermission(Role.ADMIN, EnumSet.allOf(Permission.class));
+        // ADMIN: identity administration and technical ship/device configuration only.
+        saveRolePermission(Role.ADMIN, EnumSet.of(
+                Permission.USER_CREATE, Permission.USER_READ, Permission.USER_UPDATE,
+                Permission.USER_ROLE_ASSIGN, Permission.USER_STATUS_CHANGE,
+                Permission.SHIP_MODEL_CREATE, Permission.SHIP_MODEL_READ, Permission.SHIP_MODEL_UPDATE,
+                Permission.SHIP_MODEL_DELETE, Permission.SHIP_MODEL_PUBLISH,
+                Permission.SHIP_MODEL_OBJECT_CREATE, Permission.SHIP_MODEL_OBJECT_UPDATE,
+                Permission.SHIP_MODEL_OBJECT_DELETE, Permission.SHIP_CONFIGURATION_READ,
+                Permission.SHIP_CONFIGURATION_VALIDATE,
+                Permission.BLE_ANCHOR_CREATE, Permission.BLE_ANCHOR_READ, Permission.BLE_ANCHOR_UPDATE,
+                Permission.BLE_ANCHOR_DELETE, Permission.BLE_ANCHOR_ACTIVATE, Permission.BLE_ANCHOR_DEACTIVATE,
+                Permission.BLE_ANCHOR_RETIRE, Permission.BLE_ANCHOR_INSTALL, Permission.BLE_ANCHOR_VALIDATE,
+                Permission.BLE_TELEMETRY_RECEIVE, Permission.BLE_TELEMETRY_READ
+        ));
 
         // CRUISE_MANAGER: quản lý lịch trình chuyến đi và hải trình (Quản lý lịch trình)
         saveRolePermission(Role.CRUISE_MANAGER, EnumSet.of(
-                Permission.SERVICE_CREATE, Permission.SERVICE_READ, Permission.SERVICE_UPDATE, Permission.SERVICE_DELETE_UNUSED,
-                Permission.SERVICE_ACTIVATE, Permission.SERVICE_SUSPEND, Permission.SERVICE_REQUEST_READ,
-                Permission.TOUR_PACKAGE_MANAGE, Permission.PACKAGE_COMPONENT_MANAGE,
+                Permission.SERVICE_READ, Permission.SERVICE_REQUEST_READ,
                 Permission.CRUISE_CREATE,
                 Permission.CRUISE_READ,
                 Permission.CRUISE_UPDATE_DRAFT,
@@ -58,8 +68,6 @@ public class RolePermissionInitializer implements CommandLineRunner {
                 Permission.ITINERARY_DELETE_DRAFT,
                 Permission.ITINERARY_VALIDATE,
                 Permission.ITINERARY_SUBMIT,
-                Permission.ITINERARY_APPROVE,
-                Permission.ITINERARY_REJECT,
                 Permission.ITINERARY_APPLY_CHANGE,
                 Permission.ITINERARY_PUBLISH,
                 Permission.ITINERARY_CANCEL,
@@ -85,14 +93,8 @@ public class RolePermissionInitializer implements CommandLineRunner {
                 Permission.CRUISE_STOP_VALIDATE,
                 Permission.CRUISE_STOP_TIME_MANAGE,
 
-                Permission.PORT_CREATE,
                 Permission.PORT_READ,
-                Permission.PORT_UPDATE,
-                Permission.PORT_VALIDATE,
-                Permission.DESTINATION_CREATE,
                 Permission.DESTINATION_READ,
-                Permission.DESTINATION_UPDATE,
-                Permission.DESTINATION_VALIDATE,
 
                 Permission.CRUISE_REGULATION_ASSIGN,
                 Permission.CRUISE_REGULATION_READ,
@@ -227,10 +229,25 @@ public class RolePermissionInitializer implements CommandLineRunner {
                 Permission.CRUISE_STOP_VALIDATE,
                 Permission.CRUISE_STOP_TIME_MANAGE,
 
+                Permission.PORT_CREATE,
                 Permission.PORT_READ,
+                Permission.PORT_UPDATE,
+                Permission.PORT_DELETE_UNUSED,
+                Permission.PORT_ACTIVATE,
+                Permission.PORT_DEACTIVATE,
                 Permission.PORT_VALIDATE,
+                Permission.DESTINATION_CREATE,
                 Permission.DESTINATION_READ,
+                Permission.DESTINATION_UPDATE,
+                Permission.DESTINATION_DELETE_UNUSED,
+                Permission.DESTINATION_PORTS_VIEW,
                 Permission.DESTINATION_VALIDATE,
+
+                Permission.CRUISE_STAFF_ASSIGN,
+                Permission.CRUISE_STAFF_READ,
+                Permission.CRUISE_STAFF_REMOVE,
+                Permission.ITINERARY_APPROVE,
+                Permission.ITINERARY_REJECT,
 
                 Permission.REGULATION_CREATE,
                 Permission.REGULATION_READ,
@@ -384,8 +401,8 @@ public class RolePermissionInitializer implements CommandLineRunner {
                 Permission.DECK_READ
         ));
 
-        // ACTIVITY_MANAGER: Dịch vụ trên biển (Hoạt động, lịch, sức chứa, dịch vụ và gói tour)
-        saveRolePermission(Role.ACTIVITY_MANAGER, EnumSet.of(
+        // ACTIVITY_SERVICE_MANAGER: unified onboard activity/service and shore excursion management
+        saveRolePermission(Role.ACTIVITY_SERVICE_MANAGER, EnumSet.of(
                 Permission.ACTIVITY_CREATE,
                 Permission.ACTIVITY_READ,
                 Permission.ACTIVITY_UPDATE,
@@ -402,12 +419,9 @@ public class RolePermissionInitializer implements CommandLineRunner {
                 Permission.SERVICE_ACTIVATE,
                 Permission.SERVICE_SUSPEND,
                 Permission.PRODUCT_MANAGE,
-                Permission.PRODUCT_SALE,
                 Permission.TOUR_PACKAGE_MANAGE,
-                Permission.TOUR_PACKAGE_ASSIGN,
                 Permission.PACKAGE_COMPONENT_MANAGE,
 
-                Permission.SERVICE_REQUEST_CREATE,
                 Permission.SERVICE_REQUEST_READ,
                 Permission.SERVICE_REQUEST_ASSIGN,
                 Permission.SERVICE_REQUEST_EXECUTE,
@@ -425,11 +439,8 @@ public class RolePermissionInitializer implements CommandLineRunner {
                 Permission.NOTIFICATION_SEND,
                 Permission.NOTIFICATION_READ,
                 Permission.REPORT_GENERATE,
-                Permission.REPORT_EXPORT
-        ));
+                Permission.REPORT_EXPORT,
 
-        // SHORE_MANAGER: Dịch vụ trên bờ (Tour bờ, nhà cung cấp bờ, nhóm khách, điều phối hướng dẫn viên & điểm danh)
-        saveRolePermission(Role.SHORE_MANAGER, EnumSet.of(
                 Permission.EXCURSION_CREATE,
                 Permission.EXCURSION_READ,
                 Permission.EXCURSION_UPDATE,
@@ -514,6 +525,7 @@ public class RolePermissionInitializer implements CommandLineRunner {
         saveRolePermission(Role.FINANCE_OFFICER, EnumSet.of(
                 Permission.BOOKING_CONFIRM,
                 Permission.PAYMENT_PROCESS,
+                Permission.PAYMENT_READ,
                 Permission.PAYMENT_REFUND,
                 Permission.PAYMENT_REPORT,
                 Permission.INVOICE_GENERATE,
@@ -567,7 +579,7 @@ public class RolePermissionInitializer implements CommandLineRunner {
 
                 // Thông báo và thanh toán
                 Permission.NOTIFICATION_READ,
-                Permission.PAYMENT_PROCESS
+                Permission.PAYMENT_READ
         ));
 
         log.info("Role permissions initialized successfully.");

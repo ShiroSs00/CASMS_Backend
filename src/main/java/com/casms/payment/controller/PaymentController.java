@@ -12,6 +12,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -44,18 +45,24 @@ public class PaymentController {
     }
 
     @Operation(summary = "Lịch sử thanh toán của đơn đặt tour", description = "Lấy toàn bộ các lần thanh toán cọc/toàn bộ của một mã booking")
-    @PreAuthorize("permitAll()")
+    @PreAuthorize("hasAnyAuthority('PAYMENT_READ', 'PAYMENT_REPORT')")
     @GetMapping("/booking/{bookingId}")
     public ApiResponse<List<PaymentResponse>> getPaymentsForBooking(
-            @Parameter(description = "ID đơn đặt tour", required = true) @PathVariable UUID bookingId) {
-        return ApiResponse.success(service.getPaymentsForBooking(bookingId));
+            @Parameter(description = "ID đơn đặt tour", required = true) @PathVariable UUID bookingId,
+            Authentication authentication) {
+        var principal = (com.casms.security.principal.CasmsPrincipal) authentication.getPrincipal();
+        return ApiResponse.success(service.getPaymentsForBooking(bookingId, principal.getUserId(),
+                principal.hasPermission(com.casms.identity.enums.Permission.PAYMENT_REPORT)));
     }
 
     @Operation(summary = "Chi tiết giao dịch thanh toán", description = "Tra cứu trạng thái và thông tin chi tiết một giao dịch thanh toán theo ID")
-    @PreAuthorize("permitAll()")
+    @PreAuthorize("hasAnyAuthority('PAYMENT_READ', 'PAYMENT_REPORT')")
     @GetMapping("/{paymentId}")
     public ApiResponse<PaymentResponse> getPaymentDetail(
-            @Parameter(description = "ID giao dịch thanh toán", required = true) @PathVariable UUID paymentId) {
-        return ApiResponse.success(service.getPaymentDetail(paymentId));
+            @Parameter(description = "ID giao dịch thanh toán", required = true) @PathVariable UUID paymentId,
+            Authentication authentication) {
+        var principal = (com.casms.security.principal.CasmsPrincipal) authentication.getPrincipal();
+        return ApiResponse.success(service.getPaymentDetail(paymentId, principal.getUserId(),
+                principal.hasPermission(com.casms.identity.enums.Permission.PAYMENT_REPORT)));
     }
 }

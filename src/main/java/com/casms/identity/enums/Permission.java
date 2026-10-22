@@ -80,6 +80,9 @@ public enum Permission {
     CRUISE_COMPLETE,
     CRUISE_CANCEL,
     CRUISE_STATUS_CHANGE,
+    CRUISE_STAFF_ASSIGN,
+    CRUISE_STAFF_READ,
+    CRUISE_STAFF_REMOVE,
 
     // Itinerary permissions
     ITINERARY_CREATE,
@@ -156,6 +159,7 @@ public enum Permission {
 
     // Payment permissions
     PAYMENT_PROCESS,
+    PAYMENT_READ,
     PAYMENT_REFUND,
     PAYMENT_REPORT,
     INVOICE_GENERATE,

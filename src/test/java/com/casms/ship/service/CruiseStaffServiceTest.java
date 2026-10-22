@@ -3,6 +3,7 @@ package com.casms.ship.service;
 import com.casms.common.exception.BusinessException;
 import com.casms.identity.entity.User;
 import com.casms.identity.enums.UserStatus;
+import com.casms.identity.enums.Role;
 import com.casms.identity.repository.UserRepository;
 import com.casms.ship.dto.request.CruiseStaffRequest;
 import com.casms.ship.dto.response.CruiseStaffResponse;
@@ -62,6 +63,7 @@ class CruiseStaffServiceTest {
         user.setUserId(userId);
         user.setUsername("captain_jack");
         user.setStatus(UserStatus.ACTIVE);
+        user.setRoles(java.util.EnumSet.of(Role.ONBOARD_STAFF));
     }
 
     @Test
@@ -74,7 +76,8 @@ class CruiseStaffServiceTest {
 
         when(cruiseRepository.findById(cruiseId)).thenReturn(Optional.of(cruise));
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
-        when(cruiseStaffRepository.existsByCruise_CruiseIdAndUser_UserId(cruiseId, userId)).thenReturn(false);
+        when(cruiseStaffRepository.existsByCruise_CruiseIdAndUser_UserIdAndStatus(cruiseId, userId, "ACTIVE")).thenReturn(false);
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
         when(cruiseStaffRepository.findConflictingAssignments(any(), any(), any(), any())).thenReturn(List.of());
 
         CruiseStaff savedStaff = new CruiseStaff();
@@ -88,7 +91,7 @@ class CruiseStaffServiceTest {
 
         when(cruiseStaffRepository.save(any(CruiseStaff.class))).thenReturn(savedStaff);
 
-        CruiseStaffResponse resp = cruiseStaffService.assignStaff(cruiseId, req);
+        CruiseStaffResponse resp = cruiseStaffService.assignStaff(cruiseId, req, userId);
 
         assertNotNull(resp);
         assertEquals("CAPTAIN", resp.getRoleInCruise());
@@ -105,7 +108,7 @@ class CruiseStaffServiceTest {
 
         when(cruiseRepository.findById(cruiseId)).thenReturn(Optional.of(cruise));
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
-        when(cruiseStaffRepository.existsByCruise_CruiseIdAndUser_UserId(cruiseId, userId)).thenReturn(false);
+        when(cruiseStaffRepository.existsByCruise_CruiseIdAndUser_UserIdAndStatus(cruiseId, userId, "ACTIVE")).thenReturn(false);
 
         Cruise conflictingCruise = new Cruise();
         conflictingCruise.setCruiseId(UUID.randomUUID());
@@ -121,7 +124,7 @@ class CruiseStaffServiceTest {
                 .thenReturn(List.of(conflict));
 
         BusinessException ex = assertThrows(BusinessException.class,
-                () -> cruiseStaffService.assignStaff(cruiseId, req));
+                () -> cruiseStaffService.assignStaff(cruiseId, req, userId));
 
         assertEquals("SHIP_STAFF_SCHEDULE_CONFLICT", ex.getCode());
         verify(cruiseStaffRepository, never()).save(any());
@@ -132,14 +135,14 @@ class CruiseStaffServiceTest {
     void assignStaff_DuplicateAssignment_ThrowsException() {
         CruiseStaffRequest req = new CruiseStaffRequest();
         req.setUserId(userId);
-        req.setRoleInCruise("CHIEF_ENGINEER");
+        req.setRoleInCruise("CAPTAIN");
 
         when(cruiseRepository.findById(cruiseId)).thenReturn(Optional.of(cruise));
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
-        when(cruiseStaffRepository.existsByCruise_CruiseIdAndUser_UserId(cruiseId, userId)).thenReturn(true);
+        when(cruiseStaffRepository.existsByCruise_CruiseIdAndUser_UserIdAndStatus(cruiseId, userId, "ACTIVE")).thenReturn(true);
 
         BusinessException ex = assertThrows(BusinessException.class,
-                () -> cruiseStaffService.assignStaff(cruiseId, req));
+                () -> cruiseStaffService.assignStaff(cruiseId, req, userId));
 
         assertEquals("DUPLICATE_STAFF_ASSIGNMENT", ex.getCode());
     }

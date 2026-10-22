@@ -17,6 +17,7 @@ import com.casms.ship.enums.CruiseStatus;
 import com.casms.ship.service.CruisePackageService;
 import com.casms.ship.service.CruiseService;
 import com.casms.ship.service.CruiseStaffService;
+import com.casms.security.principal.CasmsPrincipal;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -26,6 +27,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -191,16 +193,18 @@ public class CruiseController {
     // ==================== CRUISE STAFF ASSIGNMENT ====================
 
     @Operation(summary = "Phân công nhân viên / thủy thủ đoàn vào chuyến đi", description = "Gán nhân viên vào chuyến đi, kiểm tra nhân viên active và không bị trùng lịch tàu khác")
-    @PreAuthorize("hasAuthority('CRUISE_ASSIGN_SHIP')")
+    @PreAuthorize("hasAuthority('CRUISE_STAFF_ASSIGN')")
     @PostMapping("/{cruiseId}/staff")
     public ApiResponse<CruiseStaffResponse> assignStaff(
             @Parameter(description = "ID chuyến đi", required = true) @PathVariable UUID cruiseId,
-            @RequestBody @Valid CruiseStaffRequest request) {
-        return ApiResponse.success("Assigned staff to cruise successfully", staffService.assignStaff(cruiseId, request));
+            @RequestBody @Valid CruiseStaffRequest request,
+            @AuthenticationPrincipal CasmsPrincipal principal) {
+        return ApiResponse.success("Assigned staff to cruise successfully",
+                staffService.assignStaff(cruiseId, request, principal.getUserId()));
     }
 
     @Operation(summary = "Danh sách nhân viên / thủy thủ đoàn trên chuyến đi", description = "Lấy danh sách nhân sự được phân công phục vụ chuyến đi")
-    @PreAuthorize("permitAll()")
+    @PreAuthorize("hasAuthority('CRUISE_STAFF_READ')")
     @GetMapping("/{cruiseId}/staff")
     public ApiResponse<List<CruiseStaffResponse>> listStaff(
             @Parameter(description = "ID chuyến đi", required = true) @PathVariable UUID cruiseId) {
@@ -208,13 +212,14 @@ public class CruiseController {
     }
 
     @Operation(summary = "Hủy phân công nhân viên khỏi chuyến đi", description = "Gỡ bỏ nhân sự khỏi chuyến đi")
-    @PreAuthorize("hasAuthority('CRUISE_ASSIGN_SHIP')")
+    @PreAuthorize("hasAuthority('CRUISE_STAFF_REMOVE')")
     @DeleteMapping("/{cruiseId}/staff/{userId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public ApiResponse<Void> removeStaff(
             @Parameter(description = "ID chuyến đi", required = true) @PathVariable UUID cruiseId,
-            @Parameter(description = "ID người dùng", required = true) @PathVariable UUID userId) {
-        staffService.removeStaff(cruiseId, userId);
+            @Parameter(description = "ID người dùng", required = true) @PathVariable UUID userId,
+            @AuthenticationPrincipal CasmsPrincipal principal) {
+        staffService.removeStaff(cruiseId, userId, principal.getUserId());
         return ApiResponse.success("Staff member relieved from cruise", null);
     }
 

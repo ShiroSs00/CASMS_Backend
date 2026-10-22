@@ -4,6 +4,7 @@ import com.casms.booking.entity.Booking;
 import com.casms.booking.enums.BookingStatus;
 import com.casms.booking.repository.BookingRepository;
 import com.casms.common.exception.BusinessException;
+import com.casms.identity.entity.User;
 import com.casms.payment.dto.request.PaymentConfirmRequest;
 import com.casms.payment.dto.request.PaymentCreateRequest;
 import com.casms.payment.dto.response.PaymentResponse;
@@ -29,6 +30,7 @@ import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
+import org.springframework.security.access.AccessDeniedException;
 
 @ExtendWith(MockitoExtension.class)
 class PaymentServiceTest {
@@ -156,5 +158,28 @@ class PaymentServiceTest {
 
         assertEquals("BOOKING_CANCELLED", ex.getCode());
         verify(paymentRepository, never()).save(any());
+    }
+
+    @Test
+    void passengerCanReadOwnBookingTransactions() {
+        User owner = new User();
+        owner.setUserId(UUID.randomUUID());
+        booking.setBookedByUser(owner);
+        when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(booking));
+        when(paymentRepository.findByBooking_BookingId(bookingId)).thenReturn(List.of(payment));
+
+        assertEquals(1, paymentService.getPaymentsForBooking(bookingId, owner.getUserId(), false).size());
+    }
+
+    @Test
+    void passengerCannotReadAnotherUsersTransactions() {
+        User owner = new User();
+        owner.setUserId(UUID.randomUUID());
+        booking.setBookedByUser(owner);
+        when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(booking));
+
+        assertThrows(AccessDeniedException.class, () ->
+                paymentService.getPaymentsForBooking(bookingId, UUID.randomUUID(), false));
+        verify(paymentRepository, never()).findByBooking_BookingId(any());
     }
 }

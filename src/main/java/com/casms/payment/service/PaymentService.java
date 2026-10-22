@@ -112,20 +112,32 @@ public class PaymentService {
     }
 
     @Transactional(readOnly = true)
-    public List<PaymentResponse> getPaymentsForBooking(UUID bookingId) {
-        if (!bookingRepository.existsById(bookingId)) {
-            throw new ResourceNotFoundException("Booking not found with id: " + bookingId);
-        }
+    public List<PaymentResponse> getPaymentsForBooking(UUID bookingId, UUID userId, boolean canReadAll) {
+        Booking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() -> new ResourceNotFoundException("Booking not found with id: " + bookingId));
+        assertPaymentReadAccess(booking, userId, canReadAll);
         return paymentRepository.findByBooking_BookingId(bookingId).stream()
                 .map(this::toResponse)
                 .toList();
     }
 
     @Transactional(readOnly = true)
-    public PaymentResponse getPaymentDetail(UUID paymentId) {
+    public PaymentResponse getPaymentDetail(UUID paymentId, UUID userId, boolean canReadAll) {
         Payment payment = paymentRepository.findById(paymentId)
                 .orElseThrow(() -> new ResourceNotFoundException("Payment not found with id: " + paymentId));
+        if (payment.getBooking() == null) {
+            throw new org.springframework.security.access.AccessDeniedException("Payment is not associated with an accessible booking");
+        }
+        assertPaymentReadAccess(payment.getBooking(), userId, canReadAll);
         return toResponse(payment);
+    }
+
+    private void assertPaymentReadAccess(Booking booking, UUID userId, boolean canReadAll) {
+        if (!canReadAll && (userId == null || booking.getBookedByUser() == null
+                || !userId.equals(booking.getBookedByUser().getUserId()))) {
+            throw new org.springframework.security.access.AccessDeniedException(
+                    "You can only view transactions for your own booking");
+        }
     }
 
     private PaymentResponse toResponse(Payment p) {

@@ -45,12 +45,22 @@ class RolePermissionInitializerTest {
     }
 
     @Test
-    void admin_hasAllPermissions() {
+    void admin_hasSystemPermissionsButNotFinancialTransactionPermissions() {
         Set<Permission> adminPerms = rolePermissionsMap.get(Role.ADMIN);
         assertNotNull(adminPerms);
-        assertEquals(Permission.values().length, adminPerms.size());
-        assertTrue(adminPerms.contains(Permission.SUPPLIER_CREATE));
-        assertTrue(adminPerms.contains(Permission.TOUR_GROUP_PASSENGER_ASSIGN));
+        assertTrue(adminPerms.contains(Permission.USER_ROLE_ASSIGN));
+        assertTrue(adminPerms.contains(Permission.SHIP_MODEL_UPDATE));
+        assertTrue(adminPerms.contains(Permission.BLE_ANCHOR_UPDATE));
+        assertFalse(adminPerms.contains(Permission.CRUISE_CREATE));
+        assertFalse(adminPerms.contains(Permission.PORT_CREATE));
+        assertFalse(adminPerms.contains(Permission.ACTIVITY_CREATE));
+        assertFalse(adminPerms.contains(Permission.BOOKING_CREATE));
+        assertFalse(adminPerms.contains(Permission.PAYMENT_PROCESS));
+        assertFalse(adminPerms.contains(Permission.PAYMENT_READ));
+        assertFalse(adminPerms.contains(Permission.PAYMENT_REFUND));
+        assertFalse(adminPerms.contains(Permission.PAYMENT_REPORT));
+        assertFalse(adminPerms.contains(Permission.INVOICE_GENERATE));
+        assertFalse(adminPerms.contains(Permission.SETTLEMENT_PROCESS));
     }
 
     @Test
@@ -66,7 +76,10 @@ class RolePermissionInitializerTest {
         assertTrue(perms.contains(Permission.EXCURSION_READ), "Cruise Manager must have EXCURSION_READ");
         assertTrue(perms.contains(Permission.TOUR_GROUP_READ), "Cruise Manager must have TOUR_GROUP_READ");
         assertTrue(perms.contains(Permission.ITINERARY_CREATE));
-        assertTrue(perms.contains(Permission.ITINERARY_APPROVE));
+        assertFalse(perms.contains(Permission.ITINERARY_APPROVE));
+        assertTrue(perms.contains(Permission.PORT_READ));
+        assertFalse(perms.contains(Permission.PORT_CREATE));
+        assertFalse(perms.contains(Permission.CRUISE_STAFF_ASSIGN));
 
         // Negative checks: no unauthorized writes
         assertFalse(perms.contains(Permission.SUPPLIER_CREATE), "Cruise Manager must not create suppliers");
@@ -128,8 +141,8 @@ class RolePermissionInitializerTest {
     }
 
     @Test
-    void activityManager_hasSeaServiceAndActivityPermissions() {
-        Set<Permission> perms = rolePermissionsMap.get(Role.ACTIVITY_MANAGER);
+    void activityServiceManager_hasOnboardAndShorePermissionsWithoutFinanceOrPos() {
+        Set<Permission> perms = rolePermissionsMap.get(Role.ACTIVITY_SERVICE_MANAGER);
         assertNotNull(perms);
 
         // Positive checks: Activities, services, tour packages
@@ -141,35 +154,18 @@ class RolePermissionInitializerTest {
         assertTrue(perms.contains(Permission.TOUR_PACKAGE_MANAGE));
         assertTrue(perms.contains(Permission.PACKAGE_COMPONENT_MANAGE));
         assertTrue(perms.contains(Permission.SERVICE_REQUEST_EXECUTE));
-
-        // Negative checks: Not managing shore excursions, suppliers or ship fleet
-        assertFalse(perms.contains(Permission.EXCURSION_CREATE));
-        assertFalse(perms.contains(Permission.SUPPLIER_CREATE));
-        assertFalse(perms.contains(Permission.TOUR_GROUP_CREATE));
-        assertFalse(perms.contains(Permission.SHIP_CREATE));
-    }
-
-    @Test
-    void shoreManager_hasShoreExcursionsSuppliersAndTourGroups() {
-        Set<Permission> perms = rolePermissionsMap.get(Role.SHORE_MANAGER);
-        assertNotNull(perms);
-
-        // Positive checks: Shore excursions, suppliers, tour groups, guides
         assertTrue(perms.contains(Permission.EXCURSION_CREATE));
-        assertTrue(perms.contains(Permission.EXCURSION_UPDATE));
         assertTrue(perms.contains(Permission.SUPPLIER_CREATE));
-        assertTrue(perms.contains(Permission.SUPPLIER_UPDATE));
-        assertTrue(perms.contains(Permission.SUPPLIER_VERIFY));
         assertTrue(perms.contains(Permission.TOUR_GROUP_CREATE));
-        assertTrue(perms.contains(Permission.TOUR_GROUP_UPDATE));
-        assertTrue(perms.contains(Permission.TOUR_GROUP_GUIDE_ASSIGN));
         assertTrue(perms.contains(Permission.TOUR_GROUP_PASSENGER_ASSIGN));
 
-        // Negative checks: Not managing onboard activities or ship fleet
-        assertFalse(perms.contains(Permission.ACTIVITY_CREATE));
-        assertFalse(perms.contains(Permission.SERVICE_CREATE));
+        // Negative checks: Not managing shore excursions, suppliers or ship fleet
+        assertFalse(perms.contains(Permission.PRODUCT_SALE));
+        assertFalse(perms.contains(Permission.PAYMENT_PROCESS));
+        assertFalse(perms.contains(Permission.PAYMENT_REFUND));
+        assertFalse(perms.contains(Permission.SETTLEMENT_PROCESS));
+        assertFalse(perms.contains(Permission.USER_ROLE_ASSIGN));
         assertFalse(perms.contains(Permission.SHIP_CREATE));
-        assertFalse(perms.contains(Permission.CABIN_CREATE));
     }
 
     @Test
@@ -185,6 +181,11 @@ class RolePermissionInitializerTest {
         assertTrue(perms.contains(Permission.OPERATIONAL_ISSUE_UPDATE));
         assertTrue(perms.contains(Permission.BOOKING_READ));
         assertTrue(perms.contains(Permission.CABIN_READ));
+        assertTrue(perms.contains(Permission.PORT_CREATE));
+        assertTrue(perms.contains(Permission.DESTINATION_UPDATE));
+        assertTrue(perms.contains(Permission.CRUISE_STAFF_ASSIGN));
+        assertTrue(perms.contains(Permission.ITINERARY_APPROVE));
+        assertFalse(perms.contains(Permission.USER_ROLE_ASSIGN));
     }
 
     @Test
@@ -224,6 +225,10 @@ class RolePermissionInitializerTest {
         assertFalse(perms.contains(Permission.ITINERARY_CREATE));
         assertFalse(perms.contains(Permission.CHECKIN_BOARDING));
         assertFalse(perms.contains(Permission.BOOKING_CONFIRM));
+        assertFalse(perms.contains(Permission.PAYMENT_PROCESS));
+        assertFalse(perms.contains(Permission.PAYMENT_REFUND));
+        assertFalse(perms.contains(Permission.SETTLEMENT_PROCESS));
+        assertTrue(perms.contains(Permission.PAYMENT_READ));
     }
 
     @Test
