@@ -32,9 +32,16 @@ import com.casms.identity.repository.UserRepository;
 import com.casms.notification.entity.Notification;
 import com.casms.notification.repository.NotificationRepository;
 import com.casms.payment.entity.Installment;
+import com.casms.payment.entity.Payment;
+import com.casms.payment.entity.Refund;
 import com.casms.payment.enums.InstallmentStatus;
 import com.casms.payment.enums.InstallmentType;
 import com.casms.payment.repository.InstallmentRepository;
+import com.casms.payment.repository.PaymentRepository;
+import com.casms.payment.repository.RefundRepository;
+import com.casms.payment.enums.RefundStatus;
+import com.casms.payment.enums.PaymentOperationType;
+import com.casms.payment.enums.PaymentStatus;
 import com.casms.security.principal.CasmsPrincipal;
 import com.casms.servicepackage.entity.BookingPassengerPackage;
 import com.casms.servicepackage.entity.TourPackage;
@@ -81,6 +88,8 @@ public class BookingService {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final InstallmentRepository installmentRepository;
+    private final PaymentRepository paymentRepository;
+    private final RefundRepository refundRepository;
     private final NotificationRepository notificationRepository;
     private final BusinessCodeGenerator businessCodeGenerator;
 
@@ -168,7 +177,8 @@ public class BookingService {
         }
 
         // 1. Kiểm tra Chuyến đi (Cruise)
-        Cruise cruise = getCruise(request.getCruiseId());
+        Cruise cruise = cruiseRepository.findByIdForUpdate(request.getCruiseId())
+                .orElseThrow(() -> new ResourceNotFoundException("Cruise", request.getCruiseId()));
         if (cruise.getStatus() != CruiseStatus.PUBLISHED) {
             throw new BusinessException("INVALID_CRUISE_STATUS", "Bookings can only be created for PUBLISHED cruises (Current: " + cruise.getStatus() + ")");
         }
@@ -198,7 +208,7 @@ public class BookingService {
             UUID cabinId = entry.getKey();
             List<PassengerBookingItemRequest> passengersInCabin = entry.getValue();
 
-            Cabin cabin = cabinRepository.findById(cabinId)
+            Cabin cabin = cabinRepository.findByIdForUpdate(cabinId)
                     .orElseThrow(() -> new ResourceNotFoundException("Cabin", cabinId));
 
             if (!cabin.getShip().getShipId().equals(cruise.getShip().getShipId())) {
@@ -260,10 +270,12 @@ public class BookingService {
 
         String currency = (request.getCurrency() != null && !request.getCurrency().isBlank()) ? request.getCurrency().toUpperCase() : "USD";
 
+        Instant scheduleCreatedAt = Instant.now();
         Instant finalPaymentDueAt = cruise.getDepartureDatetime().minus(Duration.ofDays(7));
-        if (finalPaymentDueAt.isBefore(Instant.now())) {
-            finalPaymentDueAt = Instant.now();
+        if (finalPaymentDueAt.isBefore(scheduleCreatedAt)) {
+            finalPaymentDueAt = scheduleCreatedAt;
         }
+        validatePaymentSchedule(paymentPlan, scheduleCreatedAt, finalPaymentDueAt, cruise.getDepartureDatetime());
 
         // Tạo đơn Booking
         Booking booking = new Booking();
@@ -356,7 +368,8 @@ public class BookingService {
         bookingContractRepository.save(contract);
 
         // 8. Khởi tạo các đợt thanh toán (Installments) dựa theo hình thức khách chọn
-        createInstallmentsForPlan(booking, paymentPlan, agreedFareAmount, requiredDepositAmount, finalPaymentDueAt, cruise.getDepartureDatetime());
+        createInstallmentsForPlan(booking, paymentPlan, agreedFareAmount, requiredDepositAmount,
+                finalPaymentDueAt, cruise.getDepartureDatetime(), scheduleCreatedAt);
 
         // 9. Tạo thông báo liên lạc mời hành khách tới văn phòng ký hợp đồng bản cứng
         createContractSigningNotification(booking, contract, representative, paymentPlan, cruise);
@@ -400,14 +413,91 @@ public class BookingService {
      */
     @Transactional
     public BookingDetailResponse confirm(UUID bookingId, CasmsPrincipal principal) {
-        Booking booking = getBooking(bookingId);
-        validateAccess(booking, principal);
+        if (principal == null || principal.getUserId() == null || principal.getAuthorities().stream()
+                .noneMatch(authority -> authority.getAuthority().equals("BOOKING_CONFIRM"))) {
+            throw new BusinessException(HttpStatus.FORBIDDEN, "BOOKING_CONFIRM_FORBIDDEN",
+                    "Booking confirmation requires the BOOKING_CONFIRM permission");
+        }
+        Booking booking = bookingRepository.findByIdForUpdate(bookingId)
+                .orElseThrow(() -> new ResourceNotFoundException("Booking", bookingId));
 
         if (booking.getBookingStatus() == BookingStatus.Confirmed) {
             return mapToDetailResponse(booking);
         }
         if (booking.getBookingStatus() == BookingStatus.Cancelled) {
             throw new BusinessException("BOOKING_CANCELLED", "Cannot confirm a cancelled booking");
+        }
+
+        BookingContract contract = bookingContractRepository.findByBookingBookingId(bookingId)
+                .orElseThrow(() -> new BusinessException("BOOKING_CONTRACT_REQUIRED", "Booking contract is required"));
+        if (contract.getStatus() != BookingContractStatus.Accepted) {
+            throw new BusinessException("BOOKING_CONTRACT_NOT_ACCEPTED", "Booking contract must be accepted before confirmation");
+        }
+
+        UUID capacityCruiseId = booking.getCruise().getCruiseId();
+        Cruise capacityLockedCruise = cruiseRepository.findByIdForUpdate(capacityCruiseId)
+                .orElseThrow(() -> new ResourceNotFoundException("Cruise", capacityCruiseId));
+        String bookingCurrency = booking.getCurrency();
+        BigDecimal collectedAmount = paymentRepository.findForBooking(bookingId).stream()
+                .filter(payment -> payment.getStatus() == PaymentStatus.Confirmed
+                        && payment.getConfirmedAt() != null
+                        && payment.getConfirmedAmount() != null
+                        && payment.getConfirmedAmount().signum() > 0
+                        && paymentBelongsToBooking(payment, bookingId)
+                        && paymentHasSettlementEvidence(payment)
+                        && payment.getOperationType() == PaymentOperationType.Collect
+                        && payment.getCurrency() != null
+                        && payment.getCurrency().trim().equalsIgnoreCase(bookingCurrency))
+                .map(Payment::getConfirmedAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal completedRefunds = refundRepository.findForBooking(bookingId).stream()
+                .filter(refund -> refund.getStatus() == RefundStatus.Completed
+                        && refund.getCompletedAt() != null
+                        && refund.getApprovedAmount() != null
+                        && refund.getApprovedAmount().signum() > 0
+                        && refund.getCurrency() != null
+                        && refund.getCurrency().trim().equalsIgnoreCase(bookingCurrency)
+                        && refund.getProcessorOrReceiptReference() != null
+                        && !refund.getProcessorOrReceiptReference().isBlank())
+                .map(Refund::getApprovedAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        collectedAmount = collectedAmount.subtract(completedRefunds);
+        if (collectedAmount.compareTo(booking.getRequiredDepositAmount()) < 0) {
+            throw new BusinessException("BOOKING_DEPOSIT_NOT_PAID",
+                    "Verified collected payments do not cover the required booking deposit");
+        }
+
+        if (capacityLockedCruise.getShip() == null
+                || bookingPassengerRepository.countActivePassengersByCruiseId(capacityLockedCruise.getCruiseId())
+                    > capacityLockedCruise.getShip().getTotalCapacity()) {
+            throw new BusinessException("BOOKING_CAPACITY_INVALID", "Booking capacity is no longer valid");
+        }
+        List<BookingPassenger> capacityPassengers = bookingPassengerRepository.findByBookingBookingId(bookingId);
+        List<UUID> cabinIds = capacityPassengers.stream()
+                .filter(passenger -> passenger.getParticipationStatus() == BookingPassengerParticipationStatus.Active)
+                .map(passenger -> cabinAssignmentRepository
+                        .findByBookingPassengerBookingPassengerIdAndValidToIsNull(passenger.getBookingPassengerId())
+                        .map(assignment -> assignment.getCabin().getCabinId())
+                        .orElseThrow(() -> new BusinessException("BOOKING_CABIN_ASSIGNMENT_MISSING",
+                                "An active booking passenger no longer has a cabin assignment")))
+                .distinct().sorted().toList();
+        Map<UUID, Cabin> capacityLockedCabins = new HashMap<>();
+        for (UUID cabinId : cabinIds) {
+            capacityLockedCabins.put(cabinId, cabinRepository.findByIdForUpdate(cabinId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Cabin", cabinId)));
+        }
+        for (BookingPassenger passenger : capacityPassengers) {
+            if (passenger.getParticipationStatus() != BookingPassengerParticipationStatus.Active) continue;
+            CabinAssignment assignment = cabinAssignmentRepository
+                    .findByBookingPassengerBookingPassengerIdAndValidToIsNull(passenger.getBookingPassengerId())
+                    .orElseThrow(() -> new BusinessException("BOOKING_CABIN_ASSIGNMENT_MISSING",
+                            "An active booking passenger no longer has a cabin assignment"));
+            Cabin lockedCabin = assignment.getCabin() == null ? null : capacityLockedCabins.get(assignment.getCabin().getCabinId());
+            if (lockedCabin == null || cabinAssignmentRepository
+                    .countActiveAssignmentsByCabinAndCruise(lockedCabin.getCabinId(), capacityLockedCruise.getCruiseId())
+                    > lockedCabin.getCapacity()) {
+                throw new BusinessException("BOOKING_CAPACITY_INVALID", "A cabin no longer has sufficient capacity");
+            }
         }
 
         booking.setBookingStatus(BookingStatus.Confirmed);
@@ -423,7 +513,8 @@ public class BookingService {
      */
     @Transactional
     public BookingDetailResponse cancel(UUID bookingId, BookingCancelRequest request, CasmsPrincipal principal) {
-        Booking booking = getBooking(bookingId);
+        Booking booking = bookingRepository.findByIdForUpdate(bookingId)
+                .orElseThrow(() -> new ResourceNotFoundException("Booking", bookingId));
         validateAccess(booking, principal);
 
         if (booking.getBookingStatus() == BookingStatus.Cancelled) {
@@ -465,20 +556,25 @@ public class BookingService {
      */
     @Transactional
     public BookingDetailResponse changeCabin(CabinChangeRequest request, CasmsPrincipal principal) {
-        BookingPassenger bp = bookingPassengerRepository.findById(request.getBookingPassengerId())
+        BookingPassenger passengerSnapshot = bookingPassengerRepository.findById(request.getBookingPassengerId())
                 .orElseThrow(() -> new ResourceNotFoundException("BookingPassenger", request.getBookingPassengerId()));
 
-        Booking booking = bp.getBooking();
+        UUID bookingId = passengerSnapshot.getBooking().getBookingId();
+        Booking booking = bookingRepository.findByIdForUpdate(bookingId)
+                .orElseThrow(() -> new ResourceNotFoundException("Booking", bookingId));
+        BookingPassenger bp = bookingPassengerRepository.lockById(request.getBookingPassengerId())
+                .orElseThrow(() -> new ResourceNotFoundException("BookingPassenger", request.getBookingPassengerId()));
         validateAccess(booking, principal);
 
         if (booking.getBookingStatus() == BookingStatus.Cancelled) {
             throw new BusinessException("BOOKING_CANCELLED", "Cannot change cabin for a cancelled booking");
         }
 
-        Cabin newCabin = cabinRepository.findById(request.getNewCabinId())
+        Cruise cruise = cruiseRepository.findByIdForUpdate(booking.getCruise().getCruiseId())
+                .orElseThrow(() -> new ResourceNotFoundException("Cruise", booking.getCruise().getCruiseId()));
+        Cabin newCabin = cabinRepository.findByIdForUpdate(request.getNewCabinId())
                 .orElseThrow(() -> new ResourceNotFoundException("Cabin", request.getNewCabinId()));
 
-        Cruise cruise = booking.getCruise();
         if (!newCabin.getShip().getShipId().equals(cruise.getShip().getShipId())) {
             throw new BusinessException("CABIN_SHIP_MISMATCH", "New cabin does not belong to the cruise's ship");
         }
@@ -649,14 +745,16 @@ public class BookingService {
 
         String contractRef = res.getContractReference() != null ? res.getContractReference() : "CTR-" + booking.getBookingReference();
         res.setContractSigningInstructions(
-                "Vì lý do bảo mật thông tin cá nhân của khách hàng, văn bản hợp đồng chỉ được ký bản cứng trực tiếp và đối chiếu mã: " +
-                contractRef + ". Quý khách vui lòng mang theo CCCD/Hộ chiếu gốc đến Văn phòng Giao dịch CASMS (Tầng 2, Tòa nhà Marina Port) để ký kết hợp đồng trước thời hạn thanh toán."
+                "Vì lý do bảo mật thông tin cá nhân, hợp đồng được ký bản cứng theo quy trình hiện hành. " +
+                "Vui lòng sử dụng mã đối chiếu " + contractRef + " và liên hệ OceVie để xác nhận địa điểm, thời hạn ký và hướng dẫn thanh toán."
         );
 
         return res;
     }
 
-    private void createInstallmentsForPlan(Booking booking, PaymentPlan plan, BigDecimal agreedFare, BigDecimal depositAmount, Instant finalDue, Instant departure) {
+    private void createInstallmentsForPlan(Booking booking, PaymentPlan plan, BigDecimal agreedFare,
+                                          BigDecimal depositAmount, Instant finalDue, Instant departure,
+                                          Instant scheduleCreatedAt) {
         String currency = booking.getCurrency();
 
         switch (plan) {
@@ -667,7 +765,7 @@ public class BookingService {
                 inst.setInstallmentType(InstallmentType.FinalFare);
                 inst.setRequiredAmount(agreedFare);
                 inst.setCurrency(currency);
-                inst.setDueAt(Instant.now().plus(Duration.ofDays(2)));
+                inst.setDueAt(scheduleCreatedAt.plus(Duration.ofDays(2)));
                 inst.setStatus(InstallmentStatus.Scheduled);
                 installmentRepository.save(inst);
             }
@@ -679,7 +777,7 @@ public class BookingService {
                 inst1.setInstallmentType(InstallmentType.Deposit);
                 inst1.setRequiredAmount(depositAmount);
                 inst1.setCurrency(currency);
-                inst1.setDueAt(Instant.now().plus(Duration.ofDays(2)));
+                inst1.setDueAt(scheduleCreatedAt.plus(Duration.ofDays(2)));
                 inst1.setStatus(InstallmentStatus.Scheduled);
                 installmentRepository.save(inst1);
 
@@ -706,15 +804,12 @@ public class BookingService {
                 inst1.setInstallmentType(InstallmentType.Deposit);
                 inst1.setRequiredAmount(s1);
                 inst1.setCurrency(currency);
-                inst1.setDueAt(Instant.now().plus(Duration.ofDays(2)));
+                inst1.setDueAt(scheduleCreatedAt.plus(Duration.ofDays(2)));
                 inst1.setStatus(InstallmentStatus.Scheduled);
                 installmentRepository.save(inst1);
 
                 // Đợt 2: 40% giữa kỳ
-                Instant s2Due = departure.minus(Duration.ofDays(30));
-                if (s2Due.isBefore(Instant.now().plus(Duration.ofDays(3)))) {
-                    s2Due = Instant.now().plus(Duration.ofDays(7));
-                }
+                Instant s2Due = resolveSecondStageDue(scheduleCreatedAt, departure);
                 Installment inst2 = new Installment();
                 inst2.setBooking(booking);
                 inst2.setSequenceNo(2);
@@ -739,6 +834,51 @@ public class BookingService {
         }
     }
 
+    void validatePaymentSchedule(PaymentPlan plan, Instant createdAt, Instant finalDue, Instant departure) {
+        Instant firstDue = createdAt.plus(Duration.ofDays(2));
+        if (!firstDue.isBefore(departure)) {
+            throw new BusinessException("PAYMENT_SCHEDULE_UNAVAILABLE",
+                    "The selected payment plan cannot be completed before cruise departure");
+        }
+        if (plan == PaymentPlan.FULL) {
+            return;
+        }
+        if (firstDue.isAfter(finalDue)) {
+            throw new BusinessException("PAYMENT_SCHEDULE_UNAVAILABLE",
+                    "The final installment would be due before the initial installment");
+        }
+        if (plan == PaymentPlan.STAGES) {
+            Instant secondDue = resolveSecondStageDue(createdAt, departure);
+            if (secondDue.isAfter(finalDue) || !secondDue.isBefore(departure)) {
+                throw new BusinessException("PAYMENT_SCHEDULE_UNAVAILABLE",
+                        "The staged payment deadlines are not in chronological order for this departure date");
+            }
+        }
+    }
+
+    private Instant resolveSecondStageDue(Instant createdAt, Instant departure) {
+        Instant secondDue = departure.minus(Duration.ofDays(30));
+        if (secondDue.isBefore(createdAt.plus(Duration.ofDays(3)))) {
+            secondDue = createdAt.plus(Duration.ofDays(7));
+        }
+        return secondDue;
+    }
+
+    private boolean paymentHasSettlementEvidence(Payment payment) {
+        if (payment.getPaymentMethod() == null) return false;
+        return switch (payment.getPaymentMethod()) {
+            case Cash -> payment.getInternalReceiptReference() != null && !payment.getInternalReceiptReference().isBlank();
+            case GatewaySandbox -> payment.getProcessorReference() != null && !payment.getProcessorReference().isBlank();
+        };
+    }
+
+    private boolean paymentBelongsToBooking(Payment payment, UUID bookingId) {
+        return (payment.getBooking() != null && bookingId.equals(payment.getBooking().getBookingId()))
+                || (payment.getInstallment() != null
+                    && payment.getInstallment().getBooking() != null
+                    && bookingId.equals(payment.getInstallment().getBooking().getBookingId()));
+    }
+
     private void createContractSigningNotification(Booking booking, BookingContract contract, BookingPassenger representative, PaymentPlan plan, Cruise cruise) {
         String repName = (representative != null && representative.getPassenger() != null)
                 ? representative.getPassenger().getFullName()
@@ -756,7 +896,7 @@ public class BookingService {
                 "- Hình thức thanh toán đã chọn: %s\n" +
                 "- Tổng giá trị: %s %s (Cọc tối thiểu: %s %s)\n\n" +
                 "**LƯU Ý BẢO MẬT:** Để bảo mật tuyệt đối thông tin định danh cá nhân của quý khách, hợp đồng pháp lý KHÔNG lưu trữ văn bản thô trên hệ thống trực tuyến.\n" +
-                "Quý khách vui lòng mang theo CCCD/Hộ chiếu gốc đến Văn phòng Giao dịch CASMS (Tầng 2, Tòa nhà Marina Port, 01 Cảng Du Thuyền) để hoàn tất ký kết hợp đồng bản cứng và thanh toán theo hình thức đã chọn.\n\n" +
+                "Vui lòng liên hệ OceVie để xác nhận địa điểm, thời hạn ký hợp đồng bản cứng và hướng dẫn thanh toán theo hình thức đã chọn.\n\n" +
                 "Trân trọng cảm ơn quý khách đã đồng hành cùng CASMS!",
                 repName,
                 booking.getBookingReference(),

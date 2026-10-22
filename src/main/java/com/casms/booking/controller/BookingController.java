@@ -89,7 +89,7 @@ public class BookingController {
 
     @Operation(summary = "Xác nhận đặt chỗ",
                description = "Chuyển trạng thái đơn đặt chỗ sang Confirmed sau khi đã thanh toán tiền cọc hoặc thanh toán toàn bộ")
-    @PreAuthorize("hasAnyAuthority('BOOKING_UPDATE', 'BOOKING_CREATE')")
+    @PreAuthorize("hasAuthority('BOOKING_CONFIRM')")
     @PostMapping("/{bookingId}/confirm")
     public ApiResponse<BookingDetailResponse> confirm(
             @Parameter(description = "ID đơn đặt chỗ", required = true) @PathVariable UUID bookingId,

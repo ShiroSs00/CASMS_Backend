@@ -211,7 +211,8 @@ public class CruiseService {
 
     @Transactional
     public CruiseResponse changeAssignedShip(UUID cruiseId, UUID newShipId) {
-        Cruise cruise = getCruiseById(cruiseId);
+        Cruise cruise = cruiseRepository.findByIdForUpdate(cruiseId)
+                .orElseThrow(() -> new ResourceNotFoundException("Cruise", cruiseId));
 
         if (cruise.getStatus() != CruiseStatus.DRAFT && cruise.getStatus() != CruiseStatus.PUBLISHED) {
             throw new BusinessException("INVALID_CRUISE_STATUS", "Cannot change assigned ship when cruise status is " + cruise.getStatus());
@@ -245,7 +246,8 @@ public class CruiseService {
 
     @Transactional
     public CruiseResponse unassignShip(UUID cruiseId) {
-        Cruise cruise = getCruiseById(cruiseId);
+        Cruise cruise = cruiseRepository.findByIdForUpdate(cruiseId)
+                .orElseThrow(() -> new ResourceNotFoundException("Cruise", cruiseId));
 
         if (cruise.getStatus() != CruiseStatus.DRAFT) {
             throw new BusinessException("CRUISE_NOT_DRAFT", "Cannot unassign ship unless cruise is in DRAFT status");
