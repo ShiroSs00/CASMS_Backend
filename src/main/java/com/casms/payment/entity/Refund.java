@@ -1,5 +1,7 @@
 package com.casms.payment.entity;
 
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import com.casms.identity.entity.User;
 import com.casms.payment.enums.RefundStatus;
 import jakarta.persistence.*;
@@ -38,6 +40,7 @@ public class Refund {
     @Column(name = "approved_amount", precision = 19, scale = 4)
     private BigDecimal approvedAmount;
 
+    @JdbcTypeCode(SqlTypes.CHAR)
     @Column(name = "currency", nullable = false, columnDefinition = "char(3)")
     private String currency;
 

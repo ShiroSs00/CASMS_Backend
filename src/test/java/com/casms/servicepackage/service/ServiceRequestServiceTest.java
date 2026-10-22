@@ -4,9 +4,11 @@ import com.casms.identity.entity.Passenger;
 import com.casms.identity.entity.User;
 import com.casms.servicepackage.entity.ServiceRequest;
 import com.casms.servicepackage.entity.Service;
+import com.casms.servicepackage.entity.ServiceSchedule;
 import com.casms.servicepackage.enums.ServiceRequestStatus;
 import com.casms.servicepackage.repository.ServiceRepository;
 import com.casms.servicepackage.repository.ServiceRequestRepository;
+import com.casms.servicepackage.repository.ServiceScheduleRepository;
 import com.casms.booking.repository.BookingPassengerRepository;
 import com.casms.identity.repository.PassengerRepository;
 import com.casms.identity.repository.UserRepository;
@@ -29,6 +31,7 @@ class ServiceRequestServiceTest {
  @Mock BookingPassengerRepository bookingPassengers;
  @Mock PassengerRepository passengers;
  @Mock UserRepository users;
+ @Mock ServiceScheduleRepository schedules;
  @InjectMocks ServiceRequestService service;
 
  @Test void lifecycle_assignStartComplete_setsCompletionTimeAndRejectsRepeat(){
@@ -72,5 +75,20 @@ class ServiceRequestServiceTest {
   when(requests.sumActiveQuantity(eq(serviceId),any())).thenReturn(4L);
 
   assertThrows(IllegalStateException.class,()->service.updatePending(requestId,userId,true,5,"update"));
+ }
+
+ @Test void create_rejectsScheduleWhenLastSlotsAreAlreadyReserved(){
+  UUID userId=UUID.randomUUID(), serviceId=UUID.randomUUID(), scheduleId=UUID.randomUUID();
+  User user=new User();user.setUserId(userId);Passenger passenger=new Passenger();passenger.setUser(user);
+  Service catalogService=new Service();catalogService.setServiceId(serviceId);catalogService.setStatus(com.casms.servicepackage.enums.ServiceStatus.ACTIVE);catalogService.setRequiresSchedule(true);
+  ServiceSchedule schedule=new ServiceSchedule();schedule.setServiceScheduleId(scheduleId);schedule.setService(catalogService);schedule.setCapacity(4);schedule.setStatus("OPEN");
+  when(passengers.findByUser_UserId(userId)).thenReturn(Optional.of(passenger));
+  when(services.findByIdForUpdate(serviceId)).thenReturn(Optional.of(catalogService));
+  when(schedules.lockById(scheduleId)).thenReturn(Optional.of(schedule));
+  when(requests.sumActiveQuantityForSchedule(eq(scheduleId),any())).thenReturn(3L);
+
+  assertThrows(IllegalStateException.class,()->service.create(userId,serviceId,null,scheduleId,2,"demo","request-1"));
+  verify(schedules).lockById(scheduleId);
+  verify(requests,never()).save(any());
  }
 }

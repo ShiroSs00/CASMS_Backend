@@ -1,5 +1,7 @@
 package com.casms.servicepackage.entity;
 
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import com.casms.servicepackage.enums.TourPackageStatus;
 import com.casms.servicepackage.enums.TourPackageType;
 import jakarta.persistence.*;
@@ -35,9 +37,17 @@ public class TourPackage {
     @Column(name = "package_type", nullable = false)
     private TourPackageType packageType;
 
+    @Column(name = "cabin_selection_policy", nullable = false, length = 30)
+    private String cabinSelectionPolicy = "AUTO_ASSIGN";
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "parent_package_id")
+    private TourPackage parentPackage;
+
     @Column(name = "price", nullable = false, precision = 19, scale = 4)
     private BigDecimal price;
 
+    @JdbcTypeCode(SqlTypes.CHAR)
     @Column(name = "currency_code", nullable = false, columnDefinition = "char(3)")
     private String currencyCode;
 

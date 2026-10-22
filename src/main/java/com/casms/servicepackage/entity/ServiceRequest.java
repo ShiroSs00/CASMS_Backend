@@ -1,5 +1,7 @@
 package com.casms.servicepackage.entity;
 
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import com.casms.booking.entity.Booking;
 import com.casms.booking.entity.BookingPassenger;
 import com.casms.identity.entity.Passenger;
@@ -64,6 +66,20 @@ public class ServiceRequest {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "booking_passenger_id")
     private BookingPassenger bookingPassenger;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "service_schedule_id")
+    private ServiceSchedule serviceSchedule;
+
+    @Column(name = "unit_price_snapshot", precision = 19, scale = 4)
+    private java.math.BigDecimal unitPriceSnapshot;
+
+    @JdbcTypeCode(SqlTypes.CHAR)
+    @Column(name = "currency_snapshot", columnDefinition = "char(3)")
+    private String currencySnapshot;
+
+    @Column(name = "idempotency_key", unique = true, length = 100)
+    private String idempotencyKey;
 
     @PrePersist
     protected void onCreate() {

@@ -1,5 +1,7 @@
 package com.casms.servicepackage.entity;
 
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import com.casms.servicepackage.enums.ServiceStatus;
 import jakarta.persistence.*;
 import lombok.Getter;
@@ -32,9 +34,56 @@ public class Service {
     @Column(name = "service_type", nullable = false, length = 50)
     private String serviceType;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "service_category_id")
+    private ServiceCategory category;
+
+    @Column(name = "unit_code", length = 30)
+    private String unitCode;
+
+    @Column(name = "can_sell_independently", nullable = false)
+    private boolean canSellIndependently = true;
+
+    @Column(name = "can_buy_pre_cruise", nullable = false)
+    private boolean canBuyPreCruise = true;
+
+    @Column(name = "can_buy_onboard", nullable = false)
+    private boolean canBuyOnboard = true;
+
+    @Column(name = "requires_schedule", nullable = false)
+    private boolean requiresSchedule;
+
+    @Column(name = "has_allowance", nullable = false)
+    private boolean hasAllowance;
+
+    @Column(name = "applicability_scope", nullable = false, length = 20)
+    private String applicabilityScope = "PASSENGER";
+
+    @Column(name = "requires_staff", nullable = false)
+    private boolean requiresStaff;
+
+    @Column(name = "duration_minutes")
+    private Integer durationMinutes;
+
+    @Column(name = "advance_notice_minutes")
+    private Integer advanceNoticeMinutes;
+
+    @Column(name = "minimum_age")
+    private Integer minimumAge;
+
+    @Column(name = "maximum_age")
+    private Integer maximumAge;
+
+    @Column(name = "usage_terms", columnDefinition = "text")
+    private String usageTerms;
+
+    @Column(name = "cancellation_terms", columnDefinition = "text")
+    private String cancellationTerms;
+
     @Column(name = "price", precision = 19, scale = 4)
     private BigDecimal price;
 
+    @JdbcTypeCode(SqlTypes.CHAR)
     @Column(name = "currency_code", columnDefinition = "char(3)")
     private String currencyCode;
 

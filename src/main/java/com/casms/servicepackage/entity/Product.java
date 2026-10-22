@@ -1,5 +1,7 @@
 package com.casms.servicepackage.entity;
 
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import com.casms.servicepackage.enums.ProductStatus;
 import jakarta.persistence.*;
 import lombok.Getter;
@@ -35,6 +37,7 @@ public class Product {
     @Column(name = "unit_price", nullable = false, precision = 19, scale = 4)
     private BigDecimal unitPrice;
 
+    @JdbcTypeCode(SqlTypes.CHAR)
     @Column(name = "currency_code", nullable = false, columnDefinition = "char(3)")
     private String currencyCode;
 

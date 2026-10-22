@@ -18,6 +18,11 @@ import java.time.LocalDate;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
+import java.util.Map;
+import java.util.LinkedHashMap;
+import java.util.HashSet;
+import java.util.ArrayList;
+import java.util.Set;
 
 /** Catalogue and package lifecycle behavior. Financial sales stay in the payment module. */
 @Service @RequiredArgsConstructor @Transactional
@@ -102,9 +107,30 @@ public class ServicepackageService {
     private TourPackage editablePackage(UUID id){TourPackage p=tourPackage(id);if(p.getStatus()!=TourPackageStatus.DRAFT||assignmentRepo.existsByTourPackage_TourPackageId(id))throw new IllegalStateException("Only an unassigned draft package can be edited");return p;}
     private TourPackage availablePackage(UUID id,BookingPassenger bp){TourPackage p=tourPackage(id);if(p.getStatus()!=TourPackageStatus.ACTIVE)throw new IllegalStateException("Package is not active");var cruise=bp.getBooking().getCruise();java.time.LocalDate departure=cruise.getDepartureDatetime().atZone(java.time.ZoneOffset.UTC).toLocalDate();java.time.LocalDate returning=cruise.getReturnDatetime().atZone(java.time.ZoneOffset.UTC).toLocalDate();if(p.getStartDate()!=null&&departure.isBefore(p.getStartDate())||p.getEndDate()!=null&&returning.isAfter(p.getEndDate()))throw new IllegalStateException("Package is not valid for the full cruise date range");return p;}
     private static void assertAssignmentAccess(BookingPassenger bp,UUID userId,boolean staff){if(!staff&&(bp.getPassenger().getUser()==null||!bp.getPassenger().getUser().getUserId().equals(userId)))throw new org.springframework.security.access.AccessDeniedException("Booking passenger does not belong to authenticated passenger");}
-    @Transactional(readOnly=true) public List<TourPackageService> packageServices(UUID id){tourPackage(id);return packageServiceRepo.findByTourPackage_TourPackageId(id);}
-    @Transactional(readOnly=true) public List<TourPackageActivity> packageActivities(UUID id){tourPackage(id);return packageActivityRepo.findByTourPackage_TourPackageId(id);}
-    @Transactional(readOnly=true) public List<TourPackageExcursion> packageExcursions(UUID id){tourPackage(id);return packageExcursionRepo.findByTourPackage_TourPackageId(id);}
+    @Transactional(readOnly=true) public List<TourPackageService> packageServices(UUID id){
+        Map<UUID,TourPackageService> inherited=new LinkedHashMap<>();
+        for(TourPackage p:packageLineage(id)) for(TourPackageService x:packageServiceRepo.findByTourPackage_TourPackageId(p.getTourPackageId())) inherited.putIfAbsent(x.getService().getServiceId(),x);
+        return new ArrayList<>(inherited.values());
+    }
+    @Transactional(readOnly=true) public List<TourPackageActivity> packageActivities(UUID id){
+        Map<UUID,TourPackageActivity> inherited=new LinkedHashMap<>();
+        for(TourPackage p:packageLineage(id)) for(TourPackageActivity x:packageActivityRepo.findByTourPackage_TourPackageId(p.getTourPackageId())) inherited.putIfAbsent(x.getOnboardActivity().getOnboardActivityId(),x);
+        return new ArrayList<>(inherited.values());
+    }
+    @Transactional(readOnly=true) public List<TourPackageExcursion> packageExcursions(UUID id){
+        Map<UUID,TourPackageExcursion> inherited=new LinkedHashMap<>();
+        for(TourPackage p:packageLineage(id)) for(TourPackageExcursion x:packageExcursionRepo.findByTourPackage_TourPackageId(p.getTourPackageId())) inherited.putIfAbsent(x.getShoreExcursion().getShoreExcursionId(),x);
+        return new ArrayList<>(inherited.values());
+    }
+    private List<TourPackage> packageLineage(UUID id){
+        List<TourPackage> lineage=new ArrayList<>();Set<UUID> seen=new HashSet<>();TourPackage current=tourPackage(id);
+        while(current!=null){
+            if(!seen.add(current.getTourPackageId()))throw new IllegalStateException("Package inheritance cycle detected");
+            lineage.add(current);
+            current=current.getParentPackage();
+        }
+        return lineage;
+    }
     private static void invalid(){throw new IllegalStateException("Invalid lifecycle transition");}
     private static EntityNotFoundException missing(String what,UUID id){return new EntityNotFoundException(what+" not found: "+id);}
 }

@@ -1,5 +1,7 @@
 package com.casms.servicepackage.entity;
 
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import com.casms.booking.entity.BookingPassenger;
 import jakarta.persistence.*;
 import lombok.Getter;
@@ -34,6 +36,7 @@ public class BookingPassengerPackage {
     @Column(name = "agreed_price", nullable = false, precision = 19, scale = 4)
     private BigDecimal agreedPrice;
 
+    @JdbcTypeCode(SqlTypes.CHAR)
     @Column(name = "currency", nullable = false, columnDefinition = "char(3)")
     private String currency;
 }

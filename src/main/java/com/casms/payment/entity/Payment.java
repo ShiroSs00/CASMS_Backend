@@ -1,5 +1,7 @@
 package com.casms.payment.entity;
 
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import com.casms.booking.entity.Booking;
 import com.casms.payment.enums.PaymentMethod;
 import com.casms.payment.enums.PaymentOperationType;
@@ -61,6 +63,7 @@ public class Payment {
     @Column(name = "confirmed_amount", precision = 19, scale = 4)
     private BigDecimal confirmedAmount;
 
+    @JdbcTypeCode(SqlTypes.CHAR)
     @Column(name = "currency", nullable = false, columnDefinition = "char(3)")
     private String currency;
 

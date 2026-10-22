@@ -1,5 +1,7 @@
 package com.casms.activity.entity;
 
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import com.casms.activity.enums.ShoreExcursionStatus;
 import com.casms.ship.entity.CruiseStop;
 import jakarta.persistence.*;
@@ -53,6 +55,7 @@ public class ShoreExcursion {
     @Column(name = "price", precision = 19, scale = 4)
     private BigDecimal price;
 
+    @JdbcTypeCode(SqlTypes.CHAR)
     @Column(name = "currency_code", columnDefinition = "char(3)")
     private String currencyCode;
 

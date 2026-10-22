@@ -49,6 +49,39 @@ public class Cabin {
     @Column(name = "is_accessible", nullable = false)
     private Boolean isAccessible;
 
+    @Column(name = "minimum_occupancy", nullable = false)
+    private Integer minimumOccupancy = 1;
+
+    @Column(name = "bed_count")
+    private Integer bedCount;
+
+    @Column(name = "bed_configuration", length = 100)
+    private String bedConfiguration;
+
+    @Column(name = "area_square_meters", precision = 8, scale = 2)
+    private java.math.BigDecimal areaSquareMeters;
+
+    @Column(name = "balcony_area_square_meters", precision = 8, scale = 2)
+    private java.math.BigDecimal balconyAreaSquareMeters;
+
+    @Column(name = "location_code", length = 30)
+    private String locationCode;
+
+    @Column(name = "has_balcony", nullable = false)
+    private Boolean hasBalcony = false;
+
+    @Column(name = "has_connecting_door", nullable = false)
+    private Boolean hasConnectingDoor = false;
+
+    @Column(name = "is_family_cabin", nullable = false)
+    private Boolean isFamilyCabin = false;
+
+    @Column(name = "has_bathtub", nullable = false)
+    private Boolean hasBathtub = false;
+
+    @Column(name = "has_separate_living_area", nullable = false)
+    private Boolean hasSeparateLivingArea = false;
+
     @Column(name = "model_position_x")
     private Double modelPositionX;
     @Column(name = "model_position_y")

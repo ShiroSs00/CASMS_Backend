@@ -1,5 +1,7 @@
 package com.casms.payment.entity;
 
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import com.casms.identity.entity.User;
 import com.casms.payment.enums.SpendingLimitStatus;
 import jakarta.persistence.*;
@@ -28,6 +30,7 @@ public class SpendingLimit {
     @Column(name = "limit_amount", nullable = false, precision = 19, scale = 4)
     private BigDecimal limitAmount;
 
+    @JdbcTypeCode(SqlTypes.CHAR)
     @Column(name = "currency_code", nullable = false, columnDefinition = "char(3)")
     private String currencyCode;
 

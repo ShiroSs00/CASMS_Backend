@@ -20,6 +20,7 @@ import java.util.Optional;
 import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
+import static org.junit.jupiter.api.Assertions.assertSame;
 
 @ExtendWith(MockitoExtension.class)
 class ServicepackageWorkflowTest {
@@ -47,5 +48,20 @@ class ServicepackageWorkflowTest {
   UUID packageId=UUID.randomUUID(),serviceId=UUID.randomUUID();TourPackage p=new TourPackage();p.setStatus(TourPackageStatus.DRAFT);com.casms.servicepackage.entity.Service s=new com.casms.servicepackage.entity.Service();
   when(packageRepo.findById(packageId)).thenReturn(Optional.of(p));when(assignmentRepo.existsByTourPackage_TourPackageId(packageId)).thenReturn(false);when(serviceRepo.findById(serviceId)).thenReturn(Optional.of(s));when(packageServiceRepo.existsById(any())).thenReturn(true);
   assertThrows(IllegalStateException.class,()->service.addPackageService(packageId,serviceId,BenefitType.INCLUDED));verify(packageServiceRepo,never()).save(any());
+ }
+
+ @Test void packageServices_inheritsParentBenefitsAndChildOverridesDuplicates(){
+  UUID childId=UUID.randomUUID(),parentId=UUID.randomUUID(),serviceId=UUID.randomUUID();
+  TourPackage parent=new TourPackage();parent.setTourPackageId(parentId);
+  TourPackage child=new TourPackage();child.setTourPackageId(childId);child.setParentPackage(parent);
+  com.casms.servicepackage.entity.Service catalogService=new com.casms.servicepackage.entity.Service();catalogService.setServiceId(serviceId);
+  TourPackageService parentLink=new TourPackageService();parentLink.setTourPackage(parent);parentLink.setService(catalogService);parentLink.setBenefitType(BenefitType.INCLUDED);
+  TourPackageService childLink=new TourPackageService();childLink.setTourPackage(child);childLink.setService(catalogService);childLink.setBenefitType(BenefitType.OPTIONAL);
+  when(packageRepo.findById(childId)).thenReturn(Optional.of(child));
+  when(packageServiceRepo.findByTourPackage_TourPackageId(childId)).thenReturn(java.util.List.of(childLink));
+  when(packageServiceRepo.findByTourPackage_TourPackageId(parentId)).thenReturn(java.util.List.of(parentLink));
+
+  var result=service.packageServices(childId);
+  assertEquals(1,result.size());assertSame(childLink,result.get(0));
  }
 }

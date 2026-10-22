@@ -1,5 +1,7 @@
 package com.casms.ship.entity;
 
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import com.casms.ship.enums.DestinationStatus;
 import jakarta.persistence.*;
 import lombok.Getter;
@@ -24,6 +26,7 @@ public class Destination {
     @Column(name = "destination_name", nullable = false, length = 200)
     private String destinationName;
 
+    @JdbcTypeCode(SqlTypes.CHAR)
     @Column(name = "country_code", nullable = false, columnDefinition = "char(2)")
     private String countryCode;
 

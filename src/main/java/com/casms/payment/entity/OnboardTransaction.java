@@ -1,5 +1,7 @@
 package com.casms.payment.entity;
 
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import com.casms.identity.entity.Passenger;
 import com.casms.identity.entity.User;
 import com.casms.payment.enums.TransactionStatus;
@@ -39,6 +41,7 @@ public class OnboardTransaction {
     @Column(name = "amount", nullable = false, precision = 19, scale = 4)
     private BigDecimal amount;
 
+    @JdbcTypeCode(SqlTypes.CHAR)
     @Column(name = "currency_code", nullable = false, columnDefinition = "char(3)")
     private String currencyCode;
 

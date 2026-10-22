@@ -11,6 +11,7 @@ import com.casms.servicepackage.entity.ServiceRequest;
 import com.casms.servicepackage.enums.ServiceRequestStatus;
 import com.casms.servicepackage.repository.ServiceRepository;
 import com.casms.servicepackage.repository.ServiceRequestRepository;
+import com.casms.servicepackage.repository.ServiceScheduleRepository;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -26,6 +27,7 @@ public class ServiceRequestService {
  private final BookingPassengerRepository bookingPassengers;
  private final PassengerRepository passengers;
  private final UserRepository users;
+ private final ServiceScheduleRepository schedules;
 
  public List<ServiceRequest> list(UUID passengerId, boolean staff) {
   if (!staff) return requests.findByPassenger_User_UserId(passengerId);
@@ -36,13 +38,42 @@ public class ServiceRequestService {
   assertOwner(r,userId,staff); return r;
  }
  public ServiceRequest create(UUID userId, UUID serviceId, UUID bookingPassengerId, Integer quantity, String note) {
+  return create(userId, serviceId, bookingPassengerId, null, quantity, note, null);
+ }
+
+ public ServiceRequest create(UUID userId, UUID serviceId, UUID bookingPassengerId, UUID scheduleId,
+                              Integer quantity, String note, String idempotencyKey) {
+  if (idempotencyKey != null && !idempotencyKey.isBlank()) {
+      var existing = requests.findByIdempotencyKey(idempotencyKey);
+      if (existing.isPresent()) {
+          ServiceRequest request = existing.get();
+          assertOwner(request, userId, false);
+          if (!request.getService().getServiceId().equals(serviceId)
+                  || !java.util.Objects.equals(request.getServiceSchedule() == null ? null : request.getServiceSchedule().getServiceScheduleId(), scheduleId)
+                  || request.getQuantity() != (quantity == null ? 1 : quantity)) {
+              throw new IllegalArgumentException("Idempotency key was already used for a different service request");
+          }
+          return request;
+      }
+  }
   Passenger passenger=passengers.findByUser_UserId(userId).orElseThrow(()->new IllegalStateException("Authenticated user has no passenger profile"));
   // Serialize capacity checks for this service to prevent concurrent reservations exceeding capacity.
   var s=services.findByIdForUpdate(serviceId).orElseThrow(()->missing("Service",serviceId));
   if(s.getStatus()!=com.casms.servicepackage.enums.ServiceStatus.ACTIVE) throw new IllegalStateException("Service is not available");
   int effectiveQuantity = quantity == null ? 1 : quantity;
   if(effectiveQuantity<1)throw new IllegalArgumentException("Quantity must be positive");
-  assertCapacity(s, effectiveQuantity, 0);
+  if (scheduleId == null) assertCapacity(s, effectiveQuantity, 0);
+  com.casms.servicepackage.entity.ServiceSchedule schedule = null;
+  if (scheduleId != null) {
+      schedule = schedules.lockById(scheduleId).orElseThrow(() -> missing("Service schedule", scheduleId));
+      if (!schedule.getService().getServiceId().equals(serviceId)) throw new IllegalArgumentException("Schedule does not belong to the requested service");
+      if (!"OPEN".equals(schedule.getStatus())) throw new IllegalStateException("Service schedule is not open");
+      long reserved = requests.sumActiveQuantityForSchedule(scheduleId,
+              List.of(ServiceRequestStatus.REQUESTED, ServiceRequestStatus.ACCEPTED, ServiceRequestStatus.IN_PROGRESS));
+      if (reserved + effectiveQuantity > schedule.getCapacity()) throw new IllegalStateException("Requested quantity exceeds remaining schedule capacity");
+  } else if (s.isRequiresSchedule()) {
+      throw new IllegalArgumentException("This service requires a schedule reservation");
+  }
   BookingPassenger bp=null;
   if(bookingPassengerId!=null){
       bp=bookingPassengers.findById(bookingPassengerId).orElseThrow(()->missing("Booking passenger",bookingPassengerId));
@@ -55,7 +86,7 @@ public class ServiceRequestService {
           bp = candidates.get(0);
       }
   }
-  ServiceRequest r=new ServiceRequest(); r.setPassenger(passenger); r.setService(s); r.setBookingPassenger(bp); r.setBooking(bp==null?null:bp.getBooking()); r.setQuantity(effectiveQuantity); r.setNote(note); r.setRequestTime(Instant.now()); r.setStatus(ServiceRequestStatus.REQUESTED); return requests.save(r);
+  ServiceRequest r=new ServiceRequest(); r.setPassenger(passenger); r.setService(s); r.setServiceSchedule(schedule); r.setUnitPriceSnapshot(s.getPrice()); r.setCurrencySnapshot(s.getCurrencyCode()); r.setIdempotencyKey(idempotencyKey==null||idempotencyKey.isBlank()?null:idempotencyKey); r.setBookingPassenger(bp); r.setBooking(bp==null?null:bp.getBooking()); r.setQuantity(effectiveQuantity); r.setNote(note); r.setRequestTime(Instant.now()); r.setStatus(ServiceRequestStatus.REQUESTED); return requests.save(r);
  }
  public ServiceRequest updatePending(UUID id, UUID userId, boolean staff, Integer quantity, String note) {
   ServiceRequest r=requests.lockById(id).orElseThrow(()->missing("Service request",id));assertOwner(r,userId,staff); if(r.getStatus()!=ServiceRequestStatus.REQUESTED)throw new IllegalStateException("Only requested service requests may be edited");

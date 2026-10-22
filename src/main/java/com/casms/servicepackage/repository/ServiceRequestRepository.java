@@ -16,4 +16,10 @@ public interface ServiceRequestRepository extends JpaRepository<ServiceRequest, 
     @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
     @org.springframework.data.jpa.repository.Query("select r from ServiceRequest r where r.serviceRequestId = :id")
     java.util.Optional<ServiceRequest> lockById(@org.springframework.data.repository.query.Param("id") UUID id);
+
+    java.util.Optional<ServiceRequest> findByIdempotencyKey(String idempotencyKey);
+
+    @org.springframework.data.jpa.repository.Query("select coalesce(sum(r.quantity),0) from ServiceRequest r where r.serviceSchedule.serviceScheduleId=:id and r.status in :statuses")
+    Long sumActiveQuantityForSchedule(@org.springframework.data.repository.query.Param("id") UUID id,
+                                      @org.springframework.data.repository.query.Param("statuses") java.util.Collection<com.casms.servicepackage.enums.ServiceRequestStatus> statuses);
 }
