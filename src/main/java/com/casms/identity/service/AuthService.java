@@ -119,11 +119,6 @@ public class AuthService {
         if (user == null) {
             return Collections.emptySet();
         }
-        if (user.isAdmin()) {
-            return Arrays.stream(Permission.values())
-                    .map(Enum::name)
-                    .collect(Collectors.toCollection(TreeSet::new));
-        }
         Set<String> permissions = new TreeSet<>();
         if (user.getRoles() != null && rolePermissionRepository != null) {
             for (Role role : user.getRoles()) {

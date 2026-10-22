@@ -38,11 +38,7 @@ public class CasmsPrincipal implements UserDetails {
                 authorities.add(new SimpleGrantedAuthority(role.name()));
             }
         }
-        if (user.isAdmin()) {
-            for (Permission p : Permission.values()) {
-                authorities.add(new SimpleGrantedAuthority(p.name()));
-            }
-        } else if (user.getRoles() != null && rolePermissionRepository != null) {
+        if (user.getRoles() != null && rolePermissionRepository != null) {
             for (Role role : user.getRoles()) {
                 rolePermissionRepository.findByRole(role).ifPresent(rp -> {
                     if (rp.getPermissions() != null) {
@@ -89,9 +85,6 @@ public class CasmsPrincipal implements UserDetails {
     }
 
     public boolean hasPermission(Permission permission) {
-        if (user.isAdmin()) {
-            return true;
-        }
         return user.getRoles().stream()
                 .flatMap(role -> {
                     var rpOptional = rolePermissionRepository.findByRole(role);
