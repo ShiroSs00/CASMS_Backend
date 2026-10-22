@@ -37,10 +37,12 @@ public class ServiceRequestService {
  }
  public ServiceRequest create(UUID userId, UUID serviceId, UUID bookingPassengerId, Integer quantity, String note) {
   Passenger passenger=passengers.findByUser_UserId(userId).orElseThrow(()->new IllegalStateException("Authenticated user has no passenger profile"));
-  var s=services.findById(serviceId).orElseThrow(()->missing("Service",serviceId));
+  // Serialize capacity checks for this service to prevent concurrent reservations exceeding capacity.
+  var s=services.findByIdForUpdate(serviceId).orElseThrow(()->missing("Service",serviceId));
   if(s.getStatus()!=com.casms.servicepackage.enums.ServiceStatus.ACTIVE) throw new IllegalStateException("Service is not available");
-  int effectiveQuantity = (quantity==null||quantity<1) ? 1 : quantity;
-  if(s.getCapacity()!=null&&effectiveQuantity>s.getCapacity())throw new IllegalStateException("Requested quantity exceeds service capacity");
+  int effectiveQuantity = quantity == null ? 1 : quantity;
+  if(effectiveQuantity<1)throw new IllegalArgumentException("Quantity must be positive");
+  assertCapacity(s, effectiveQuantity, 0);
   BookingPassenger bp=null;
   if(bookingPassengerId!=null){
       bp=bookingPassengers.findById(bookingPassengerId).orElseThrow(()->missing("Booking passenger",bookingPassengerId));
@@ -57,7 +59,10 @@ public class ServiceRequestService {
  }
  public ServiceRequest updatePending(UUID id, UUID userId, boolean staff, Integer quantity, String note) {
   ServiceRequest r=requests.lockById(id).orElseThrow(()->missing("Service request",id));assertOwner(r,userId,staff); if(r.getStatus()!=ServiceRequestStatus.REQUESTED)throw new IllegalStateException("Only requested service requests may be edited");
-  if(quantity==null||quantity<1)throw new IllegalArgumentException("Quantity must be positive"); r.setQuantity(quantity); r.setNote(note); return r;
+  if(quantity==null||quantity<1)throw new IllegalArgumentException("Quantity must be positive");
+  var service=services.findByIdForUpdate(r.getService().getServiceId()).orElseThrow(()->missing("Service",r.getService().getServiceId()));
+  assertCapacity(service, quantity, r.getQuantity());
+  r.setQuantity(quantity); r.setNote(note); return r;
  }
  public ServiceRequest transition(UUID id, UUID userId, String action) {
   ServiceRequest r=requests.lockById(id).orElseThrow(()->missing("Service request",id));
@@ -73,6 +78,16 @@ public class ServiceRequestService {
   return r;
  }
  public void assertOwner(ServiceRequest r, UUID userId, boolean staff){if(staff)return; if(r.getPassenger().getUser()==null||!r.getPassenger().getUser().getUserId().equals(userId))throw new org.springframework.security.access.AccessDeniedException("Service request belongs to another passenger");}
+ private void assertCapacity(com.casms.servicepackage.entity.Service service, long requestedQuantity, int existingQuantity) {
+  if (service.getCapacity() == null) return;
+  long used = activeQuantity(service.getServiceId()) - existingQuantity;
+  if (used + requestedQuantity > service.getCapacity()) {
+   throw new IllegalStateException("Requested quantity exceeds remaining service capacity");
+  }
+ }
+ private long activeQuantity(UUID serviceId) {
+  return requests.sumActiveQuantity(serviceId, List.of(ServiceRequestStatus.REQUESTED, ServiceRequestStatus.ACCEPTED, ServiceRequestStatus.IN_PROGRESS));
+ }
  private void assertSamePassenger(BookingPassenger bp,Passenger passenger){if(!bp.getPassenger().getPassengerId().equals(passenger.getPassengerId()))throw new org.springframework.security.access.AccessDeniedException("Booking passenger does not belong to authenticated passenger");}
  private static void invalid(){throw new IllegalStateException("Invalid service request transition");}
  private static EntityNotFoundException missing(String what,UUID id){return new EntityNotFoundException(what+" not found: "+id);}
