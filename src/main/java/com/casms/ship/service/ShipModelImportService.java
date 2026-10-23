@@ -65,6 +65,7 @@ public class ShipModelImportService {
         String glbPath = manifest.path("assets").path("full").asText();
         JsonNode glb = assets.glbDocument(model.getModelKey(), model.getAssetVersion(), glbPath);
         Map<String, JsonNode> glbNodes = indexAndValidateNodes(manifest, glb);
+        validateManifestBusinessIdentities(manifest);
 
         ModelImportJob job = jobs.findById(jobId).orElseThrow(() -> new IllegalStateException("Import job disappeared"));
         int total = manifest.path("decks").size() + manifest.path("serviceDecks").size() + manifest.path("cabins").size();
@@ -87,16 +88,18 @@ public class ShipModelImportService {
                         Math.abs(elevation - source.path("elevationMetres").asDouble()) > 0.01) {
                     throw new ObjectImportException("MANIFEST_GLB_MISMATCH", "Deck metadata differs between the GLB and manifest");
                 }
-                if (number < 1 || number > ship.getTotalDecks()) throw new ObjectImportException("INVALID_DECK_NUMBER", "Deck number is outside this ship's configured deck range");
+                int deckNumberLimit = ship.getDeckNumberLimit() == null ? ship.getTotalDecks() : ship.getDeckNumberLimit();
+                if (number < 1 || number > deckNumberLimit) throw new ObjectImportException("INVALID_DECK_NUMBER", "Deck number is outside this ship's configured deck range");
                 Deck deck = decks.findByShipShipIdAndDeckNumber(shipId, number).orElseGet(Deck::new);
                 if (deck.getDeckId() == null) {
                     deck.setShip(ship);
                     deck.setDeckNumber(number);
                     deck.setDeckName(name);
                     deck.setPriceMultiplier(BigDecimal.ONE);
-                } else if (!Objects.equals(deck.getDeckName(), name)) {
-                    throw new ObjectImportException("DECK_CONFLICT", "A deck with this number already exists with a different name");
                 }
+                // Deck number is the stable business identity; the display name and
+                // model elevation are model-managed and may change between versions.
+                deck.setDeckName(name);
                 deck.setModelPositionY(elevation);
                 deck = decks.save(deck);
                 resolvedDecks.put(id, deck);
@@ -159,13 +162,15 @@ public class ShipModelImportService {
                     cabin.setDeck(deck);
                     cabin.setCabinNumber(cabinNumber);
                     cabin.setStatus(CabinStatus.AVAILABLE); // Existing CabinService creation default.
+                    cabin.setCapacity(capacity);
                     cabin.setIsAccessible(source.path("isAccessible").asBoolean(false));
                 } else if (!Objects.equals(cabin.getDeck().getDeckId(), deck.getDeckId())) {
                     throw new ObjectImportException("CABIN_DECK_CONFLICT", "An existing cabin number is assigned to another deck");
                 }
+                // Cabin type and 3D geometry are model-managed (CabinService rejects
+                // edits to those fields). Capacity/accessibility remain business-owned
+                // for existing cabins and are initialized from the manifest only on create.
                 cabin.setCabinType(type);
-                cabin.setCapacity(capacity);
-                cabin.setIsAccessible(source.path("isAccessible").asBoolean(false));
                 cabin.setModelPositionX(position[0]);
                 cabin.setModelPositionY(position[1]);
                 cabin.setModelPositionZ(position[2]);
@@ -287,6 +292,39 @@ public class ShipModelImportService {
             }
         }
         return indexed;
+    }
+
+    /** Reject ambiguous business identities before any Deck/Cabin or mapping is written. */
+    private static void validateManifestBusinessIdentities(JsonNode manifest) {
+        Set<Integer> deckNumbers = new HashSet<>();
+        Set<String> deckIds = new HashSet<>();
+        for (JsonNode deck : manifest.path("decks")) {
+            int number = deck.path("number").asInt(Integer.MIN_VALUE);
+            String id = deck.path("id").asText("");
+            if (number == Integer.MIN_VALUE || !deckNumbers.add(number) || id.isBlank() || !deckIds.add(id)) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Manifest contains a missing or duplicate passenger deck identity");
+            }
+        }
+        for (JsonNode deck : manifest.path("serviceDecks")) {
+            String id = deck.path("id").asText("");
+            if (id.isBlank() || !deckIds.add(id)) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Manifest contains a missing or duplicate service deck identity");
+            }
+        }
+        Set<String> cabinNumbers = new HashSet<>();
+        Set<String> cabinIds = new HashSet<>();
+        for (JsonNode cabin : manifest.path("cabins")) {
+            String number = cabin.path("cabinNumber").asText("").trim();
+            String id = cabin.path("id").asText("");
+            String deckId = cabin.path("deckId").asText("");
+            if (number.isBlank() || !cabinNumbers.add(number) || id.isBlank() || !cabinIds.add(id) ||
+                    deckId.isBlank() || !deckIds.contains(deckId)) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Manifest contains a missing, duplicate or invalid cabin identity/deck reference");
+            }
+        }
     }
 
     private static int requiredInt(JsonNode object, String field) {

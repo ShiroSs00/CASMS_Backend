@@ -47,6 +47,7 @@ public class ShipService {
         String shipCode = businessCodeGenerator.next("SH");
         ShipStatus status = request.getStatus() == null ? ShipStatus.ACTIVE : request.getStatus();
         validateShipDimensions(request.getTotalCapacity(), request.getTotalDecks());
+        validateHullDimensions(request.getLengthMeters(), request.getBeamMeters());
         validateCommissionDate(request.getCommissionDate());
 
         log.info("Creating new ship with code: {}", shipCode);
@@ -56,6 +57,9 @@ public class ShipService {
         ship.setStatus(status);
         ship.setTotalCapacity(request.getTotalCapacity());
         ship.setTotalDecks(request.getTotalDecks());
+        ship.setDeckNumberLimit(request.getTotalDecks());
+        ship.setLengthMeters(request.getLengthMeters());
+        ship.setBeamMeters(request.getBeamMeters());
         ship.setCommissionDate(request.getCommissionDate());
         
         ship = shipRepository.save(ship);
@@ -76,6 +80,9 @@ public class ShipService {
     @Transactional
     public ShipResponse update(UUID shipId, ShipUpdateRequest request) {
         Ship ship = getShipById(shipId);
+        Double proposedLength = request.getLengthMeters() == null ? ship.getLengthMeters() : request.getLengthMeters();
+        Double proposedBeam = request.getBeamMeters() == null ? ship.getBeamMeters() : request.getBeamMeters();
+        validateHullDimensions(proposedLength, proposedBeam);
         if (request.getShipName() != null) {
             String shipName = request.getShipName().trim();
             if (shipName.isEmpty()) {
@@ -98,10 +105,10 @@ public class ShipService {
             if (request.getTotalDecks() < 1) {
                 throw new BusinessException("INVALID_TOTAL_DECKS", "Total decks must be greater than zero");
             }
-            int highestDeckNumber = deckRepository.findMaxDeckNumberByShipId(shipId);
-            if (request.getTotalDecks() < highestDeckNumber) {
+            long configuredDeckCount = deckRepository.countByShipShipId(shipId);
+            if (request.getTotalDecks() < configuredDeckCount) {
                 throw new BusinessException("TOTAL_DECKS_BELOW_CONFIGURED_DECK",
-                        "Total decks cannot be lower than the highest configured deck number");
+                        "Total decks cannot be lower than the number of configured business decks");
             }
             ship.setTotalDecks(request.getTotalDecks());
         }
@@ -109,6 +116,8 @@ public class ShipService {
             validateCommissionDate(request.getCommissionDate());
             ship.setCommissionDate(request.getCommissionDate());
         }
+        if (request.getLengthMeters() != null) ship.setLengthMeters(request.getLengthMeters());
+        if (request.getBeamMeters() != null) ship.setBeamMeters(request.getBeamMeters());
 
         ship = shipRepository.save(ship);
         return mapToResponse(ship);
@@ -244,6 +253,15 @@ public class ShipService {
         }
     }
 
+    private void validateHullDimensions(Double lengthMeters, Double beamMeters) {
+        if ((lengthMeters == null) != (beamMeters == null) ||
+                (lengthMeters != null && (!Double.isFinite(lengthMeters) || lengthMeters <= 0 ||
+                        !Double.isFinite(beamMeters) || beamMeters <= 0))) {
+            throw new BusinessException("INVALID_SHIP_HULL_DIMENSIONS",
+                    "Ship length and beam must either both be omitted or both be finite positive values");
+        }
+    }
+
     private void validateCommissionDate(java.time.LocalDate commissionDate) {
         if (commissionDate != null && commissionDate.isAfter(java.time.LocalDate.now())) {
             throw new BusinessException("INVALID_COMMISSION_DATE", "Commission date cannot be in the future");
@@ -269,6 +287,10 @@ public class ShipService {
         res.setStatus(ship.getStatus());
         res.setTotalCapacity(ship.getTotalCapacity());
         res.setTotalDecks(ship.getTotalDecks());
+        res.setDeckNumberLimit(ship.getDeckNumberLimit() == null ? ship.getTotalDecks() : ship.getDeckNumberLimit());
+        res.setManifestModelId(ship.getManifestModelId());
+        res.setLengthMeters(ship.getLengthMeters());
+        res.setBeamMeters(ship.getBeamMeters());
         res.setCommissionDate(ship.getCommissionDate());
         res.setCreatedAt(ship.getCreatedAt());
         res.setUpdatedAt(ship.getUpdatedAt());

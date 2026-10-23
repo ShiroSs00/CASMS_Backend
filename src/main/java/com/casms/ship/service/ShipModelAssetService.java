@@ -1,16 +1,19 @@
 package com.casms.ship.service;
 
 import com.casms.common.exception.ResourceNotFoundException;
+import com.casms.common.service.BusinessCodeGenerator;
 import com.casms.ship.dto.request.ShipModelAssetRegisterRequest;
 import com.casms.ship.dto.request.ShipModelCabinMappingRequest;
 import com.casms.ship.dto.request.ShipModelDeckMappingRequest;
 import com.casms.ship.dto.response.ShipModelAssetResponse;
 import com.casms.ship.dto.response.ShipModelAssetUploadResponse;
+import com.casms.ship.dto.response.ShipModelManifestRegistrationResponse;
 import com.casms.ship.entity.Cabin;
 import com.casms.ship.entity.Deck;
 import com.casms.ship.entity.Ship;
 import com.casms.ship.entity.ShipModel;
 import com.casms.ship.entity.ShipModelObject;
+import com.casms.ship.enums.ShipStatus;
 import com.casms.ship.enums.ShipModelObjectType;
 import com.casms.ship.enums.ShipModelStatus;
 import com.casms.ship.repository.CabinRepository;
@@ -22,6 +25,10 @@ import com.fasterxml.jackson.databind.JsonNode;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.ConnectionCallback;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -48,6 +55,8 @@ public class ShipModelAssetService {
     private final DeckRepository decks;
     private final CabinRepository cabins;
     private final ShipModelAssetStore assets;
+    private final BusinessCodeGenerator businessCodes;
+    private final JdbcTemplate jdbc;
 
     @Transactional
     public ShipModelAssetUploadResponse uploadBundle(String modelKey, String assetVersion, MultipartFile bundle) {
@@ -66,16 +75,18 @@ public class ShipModelAssetService {
 
     @Transactional
     public UUID register(UUID shipId, ShipModelAssetRegisterRequest request) {
-        lockShip(shipId);
         if (!assets.bundleExists(request.modelKey(), request.assetVersion())) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Model asset bundle is not uploaded to the database");
         }
         JsonNode manifest = assets.manifest(request.modelKey(), request.assetVersion());
+        lockManifestIdentity(manifest.path("modelId").asText(""));
+        lockShip(shipId);
         if (models.existsByShipShipIdAndModelKeyAndAssetVersion(shipId, request.modelKey(), request.assetVersion())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Model asset version is already registered on this ship");
         }
 
         Ship ship = ships.findById(shipId).orElseThrow(() -> new ResourceNotFoundException("Ship", shipId));
+        syncShipFromManifest(ship, manifest, false);
         ShipModel model = new ShipModel();
         model.setShip(ship);
         model.setModelKey(request.modelKey());
@@ -93,6 +104,130 @@ public class ShipModelAssetService {
         } catch (DataIntegrityViolationException ex) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Model asset version is already registered on this ship", ex);
         }
+    }
+
+    /** Resolve an existing manifest identity or create its CASMS Ship, then register the asset version. */
+    @Transactional
+    public ShipModelManifestRegistrationResponse registerFromManifest(String modelKey, String assetVersion,
+                                                                       Authentication authentication) {
+        if (!assets.bundleExists(modelKey, assetVersion)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Model asset bundle is not uploaded to the database");
+        }
+        JsonNode manifest = assets.manifest(modelKey, assetVersion);
+        String manifestModelId = requiredManifestText(manifest, "modelId");
+        lockManifestIdentity(manifestModelId);
+        Ship ship = ships.lockByManifestModelId(manifestModelId).orElse(null);
+        boolean created = ship == null;
+        if (created) {
+            requireAuthority(authentication, "SHIP_CREATE");
+            ship = new Ship();
+            ship.setShipCode(businessCodes.next("SH"));
+            ship.setStatus(ShipStatus.ACTIVE);
+        } else {
+            requireAuthority(authentication, "SHIP_UPDATE");
+        }
+        syncShipFromManifest(ship, manifest, true);
+        try {
+            ship = ships.saveAndFlush(ship);
+        } catch (DataIntegrityViolationException ex) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A Ship with this manifest identity was registered concurrently; retry registration", ex);
+        }
+        UUID shipModelId = register(ship.getShipId(), new ShipModelAssetRegisterRequest(modelKey, assetVersion));
+        return new ShipModelManifestRegistrationResponse(ship.getShipId(), shipModelId, created);
+    }
+
+    private static void requireAuthority(Authentication authentication, String authority) {
+        if (authentication == null || authentication.getAuthorities().stream()
+                .noneMatch(granted -> authority.equals(granted.getAuthority()))) {
+            throw new AccessDeniedException("Missing required authority: " + authority);
+        }
+    }
+
+    private void syncShipFromManifest(Ship ship, JsonNode manifest, boolean requireCompleteMetadata) {
+        String manifestModelId = manifest.path("modelId").asText("").trim();
+        if (manifestModelId.isEmpty()) {
+            if (requireCompleteMetadata) throw bad("Manifest modelId is required to provision a Ship");
+            return;
+        }
+        lockManifestIdentity(manifestModelId);
+        Ship identityOwner = ships.findByManifestModelId(manifestModelId).orElse(null);
+        if (identityOwner != null && ship.getShipId() != null && !identityOwner.getShipId().equals(ship.getShipId())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Manifest identity is already linked to another Ship");
+        }
+        if (ship.getManifestModelId() != null && !ship.getManifestModelId().equals(manifestModelId)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Ship is already linked to a different manifest identity");
+        }
+
+        String name = manifest.path("name").asText("").trim();
+        Integer deckCount = manifestInt(manifest, "deckCount");
+        Integer passengerCapacity = manifestInt(manifest, "passengerCapacity");
+        Double length = manifestDouble(manifest, "length");
+        Double beam = manifestDouble(manifest, "beam");
+        int maximumDeckNumber = manifest.path("decks").isArray()
+                ? java.util.stream.StreamSupport.stream(manifest.path("decks").spliterator(), false)
+                    .mapToInt(deck -> deck.path("number").asInt(0)).max().orElse(0)
+                : 0;
+        boolean complete = !name.isEmpty() && name.length() <= 100 && deckCount != null && deckCount > 0 &&
+                maximumDeckNumber > 0 &&
+                passengerCapacity != null && passengerCapacity > 0 && length != null && length > 0 &&
+                beam != null && beam > 0;
+        if (requireCompleteMetadata && !complete) {
+            throw bad("Manifest must provide a valid name, deckCount, passengerCapacity, length, beam, and passenger deck numbering to provision a Ship");
+        }
+        ship.setManifestModelId(manifestModelId);
+        if (!complete) return; // Keep older manifest bundles compatible with explicit ship registration.
+
+        if (ship.getShipId() != null) {
+            Long configuredCabinCapacity = cabins.sumCapacityByShipId(ship.getShipId());
+            if (configuredCabinCapacity != null && passengerCapacity < configuredCabinCapacity) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        "Manifest passengerCapacity is lower than the configured cabin capacity");
+            }
+            long configuredDeckCount = decks.countByShipShipId(ship.getShipId());
+            if (deckCount < configuredDeckCount) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        "Manifest deckCount is lower than the configured business deck count");
+            }
+            maximumDeckNumber = Math.max(maximumDeckNumber,
+                    ship.getDeckNumberLimit() == null ? ship.getTotalDecks() : ship.getDeckNumberLimit());
+        }
+        ship.setShipName(name);
+        ship.setTotalCapacity(passengerCapacity);
+        ship.setTotalDecks(deckCount); // serviceDecks are model-only, not passenger business decks.
+        ship.setDeckNumberLimit(maximumDeckNumber);
+        ship.setLengthMeters(length);
+        ship.setBeamMeters(beam);
+    }
+
+    private void lockManifestIdentity(String manifestModelId) {
+        if (manifestModelId == null || manifestModelId.isBlank()) return;
+        jdbc.execute((ConnectionCallback<Void>) connection -> {
+            try (var statement = connection.prepareStatement(
+                    "SELECT pg_advisory_xact_lock(hashtextextended(?, 0))")) {
+                statement.setString(1, manifestModelId);
+                statement.execute();
+            }
+            return null;
+        });
+    }
+
+    private static String requiredManifestText(JsonNode manifest, String field) {
+        String value = manifest.path(field).asText("").trim();
+        if (value.isEmpty()) throw bad("Manifest " + field + " is required");
+        return value;
+    }
+
+    private static Integer manifestInt(JsonNode manifest, String field) {
+        JsonNode value = manifest.path(field);
+        return value.isIntegralNumber() && value.canConvertToInt() ? value.asInt() : null;
+    }
+
+    private static Double manifestDouble(JsonNode manifest, String field) {
+        JsonNode value = manifest.path(field);
+        if (!value.isNumber()) return null;
+        double number = value.asDouble();
+        return Double.isFinite(number) ? number : null;
     }
 
     @Transactional(readOnly = true)

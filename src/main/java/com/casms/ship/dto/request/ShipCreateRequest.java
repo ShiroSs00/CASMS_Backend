@@ -5,6 +5,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
 import lombok.Data;
 
 import java.time.LocalDate;
@@ -29,6 +30,12 @@ public class ShipCreateRequest {
     @NotNull(message = "Total decks is required")
     @Min(value = 1, message = "Total decks must be greater than 0")
     private Integer totalDecks;
+
+    @Positive
+    private Double lengthMeters;
+
+    @Positive
+    private Double beamMeters;
 
     @Schema(description = "Ngày đưa vào hoạt động / hạ thủy", example = "2024-01-15")
     private LocalDate commissionDate;

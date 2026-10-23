@@ -41,13 +41,19 @@ public class DeckService {
                 .orElseThrow(() -> new ResourceNotFoundException("Ship", request.getShipId()));
 
         Integer deckNumber = request.getDeckNumber();
+        int deckNumberLimit = ship.getDeckNumberLimit() == null ? ship.getTotalDecks() : ship.getDeckNumberLimit();
         if (deckNumber == null) {
-            Integer maxDeck = deckRepository.findMaxDeckNumberByShipId(ship.getShipId());
-            deckNumber = (maxDeck != null ? maxDeck : 0) + 1;
+            java.util.Set<Integer> configured = deckRepository.findByShipShipIdOrderByDeckNumber(ship.getShipId())
+                    .stream().map(Deck::getDeckNumber).collect(java.util.stream.Collectors.toSet());
+            deckNumber = 1;
+            while (deckNumber <= deckNumberLimit && configured.contains(deckNumber)) deckNumber++;
+            if (deckNumber > deckNumberLimit) {
+                throw new BusinessException("INVALID_DECK_NUMBER", "No available business deck number remains on this ship");
+            }
         } else if (deckNumber < 1) {
             throw new BusinessException("INVALID_DECK_NUMBER", "Deck number must be at least 1");
         }
-        if (deckNumber > ship.getTotalDecks()) {
+        if (deckNumber > deckNumberLimit) {
             throw new BusinessException("INVALID_DECK_NUMBER", "Deck number cannot exceed ship's total decks limit");
         }
 
@@ -96,7 +102,9 @@ public class DeckService {
             if (request.getDeckNumber() < 1) {
                 throw new BusinessException("INVALID_DECK_NUMBER", "Deck number must be at least 1");
             }
-            if (request.getDeckNumber() > deck.getShip().getTotalDecks()) {
+            int deckNumberLimit = deck.getShip().getDeckNumberLimit() == null
+                    ? deck.getShip().getTotalDecks() : deck.getShip().getDeckNumberLimit();
+            if (request.getDeckNumber() > deckNumberLimit) {
                 throw new BusinessException("INVALID_DECK_NUMBER", "Deck number cannot exceed ship's total decks limit");
             }
             if (deckRepository.existsByShipShipIdAndDeckNumber(deck.getShip().getShipId(), request.getDeckNumber())) {

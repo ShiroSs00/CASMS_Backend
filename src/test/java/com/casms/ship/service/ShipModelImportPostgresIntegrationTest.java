@@ -70,7 +70,7 @@ class ShipModelImportPostgresIntegrationTest {
 
     private final List<UUID> testShipIds = new ArrayList<>();
     private final List<UUID> testUserIds = new ArrayList<>();
-    private final Map<String, String> uploadedBundles = new LinkedHashMap<>();
+    private final Set<String> uploadedBundles = new LinkedHashSet<>();
     private final List<Path> tempArchives = new ArrayList<>();
 
     @Test
@@ -82,6 +82,14 @@ class ShipModelImportPostgresIntegrationTest {
         try {
             upload("zaandam", version, archive, token);
             UUID modelId = register(ship.getShipId(), "zaandam", version, token);
+
+            Ship synchronizedShip = ships.findById(ship.getShipId()).orElseThrow();
+            assertEquals("zaandam", synchronizedShip.getManifestModelId());
+            assertEquals("MS Zaandam", synchronizedShip.getShipName());
+            assertEquals(582, synchronizedShip.getTotalCapacity());
+            assertEquals(10, synchronizedShip.getTotalDecks());
+            assertEquals(237.7, synchronizedShip.getLengthMeters());
+            assertEquals(32.25, synchronizedShip.getBeamMeters());
 
             JsonNode first = importJob(ship.getShipId(), modelId, token);
             assertEquals("SUCCEEDED", first.path("data").path("status").asText());
@@ -152,8 +160,9 @@ class ShipModelImportPostgresIntegrationTest {
         Ship ship = createShip(10);
         String token = token(Role.SHIP_MANAGER);
 
-        String partialKey = uniqueKey("partial");
-        String partialVersion = "v1";
+        String modelKey = uniqueKey("small-bundles");
+        String partialKey = modelKey;
+        String partialVersion = "partial-v1";
         upload(partialKey, partialVersion, smallBundle(partialKey, partialVersion, "INVALID_TYPE", "M-001", true), token);
         UUID partialModel = register(ship.getShipId(), partialKey, partialVersion, token);
         JsonNode partial = importJob(ship.getShipId(), partialModel, token);
@@ -168,8 +177,8 @@ class ShipModelImportPostgresIntegrationTest {
         assertEquals(1, decks.countByShipShipId(ship.getShipId()));
         assertEquals(0, cabins.countByShipShipId(ship.getShipId()));
 
-        String rollbackKey = uniqueKey("rollback");
-        String rollbackVersion = "v1";
+        String rollbackKey = modelKey;
+        String rollbackVersion = "rollback-v1";
         upload(rollbackKey, rollbackVersion, smallBundle(rollbackKey, rollbackVersion, "OCEAN_VIEW", "CABIN-NUM-TOO-LONG", true), token);
         UUID rollbackModel = register(ship.getShipId(), rollbackKey, rollbackVersion, token);
         MvcResult rollbackResponse = mockMvc.perform(post("/ships/{shipId}/models/{modelId}/imports", ship.getShipId(), rollbackModel)
@@ -186,8 +195,8 @@ class ShipModelImportPostgresIntegrationTest {
         assertEquals(1, objects.findByShipModelShipModelId(partialModel).size());
         assertTrue(objects.findByShipModelShipModelId(rollbackModel).isEmpty());
 
-        String mismatchKey = uniqueKey("mismatch");
-        String mismatchVersion = "v1";
+        String mismatchKey = modelKey;
+        String mismatchVersion = "mismatch-v1";
         upload(mismatchKey, mismatchVersion, smallBundle(mismatchKey, mismatchVersion, "OCEAN_VIEW", "M-001", false), token);
         UUID mismatchModel = register(ship.getShipId(), mismatchKey, mismatchVersion, token);
         MvcResult mismatchResponse = mockMvc.perform(post("/ships/{shipId}/models/{modelId}/imports", ship.getShipId(), mismatchModel)
@@ -200,6 +209,135 @@ class ShipModelImportPostgresIntegrationTest {
         mockMvc.perform(post("/ships/{shipId}/models/{modelId}/imports", UUID.randomUUID(), partialModel)
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void laterModel_updatesModelManagedFieldsAndPreservesBusinessOwnedCabinFields() throws Exception {
+        Ship ship = createShip(10);
+        String token = token(Role.SHIP_MANAGER);
+        String firstKey = uniqueKey("upsert-a");
+        upload(firstKey, "v1", smallBundle(firstKey, "v1", "OCEAN_VIEW", "M-101", true), token);
+        UUID firstModel = register(ship.getShipId(), firstKey, "v1", token);
+        assertEquals("SUCCEEDED", importJob(ship.getShipId(), firstModel, token).path("data").path("status").asText());
+
+        Deck existingDeck = decks.findByShipShipIdAndDeckNumber(ship.getShipId(), 1).orElseThrow();
+        existingDeck.setPriceMultiplier(new java.math.BigDecimal("1.35"));
+        decks.saveAndFlush(existingDeck);
+        Cabin existingCabin = cabins.findByShipShipIdAndCabinNumber(ship.getShipId(), "M-101").orElseThrow();
+        existingCabin.setCapacity(4);
+        existingCabin.setIsAccessible(true);
+        existingCabin.setStatus(com.casms.ship.enums.CabinStatus.MAINTENANCE);
+        existingCabin.setBedCount(2);
+        existingCabin.setBedConfiguration("KING_TWIN");
+        cabins.saveAndFlush(existingCabin);
+
+        upload(firstKey, "v2", smallBundle(firstKey, "v2", "SUITE", "M-101", true,
+                true, "Updated Mini Deck", 1.7, List.of(7.0, 3.0, 8.0), false, 1, 1, 4), token);
+        UUID secondModel = register(ship.getShipId(), firstKey, "v2", token);
+        assertEquals("SUCCEEDED", importJob(ship.getShipId(), secondModel, token).path("data").path("status").asText());
+
+        Deck updatedDeck = decks.findByShipShipIdAndDeckNumber(ship.getShipId(), 1).orElseThrow();
+        assertEquals(existingDeck.getDeckId(), updatedDeck.getDeckId());
+        assertEquals("Updated Mini Deck", updatedDeck.getDeckName());
+        assertEquals(1.7, updatedDeck.getModelPositionY());
+        assertEquals(new java.math.BigDecimal("1.35"), updatedDeck.getPriceMultiplier());
+
+        Cabin updatedCabin = cabins.findByShipShipIdAndCabinNumber(ship.getShipId(), "M-101").orElseThrow();
+        assertEquals(existingCabin.getCabinId(), updatedCabin.getCabinId());
+        assertEquals(CabinType.SUITE, updatedCabin.getCabinType());
+        assertEquals(4, updatedCabin.getCapacity());
+        assertTrue(updatedCabin.getIsAccessible());
+        assertEquals(com.casms.ship.enums.CabinStatus.MAINTENANCE, updatedCabin.getStatus());
+        assertEquals(2, updatedCabin.getBedCount());
+        assertEquals("KING_TWIN", updatedCabin.getBedConfiguration());
+        assertEquals(7.0, updatedCabin.getModelWidth());
+        assertEquals(1, decks.countByShipShipId(ship.getShipId()));
+        assertEquals(1, cabins.countByShipShipId(ship.getShipId()));
+    }
+
+    @Test
+    void duplicateCabinBusinessIdentity_isRejectedBeforeWritingBusinessRows() throws Exception {
+        Ship ship = createShip(10);
+        String token = token(Role.SHIP_MANAGER);
+        String key = uniqueKey("duplicate-cabin");
+        upload(key, "v1", smallBundle(key, "v1", "OCEAN_VIEW", "M-201", true,
+                true, "Mini Deck", 1.0, List.of(5.0, 2.8, 6.5), true), token);
+        UUID modelId = register(ship.getShipId(), key, "v1", token);
+
+        mockMvc.perform(post("/ships/{shipId}/models/{modelId}/imports", ship.getShipId(), modelId)
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isBadRequest());
+
+        var failedJob = jobs.findByShipModelShipModelIdOrderByStartedAtDesc(modelId).get(0);
+        assertEquals("FAILED", failedJob.getStatus().name());
+        assertEquals(0, decks.countByShipShipId(ship.getShipId()));
+        assertEquals(0, cabins.countByShipShipId(ship.getShipId()));
+        assertTrue(objects.findByShipModelShipModelId(modelId).isEmpty());
+    }
+
+    @Test
+    void manifestRegistration_createsShipAndReusesStableIdentityAcrossVersions() throws Exception {
+        String token = token(Role.SHIP_MANAGER);
+        String key = uniqueKey("provision");
+        upload(key, "v1", smallBundle(key, "v1", "OCEAN_VIEW", "M-301", true), token);
+
+        MvcResult firstResult = mockMvc.perform(post("/ship-model-assets/{modelKey}/{assetVersion}/register", key, "v1")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isCreated()).andReturn();
+        JsonNode first = mapper.readTree(firstResult.getResponse().getContentAsByteArray()).path("data");
+        UUID shipId = UUID.fromString(first.path("shipId").asText());
+        assertTrue(first.path("shipCreated").asBoolean());
+        Ship createdShip = ships.findById(shipId).orElseThrow();
+        assertEquals(key, createdShip.getManifestModelId());
+        assertEquals("Mini Ship", createdShip.getShipName());
+        assertEquals(2, createdShip.getTotalCapacity());
+        assertEquals(1, createdShip.getTotalDecks());
+        assertEquals(1, createdShip.getDeckNumberLimit());
+        assertEquals(100.0, createdShip.getLengthMeters());
+        assertEquals(20.0, createdShip.getBeamMeters());
+
+        upload(key, "v2", smallBundle(key, "v2", "SUITE", "M-301", true), token);
+        upload(key, "v3", smallBundle(key, "v3", "BALCONY", "M-301", true), token);
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        JsonNode second;
+        JsonNode third;
+        try {
+            var v2 = CompletableFuture.supplyAsync(() -> registerManifestUnchecked(key, "v2", token), pool);
+            var v3 = CompletableFuture.supplyAsync(() -> registerManifestUnchecked(key, "v3", token), pool);
+            second = v2.join();
+            third = v3.join();
+        } finally {
+            pool.shutdownNow();
+        }
+        assertFalse(second.path("shipCreated").asBoolean());
+        assertFalse(third.path("shipCreated").asBoolean());
+        assertEquals(shipId, UUID.fromString(second.path("shipId").asText()));
+        assertEquals(shipId, UUID.fromString(third.path("shipId").asText()));
+        assertEquals(1, ships.findAll().stream().filter(s -> key.equals(s.getManifestModelId())).count());
+        assertEquals(3, models.findByShipShipIdOrderByCreatedAtDesc(shipId).size());
+    }
+
+    @Test
+    void manifestDeckCount_isSeparateFromPassengerDeckNumberLimit() throws Exception {
+        String token = token(Role.SHIP_MANAGER);
+        String key = uniqueKey("deck-gap");
+        upload(key, "v1", smallBundle(key, "v1", "OCEAN_VIEW", "M-401", true,
+                true, "Sky Deck", 14.0, List.of(5.0, 2.8, 6.5), false, 14, 13), token);
+        MvcResult registration = mockMvc.perform(post("/ship-model-assets/{modelKey}/{assetVersion}/register", key, "v1")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isCreated()).andReturn();
+        JsonNode registered = mapper.readTree(registration.getResponse().getContentAsByteArray()).path("data");
+        UUID shipId = UUID.fromString(registered.path("shipId").asText());
+        UUID modelId = UUID.fromString(registered.path("shipModelId").asText());
+        Ship ship = ships.findById(shipId).orElseThrow();
+        assertEquals(13, ship.getTotalDecks());
+        assertEquals(14, ship.getDeckNumberLimit());
+
+        JsonNode result = importJob(shipId, modelId, token);
+        assertEquals("SUCCEEDED", result.path("data").path("status").asText());
+        Deck imported = decks.findByShipShipIdAndDeckNumber(shipId, 14).orElseThrow();
+        assertEquals("Sky Deck", imported.getDeckName());
+        assertEquals(1, decks.countByShipShipId(shipId));
     }
 
     @Test
@@ -224,8 +362,8 @@ class ShipModelImportPostgresIntegrationTest {
         assertEquals(1, cabins.countByShipShipId(ship.getShipId()));
         assertEquals(2, objects.findByShipModelShipModelId(modelId).size());
 
-        String noCabinKey = uniqueKey("no-cabins");
-        String noCabinVersion = "v1";
+        String noCabinKey = key;
+        String noCabinVersion = "v2";
         upload(noCabinKey, noCabinVersion, smallBundle(noCabinKey, noCabinVersion, "OCEAN_VIEW", "M-002", true, false), token);
         UUID noCabinModel = register(ship.getShipId(), noCabinKey, noCabinVersion, token);
         assertEquals("SUCCEEDED", importJob(ship.getShipId(), noCabinModel, token).path("data").path("status").asText());
@@ -234,8 +372,9 @@ class ShipModelImportPostgresIntegrationTest {
 
     @AfterEach
     void cleanTestRowsAndLargeObjects() {
-        for (var entry : uploadedBundles.entrySet()) {
-            jdbc.update("DELETE FROM \"ShipModelAssetBlob\" WHERE model_key = ? AND asset_version = ?", entry.getKey(), entry.getValue());
+        for (String entry : uploadedBundles) {
+            String[] identity = entry.split("\\|", 2);
+            jdbc.update("DELETE FROM \"ShipModelAssetBlob\" WHERE model_key = ? AND asset_version = ?", identity[0], identity[1]);
         }
         for (UUID shipId : testShipIds) {
             jdbc.update("DELETE FROM \"ShipModelObject\" WHERE ship_model_id IN (SELECT ship_model_id FROM \"ShipModel\" WHERE ship_id = ?)", shipId);
@@ -298,8 +437,19 @@ class ShipModelImportPostgresIntegrationTest {
         catch (Exception ex) { throw new RuntimeException(ex); }
     }
 
+    private JsonNode registerManifestUnchecked(String key, String version, String token) {
+        try {
+            MvcResult result = mockMvc.perform(post("/ship-model-assets/{modelKey}/{assetVersion}/register", key, version)
+                            .header("Authorization", "Bearer " + token))
+                    .andExpect(status().isCreated()).andReturn();
+            return mapper.readTree(result.getResponse().getContentAsByteArray()).path("data");
+        } catch (Exception ex) {
+            throw new RuntimeException(ex);
+        }
+    }
+
     private void upload(String key, String version, Path zip, String token) throws Exception {
-        uploadedBundles.put(key, version);
+        uploadedBundles.add(key + "|" + version);
         FileBackedMultipartFile bundle = new FileBackedMultipartFile("bundle", zip);
         MockHttpServletRequestBuilder request = multipart("/ship-model-assets")
                 .file(bundle).param("modelKey", key).param("assetVersion", version)
@@ -331,23 +481,74 @@ class ShipModelImportPostgresIntegrationTest {
 
     private Path smallBundle(String key, String version, String cabinType, String cabinNumber,
                              boolean matchingNodeIds, boolean includeCabin) throws Exception {
-        Map<String, Object> deckExtras = Map.of("entityType", "deck", "modelId", "mini-d01", "deckNumber", 1,
-                "deckName", "Mini Deck", "elevation", 1.0);
+        return smallBundle(key, version, cabinType, cabinNumber, matchingNodeIds, includeCabin,
+                "Mini Deck", 1.0, List.of(5.0, 2.8, 6.5), false);
+    }
+
+    private Path smallBundle(String key, String version, String cabinType, String cabinNumber,
+                             boolean matchingNodeIds, boolean includeCabin, String deckName,
+                             double elevation, List<Double> cabinSize) throws Exception {
+        return smallBundle(key, version, cabinType, cabinNumber, matchingNodeIds, includeCabin,
+                deckName, elevation, cabinSize, false, 1, 1);
+    }
+
+    private Path smallBundle(String key, String version, String cabinType, String cabinNumber,
+                             boolean matchingNodeIds, boolean includeCabin, String deckName,
+                             double elevation, List<Double> cabinSize, boolean duplicateCabinNumber) throws Exception {
+        return smallBundle(key, version, cabinType, cabinNumber, matchingNodeIds, includeCabin, deckName,
+                elevation, cabinSize, duplicateCabinNumber, 1, 1);
+    }
+
+    private Path smallBundle(String key, String version, String cabinType, String cabinNumber,
+                             boolean matchingNodeIds, boolean includeCabin, String deckName,
+                             double elevation, List<Double> cabinSize, boolean duplicateCabinNumber,
+                             int deckNumber, int deckCount) throws Exception {
+        return smallBundle(key, version, cabinType, cabinNumber, matchingNodeIds, includeCabin, deckName,
+                elevation, cabinSize, duplicateCabinNumber, deckNumber, deckCount, 2);
+    }
+
+    private Path smallBundle(String key, String version, String cabinType, String cabinNumber,
+                             boolean matchingNodeIds, boolean includeCabin, String deckName,
+                             double elevation, List<Double> cabinSize, boolean duplicateCabinNumber,
+                             int deckNumber, int deckCount, int passengerCapacity) throws Exception {
+        Map<String, Object> deckExtras = Map.of("entityType", "deck", "modelId", "mini-d01", "deckNumber", deckNumber,
+                "deckName", deckName, "elevation", elevation);
         Map<String, Object> cabinExtras = Map.of("entityType", "cabin", "modelId", "mini-c1", "deckId", "mini-d01",
                 "cabinNumber", cabinNumber, "cabinType", cabinType, "capacity", 2);
         List<Object> nodes = new ArrayList<>();
         nodes.add(Map.of("name", "DECK_01", "extras", deckExtras));
         if (matchingNodeIds && includeCabin) nodes.add(Map.of("name", "CABIN_01", "translation", List.of(0.0, 1.0, 0.0), "extras", cabinExtras));
+        if (matchingNodeIds && includeCabin && duplicateCabinNumber) {
+            nodes.add(Map.of("name", "CABIN_02", "translation", List.of(1.0, 1.0, 0.0), "extras",
+                    Map.of("entityType", "cabin", "modelId", "mini-c2", "deckId", "mini-d01",
+                            "cabinNumber", cabinNumber, "cabinType", cabinType, "capacity", 2)));
+        }
         byte[] glb = glb(mapper.writeValueAsBytes(Map.of("asset", Map.of("version", "2.0"), "nodes", nodes)));
-        Map<String, Object> deck = Map.of("id", "mini-d01", "number", 1, "name", "Mini Deck", "elevationMetres", 1.0,
-                "asset", "decks/deck_01.glb", "cabinIds", includeCabin ? List.of("mini-c1") : List.of());
+        Map<String, Object> deck = Map.of("id", "mini-d01", "number", deckNumber, "name", deckName, "elevationMetres", elevation,
+                "asset", "decks/deck_01.glb", "cabinIds", includeCabin
+                        ? (duplicateCabinNumber ? List.of("mini-c1", "mini-c2") : List.of("mini-c1")) : List.of());
         Map<String, Object> cabin = Map.of("id", "mini-c1", "cabinNumber", cabinNumber, "deckId", "mini-d01",
-                "cabinType", cabinType, "capacity", 2, "isAccessible", false, "size", List.of(5.0, 2.8, 6.5),
+                "cabinType", cabinType, "capacity", 2, "isAccessible", false, "size", cabinSize,
                 "areaSquareMetres", 32.5, "balconySquareMetres", 0.0);
-        Map<String, Object> manifest = Map.of("schemaVersion", 10, "revision", "integration-v1", "modelId", key,
-                "units", "metre", "gltfAxes", Map.of("up", "+Y", "bow", "+X", "port", "-Z"),
-                "assets", Map.of("full", "ship.glb", "exterior", "exterior.glb"),
-                "decks", List.of(deck), "serviceDecks", List.of(), "cabins", includeCabin ? List.of(cabin) : List.of());
+        Map<String, Object> duplicateCabin = Map.of("id", "mini-c2", "cabinNumber", cabinNumber, "deckId", "mini-d01",
+                "cabinType", cabinType, "capacity", 2, "isAccessible", false, "size", cabinSize,
+                "areaSquareMetres", 32.5, "balconySquareMetres", 0.0);
+        Map<String, Object> manifest = new LinkedHashMap<>();
+        manifest.put("schemaVersion", 10);
+        manifest.put("revision", "integration-v1");
+        manifest.put("modelId", key);
+        manifest.put("name", "Mini Ship");
+        manifest.put("length", 100.0);
+        manifest.put("beam", 20.0);
+        manifest.put("deckCount", deckCount);
+        manifest.put("passengerCapacity", passengerCapacity);
+        manifest.put("units", "metre");
+        manifest.put("gltfAxes", Map.of("up", "+Y", "bow", "+X", "port", "-Z"));
+        manifest.put("assets", Map.of("full", "ship.glb", "exterior", "exterior.glb"));
+        manifest.put("decks", List.of(deck));
+        manifest.put("serviceDecks", List.of());
+        manifest.put("cabins", includeCabin
+                ? (duplicateCabinNumber ? List.of(cabin, duplicateCabin) : List.of(cabin)) : List.of());
         byte[] manifestBytes = mapper.writeValueAsBytes(manifest);
         Map<String, byte[]> entries = new LinkedHashMap<>();
         entries.put("manifest.json", manifestBytes);

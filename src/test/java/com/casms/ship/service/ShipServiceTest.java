@@ -36,6 +36,8 @@ class ShipServiceTest {
   when(req.getStatus()).thenReturn(ShipStatus.values()[0]);
   when(req.getTotalCapacity()).thenReturn(100);
   when(req.getTotalDecks()).thenReturn(5);
+  when(req.getLengthMeters()).thenReturn(null);
+  when(req.getBeamMeters()).thenReturn(null);
   when(shipRepository.save(any(Ship.class))).thenAnswer(i -> { Ship s=i.getArgument(0); s.setShipId(UUID.randomUUID()); return s; });
   var res=service.create(req);
   assertEquals("SH-0001",res.getShipCode());
@@ -57,6 +59,7 @@ class ShipServiceTest {
   when(shipRepository.save(any(Ship.class))).thenAnswer(i->i.getArgument(0));
   ShipUpdateRequest req=mock(ShipUpdateRequest.class);
   when(req.getShipName()).thenReturn("New"); when(req.getTotalCapacity()).thenReturn(200);
+  when(req.getLengthMeters()).thenReturn(null); when(req.getBeamMeters()).thenReturn(null);
   when(req.getTotalDecks()).thenReturn(null); when(req.getCommissionDate()).thenReturn(null);
   assertEquals("New",service.update(id,req).getShipName());
   verify(shipRepository).save(s);

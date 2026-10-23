@@ -8,6 +8,7 @@ Tài liệu mô tả các API backend quản lý model tàu và mapping với d�
 |---|---|---|---|
 | Nạp bộ asset | `POST /ship-model-assets?modelKey=zaandam&assetVersion=v10`, multipart field `bundle` là ZIP | Stream ZIP, xác minh manifest/checksum và lưu file vào PostgreSQL Large Objects | `SHIP_UPDATE` |
 | Đăng ký asset cho tàu | `POST /ships/{shipId}/models`, body `{ "modelKey": "zaandam", "assetVersion": "v10" }` | Tạo model `DRAFT` từ bundle đã lưu và xác minh trong DB | `SHIP_UPDATE` |
+| Tự tạo/tìm Ship và đăng ký asset | `POST /ship-model-assets/{modelKey}/{assetVersion}/register` | Dùng `manifest.modelId` làm identity ổn định. Tạo Ship khi chưa tồn tại hoặc cập nhật metadata từ manifest cho Ship đã liên kết; sau đó đăng ký model `DRAFT`. | `SHIP_MODEL_CREATE` và `SHIP_CREATE` khi tạo mới, hoặc `SHIP_MODEL_CREATE` và `SHIP_UPDATE` khi cập nhật Ship hiện có |
 | Chi tiết model | `GET /ships/{shipId}/models/{modelId}` | Trả metadata, trạng thái, URL asset, số cabin/deck và mapping | `SHIP_READ` |
 | Model đang kích hoạt | `GET /ships/{shipId}/model` | Trả model đã kích hoạt; backend lưu bằng trạng thái `READY` hiện có | `SHIP_READ` |
 | Phục vụ asset | `GET /ships/{shipId}/models/{modelId}/assets/{assetPath}` | Stream asset từ PostgreSQL Large Objects theo manifest; yêu cầu JWT, cache `private, no-cache` | `SHIP_READ` |
@@ -16,6 +17,10 @@ Tài liệu mô tả các API backend quản lý model tàu và mapping với d�
 | Kích hoạt model | `POST /ships/{shipId}/models/{modelId}/activate` | Khóa theo tàu, kiểm tra mapping và bảo đảm một model asset được kích hoạt trên mỗi tàu | `SHIP_UPDATE` |
 
 Mapping lưu qua `ShipModel` và `ShipModelObject`. API legacy đăng ký metadata dùng `POST /ships/{shipId}/models/metadata`; API cấu hình 3D cũ vẫn được giữ lại.
+
+Route tự đăng ký dùng tên tàu, sức chứa, số deck hành khách, chiều dài và chiều rộng từ manifest. Ship mới nhận `ship_code` theo bộ sinh mã hiện hành; `status` lấy mặc định `ACTIVE`. Khi cập nhật Ship đã có, `ship_code`, `status` và `commissionDate` được giữ nguyên. Nếu `manifest.modelId` đã thuộc một Ship khác, request bị từ chối. `deckCount` là số lượng deck hành khách, không phải số thứ tự deck lớn nhất: Conquest khai báo 13 deck nhưng deck passenger cao nhất mang số 14. Backend lưu riêng `deck_number_limit` để cho phép đúng ordinal này. Deck service levels `-1` và `0` vẫn là model objects, không phải bản ghi Deck nghiệp vụ.
+
+Response data có dạng `{ "shipId": "…", "shipModelId": "…", "shipCreated": true }`. Import deck/cabin vẫn được gọi riêng qua `POST /ships/{shipId}/models/{modelId}/imports` sau khi asset được đăng ký.
 
 ## Công việc backend còn lại
 

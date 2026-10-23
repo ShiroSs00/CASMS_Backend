@@ -9,6 +9,7 @@ import com.casms.ship.dto.request.ShipModelDeckMappingRequest;
 import com.casms.ship.dto.response.Ship3dConfigurationResponse;
 import com.casms.ship.dto.response.ShipModelAssetResponse;
 import com.casms.ship.dto.response.ShipModelAssetUploadResponse;
+import com.casms.ship.dto.response.ShipModelManifestRegistrationResponse;
 import com.casms.ship.dto.response.ShipModelObjectResponse;
 import com.casms.ship.dto.response.ShipModelResponse;
 import com.casms.ship.dto.response.ModelImportJobResponse;
@@ -88,6 +89,16 @@ public class ShipModelController {
     public ApiResponse<java.util.Map<String, UUID>> create(@PathVariable UUID shipId,
             @Valid @RequestBody ShipModelAssetRegisterRequest request) {
         return ApiResponse.success(java.util.Map.of("id", assetService.register(shipId, request)));
+    }
+
+    @Operation(summary = "Create or resolve a Ship from manifest metadata and register the uploaded model version")
+    @PreAuthorize("hasAuthority('SHIP_MODEL_CREATE') and (hasAuthority('SHIP_CREATE') or hasAuthority('SHIP_UPDATE'))")
+    @PostMapping("/ship-model-assets/{modelKey}/{assetVersion}/register")
+    @ResponseStatus(HttpStatus.CREATED)
+    public ApiResponse<ShipModelManifestRegistrationResponse> registerFromManifest(
+            @PathVariable String modelKey, @PathVariable String assetVersion,
+            org.springframework.security.core.Authentication authentication) {
+        return ApiResponse.success(assetService.registerFromManifest(modelKey, assetVersion, authentication));
     }
 
     @PreAuthorize("hasAuthority('SHIP_MODEL_READ')")

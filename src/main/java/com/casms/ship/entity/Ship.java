@@ -36,6 +36,20 @@ public class Ship {
     @Column(name = "total_decks", nullable = false)
     private Integer totalDecks;
 
+    /** Highest passenger Deck ordinal allowed; may exceed count when numbering has gaps. */
+    @Column(name = "deck_number_limit")
+    private Integer deckNumberLimit;
+
+    /** Stable identity shared by revisions of the source ship manifest. */
+    @Column(name = "manifest_model_id", length = 80)
+    private String manifestModelId;
+
+    @Column(name = "length_meters")
+    private Double lengthMeters;
+
+    @Column(name = "beam_meters")
+    private Double beamMeters;
+
     @Column(name = "commission_date")
     private LocalDate commissionDate;
 

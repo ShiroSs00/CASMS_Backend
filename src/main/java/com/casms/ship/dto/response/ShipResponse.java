@@ -30,6 +30,14 @@ public class ShipResponse {
     @Schema(description = "Tổng số boong", example = "12")
     private Integer totalDecks;
 
+    private Integer deckNumberLimit;
+
+    private String manifestModelId;
+
+    private Double lengthMeters;
+
+    private Double beamMeters;
+
     @Schema(description = "Ngày hạ thủy", example = "2024-01-15")
     private LocalDate commissionDate;
 

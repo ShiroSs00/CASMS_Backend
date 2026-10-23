@@ -28,9 +28,9 @@ The committed v10 sample assets were inspected directly. Their full GLB JSON chu
 | Cabin capacity/accessibility/area | Present in the manifest and GLB cabin extras | Capacity and accessibility map to existing cabin columns; area and balcony area map to current columns. `AVAILABLE` is initialized using the same domain default as `CabinService.create`; this is not read from the model. |
 | Position | GLB cabin node `translation` is present; manifest also carries a position | Uses GLB translation for `Cabin.model_position_*`; the source metadata is retained on the model mapping. No rotation is claimed where the sample node does not supply one. |
 | Dimensions | Manifest cabin `size` array is present; dimensions are not inferred from mesh geometry by this parser | Maps to `Cabin.model_width/height/depth` and is also retained as compact source metadata in `ShipModelObject`. Geometry buffers are not copied into business tables. |
-| Commercial identity/status | `manufacturer`, `origin`, `shipCode`, and operational `status` are absent from both inspected manifests | Not imported or inferred. Ship identity and operational state stay with existing CASMS ship workflows. |
+| Ship identity and dimensions | Manifest `modelId`, name, length, beam, passenger `deckCount`, and `passengerCapacity` are present (for example Conquest: `conquest`, 290.17m, 35.36m, 13 decks, 610 passengers). `shipCode`, commission date, and operational status are absent. | The additive manifest registration route uses `modelId` as stable Ship identity and syncs the manifest-owned fields. `ship_code` is allocated by the existing generator on creation; status uses the existing `ACTIVE` default and is preserved on subsequent sync. |
 
-The manifests identify the sample geometry as reference/custom layouts, including custom cabin renumbering; they do not prove that the layouts are the operational layout of a ship already in the database. Operators must choose the matching ship and registered model. The importer does not update the ship name, code, status, capacity, or configured total deck count.
+The manifests identify the sample geometry as reference/custom layouts, including custom cabin renumbering; they do not prove that the layouts are the operational layout of a ship already in the database. The new explicit manifest registration route provisions or synchronizes a Ship using the manifest's stable `modelId`; it does not infer `ship_code`, commission date, or status. A manifest's passenger `deckCount` is kept distinct from the maximum deck ordinal (Conquest has 13 passenger decks with highest ordinal 14); service levels -1 and 0 remain model-only objects.
 
 ## C. Entity and relationship inventory
 
@@ -38,7 +38,7 @@ The manifests identify the sample geometry as reference/custom layouts, includin
 
 | Entity / table | Important fields and constraints | Relationships and lifecycle |
 |---|---|---|
-| `Ship` / `Ship` | UUID PK; unique `ship_code`; name, status, total capacity, total decks | Parent of `ShipModel`, `Deck`, and `Cabin`; imported structure never changes ship identity/status. |
+| `Ship` / `Ship` | UUID PK; unique `ship_code`; name, status, total capacity, total decks; manifest identity, hull dimensions and passenger-deck ordinal limit (V25/V26) | Parent of `ShipModel`, `Deck`, and `Cabin`; explicit manifest registration provisions or synchronizes manifest-owned metadata while retaining business-owned code/status/commission date. |
 | `ShipModel` / `ShipModel` | UUID PK; version, model key/version/revision, file URI/format, checksum, coordinate frame/unit/scale, status; unique `(ship_id, version)` and asset-key/version index | FK to `Ship`; registered through existing asset API, new import jobs reference it. |
 | `ShipModelAssetBlob` / `ShipModelAssetBlob` | UUID PK; model key/version/path, PostgreSQL OID, byte size, SHA-256; unique `(model_key, asset_version, asset_path)` | Existing asset registry and unlink trigger remain unchanged. |
 | `ShipModelObject` / `ShipModelObject` | UUID PK; node key, display name, type, JSON metadata, transform; unique `(ship_model_id, node_key)`, indexes on deck/cabin FK | FK to model and optional `Deck`/`Cabin`; now records imported nodes and binds their identities to business records. |
@@ -73,6 +73,8 @@ No separate `ModelAsset`, `ModelMapping`, or `ImportIssue` entity was added: exi
 | File | Change and effect |
 |---|---|
 | `src/main/java/com/casms/ship/service/ShipModelAssetStore.java` | Adds bounded GLB JSON-chunk reading from PostgreSQL Large Objects. Rejects invalid/truncated headers/chunks, non-v2 files, oversized JSON, and invalid JSON. Mesh buffers remain streamed/stored and are not loaded into memory. |
+| `src/main/java/com/casms/ship/service/ShipModelAssetService.java`, `ShipModelController.java`, `ShipModelManifestRegistrationResponse.java` | Add explicit manifest-driven Ship create/update and asset registration route, with dynamic `SHIP_CREATE`/`SHIP_UPDATE` checks and idempotent model identity. |
+| `src/main/java/com/casms/ship/entity/Ship.java`, `ShipRepository.java`, Ship DTOs, `ShipService.java`, `DeckService.java` | Persist manifest identity/dimensions and separate passenger deck count from maximum positive deck ordinal. |
 | `src/main/java/com/casms/ship/service/ShipModelImportService.java` | Adds synchronous manifest/GLB identity reconciliation, model-node mapping, positive passenger-deck and cabin upserts, per-object validation issues, ship-level pessimistic lock, and job history retrieval. Re-import updates rows addressed by existing business natural keys and retains absent objects. |
 | `src/main/java/com/casms/ship/service/ModelImportJobLifecycle.java` | Commits job creation before import and records `FAILED` in an independent transaction after processing rollback; original processing exception is rethrown. Failure persistence still requires a reachable database. |
 | `src/main/java/com/casms/ship/controller/ShipModelController.java` | Adds import, history, job detail, and issue endpoints using existing `SHIP_UPDATE` / `SHIP_READ` authorities and `ApiResponse`. |
@@ -80,6 +82,7 @@ No separate `ModelAsset`, `ModelMapping`, or `ImportIssue` entity was added: exi
 | `src/main/java/com/casms/ship/repository/DeckRepository.java`, `CabinRepository.java` | Add natural-key lookup methods used for idempotent upsert. No existing queries are removed. |
 | `src/main/java/com/casms/ship/entity/ModelImportJob.java`, `ModelImportIssue.java`; `src/main/java/com/casms/ship/enums/ModelImportStatus.java`; `src/main/java/com/casms/ship/repository/ModelImportJobRepository.java`, `ModelImportIssueRepository.java`; `src/main/java/com/casms/ship/dto/response/ModelImportJobResponse.java`, `ModelImportIssueResponse.java` | New job tracking records, issue records, repositories, status enum, and response DTOs. |
 | `src/main/resources/db/migration/V24__add_model_import_jobs_and_issues.sql` | Adds job/issue tables, status/count constraints, foreign keys, cascade behavior, and indexes. Existing deck/cabin tables and data are not rewritten. |
+| `src/main/resources/db/migration/V25__add_manifest_identity_and_ship_dimensions.sql`, `V26__separate_deck_count_and_number_limit.sql` | Add unique manifest identity, hull dimensions and a backfilled passenger-deck ordinal limit without changing existing Deck/Cabin rows. |
 | `src/test/java/com/casms/ship/service/CabinModelFieldsImmutableTest.java` | Verifies normal cabin update rejects a model-position change and does not save it. |
 | `src/test/java/com/casms/ship/service/ShipModelImportPostgresIntegrationTest.java` | Real PostgreSQL, Large Objects, Spring MVC and security integration tests with no importer/storage/repository mocks. Covers small valid/invalid GLB bundles, API upload/register/import/history/issues, DB rollback, idempotent/concurrent retry, permissions/cross-ship access, retaining absent cabins, and the committed Zaandam v10 bundle. |
 | `src/test/java/com/casms/booking/repository/BookingPostgresIntegrationTest.java`, `src/test/java/com/casms/ship/repository/ItineraryChangeHistoryPostgresIntegrationTest.java` | Endpoint fixtures now use `BOOKING_AGENT` and `CRUISE_MANAGER` for the corresponding reads and clean up unique test users. |
@@ -89,7 +92,7 @@ There is no frontend change and no migration change to `Deck` or `Cabin`. Existi
 
 ## E. Database and deployment
 
-Migration `V24__add_model_import_jobs_and_issues.sql` is additive. It creates two new tables and indexes/FKs only; it does not alter/delete existing rows. Flyway is enabled in the checked-in default `application.yml`. Deployments should apply V24 through the normal Flyway startup/release process after the preceding migrations have been applied.
+Migrations V24–V26 are additive to existing business rows. V24 creates import job/issue tables; V25 adds nullable Ship manifest identity and dimensions with uniqueness/check constraints; V26 adds a nullable deck ordinal limit backfilled from `total_decks`. Flyway is enabled in the checked-in default `application.yml`; PostgreSQL 16.15 has applied through V26 and Hibernate schema validation succeeds.
 
 `ModelImportJob` and `ModelImportIssue` use Hibernate UUID generation while the SQL defaults also support direct SQL inserts. The schema has checks for nonnegative counts and allowed job statuses. V24 was applied to PostgreSQL 16.15 and Spring/Hibernate initialized with schema validation enabled.
 
@@ -130,10 +133,11 @@ Limitations: import remains synchronous, so `RUNNING` is not observable by a sep
 | Committed GLB assets | PASS: both bundles were inspected locally; Zaandam v10 was also uploaded and imported end to end through the API/PostgreSQL. |
 | Baseline and five RBAC failures | All five tests and `RolePermissionInitializer` existed at baseline `HEAD` (`5756081`). Four endpoint tests used ADMIN tokens though ADMIN lacks `BOOKING_READ`/`ITINERARY_CHANGE_READ`; AuthServiceTest omitted the ADMIN repository stub and expected all 217 permissions. This was a test fixture/policy expectation mismatch, not an authority mapping defect. |
 | Corrected RBAC tests | PASS: Booking integration 6/6 with `BOOKING_AGENT`; itinerary-history integration 6/6 with `CRUISE_MANAGER`; AuthService 5/5 with configured mapping; RolePermissionInitializer 10/10 with negative checks. No ADMIN permissions were added. |
-| `mvn -Dtest=ShipModelImportPostgresIntegrationTest test` | PASS: 3/3 against PostgreSQL 16.15; no importer, storage, repository, or security mocks. |
-| `mvn test` final | PASS: 206 tests, 0 failures, 0 errors, 0 skipped. An earlier run exposed the false assumption PASSENGER lacks `SHIP_READ`; the response correctly returned 200. The denial assertion now uses ADMIN, which lacks that permission. |
+| `mvn -Dtest=ShipModelImportPostgresIntegrationTest test` | PASS: latest run 7/7 against PostgreSQL 16.15; no importer, storage, repository, or security mocks. |
+| `mvn test` final | PASS: latest run 210 tests, 0 failures, 0 errors, 0 skipped. An earlier run exposed the false assumption PASSENGER lacks `SHIP_READ`; the response correctly returned 200. The denial assertion now uses ADMIN, which lacks that permission. |
 | PostgreSQL availability | PostgreSQL 16.15 at `jdbc:postgresql://localhost:5432/casms`, confirmed by integration contexts and real upload/import tests. |
-| Flyway V24 on PostgreSQL | PASS: startup migrated schema from V23 to V24 (`Successfully applied 1 migration`); subsequent startup confirmed V24 was up to date. Spring/Hibernate `EntityManagerFactory` initialized using default profile and `ddl-auto: validate`. |
+| Application startup / HTTP route | PASS: `mvn spring-boot:run` started Tomcat on port 8080 with context `/api`; unauthenticated POST to the new registration route returned HTTP 403, confirming the route is behind the security filter. Authenticated upload/register/import behavior is verified by MockMvc + PostgreSQL integration tests. |
+| Flyway V24–V26 on PostgreSQL | PASS: migrations through V26 applied; repeated test application startup reports schema version 26 up to date. Spring/Hibernate `EntityManagerFactory` initialized with schema validation. |
 | Zaandam v10 upload/register/import/read | PASS: upload returned 201 for 17 files (491,408,773 expanded bytes); register returned 201; import returned `SUCCEEDED` with 303/303 objects (10 decks, 291 cabins, two model-only service decks), 0 failures. Job history/issues and model-object APIs were read, and Deck/Cabin/mapping rows were checked through PostgreSQL repositories. |
 | Retry and access control | PASS: retry left counts at 10 decks/291 cabins/303 mappings. Cross-ship requests returned 404; missing `SHIP_UPDATE` or `SHIP_READ` returned 403; READY model import returned 409. |
 | Failure/partial/concurrency scenarios | PASS: invalid cabin type produced `PARTIAL` with an issue; mismatched GLB identifiers produced durable `FAILED`; real PostgreSQL column constraint rolled back domain writes and job became `FAILED`; concurrent retries produced one row per natural key; omitted old cabin remained. |
@@ -160,7 +164,7 @@ Limitations: import remains synchronous, so `RUNNING` is not observable by a sep
 |---|---|---|
 | Identify model format/readability | **PASS** | Committed Zaandam v10 bundle uploaded and parsed through PostgreSQL Large Objects. |
 | Real deck/cabin import, no hardcoded data | **PASS** | API import created 10 decks, 291 cabins and 303 model-node mappings. |
-| Correct database relationships | **PASS** | V24 applied and Hibernate schema validated; sample and generated fixtures verified relations. Service levels remain model-only by design. |
+| Correct database relationships | **PASS** | V24–V26 applied and Hibernate schema validated; sample and generated fixtures verified relations. Service levels remain model-only by design. |
 | Retry does not duplicate rows | **PASS** | Sequential/concurrent retries preserved natural-key counts. |
 | Job status/history | **PASS (DB available)** | History API verified; processing rollback is recorded `FAILED` in a separate transaction. A full DB outage remains an inherent persistence limit. |
 | Per-object errors | **PASS** | Invalid cabin records an issue and `PARTIAL`; whole-transaction failures roll back domain writes and record `FAILED`. |
@@ -168,8 +172,47 @@ Limitations: import remains synchronous, so `RUNNING` is not observable by a sep
 | Missing data is not fabricated | **Complete for model fields** | Missing/invalid IDs, types, positions, dimensions, and capacity become issues. Domain status initializes using existing `AVAILABLE` creation default and is clearly not model-derived. |
 | Protect model-fixed fields | **PASS** | Cabin update service rejects model transform edits; focused unit test passes. |
 | Permission checks | **PASS** | Live MockMvc verified `SHIP_UPDATE`/`SHIP_READ`, denial paths and cross-ship 404s. |
-| Test/build verification | **PASS** | `mvn test`: 206 tests, 0 failures, 0 errors, 0 skipped. |
+| Test/build verification | **PASS** | Latest `mvn test`: 210 tests, 0 failures, 0 errors, 0 skipped. |
 | API contract for frontend | **Complete** | Actual controller routes and DTOs are documented above. |
 | Detailed technical report | **Complete** | This file. |
 
-**Sprint verdict: HOÀN THÀNH.** V24 and Hibernate schema validation pass on PostgreSQL 16.15. A committed Zaandam v10 bundle completed upload → register → import → persistence → API/repository read; retry and concurrent-import checks kept data idempotent. Object issues, transaction rollback, permission checks and cross-ship isolation were verified. The five baseline failures were corrected in test fixtures to follow the existing least-privilege RBAC policy; no ADMIN permissions were added. The final full suite passes 206/206 tests. Remaining limits: a database outage prevents database-backed failure status persistence, and synchronous imports do not expose `RUNNING` for polling.
+**Sprint verdict: HOÀN THÀNH.** V24–V26 and Hibernate schema validation pass on PostgreSQL 16.15. A committed Zaandam v10 bundle completed upload → register → import → persistence → API/repository read; retry and concurrent-import checks kept data idempotent. Object issues, transaction rollback, permission checks and cross-ship isolation were verified. The five baseline failures were corrected in test fixtures to follow the existing least-privilege RBAC policy; no ADMIN permissions were added. The latest full suite passes 210/210 tests. Remaining limits: a database outage prevents database-backed failure status persistence, and synchronous imports do not expose `RUNNING` for polling.
+
+## K. Follow-up: natural-key upsert and field ownership
+
+At the time of the original importer audit, manifest-driven Ship provisioning had not been implemented. The natural-key and field-ownership findings below remain relevant to Deck/Cabin import. The later manifest provisioning work and updated acceptance result are recorded in section L.
+
+The database schema and current workflows establish natural keys as `(ship_id, deck_number)` for Deck and `(ship_id, cabin_number)` for Cabin, with database unique constraints. `ShipModelObject.node_key` remains version-specific model identity. Passenger Deck display name and model elevation are imported; `price_multiplier` is preserved. A Cabin's model-controlled fields are `cabin_type` and model position/dimensions, consistent with `CabinService.update` rejecting edits to type and transforms. Manifest values initialize new Cabin capacity/accessibility; for an existing Cabin, capacity, accessibility, status, bed fields and other operational/business fields are preserved. The cabin-to-deck relationship is not silently reassigned when the existing natural-key Cabin is already assigned elsewhere. Area/balcony metadata remains imported from the manifest as model-provided static cabin attributes. Existing Decks/Cabins absent from a newer version remain untouched.
+
+Import rejects repeated passenger deck numbers, repeated cabin numbers, missing identities, and cabin references to a deck not declared by the same manifest before any Deck/Cabin/mapping writes. Existing DB unique constraints remain the final duplicate guard; ship-level locking serializes same-ship import transactions.
+
+| Follow-up verification | Result |
+|---|---|
+| Upsert across later registered model | PASS: same natural-key Deck/Cabin rows retained their IDs; Deck name/elevation and Cabin model-controlled type/dimensions updated. |
+| Business field preservation | PASS: existing Cabin capacity, accessibility, `MAINTENANCE` status, bed count/configuration and Deck price multiplier remained unchanged. |
+| Duplicate cabin identity in one manifest | PASS: import rejected with 400 and the job was marked `FAILED`; PostgreSQL contained no Deck, Cabin, or mapping from the rejected model. |
+| Full import integration class | PASS: 7 tests, 0 failures/errors/skipped, PostgreSQL 16.15; includes committed Zaandam v10 upload → register → import → read and retry, concurrency, authorization, cross-ship, partial and rollback cases. |
+| Full Maven suite | PASS: `mvn test`, 210 tests, 0 failures, 0 errors, 0 skipped. |
+| Migration/schema | PASS: Flyway V26 up to date; Hibernate initialized and validated the schema. |
+| `git diff --check` | PASS after follow-up edits. |
+
+The paragraph above describing the initial limitation was superseded by the explicit manifest registration route in section L. `ship_code` remains generated by the existing CASMS business workflow.
+
+## L. Manifest-driven Ship provisioning and synchronization
+
+The manifest evidence supplied for Carnival Conquest matches the committed `model-assets/conquest/v10/manifest.json`: `modelId=conquest`, name `Carnival Conquest`, length 290.17m, beam 35.36m, 13 passenger decks, 2 service levels, 305 cabins and passenger capacity 610. The actual passenger ordinals are 1–12 and 14; service ordinals are -1 and 0. Zaandam's committed manifest also provides name, dimensions, passenger deck count and capacity. These fields are sufficient for manifest-owned Ship metadata; the CASMS `ship_code` remains generated by the existing business code generator.
+
+`POST /api/ship-model-assets/{modelKey}/{assetVersion}/register` now resolves Ship identity by the manifest's stable `modelId`, creates a Ship when absent, or synchronizes manifest-owned name/capacity/deck-count/dimensions when present, then registers that asset version. A unique partial index prevents two Ships from claiming the same manifest identity; a PostgreSQL advisory transaction lock serializes first registration when no row exists. Creation requires `SHIP_CREATE`, updating an existing Ship requires `SHIP_UPDATE`; both require `SHIP_MODEL_CREATE`. Existing ship code, status and commission date are preserved on update. `deck_number_limit` is separate from passenger `total_decks`, so Conquest's ordinal 14 is valid despite its count of 13. Service levels remain model-only because Deck business rows require positive ordinals.
+
+| Follow-up verification | Result |
+|---|---|
+| Manifest provision from small real-format ZIP fixture | PASS: API created Ship and model; concurrent registration of later versions resolved the same Ship identity and did not create a duplicate Ship. |
+| Existing committed Zaandam asset registration | PASS: manifest synchronization yielded `zaandam`, MS Zaandam, capacity 582, 10 passenger decks, 237.7m × 32.25m. |
+| Passenger count vs ordinal gap | PASS: fixture with 13 passenger decks and highest ordinal 14 provisioned `total_decks=13`, `deck_number_limit=14`; importer created Deck 14. |
+| Flyway/schema | PASS: V25 adds manifest identity/dimensions and V26 separates deck count from ordinal limit; both applied on PostgreSQL 16.15 and Hibernate schema validation passed. |
+| Full integration class / full suite | PASS: import class 7/7; `mvn test` 210/210, no failures/errors/skips. Initial full run found a fixture inconsistency (capacity 4 configured against manifest capacity 2); v2 fixture was corrected to manifest capacity 4, then focused, integration and full suite passed. |
+| `ShipServiceTest` | PASS: 6/6 after mocked create/update requests explicitly set optional hull dimensions to null, covering legacy requests that omit both dimensions. |
+| `git diff --check` | PASS; no whitespace errors. |
+| Actual Conquest full-bundle import | NOT RUN in this follow-up. The provided screenshot values were checked against the committed manifest; committed Zaandam v10 remains the actual large-bundle upload/import test. |
+
+The create/update policy uses the existing Ship lifecycle: new Ships receive generated `ship_code` and the existing `ACTIVE` status default; later manifest sync does not overwrite business-owned code/status/commission date. The route is an explicit registration workflow, so uploaded assets alone do not create Ships. Retry and transaction behavior remains covered by the PostgreSQL integration suite. **Follow-up verdict: HOÀN THÀNH.** Manifest-driven Ship create/update is implemented and covered with PostgreSQL-backed API tests; deck/cabin import and natural-key idempotency remain verified. The committed Zaandam v10 bundle was uploaded, registered, imported and read through API/repositories. The full Conquest (773 MB expanded) bundle was not run end to end; its manifest fields and ordinal gap were checked directly, and the count/ordinal case is covered by an integration fixture. This is a remaining data-volume compatibility check, not a code/test blocker.
