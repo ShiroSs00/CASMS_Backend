@@ -8,11 +8,14 @@ import com.casms.common.exception.ResourceNotFoundException;
 import com.casms.payment.dto.request.PaymentConfirmRequest;
 import com.casms.payment.dto.request.PaymentCreateRequest;
 import com.casms.payment.dto.response.PaymentResponse;
+import com.casms.payment.entity.Installment;
 import com.casms.payment.entity.Payment;
 import com.casms.payment.enums.PaymentOperationType;
 import com.casms.payment.enums.PaymentMethod;
 import com.casms.payment.enums.PaymentStatus;
+import com.casms.payment.repository.InstallmentRepository;
 import com.casms.payment.repository.PaymentRepository;
+import com.casms.booking.service.BookingService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -31,6 +34,8 @@ public class PaymentService {
 
     private final PaymentRepository paymentRepository;
     private final BookingRepository bookingRepository;
+    private final InstallmentRepository installmentRepository;
+    private final BookingService bookingService;
 
     @Transactional
     public PaymentResponse createPayment(PaymentCreateRequest request) {
@@ -61,6 +66,19 @@ public class PaymentService {
         // 3. Create payment record
         Payment payment = new Payment();
         payment.setBooking(booking);
+
+        Installment targetInstallment = null;
+        if (request.getInstallmentId() != null) {
+            targetInstallment = installmentRepository.findById(request.getInstallmentId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Installment not found with id: " + request.getInstallmentId()));
+        } else {
+            List<Installment> insts = installmentRepository.findByBookingBookingIdOrderBySequenceNoAsc(booking.getBookingId());
+            if (!insts.isEmpty()) {
+                targetInstallment = insts.get(0);
+            }
+        }
+        payment.setInstallment(targetInstallment);
+
         payment.setOperationType(PaymentOperationType.Collect);
         payment.setPaymentMethod(request.getPaymentMethod());
         payment.setRequestedAmount(request.getRequestedAmount());
@@ -122,7 +140,46 @@ public class PaymentService {
         }
 
         Payment updated = paymentRepository.save(payment);
+
+        // Synchronize installments and auto-confirm booking if deposit met & contract accepted
+        if (updated.getBooking() != null) {
+            allocateInstallmentsAndSync(updated.getBooking());
+        }
+
         return toResponse(updated);
+    }
+
+    private void allocateInstallmentsAndSync(Booking booking) {
+        List<Installment> installments = installmentRepository
+                .findByBookingBookingIdOrderBySequenceNoAsc(booking.getBookingId());
+        if (installments.isEmpty()) return;
+
+        List<Payment> confirmedPayments = paymentRepository.findForBooking(booking.getBookingId()).stream()
+                .filter(p -> p.getStatus() == PaymentStatus.Confirmed
+                        && p.getOperationType() == PaymentOperationType.Collect
+                        && p.getConfirmedAmount() != null
+                        && p.getConfirmedAmount().signum() > 0)
+                .toList();
+
+        int instIdx = 0;
+        BigDecimal allocatedForCurrentInst = BigDecimal.ZERO;
+        for (Payment p : confirmedPayments) {
+            if (p.getInstallment() == null && instIdx < installments.size()) {
+                p.setInstallment(installments.get(instIdx));
+                paymentRepository.save(p);
+            }
+            if (p.getConfirmedAmount() != null) {
+                allocatedForCurrentInst = allocatedForCurrentInst.add(p.getConfirmedAmount());
+                if (instIdx < installments.size()
+                        && allocatedForCurrentInst.compareTo(installments.get(instIdx).getRequiredAmount()) >= 0) {
+                    instIdx++;
+                    allocatedForCurrentInst = BigDecimal.ZERO;
+                }
+            }
+        }
+
+        // Auto-confirm booking if deposit requirement is satisfied and contract is Accepted!
+        bookingService.tryAutoConfirm(booking);
     }
 
     @Transactional(readOnly = true)
@@ -157,11 +214,15 @@ public class PaymentService {
     private PaymentResponse toResponse(Payment p) {
         UUID bId = p.getBooking() != null ? p.getBooking().getBookingId() : null;
         String bRef = p.getBooking() != null ? p.getBooking().getBookingReference() : null;
+        UUID instId = p.getInstallment() != null ? p.getInstallment().getInstallmentId() : null;
+        Integer seqNo = p.getInstallment() != null ? p.getInstallment().getSequenceNo() : null;
 
         return PaymentResponse.builder()
                 .paymentId(p.getPaymentId())
                 .bookingId(bId)
                 .bookingReference(bRef)
+                .installmentId(instId)
+                .sequenceNo(seqNo)
                 .operationType(p.getOperationType())
                 .paymentMethod(p.getPaymentMethod())
                 .requestedAmount(p.getRequestedAmount())

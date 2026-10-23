@@ -2,6 +2,8 @@ package com.casms.ship.service;
 
 import com.casms.booking.repository.BookingPassengerRepository;
 import com.casms.booking.repository.BookingRepository;
+import com.casms.booking.repository.CabinAssignmentRepository;
+import com.casms.checkin.repository.CruiseCheckinRepository;
 import com.casms.common.exception.BusinessException;
 import com.casms.common.exception.ResourceNotFoundException;
 import com.casms.common.service.BusinessCodeGenerator;
@@ -44,6 +46,8 @@ public class CruiseService {
     private final ItineraryRepository itineraryRepository;
     private final BookingRepository bookingRepository;
     private final BookingPassengerRepository bookingPassengerRepository;
+    private final CabinAssignmentRepository cabinAssignmentRepository;
+    private final CruiseCheckinRepository checkinRepository;
     private final BusinessCodeGenerator businessCodeGenerator;
 
     @Transactional
@@ -346,10 +350,15 @@ public class CruiseService {
 
         Optional<com.casms.ship.entity.Itinerary> itineraryOpt = itineraryRepository.findByCruiseCruiseId(cruiseId);
         boolean itineraryConfigured = itineraryOpt.isPresent();
+        boolean itineraryApproved = itineraryConfigured && (
+                itineraryOpt.get().getStatus() == com.casms.ship.enums.ItineraryStatus.APPROVED ||
+                itineraryOpt.get().getStatus() == com.casms.ship.enums.ItineraryStatus.OPEN_FOR_SALE ||
+                itineraryOpt.get().getStatus() == com.casms.ship.enums.ItineraryStatus.ACTIVE
+        );
         if (!itineraryConfigured) {
             issues.add("Chuyến đi chưa được liên kết hải trình (Itinerary)");
-        } else if (itineraryOpt.get().getStatus() != com.casms.ship.enums.ItineraryStatus.APPROVED) {
-            issues.add("Hải trình của chuyến đi chưa được phê duyệt (Trạng thái hiện tại: " + itineraryOpt.get().getStatus() + ")");
+        } else if (!itineraryApproved) {
+            issues.add("Hải trình của chuyến đi chưa được phê duyệt hoặc mở bán (Trạng thái hiện tại: " + itineraryOpt.get().getStatus() + ")");
         }
 
         boolean ready = issues.isEmpty();
@@ -362,7 +371,7 @@ public class CruiseService {
         response.setShipConfigurationValid(shipConfigValid);
         response.setScheduleValid(scheduleValid);
         response.setPortsActive(portsActive);
-        response.setItineraryConfigured(itineraryConfigured && itineraryOpt.get().getStatus() == com.casms.ship.enums.ItineraryStatus.APPROVED);
+        response.setItineraryConfigured(itineraryApproved);
         response.setIssues(issues);
 
         return response;
@@ -399,8 +408,23 @@ public class CruiseService {
             throw new BusinessException("SHIP_NOT_ACTIVE", "Cannot start cruise: assigned ship is missing or not active");
         }
 
+        // Rule 1: Không bấm start quá sớm trước giờ khởi hành (tối đa 2 giờ trước departureDatetime)
+        if (cruise.getDepartureDatetime() != null && Instant.now().isBefore(cruise.getDepartureDatetime().minus(java.time.Duration.ofHours(2)))) {
+            throw new BusinessException("CRUISE_START_TOO_EARLY",
+                    "Cannot start cruise too early before scheduled departure (minimum 2 hours prior to " + cruise.getDepartureDatetime() + ")");
+        }
+
         cruise.setStatus(CruiseStatus.IN_PROGRESS);
         cruise = cruiseRepository.save(cruise);
+
+        // Đồng bộ hải trình sang ACTIVE nếu đang APPROVED hoặc OPEN_FOR_SALE
+        itineraryRepository.findByCruiseCruiseId(cruiseId).ifPresent(it -> {
+            if (it.getStatus() == com.casms.ship.enums.ItineraryStatus.APPROVED || it.getStatus() == com.casms.ship.enums.ItineraryStatus.OPEN_FOR_SALE) {
+                it.setStatus(com.casms.ship.enums.ItineraryStatus.ACTIVE);
+                itineraryRepository.save(it);
+            }
+        });
+
         log.info("Started cruise: {}", cruiseId);
         return mapToResponse(cruise);
     }
@@ -413,8 +437,31 @@ public class CruiseService {
             throw new BusinessException("CRUISE_NOT_IN_PROGRESS", "Only in-progress cruises can be completed");
         }
 
+        // Rule: Không complete trước khi kết thúc hành trình returnDatetime
+        if (cruise.getReturnDatetime() != null && Instant.now().isBefore(cruise.getReturnDatetime())) {
+            throw new BusinessException("CRUISE_RETURN_NOT_REACHED",
+                    "Cannot complete cruise before scheduled return datetime: " + cruise.getReturnDatetime());
+        }
+
         cruise.setStatus(CruiseStatus.COMPLETED);
         cruise = cruiseRepository.save(cruise);
+
+        // Đồng bộ hải trình sang COMPLETED
+        itineraryRepository.findByCruiseCruiseId(cruiseId).ifPresent(it -> {
+            it.setStatus(com.casms.ship.enums.ItineraryStatus.COMPLETED);
+            itineraryRepository.save(it);
+        });
+
+        // Giải phóng phòng đã gán
+        List<com.casms.booking.entity.BookingPassenger> passengers = bookingPassengerRepository.findActivePassengersByCruiseId(cruiseId);
+        for (com.casms.booking.entity.BookingPassenger bp : passengers) {
+            cabinAssignmentRepository.findByBookingPassengerBookingPassengerIdAndValidToIsNull(bp.getBookingPassengerId())
+                    .ifPresent(assignment -> {
+                        assignment.setValidTo(Instant.now());
+                        cabinAssignmentRepository.save(assignment);
+                    });
+        }
+
         log.info("Completed cruise: {}", cruiseId);
         return mapToResponse(cruise);
     }
@@ -490,13 +537,26 @@ public class CruiseService {
                     String fullName = pass != null ? pass.getFullName() : "N/A";
                     String idNum = pass != null ? pass.getDocumentNumberProtected() : "N/A";
                     String bookingCode = bp.getBooking() != null ? bp.getBooking().getBookingReference() : "N/A";
+                    String bookingStatus = bp.getBooking() != null ? bp.getBooking().getBookingStatus().name() : "Draft";
+
+                    var assignmentOpt = cabinAssignmentRepository
+                            .findByBookingPassengerBookingPassengerIdAndValidToIsNull(bp.getBookingPassengerId());
+                    String cabinNumber = assignmentOpt.map(a -> a.getCabin() != null ? a.getCabin().getCabinNumber() : "UNASSIGNED").orElse("UNASSIGNED");
+                    String deckName = assignmentOpt.map(a -> (a.getCabin() != null && a.getCabin().getDeck() != null)
+                            ? a.getCabin().getDeck().getDeckName() : "N/A").orElse("N/A");
+
+                    String checkinStatus = checkinRepository.findByBookingPassenger_BookingPassengerId(bp.getBookingPassengerId())
+                            .map(c -> c.getCheckinStatus().name()).orElse("NOT_CHECKED_IN");
+
                     return com.casms.ship.dto.response.CruiseManifestResponse.PassengerManifestItem.builder()
                             .bookingPassengerId(bp.getBookingPassengerId())
                             .bookingCode(bookingCode)
                             .fullName(fullName)
                             .identificationNumber(idNum)
-                            .cabinNumber("ASSIGNED")
-                            .deckName("MAIN")
+                            .cabinNumber(cabinNumber)
+                            .deckName(deckName)
+                            .bookingStatus(bookingStatus)
+                            .checkinStatus(checkinStatus)
                             .build();
                 })
                 .toList();

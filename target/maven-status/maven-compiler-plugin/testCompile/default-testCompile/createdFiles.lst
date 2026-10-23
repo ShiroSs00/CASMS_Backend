@@ -3,8 +3,11 @@ com\casms\booking\service\BookingServiceTest.class
 com\casms\activity\controller\SupplierControllerTest.class
 com\casms\activity\service\TourGroupServiceTest.class
 com\casms\ship\service\PassengerItineraryServiceTest.class
+com\casms\servicepackage\controller\ServicepackageControllerTest.class
 com\casms\ship\service\OperationalIssueServiceTest.class
+com\casms\checkin\service\CheckinServiceTest.class
 com\casms\ship\service\CruiseStaffServiceTest.class
+com\casms\notification\service\NotificationServiceTest.class
 com\casms\payment\service\PaymentServiceTest.class
 com\casms\activity\service\ActivityRegistrationWorkflowTest.class
 com\casms\common\util\CodeGeneratorTest.class
