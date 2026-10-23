@@ -13,6 +13,7 @@ import com.casms.payment.enums.PaymentMethod;
 import com.casms.payment.enums.PaymentOperationType;
 import com.casms.payment.enums.PaymentStatus;
 import com.casms.payment.repository.PaymentRepository;
+import com.casms.payment.repository.InstallmentRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -40,6 +41,9 @@ class PaymentServiceTest {
 
     @Mock
     private BookingRepository bookingRepository;
+
+    @Mock
+    private InstallmentRepository installmentRepository;
 
     @InjectMocks
     private PaymentService paymentService;
@@ -76,6 +80,7 @@ class PaymentServiceTest {
     @Test
     @DisplayName("Khởi tạo thanh toán thành công với mã Idempotency mới")
     void createPayment_Success() {
+        when(installmentRepository.findByBookingBookingIdOrderBySequenceNoAsc(bookingId)).thenReturn(List.of());
         PaymentCreateRequest req = new PaymentCreateRequest();
         req.setBookingId(bookingId);
         req.setRequestedAmount(new BigDecimal("10000000"));
@@ -115,6 +120,7 @@ class PaymentServiceTest {
     @Test
     @DisplayName("Xác nhận thanh toán không tự chuyển booking sang Confirmed")
     void confirmPayment_DoesNotAutoConfirmBooking() {
+        when(installmentRepository.findByBookingBookingIdOrderBySequenceNoAsc(bookingId)).thenReturn(List.of());
         PaymentConfirmRequest req = new PaymentConfirmRequest();
         req.setConfirmedAmount(new BigDecimal("10000000"));
         req.setProcessorReference("TXN-PAYPAL-9999");
