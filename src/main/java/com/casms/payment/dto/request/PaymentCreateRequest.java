@@ -17,6 +17,8 @@ public class PaymentCreateRequest {
     @NotNull(message = "Booking ID is required")
     private UUID bookingId;
 
+    private UUID installmentId;
+
     @NotNull(message = "Requested amount is required")
     @DecimalMin(value = "0.01", message = "Amount must be strictly positive")
     private BigDecimal requestedAmount;

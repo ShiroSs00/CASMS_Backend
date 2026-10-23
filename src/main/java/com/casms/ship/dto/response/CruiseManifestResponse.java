@@ -32,5 +32,7 @@ public class CruiseManifestResponse {
         private String identificationNumber;
         private String cabinNumber;
         private String deckName;
+        private String bookingStatus;
+        private String checkinStatus;
     }
 }

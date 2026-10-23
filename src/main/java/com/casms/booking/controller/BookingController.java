@@ -1,6 +1,7 @@
 package com.casms.booking.controller;
 
 import com.casms.booking.dto.request.BookingCancelRequest;
+import com.casms.booking.dto.request.BookingContractAcceptRequest;
 import com.casms.booking.dto.request.BookingCreateRequest;
 import com.casms.booking.dto.request.CabinChangeRequest;
 import com.casms.booking.dto.response.AvailableCabinResponse;
@@ -85,6 +86,17 @@ public class BookingController {
             @Parameter(description = "ID đơn đặt chỗ", required = true) @PathVariable UUID bookingId,
             @AuthenticationPrincipal CasmsPrincipal principal) {
         return ApiResponse.success(bookingService.detail(bookingId, principal));
+    }
+
+    @Operation(summary = "Xác nhận hợp đồng bản cứng",
+               description = "Xác nhận hợp đồng đã ký bản cứng, ghi nhận mã lưu trữ hồ sơ, người thực hiện và thời điểm ký để đủ điều kiện xác nhận đặt chỗ")
+    @PreAuthorize("hasAuthority('BOOKING_CONTRACT_MANAGE')")
+    @PostMapping("/{bookingId}/contract/accept")
+    public ApiResponse<BookingDetailResponse> acceptContract(
+            @Parameter(description = "ID đơn đặt chỗ", required = true) @PathVariable UUID bookingId,
+            @RequestBody @Valid BookingContractAcceptRequest request,
+            @AuthenticationPrincipal CasmsPrincipal principal) {
+        return ApiResponse.success("Contract accepted successfully", bookingService.acceptContract(bookingId, request, principal));
     }
 
     @Operation(summary = "Xác nhận đặt chỗ",

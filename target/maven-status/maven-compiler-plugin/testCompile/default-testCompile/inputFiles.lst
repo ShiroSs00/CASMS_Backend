@@ -6,6 +6,7 @@ D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\activity\service\Tour
 D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\activity\service\TourGroupServiceTest.java
 D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\booking\repository\BookingPostgresIntegrationTest.java
 D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\booking\service\BookingServiceTest.java
+D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\checkin\service\CheckinServiceTest.java
 D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\checkin\service\GuidanceSessionServiceTest.java
 D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\common\exception\GlobalExceptionHandlerTest.java
 D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\common\service\BusinessCodeGeneratorPostgresIntegrationTest.java
@@ -16,7 +17,9 @@ D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\identity\service\Iden
 D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\identity\service\PassengerBleIdentityServiceTest.java
 D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\identity\service\PermissionConstraintInitializerTest.java
 D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\identity\service\RolePermissionInitializerTest.java
+D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\notification\service\NotificationServiceTest.java
 D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\payment\service\PaymentServiceTest.java
+D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\servicepackage\controller\ServicepackageControllerTest.java
 D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\servicepackage\service\ServicepackageWorkflowTest.java
 D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\servicepackage\service\ServiceRequestServiceTest.java
 D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\ship\entity\HibernateMappingBootstrapTest.java
