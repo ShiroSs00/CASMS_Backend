@@ -16,6 +16,8 @@ public class PaymentResponse {
     private UUID paymentId;
     private UUID bookingId;
     private String bookingReference;
+    private UUID installmentId;
+    private Integer sequenceNo;
     private PaymentOperationType operationType;
     private PaymentMethod paymentMethod;
     private BigDecimal requestedAmount;

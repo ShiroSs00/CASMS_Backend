@@ -25,6 +25,7 @@ class ServicepackageControllerTest {
     @Mock ServiceRequestService serviceRequests;
     @Mock ServiceCatalogReadService catalogReads;
     @Mock ServiceScheduleManagementService scheduleManagement;
+    @Mock com.casms.servicepackage.repository.ServiceCategoryRepository categoryRepository;
 
     @Test
     void packageBenefits_doesNotExposeDraftPackageToPublic() {
@@ -33,7 +34,7 @@ class ServicepackageControllerTest {
         draft.setStatus(TourPackageStatus.DRAFT);
         when(service.tourPackage(packageId)).thenReturn(draft);
 
-        ServicepackageController controller = new ServicepackageController(service, serviceRequests, catalogReads, scheduleManagement);
+        ServicepackageController controller = new ServicepackageController(service, serviceRequests, catalogReads, scheduleManagement, categoryRepository);
 
         assertThrows(AccessDeniedException.class, () -> controller.packageBenefits(packageId, null));
         verify(service, never()).packageServices(packageId);

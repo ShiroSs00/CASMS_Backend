@@ -63,6 +63,12 @@ public class BookingDetailResponse {
     @Schema(description = "Trạng thái hợp đồng (Draft, Accepted, Cancelled)", example = "Draft")
     private BookingContractStatus contractStatus;
 
+    @Schema(description = "Mã tài liệu / hồ sơ lưu trữ hợp đồng bản cứng", example = "DOC-CTR-BK0001-20261023")
+    private String contractDocumentReference;
+
+    @Schema(description = "Thời điểm xác nhận chấp thuận / ký hợp đồng")
+    private Instant contractAcceptedAt;
+
     // Người đặt & mốc thời gian
     @Schema(description = "ID người thực hiện đặt chỗ")
     private UUID bookedByUserId;

@@ -22,7 +22,8 @@ public class ServicepackageController {
  private final ServiceRequestService serviceRequests;
  private final ServiceCatalogReadService catalogReads;
  private final ServiceScheduleManagementService scheduleManagement;
- public record ServiceCatalogDto(@NotBlank @Size(max=200) String serviceName,@Size(max=1000) String description,@NotBlank @Size(max=50) String serviceType,@DecimalMin("0.0") BigDecimal price,@Size(min=3,max=3) String currencyCode,@Positive Integer capacity){}
+ private final com.casms.servicepackage.repository.ServiceCategoryRepository categoryRepository;
+ public record ServiceCatalogDto(@NotBlank @Size(max=200) String serviceName,@Size(max=1000) String description,@NotBlank @Size(max=50) String serviceType,@DecimalMin("0.0") BigDecimal price,@Size(min=3,max=3) String currencyCode,@Positive Integer capacity,Boolean requiresSchedule,UUID categoryId){}
  public record ProductDto(@NotBlank @Size(max=200) String productName,@Size(max=1000) String description,@NotBlank @Size(max=50) String productType,@NotNull @DecimalMin("0.0") BigDecimal unitPrice,@NotBlank @Size(min=3,max=3) String currencyCode){}
  public record PackageDto(@NotBlank @Size(max=200) String packageName,@Size(max=1000) String description,@NotNull TourPackageType packageType,@NotNull @DecimalMin("0.0") BigDecimal price,@NotBlank @Size(min=3,max=3) String currencyCode,java.time.LocalDate startDate,java.time.LocalDate endDate){}
  public record ServiceRequestDto(@NotNull UUID serviceId,UUID bookingPassengerId,UUID serviceScheduleId,@Positive Integer quantity,@Size(max=500) String note,@Size(max=100) String idempotencyKey){}
@@ -35,7 +36,7 @@ public class ServicepackageController {
  public record PackageServiceView(UUID packageId,UUID serviceId,BenefitType benefitType){static PackageServiceView of(TourPackageService x){return new PackageServiceView(x.getTourPackage().getTourPackageId(),x.getService().getServiceId(),x.getBenefitType());}}
  public record PackageActivityView(UUID packageId,UUID activityId,BenefitType benefitType){static PackageActivityView of(TourPackageActivity x){return new PackageActivityView(x.getTourPackage().getTourPackageId(),x.getOnboardActivity().getOnboardActivityId(),x.getBenefitType());}}
  public record PackageExcursionView(UUID packageId,UUID excursionId,BenefitType benefitType){static PackageExcursionView of(TourPackageExcursion x){return new PackageExcursionView(x.getTourPackage().getTourPackageId(),x.getShoreExcursion().getShoreExcursionId(),x.getBenefitType());}}
- public record ServiceView(UUID id,String code,String name,String description,String type,BigDecimal price,String currency,Integer capacity,String status){static ServiceView of(com.casms.servicepackage.entity.Service s){return new ServiceView(s.getServiceId(),s.getServiceCode(),s.getServiceName(),s.getDescription(),s.getServiceType(),s.getPrice(),s.getCurrencyCode(),s.getCapacity(),s.getStatus().name());}}
+ public record ServiceView(UUID id,String code,String name,String description,String type,BigDecimal price,String currency,Integer capacity,String status,boolean requiresSchedule,UUID categoryId,String categoryName){static ServiceView of(com.casms.servicepackage.entity.Service s){return new ServiceView(s.getServiceId(),s.getServiceCode(),s.getServiceName(),s.getDescription(),s.getServiceType(),s.getPrice(),s.getCurrencyCode(),s.getCapacity(),s.getStatus().name(),s.isRequiresSchedule(),s.getCategory()==null?null:s.getCategory().getServiceCategoryId(),s.getCategory()==null?null:s.getCategory().getCategoryName());}}
  public record ProductView(UUID id,String code,String name,String description,String type,BigDecimal price,String currency,String status){static ProductView of(Product p){return new ProductView(p.getProductId(),p.getProductCode(),p.getProductName(),p.getDescription(),p.getProductType(),p.getUnitPrice(),p.getCurrencyCode(),p.getStatus().name());}}
  public record PackageView(UUID id,String code,String name,String description,String type,BigDecimal price,String currency,String status,java.time.LocalDate startDate,java.time.LocalDate endDate){static PackageView of(TourPackage p){return new PackageView(p.getTourPackageId(),p.getPackageCode(),p.getPackageName(),p.getDescription(),p.getPackageType().name(),p.getPrice(),p.getCurrencyCode(),p.getStatus().name(),p.getStartDate(),p.getEndDate());}}
  public record ServiceAvailabilityView(UUID serviceId,Integer requestedQuantity,boolean available){}
@@ -67,7 +68,22 @@ public class ServicepackageController {
  @PreAuthorize("permitAll()") @GetMapping("/packages/{id}/benefits") public ApiResponse<PackageBenefitsView> packageBenefits(@PathVariable UUID id,org.springframework.security.core.Authentication auth){var p=service.tourPackage(id);boolean staff=auth!=null&&auth.getAuthorities().stream().anyMatch(a->a.getAuthority().equals("TOUR_PACKAGE_MANAGE")||a.getAuthority().equals("TOUR_PACKAGE_ASSIGN"));if(!staff&&p.getStatus()!=TourPackageStatus.ACTIVE)throw new org.springframework.security.access.AccessDeniedException("Package is not active");return ApiResponse.success(new PackageBenefitsView(PackageView.of(p),service.packageServices(id).stream().map(PackageServiceView::of).toList(),service.packageActivities(id).stream().map(PackageActivityView::of).toList(),service.packageExcursions(id).stream().map(PackageExcursionView::of).toList(),catalogReads.entitlements(id).stream().map(PackageEntitlementView::of).toList()));}
  @PreAuthorize("hasAuthority('TOUR_PACKAGE_MANAGE')") @PostMapping("/packages/{id}/{action}") public ApiResponse<PackageView> packageStatus(@PathVariable UUID id,@PathVariable String action){return ApiResponse.success(PackageView.of(service.packageStatus(id,action)));}
  @PreAuthorize("hasAuthority('TOUR_PACKAGE_MANAGE')") @DeleteMapping("/packages/{id}") @ResponseStatus(HttpStatus.NO_CONTENT) public void deletePackage(@PathVariable UUID id){service.deletePackage(id);}
- private static void apply(com.casms.servicepackage.entity.Service s,ServiceCatalogDto r){s.setServiceName(r.serviceName());s.setDescription(r.description());s.setServiceType(r.serviceType());s.setPrice(r.price());s.setCurrencyCode(r.currencyCode());s.setCapacity(r.capacity());}
+ private void apply(com.casms.servicepackage.entity.Service s, ServiceCatalogDto r) {
+     s.setServiceName(r.serviceName());
+     s.setDescription(r.description());
+     s.setServiceType(r.serviceType());
+     s.setPrice(r.price());
+     s.setCurrencyCode(r.currencyCode());
+     s.setCapacity(r.capacity());
+     if (r.requiresSchedule() != null) {
+         s.setRequiresSchedule(r.requiresSchedule());
+     }
+     if (r.categoryId() != null) {
+         var cat = categoryRepository.findById(r.categoryId())
+             .orElseThrow(() -> new com.casms.common.exception.ResourceNotFoundException("ServiceCategory not found: " + r.categoryId()));
+         s.setCategory(cat);
+     }
+ }
  private static void apply(Product p,ProductDto r){p.setProductName(r.productName());p.setDescription(r.description());p.setProductType(r.productType());p.setUnitPrice(r.unitPrice());p.setCurrencyCode(r.currencyCode());}
  private static void apply(TourPackage p,PackageDto r){p.setPackageName(r.packageName());p.setDescription(r.description());p.setPackageType(r.packageType());p.setPrice(r.price());p.setCurrencyCode(r.currencyCode());p.setStartDate(r.startDate());p.setEndDate(r.endDate());}
 

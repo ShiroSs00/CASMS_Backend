@@ -1,6 +1,7 @@
 package com.casms.booking.service;
 
 import com.casms.booking.dto.request.BookingCancelRequest;
+import com.casms.booking.dto.request.BookingContractAcceptRequest;
 import com.casms.booking.dto.request.BookingCreateRequest;
 import com.casms.booking.dto.request.CabinChangeRequest;
 import com.casms.booking.dto.request.PassengerBookingItemRequest;
@@ -393,11 +394,14 @@ public class BookingService {
      */
     @Transactional(readOnly = true)
     public Page<BookingSummaryResponse> list(UUID cruiseId, BookingStatus status, Pageable pageable, CasmsPrincipal principal) {
-        boolean isStaffOrAgent = principal != null && (principal.isStaff() || principal.isAdmin() ||
+        boolean isStaffOrAgent = principal != null && (principal.isAdmin() ||
                 principal.getAuthorities().stream().anyMatch(a ->
                         a.getAuthority().equals("ROLE_ADMIN") ||
                         a.getAuthority().equals("ROLE_BOOKING_AGENT") ||
-                        a.getAuthority().equals("ROLE_CUSTOMER_SERVICE")));
+                        a.getAuthority().equals("ROLE_CUSTOMER_SERVICE") ||
+                        a.getAuthority().equals("ROLE_FINANCE_OFFICER") ||
+                        a.getAuthority().equals("ROLE_OPERATIONS_MANAGER") ||
+                        (principal.isStaff() && a.getAuthority().equals("BOOKING_READ"))));
 
         UUID filterUserId = null;
         if (!isStaffOrAgent && principal != null) {
@@ -406,6 +410,58 @@ public class BookingService {
 
         Page<Booking> page = bookingRepository.searchBookings(cruiseId, status, filterUserId, pageable);
         return page.map(this::mapToSummaryResponse);
+    }
+
+    /**
+     * Xác nhận hợp đồng đã ký bản cứng.
+     */
+    @Transactional
+    public BookingDetailResponse acceptContract(UUID bookingId, BookingContractAcceptRequest request, CasmsPrincipal principal) {
+        if (principal == null || principal.getUserId() == null || principal.getAuthorities().stream()
+                .noneMatch(a -> a.getAuthority().equals("BOOKING_CONTRACT_MANAGE") || a.getAuthority().equals("ROLE_ADMIN"))) {
+            throw new BusinessException(HttpStatus.FORBIDDEN, "BOOKING_CONTRACT_FORBIDDEN",
+                    "Accepting physical contract requires BOOKING_CONTRACT_MANAGE permission");
+        }
+        Booking booking = bookingRepository.findByIdForUpdate(bookingId)
+                .orElseThrow(() -> new ResourceNotFoundException("Booking", bookingId));
+
+        if (booking.getBookingStatus() == BookingStatus.Cancelled) {
+            throw new BusinessException("BOOKING_CANCELLED", "Cannot accept contract for a cancelled booking");
+        }
+
+        BookingContract contract = bookingContractRepository.findByBookingBookingId(bookingId)
+                .orElseThrow(() -> new BusinessException("BOOKING_CONTRACT_REQUIRED", "Booking contract is required"));
+
+        if (contract.getStatus() == BookingContractStatus.Accepted) {
+            return mapToDetailResponse(booking);
+        }
+
+        List<BookingPassenger> passengers = bookingPassengerRepository.findByBookingBookingId(bookingId);
+        final UUID requestedSignerId = request.getAcceptedByBookingPassengerId();
+        UUID signerId = requestedSignerId;
+        if (requestedSignerId != null) {
+            boolean belongs = passengers.stream().anyMatch(bp -> bp.getBookingPassengerId().equals(requestedSignerId));
+            if (!belongs) {
+                throw new BusinessException(HttpStatus.BAD_REQUEST, "PASSENGER_MISMATCH",
+                        "The signer must be an active passenger in this booking");
+            }
+        } else if (!passengers.isEmpty()) {
+            signerId = passengers.get(0).getBookingPassengerId();
+        }
+
+        contract.setStatus(BookingContractStatus.Accepted);
+        contract.setDocumentReference(request.getDocumentReference().trim());
+        contract.setAcceptedAt(request.getAcceptedAt() != null ? request.getAcceptedAt() : Instant.now());
+        contract.setAcceptedByBookingPassengerId(signerId);
+        bookingContractRepository.save(contract);
+
+        log.info("Contract {} accepted for booking {} by staff {} with document ref {}",
+                contract.getContractReference(), bookingId, principal.getUsername(), request.getDocumentReference());
+
+        // Check if deposit is already paid; if so, auto-confirm booking!
+        tryAutoConfirm(booking);
+
+        return mapToDetailResponse(booking);
     }
 
     /**
@@ -418,6 +474,14 @@ public class BookingService {
             throw new BusinessException(HttpStatus.FORBIDDEN, "BOOKING_CONFIRM_FORBIDDEN",
                     "Booking confirmation requires the BOOKING_CONFIRM permission");
         }
+        return confirmInternal(bookingId);
+    }
+
+    /**
+     * Thực hiện logic xác nhận đơn đặt chỗ bên trong hệ thống.
+     */
+    @Transactional
+    public BookingDetailResponse confirmInternal(UUID bookingId) {
         Booking booking = bookingRepository.findByIdForUpdate(bookingId)
                 .orElseThrow(() -> new ResourceNotFoundException("Booking", bookingId));
 
@@ -506,6 +570,54 @@ public class BookingService {
 
         log.info("Confirmed booking reference: {}", booking.getBookingReference());
         return mapToDetailResponse(booking);
+    }
+
+    /**
+     * Tự động xác nhận đơn nếu hợp đồng đã chấp thuận và số tiền cọc đã thu đủ.
+     */
+    public boolean tryAutoConfirm(Booking booking) {
+        if (booking.getBookingStatus() != BookingStatus.Draft) {
+            return false;
+        }
+        BookingContract contract = bookingContractRepository.findByBookingBookingId(booking.getBookingId()).orElse(null);
+        if (contract == null || contract.getStatus() != BookingContractStatus.Accepted) {
+            return false;
+        }
+        String bookingCurrency = booking.getCurrency();
+        BigDecimal collectedAmount = paymentRepository.findForBooking(booking.getBookingId()).stream()
+                .filter(payment -> payment.getStatus() == PaymentStatus.Confirmed
+                        && payment.getConfirmedAt() != null
+                        && payment.getConfirmedAmount() != null
+                        && payment.getConfirmedAmount().signum() > 0
+                        && paymentBelongsToBooking(payment, booking.getBookingId())
+                        && paymentHasSettlementEvidence(payment)
+                        && payment.getOperationType() == PaymentOperationType.Collect
+                        && payment.getCurrency() != null
+                        && payment.getCurrency().trim().equalsIgnoreCase(bookingCurrency))
+                .map(Payment::getConfirmedAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal completedRefunds = refundRepository.findForBooking(booking.getBookingId()).stream()
+                .filter(refund -> refund.getStatus() == RefundStatus.Completed
+                        && refund.getCompletedAt() != null
+                        && refund.getApprovedAmount() != null
+                        && refund.getApprovedAmount().signum() > 0
+                        && refund.getCurrency() != null
+                        && refund.getCurrency().trim().equalsIgnoreCase(bookingCurrency)
+                        && refund.getProcessorOrReceiptReference() != null
+                        && !refund.getProcessorOrReceiptReference().isBlank())
+                .map(Refund::getApprovedAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        collectedAmount = collectedAmount.subtract(completedRefunds);
+
+        if (booking.getRequiredDepositAmount() != null && collectedAmount.compareTo(booking.getRequiredDepositAmount()) >= 0) {
+            try {
+                confirmInternal(booking.getBookingId());
+                return true;
+            } catch (Exception e) {
+                log.warn("Auto-confirmation failed for booking {}: {}", booking.getBookingId(), e.getMessage());
+            }
+        }
+        return false;
     }
 
     /**
@@ -646,6 +758,8 @@ public class BookingService {
         bookingContractRepository.findByBookingBookingId(booking.getBookingId()).ifPresent(c -> {
             res.setContractReference(c.getContractReference());
             res.setContractStatus(c.getStatus());
+            res.setContractDocumentReference(c.getDocumentReference());
+            res.setContractAcceptedAt(c.getAcceptedAt());
         });
 
         List<BookingPassenger> bookingPassengers = bookingPassengerRepository.findByBookingBookingId(booking.getBookingId());
@@ -1035,10 +1149,13 @@ public class BookingService {
         if (principal == null || principal.getUserId() == null) {
             throw new BusinessException(HttpStatus.UNAUTHORIZED, "AUTH_REQUIRED", "Authentication required");
         }
-        boolean isStaff = principal.getAuthorities().stream()
+        boolean isStaff = principal.isAdmin() || principal.getAuthorities().stream()
                 .anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN") ||
                                a.getAuthority().equals("ROLE_BOOKING_AGENT") ||
-                               a.getAuthority().equals("ROLE_CUSTOMER_SERVICE"));
+                               a.getAuthority().equals("ROLE_CUSTOMER_SERVICE") ||
+                               a.getAuthority().equals("ROLE_FINANCE_OFFICER") ||
+                               a.getAuthority().equals("ROLE_OPERATIONS_MANAGER") ||
+                               (principal.isStaff() && a.getAuthority().equals("BOOKING_READ")));
 
         if (!isStaff && !booking.getBookedByUser().getUserId().equals(principal.getUserId())) {
             throw new BusinessException(HttpStatus.FORBIDDEN, "ACCESS_DENIED", "You can only view or manage your own bookings");
