@@ -108,7 +108,10 @@ public class CabinService {
     public CabinSummaryResponse update(UUID cabinId, CabinUpdateRequest request) {
         Cabin cabin = getCabinById(cabinId);
 
-        if (request.getCabinType() != null) cabin.setCabinType(request.getCabinType());
+        if (hasModelFixedFields(request)) {
+            throw new BusinessException("CABIN_MODEL_FIELDS_IMMUTABLE",
+                    "Cabin type, position, rotation and dimensions are controlled by the ship model import");
+        }
         if (request.getCapacity() != null) {
             if (request.getCapacity() < 1) {
                 throw new BusinessException("INVALID_CABIN_CAPACITY", "Cabin capacity must be greater than zero");
@@ -116,12 +119,15 @@ public class CabinService {
             cabin.setCapacity(request.getCapacity());
         }
         if (request.getIsAccessible() != null) cabin.setIsAccessible(request.getIsAccessible());
-        applyModelTransform(cabin, request.getModelPositionX(), request.getModelPositionY(), request.getModelPositionZ(),
-                request.getModelRotationX(), request.getModelRotationY(), request.getModelRotationZ(),
-                request.getModelWidth(), request.getModelHeight(), request.getModelDepth());
-
         cabin = cabinRepository.save(cabin);
         return mapToResponse(cabin);
+    }
+
+    private static boolean hasModelFixedFields(CabinUpdateRequest request) {
+        return request.getCabinType() != null || request.getModelPositionX() != null || request.getModelPositionY() != null ||
+                request.getModelPositionZ() != null || request.getModelRotationX() != null || request.getModelRotationY() != null ||
+                request.getModelRotationZ() != null || request.getModelWidth() != null || request.getModelHeight() != null ||
+                request.getModelDepth() != null;
     }
 
     @Transactional

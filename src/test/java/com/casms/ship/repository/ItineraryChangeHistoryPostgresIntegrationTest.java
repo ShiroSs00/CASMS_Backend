@@ -151,14 +151,12 @@ class ItineraryChangeHistoryPostgresIntegrationTest {
         stop1 = cruiseStopRepository.save(stop1);
 
         // Users
-        adminUser = userRepository.findByUsername("admin").orElseGet(() -> {
-            User user = new User();
-            user.setUsername("admin-hist-" + UUID.randomUUID().toString().substring(0, 6));
-            user.setPasswordHash("$2a$10$abcdefghijklmnopqrstuv");
-            user.setStatus(UserStatus.ACTIVE);
-            user.setRoles(Set.of(Role.ADMIN));
-            return userRepository.save(user);
-        });
+        adminUser = new User();
+        adminUser.setUsername("query-cruise-manager-" + UUID.randomUUID().toString().substring(0, 8));
+        adminUser.setPasswordHash("$2a$10$abcdefghijklmnopqrstuv");
+        adminUser.setStatus(UserStatus.ACTIVE);
+        adminUser.setRoles(Set.of(Role.CRUISE_MANAGER));
+        adminUser = userRepository.save(adminUser);
 
         staffUser = new User();
         staffUser.setUsername("staff-hist-" + UUID.randomUUID().toString().substring(0, 6));
@@ -199,6 +197,9 @@ class ItineraryChangeHistoryPostgresIntegrationTest {
         }
         if (staffUser != null) {
             userRepository.delete(staffUser);
+        }
+        if (adminUser != null) {
+            userRepository.delete(adminUser);
         }
     }
 

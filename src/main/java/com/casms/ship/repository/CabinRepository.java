@@ -37,6 +37,7 @@ public interface CabinRepository extends JpaRepository<Cabin, UUID> {
     Long sumCapacityByDeckId(@Param("deckId") UUID deckId);
 
     boolean existsByShipShipIdAndCabinNumber(UUID shipId, String cabinNumber);
+    java.util.Optional<Cabin> findByShipShipIdAndCabinNumber(UUID shipId, String cabinNumber);
 
     @Query("SELECT c FROM Cabin c WHERE c.status = 'AVAILABLE' " +
            "AND (cast(:shipId as uuid) IS NULL OR c.ship.shipId = :shipId) " +

@@ -52,9 +52,12 @@ class RolePermissionInitializerTest {
         assertTrue(adminPerms.contains(Permission.SHIP_MODEL_UPDATE));
         assertTrue(adminPerms.contains(Permission.BLE_ANCHOR_UPDATE));
         assertFalse(adminPerms.contains(Permission.CRUISE_CREATE));
+        assertFalse(adminPerms.contains(Permission.ITINERARY_CREATE));
+        assertFalse(adminPerms.contains(Permission.ITINERARY_CHANGE_READ));
         assertFalse(adminPerms.contains(Permission.PORT_CREATE));
         assertFalse(adminPerms.contains(Permission.ACTIVITY_CREATE));
         assertFalse(adminPerms.contains(Permission.BOOKING_CREATE));
+        assertFalse(adminPerms.contains(Permission.BOOKING_READ));
         assertFalse(adminPerms.contains(Permission.PAYMENT_PROCESS));
         assertFalse(adminPerms.contains(Permission.PAYMENT_READ));
         assertFalse(adminPerms.contains(Permission.PAYMENT_REFUND));

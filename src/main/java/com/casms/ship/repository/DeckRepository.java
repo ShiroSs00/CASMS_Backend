@@ -17,6 +17,7 @@ public interface DeckRepository extends JpaRepository<Deck, UUID> {
     List<Deck> findByShipShipIdOrderByDeckNumber(UUID shipId);
     Page<Deck> findByShipShipId(UUID shipId, Pageable pageable);
     boolean existsByShipShipIdAndDeckNumber(UUID shipId, Integer deckNumber);
+    java.util.Optional<Deck> findByShipShipIdAndDeckNumber(UUID shipId, Integer deckNumber);
 
     @Query("SELECT COALESCE(MAX(d.deckNumber), 0) FROM Deck d WHERE d.ship.shipId = :shipId")
     Integer findMaxDeckNumberByShipId(@Param("shipId") UUID shipId);

@@ -69,15 +69,19 @@ class AuthServiceTest {
     }
 
     @Test
-    void getEffectivePermissions_adminUser_returnsAllPermissions() {
+    void getEffectivePermissions_adminUser_returnsConfiguredRolePermissions() {
         sampleUser.addRole(Role.ADMIN);
+        RolePermission mapping = new RolePermission();
+        mapping.setRole(Role.ADMIN);
+        mapping.setPermissions(Set.of(Permission.USER_READ, Permission.SHIP_MODEL_READ, Permission.BLE_ANCHOR_READ));
+        when(rolePermissionRepository.findByRole(Role.ADMIN)).thenReturn(Optional.of(mapping));
 
         Set<String> permissions = authService.getEffectivePermissions(sampleUser);
 
         assertNotNull(permissions);
-        assertEquals(Permission.values().length, permissions.size());
-        assertTrue(permissions.contains(Permission.SUPPLIER_CREATE.name()));
-        assertTrue(permissions.contains(Permission.ITINERARY_CREATE.name()));
+        assertEquals(Set.of("USER_READ", "SHIP_MODEL_READ", "BLE_ANCHOR_READ"), permissions);
+        assertFalse(permissions.contains(Permission.SUPPLIER_CREATE.name()));
+        assertFalse(permissions.contains(Permission.ITINERARY_CREATE.name()));
     }
 
     @Test

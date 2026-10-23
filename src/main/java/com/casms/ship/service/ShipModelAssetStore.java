@@ -121,6 +121,45 @@ public class ShipModelAssetStore {
         return manifest;
     }
 
+    /** Reads only the GLB JSON chunk; vertex/index buffers remain in PostgreSQL and are never materialized. */
+    public JsonNode glbDocument(String modelKey, String assetVersion, String name) {
+        AssetMetadata meta = asset(modelKey, assetVersion, name);
+        if (meta.size() < 20) throw bad("GLB file is truncated");
+        byte[] jsonChunk = jdbc.execute((ConnectionCallback<byte[]>) connection -> {
+            long oid = findOid(connection.prepareStatement("SELECT blob_oid FROM " + TABLE +
+                    " WHERE model_key = ? AND asset_version = ? AND asset_path = ?"), modelKey, assetVersion, name);
+            LargeObject largeObject = connection.unwrap(PGConnection.class).getLargeObjectAPI()
+                    .open(oid, LargeObjectManager.READ);
+            try (InputStream input = largeObject.getInputStream()) {
+                byte[] header = input.readNBytes(20);
+                if (header.length != 20 || !"glTF".equals(new String(header, 0, 4, java.nio.charset.StandardCharsets.US_ASCII))) {
+                    throw bad("Invalid GLB header");
+                }
+                ByteBuffer bytes = ByteBuffer.wrap(header).order(ByteOrder.LITTLE_ENDIAN);
+                int version = bytes.getInt(4);
+                long declaredLength = Integer.toUnsignedLong(bytes.getInt(8));
+                long chunkLength = Integer.toUnsignedLong(bytes.getInt(12));
+                int chunkType = bytes.getInt(16);
+                if (version != 2 || declaredLength != meta.size() || chunkType != 0x4E4F534A ||
+                        chunkLength > 64L * 1024 * 1024 || 20L + chunkLength > declaredLength) {
+                    throw bad("Unsupported or invalid GLB JSON chunk");
+                }
+                byte[] content = input.readNBytes((int) chunkLength);
+                if (content.length != chunkLength) throw bad("Truncated GLB JSON chunk");
+                return content;
+            } catch (IOException ex) {
+                throw new UncheckedIOException(ex);
+            } finally {
+                largeObject.close();
+            }
+        });
+        try {
+            return objectMapper.readTree(jsonChunk);
+        } catch (IOException ex) {
+            throw bad("Invalid JSON in GLB document");
+        }
+    }
+
     public AssetMetadata asset(String modelKey, String assetVersion, String name) {
         JsonNode manifest = manifest(modelKey, assetVersion);
         validateAssetPath(name, false);

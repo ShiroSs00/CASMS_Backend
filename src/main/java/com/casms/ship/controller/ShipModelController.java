@@ -11,6 +11,9 @@ import com.casms.ship.dto.response.ShipModelAssetResponse;
 import com.casms.ship.dto.response.ShipModelAssetUploadResponse;
 import com.casms.ship.dto.response.ShipModelObjectResponse;
 import com.casms.ship.dto.response.ShipModelResponse;
+import com.casms.ship.dto.response.ModelImportJobResponse;
+import com.casms.ship.dto.response.ModelImportIssueResponse;
+import com.casms.ship.service.ShipModelImportService;
 import com.casms.ship.service.ShipModelAssetService;
 import com.casms.ship.service.ShipModelService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -39,6 +42,35 @@ import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBo
 public class ShipModelController {
     private final ShipModelService service;
     private final ShipModelAssetService assetService;
+    private final ShipModelImportService importService;
+
+    @Operation(summary = "Import deck and cabin metadata from a registered model manifest")
+    @PreAuthorize("hasAuthority('SHIP_UPDATE')")
+    @PostMapping("/ships/{shipId}/models/{modelId}/imports")
+    @ResponseStatus(HttpStatus.CREATED)
+    public ApiResponse<ModelImportJobResponse> importStructure(@PathVariable UUID shipId, @PathVariable UUID modelId,
+            org.springframework.security.core.Authentication authentication) {
+        return ApiResponse.success(importService.importModel(shipId, modelId,
+                authentication == null ? null : authentication.getName()));
+    }
+
+    @PreAuthorize("hasAuthority('SHIP_READ')")
+    @GetMapping("/ships/{shipId}/models/{modelId}/imports")
+    public ApiResponse<List<ModelImportJobResponse>> importHistory(@PathVariable UUID shipId, @PathVariable UUID modelId) {
+        return ApiResponse.success(importService.history(shipId, modelId));
+    }
+
+    @PreAuthorize("hasAuthority('SHIP_READ')")
+    @GetMapping("/ships/{shipId}/imports/{jobId}")
+    public ApiResponse<ModelImportJobResponse> importJob(@PathVariable UUID shipId, @PathVariable UUID jobId) {
+        return ApiResponse.success(importService.job(shipId, jobId));
+    }
+
+    @PreAuthorize("hasAuthority('SHIP_READ')")
+    @GetMapping("/ships/{shipId}/imports/{jobId}/issues")
+    public ApiResponse<List<ModelImportIssueResponse>> importIssues(@PathVariable UUID shipId, @PathVariable UUID jobId) {
+        return ApiResponse.success(importService.issues(shipId, jobId));
+    }
 
     @Operation(summary = "Upload and validate a versioned ship model asset ZIP into PostgreSQL")
     @PreAuthorize("hasAuthority('SHIP_UPDATE')")

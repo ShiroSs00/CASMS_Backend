@@ -107,14 +107,12 @@ class BookingPostgresIntegrationTest {
         cruise2 = cruiseRepository.save(cruise2);
 
         // Ensure test users
-        staffUser = userRepository.findByUsername("admin").orElseGet(() -> {
-            User user = new User();
-            user.setUsername("test-admin-" + UUID.randomUUID().toString().substring(0, 6));
-            user.setPasswordHash("$2a$10$abcdefghijklmnopqrstuv");
-            user.setStatus(UserStatus.ACTIVE);
-            user.setRoles(Set.of(Role.ADMIN));
-            return userRepository.save(user);
-        });
+        staffUser = new User();
+        staffUser.setUsername("test-booking-reader-" + UUID.randomUUID().toString().substring(0, 8));
+        staffUser.setPasswordHash("$2a$10$abcdefghijklmnopqrstuv");
+        staffUser.setStatus(UserStatus.ACTIVE);
+        staffUser.setRoles(Set.of(Role.BOOKING_AGENT));
+        staffUser = userRepository.save(staffUser);
 
         passengerUser1 = new User();
         passengerUser1.setUsername("user1-" + UUID.randomUUID().toString().substring(0, 6));
@@ -154,6 +152,9 @@ class BookingPostgresIntegrationTest {
         }
         if (passengerUser2 != null) {
             userRepository.delete(passengerUser2);
+        }
+        if (staffUser != null) {
+            userRepository.delete(staffUser);
         }
     }
 
