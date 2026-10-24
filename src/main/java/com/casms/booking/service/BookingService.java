@@ -51,11 +51,16 @@ import com.casms.servicepackage.repository.BookingPassengerPackageRepository;
 import com.casms.servicepackage.repository.TourPackageRepository;
 import com.casms.ship.entity.Cabin;
 import com.casms.ship.entity.Cruise;
+import com.casms.ship.entity.ShipModel;
+import com.casms.ship.entity.ShipModelObject;
 import com.casms.ship.enums.CabinStatus;
 import com.casms.ship.enums.CabinType;
 import com.casms.ship.enums.CruiseStatus;
+import com.casms.ship.enums.ShipModelStatus;
 import com.casms.ship.repository.CabinRepository;
 import com.casms.ship.repository.CruiseRepository;
+import com.casms.ship.repository.ShipModelObjectRepository;
+import com.casms.ship.repository.ShipModelRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -83,6 +88,8 @@ public class BookingService {
     private final BookingContractRepository bookingContractRepository;
     private final CruiseRepository cruiseRepository;
     private final CabinRepository cabinRepository;
+    private final ShipModelRepository shipModelRepository;
+    private final ShipModelObjectRepository shipModelObjectRepository;
     private final PassengerRepository passengerRepository;
     private final TourPackageRepository tourPackageRepository;
     private final BookingPassengerPackageRepository bookingPassengerPackageRepository;
@@ -99,11 +106,30 @@ public class BookingService {
      */
     @Transactional(readOnly = true)
     public List<AvailableCabinResponse> getAvailableCabins(UUID cruiseId, UUID deckId, CabinType cabinType, Integer minCapacity) {
+        return findAvailableCabins(cruiseId, deckId, cabinType, minCapacity, false);
+    }
+
+    @Transactional(readOnly = true)
+    public List<AvailableCabinResponse> getThreeDimensionalAvailableCabins(UUID cruiseId, UUID deckId,
+            CabinType cabinType, Integer minCapacity) {
+        return findAvailableCabins(cruiseId, deckId, cabinType, minCapacity, true);
+    }
+
+    private List<AvailableCabinResponse> findAvailableCabins(UUID cruiseId, UUID deckId, CabinType cabinType,
+            Integer minCapacity, boolean includeModelPlacement) {
         Cruise cruise = getCruise(cruiseId);
         if (cruise.getShip() == null) {
             throw new BusinessException("CRUISE_NO_SHIP", "Cruise does not have an assigned ship yet");
         }
         UUID shipId = cruise.getShip().getShipId();
+
+        ShipModel model = includeModelPlacement ? shipModelRepository
+                .findByShipShipIdAndModelKeyIsNotNullAndStatusOrderByCreatedAtDesc(shipId, ShipModelStatus.READY)
+                .stream().findFirst().orElse(null) : null;
+        Map<UUID, ShipModelObject> modelObjectsByCabinId = model == null ? Map.of()
+                : shipModelObjectRepository.findByShipModelShipModelId(model.getShipModelId()).stream()
+                        .filter(object -> object.getCabin() != null)
+                        .collect(Collectors.toMap(object -> object.getCabin().getCabinId(), object -> object, (first, ignored) -> first));
 
         List<Cabin> cabins = cabinRepository.searchAvailable(shipId, deckId, cabinType, minCapacity, null);
         List<AvailableCabinResponse> results = new ArrayList<>();
@@ -129,6 +155,29 @@ public class BookingService {
                 res.setPriceMultiplier(multiplier);
                 java.math.BigDecimal baseFare = getBaseCabinFare(cabin.getCabinType());
                 res.setEstimatedPrice(baseFare.multiply(multiplier).setScale(2, java.math.RoundingMode.HALF_UP));
+                if (includeModelPlacement) {
+                    ShipModelObject mapping = modelObjectsByCabinId.get(cabin.getCabinId());
+                    if (model != null) res.setModelId(model.getShipModelId());
+                    if (mapping != null) {
+                        res.setModelNodeKey(mapping.getNodeKey());
+                    }
+                    Double x = mapping != null && mapping.getPositionX() != null ? mapping.getPositionX() : cabin.getModelPositionX();
+                    Double y = mapping != null && mapping.getPositionY() != null ? mapping.getPositionY() : cabin.getModelPositionY();
+                    Double z = mapping != null && mapping.getPositionZ() != null ? mapping.getPositionZ() : cabin.getModelPositionZ();
+                    Double rx = mapping != null && mapping.getRotationX() != null ? mapping.getRotationX() : cabin.getModelRotationX();
+                    Double ry = mapping != null && mapping.getRotationY() != null ? mapping.getRotationY() : cabin.getModelRotationY();
+                    Double rz = mapping != null && mapping.getRotationZ() != null ? mapping.getRotationZ() : cabin.getModelRotationZ();
+                    if (x != null || y != null || z != null) {
+                        res.setModelPosition(new com.casms.ship.dto.response.Ship3dConfigurationResponse.Vector3(x, y, z));
+                    }
+                    if (rx != null || ry != null || rz != null) {
+                        res.setModelRotation(new com.casms.ship.dto.response.Ship3dConfigurationResponse.Vector3(rx, ry, rz));
+                    }
+                    if (cabin.getModelWidth() != null || cabin.getModelHeight() != null || cabin.getModelDepth() != null) {
+                        res.setModelDimensions(new com.casms.ship.dto.response.Ship3dConfigurationResponse.Vector3(
+                                cabin.getModelWidth(), cabin.getModelHeight(), cabin.getModelDepth()));
+                    }
+                }
                 results.add(res);
             }
         }

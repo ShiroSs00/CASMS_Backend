@@ -49,6 +49,7 @@ public class SecurityConfig {
                                 "/auth/**",
                                 "/h2-console/**",
                                 "/booking/available-cabins",
+                                "/booking/3d-available-cabins",
                                 "/booking/lookup"
                         ).permitAll()
                         .requestMatchers(org.springframework.http.HttpMethod.GET,

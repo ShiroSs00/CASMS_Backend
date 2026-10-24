@@ -43,4 +43,19 @@ public class AvailableCabinResponse {
 
     @Schema(description = "Giá tham chiếu ước tính cho 1 khách đối với phòng này (đã nhân hệ số tầng)", example = "747.50")
     private java.math.BigDecimal estimatedPrice;
+
+    @Schema(description = "ID phiên bản model 3D READY đang ánh xạ cabin")
+    private UUID modelId;
+
+    @Schema(description = "Node key trong GLB để frontend gắn cabin vào mô hình")
+    private String modelNodeKey;
+
+    @Schema(description = "Vị trí cabin trong hệ tọa độ model")
+    private com.casms.ship.dto.response.Ship3dConfigurationResponse.Vector3 modelPosition;
+
+    @Schema(description = "Góc xoay cabin trong hệ tọa độ model")
+    private com.casms.ship.dto.response.Ship3dConfigurationResponse.Vector3 modelRotation;
+
+    @Schema(description = "Kích thước cabin trong hệ tọa độ model")
+    private com.casms.ship.dto.response.Ship3dConfigurationResponse.Vector3 modelDimensions;
 }

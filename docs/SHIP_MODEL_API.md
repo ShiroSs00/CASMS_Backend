@@ -20,6 +20,17 @@ Mapping lưu qua `ShipModel` và `ShipModelObject`. API legacy đăng ký metada
 
 Route tự đăng ký dùng tên tàu, sức chứa, số deck hành khách, chiều dài và chiều rộng từ manifest. Ship mới nhận `ship_code` theo bộ sinh mã hiện hành; `status` lấy mặc định `ACTIVE`. Khi cập nhật Ship đã có, `ship_code`, `status` và `commissionDate` được giữ nguyên. Nếu `manifest.modelId` đã thuộc một Ship khác, request bị từ chối. `deckCount` là số lượng deck hành khách, không phải số thứ tự deck lớn nhất: Conquest khai báo 13 deck nhưng deck passenger cao nhất mang số 14. Backend lưu riêng `deck_number_limit` để cho phép đúng ordinal này. Deck service levels `-1` và `0` vẫn là model objects, không phải bản ghi Deck nghiệp vụ.
 
+Mỗi phần tử trong `manifest.decks` được upsert thành Deck nghiệp vụ kể cả khi không có cabin; `rooms` trong cấu hình 3D khi đó là danh sách rỗng. Service levels `-1` và `0` không thể thành Deck nghiệp vụ vì `Deck.deck_number` phải dương, nhưng được đưa vào `GET /ships/{shipId}/3d-configuration` như `serviceLevel: true`, kèm node GLB, tên, số tầng và transform để client vẫn hiển thị tầng kỹ thuật/crew.
+
+## Chọn cabin và đặt chỗ qua model 3D
+
+| Bước | API | Ý nghĩa |
+|---|---|---|
+| Lấy cabin còn chỗ kèm liên kết 3D | `GET /booking/3d-available-cabins?cruiseId={cruiseId}` (có thể lọc `deckId`, `cabinType`, `minCapacity`) | Public read endpoint trả `cabinId`, số cabin, deck, sức chứa còn lại, giá ước tính, `modelId`, `modelNodeKey`, vị trí/góc xoay/kích thước. Cabin không có chỗ không xuất hiện. |
+| Gửi đặt chỗ | `POST /booking` | Gửi `cruiseId` và danh sách hành khách; mỗi hành khách dùng `cabinId` nhận từ API trên. Backend vẫn kiểm tra trạng thái cabin và sức chứa trong luồng đặt chỗ hiện có. |
+
+API model-aware ưu tiên model asset `READY` mới nhất và mapping `ShipModelObject`; nếu thiếu mapping transform thì vị trí cabin lấy từ dữ liệu Cabin đã import. `GET /booking/available-cabins` cũ vẫn giữ nguyên response/behavior.
+
 Response data có dạng `{ "shipId": "…", "shipModelId": "…", "shipCreated": true }`. Import deck/cabin vẫn được gọi riêng qua `POST /ships/{shipId}/models/{modelId}/imports` sau khi asset được đăng ký.
 
 ## Công việc backend còn lại
