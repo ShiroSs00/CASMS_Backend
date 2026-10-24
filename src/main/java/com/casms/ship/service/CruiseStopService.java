@@ -378,6 +378,20 @@ public class CruiseStopService {
         res.setPortId(stop.getPort().getPortId());
         res.setPortCode(stop.getPort().getPortCode());
         res.setPortName(stop.getPort().getPortName());
+
+        if (stop.getPort() != null) {
+            String portTz = stop.getPort().getTimeZoneId();
+            res.setPortTimeZoneId(portTz);
+            res.setPortUtcOffset(com.casms.ship.util.PortTimeZoneHelper.calculateUtcOffset(portTz));
+            res.setFormattedPortTimeZone(com.casms.ship.util.PortTimeZoneHelper.formatTimeZoneDisplay(portTz));
+        }
+
+        if (stop.getArrivalItineraryDay() != null) {
+            String shipTz = stop.getArrivalItineraryDay().getShipTimeZoneId();
+            res.setShipTimeZoneId(shipTz);
+            res.setShipUtcOffset(com.casms.ship.util.PortTimeZoneHelper.calculateUtcOffset(shipTz));
+            res.setFormattedShipTimeZone(com.casms.ship.util.PortTimeZoneHelper.formatTimeZoneDisplay(shipTz));
+        }
         
         if (stop.getDestination() != null) {
             res.setDestinationId(stop.getDestination().getDestinationId());
