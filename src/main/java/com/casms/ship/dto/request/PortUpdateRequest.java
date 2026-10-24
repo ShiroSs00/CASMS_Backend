@@ -31,4 +31,7 @@ public class PortUpdateRequest {
     @Schema(description = "Múi giờ (IANA time zone)", example = "Asia/Tokyo")
     @Size(max = 100, message = "Time zone ID must not exceed 100 characters")
     private String timeZoneId;
+
+    @Schema(description = "Loại vị trí cảng/neo đậu (PORT, PIER, ANCHORAGE)", example = "PORT")
+    private com.casms.ship.enums.PortLocationType locationType;
 }

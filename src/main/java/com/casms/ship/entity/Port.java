@@ -2,6 +2,7 @@ package com.casms.ship.entity;
 
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
+import com.casms.ship.enums.PortLocationType;
 import com.casms.ship.enums.PortStatus;
 import jakarta.persistence.*;
 import lombok.Getter;
@@ -39,6 +40,10 @@ public class Port {
 
     @Column(name = "longitude", precision = 9, scale = 6)
     private java.math.BigDecimal longitude;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "location_type", length = 20)
+    private PortLocationType locationType = PortLocationType.PORT;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false)

@@ -259,5 +259,17 @@ public enum Permission {
 
     // Itinerary Change History permissions
     ITINERARY_CHANGE_RECORD,
-    ITINERARY_CHANGE_READ
+    ITINERARY_CHANGE_READ,
+
+    // Trip Planning permissions
+    TRIP_CREATE,
+    TRIP_READ,
+    TRIP_UPDATE,
+    TRIP_DELETE,
+    TRIP_SUBMIT,
+    TRIP_PUBLISH,
+    TRIP_PLAN_WRITE,
+    TRIP_PLAN_VALIDATE,
+    TRIP_PLAN_SUBMIT,
+    TRIP_PLAN_REVIEW
 }

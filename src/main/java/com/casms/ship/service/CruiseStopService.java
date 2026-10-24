@@ -13,6 +13,7 @@ import com.casms.ship.entity.Port;
 import com.casms.ship.enums.CruiseStopArrivalMethod;
 import com.casms.ship.enums.CruiseStopCallType;
 import com.casms.ship.enums.CruiseStopStatus;
+import com.casms.ship.enums.ItineraryDayType;
 import com.casms.ship.enums.ItineraryStatus;
 import com.casms.ship.repository.CruiseStopRepository;
 import com.casms.ship.repository.DestinationRepository;
@@ -47,8 +48,8 @@ public class CruiseStopService {
         Itinerary itinerary = itineraryRepository.findById(request.getItineraryId())
                 .orElseThrow(() -> new ResourceNotFoundException("Itinerary", request.getItineraryId()));
 
-        if (itinerary.getStatus() != ItineraryStatus.DRAFT && itinerary.getStatus() != ItineraryStatus.PENDING_APPROVAL) {
-            throw new BusinessException("ITINERARY_NOT_EDITABLE", "Cannot add stops to itinerary with status: " + itinerary.getStatus());
+        if (itinerary.getStatus() != ItineraryStatus.DRAFT) {
+            throw new BusinessException("ITINERARY_NOT_EDITABLE", "Cannot add stops to itinerary with status: " + itinerary.getStatus() + ". Only DRAFT itineraries can be modified.");
         }
 
         ItineraryDay arrivalDay = itineraryDayRepository.findById(request.getArrivalItineraryDayId())
@@ -126,6 +127,19 @@ public class CruiseStopService {
         stop.setNotes(request.getNotes());
 
         stop = cruiseStopRepository.save(stop);
+
+        // Tự động gán múi giờ tàu cho ngày cập cảng theo múi giờ của cảng
+        if (port.getTimeZoneId() != null) {
+            if (arrivalDay.getDayType() == ItineraryDayType.PORT_DAY || arrivalDay.getShipTimeZoneId() == null) {
+                arrivalDay.setShipTimeZoneId(port.getTimeZoneId());
+                itineraryDayRepository.save(arrivalDay);
+            }
+            if (departureDay.getDayType() == ItineraryDayType.PORT_DAY || departureDay.getShipTimeZoneId() == null) {
+                departureDay.setShipTimeZoneId(port.getTimeZoneId());
+                itineraryDayRepository.save(departureDay);
+            }
+        }
+
         return mapToResponse(stop);
     }
 
@@ -147,8 +161,8 @@ public class CruiseStopService {
         CruiseStop stop = getStopById(cruiseStopId);
 
         Itinerary itinerary = stop.getItinerary();
-        if (itinerary.getStatus() != ItineraryStatus.DRAFT && itinerary.getStatus() != ItineraryStatus.PENDING_APPROVAL) {
-            throw new BusinessException("ITINERARY_NOT_EDITABLE", "Cannot update stops in itinerary with status: " + itinerary.getStatus());
+        if (itinerary.getStatus() != ItineraryStatus.DRAFT) {
+            throw new BusinessException("ITINERARY_NOT_EDITABLE", "Cannot update stops in itinerary with status: " + itinerary.getStatus() + ". Only DRAFT itineraries can be modified.");
         }
 
         if (request.getItineraryId() != null && !request.getItineraryId().equals(stop.getItinerary().getItineraryId())) {
@@ -231,8 +245,8 @@ public class CruiseStopService {
         CruiseStop stop = getStopById(cruiseStopId);
 
         Itinerary itinerary = stop.getItinerary();
-        if (itinerary.getStatus() != ItineraryStatus.DRAFT && itinerary.getStatus() != ItineraryStatus.PENDING_APPROVAL) {
-            throw new BusinessException("ITINERARY_NOT_EDITABLE", "Cannot remove stops from itinerary with status: " + itinerary.getStatus());
+        if (itinerary.getStatus() != ItineraryStatus.DRAFT) {
+            throw new BusinessException("ITINERARY_NOT_EDITABLE", "Cannot remove stops from itinerary with status: " + itinerary.getStatus() + ". Only DRAFT itineraries can be modified.");
         }
 
         cruiseStopRepository.delete(stop);
@@ -244,8 +258,8 @@ public class CruiseStopService {
         CruiseStop stop = getStopById(cruiseStopId);
 
         Itinerary itinerary = stop.getItinerary();
-        if (itinerary.getStatus() != ItineraryStatus.DRAFT && itinerary.getStatus() != ItineraryStatus.PENDING_APPROVAL) {
-            throw new BusinessException("ITINERARY_NOT_EDITABLE", "Cannot reorder stops in itinerary with status: " + itinerary.getStatus());
+        if (itinerary.getStatus() != ItineraryStatus.DRAFT) {
+            throw new BusinessException("ITINERARY_NOT_EDITABLE", "Cannot reorder stops in itinerary with status: " + itinerary.getStatus() + ". Only DRAFT itineraries can be modified.");
         }
 
         if (newStopOrder != null && !newStopOrder.equals(stop.getStopOrder())) {
@@ -262,6 +276,9 @@ public class CruiseStopService {
     @Transactional
     public CruiseStopResponse setAllAboardTime(UUID cruiseStopId, Instant allAboardTime) {
         CruiseStop stop = getStopById(cruiseStopId);
+        if (stop.getItinerary().getStatus() != ItineraryStatus.DRAFT) {
+            throw new BusinessException("ITINERARY_NOT_EDITABLE", "Cannot modify stop in itinerary with status: " + stop.getItinerary().getStatus());
+        }
         stop.setAllAboardTime(allAboardTime);
         stop = cruiseStopRepository.save(stop);
         return mapToResponse(stop);

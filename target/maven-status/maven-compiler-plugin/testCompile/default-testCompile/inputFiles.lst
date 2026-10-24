@@ -8,9 +8,11 @@ D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\booking\repository\Bo
 D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\booking\service\BookingServiceTest.java
 D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\checkin\service\CheckinServiceTest.java
 D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\checkin\service\GuidanceSessionServiceTest.java
+D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\common\controller\BusinessCodeRuleControllerTest.java
 D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\common\exception\GlobalExceptionHandlerTest.java
 D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\common\service\BusinessCodeGeneratorPostgresIntegrationTest.java
 D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\common\service\BusinessCodeGeneratorTest.java
+D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\common\service\BusinessCodeRuleServiceTest.java
 D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\common\util\CodeGeneratorTest.java
 D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\identity\service\AuthServiceTest.java
 D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\identity\service\IdentityServiceTest.java
@@ -40,3 +42,6 @@ D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\ship\service\ShipMode
 D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\ship\service\ShipReadinessAssessmentTest.java
 D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\ship\service\ShipRegulationServiceTest.java
 D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\ship\service\ShipServiceTest.java
+D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\trip\contract\TripPlanningContractTest.java
+D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\trip\service\TripScheduleVersionServiceTest.java
+D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\trip\service\TripServiceTest.java

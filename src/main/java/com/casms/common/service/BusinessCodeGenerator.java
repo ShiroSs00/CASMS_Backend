@@ -23,7 +23,8 @@ public class BusinessCodeGenerator {
             Map.entry("PR", "casms_product_code_seq"),
             Map.entry("PK", "casms_package_code_seq"),
             Map.entry("EX", "casms_excursion_code_seq"),
-            Map.entry("TG", "casms_tour_group_code_seq")
+            Map.entry("TG", "casms_tour_group_code_seq"),
+            Map.entry("TR", "casms_trip_code_seq")
     );
 
     private final JdbcTemplate jdbcTemplate;

@@ -87,6 +87,14 @@ public class ItineraryDayController {
         return ApiResponse.success(service.setShipTimeZone(itineraryDayId, shipTimeZoneId));
     }
 
+    @Operation(summary = "Đồng bộ múi giờ hải trình đa quốc gia", description = "Tự động xác định và đồng bộ múi giờ trên tàu cho tất cả các ngày trong hải trình dựa trên các cảng dừng và ngày trên biển")
+    @PreAuthorize("hasAuthority('ITINERARY_DAY_UPDATE')")
+    @PostMapping("/by-itinerary/{itineraryId}/sync-timezones")
+    public ApiResponse<List<ItineraryDayResponse>> syncShipTimeZones(
+            @Parameter(description = "ID của lịch trình", required = true) @PathVariable UUID itineraryId) {
+        return ApiResponse.success(service.syncShipTimeZonesFromStops(itineraryId));
+    }
+
     @Operation(summary = "Kiểm tra tính tuần tự ngày", description = "Xác minh các ngày trong lịch trình được đánh số tuần tự từ 1")
     @PreAuthorize("hasAuthority('ITINERARY_DAY_READ')")
     @PostMapping("/by-itinerary/{itineraryId}/validate-sequence")

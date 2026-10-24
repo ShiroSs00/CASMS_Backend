@@ -9,6 +9,7 @@ import com.casms.ship.dto.request.ItineraryUpdateDraftRequest;
 import com.casms.ship.dto.response.ItineraryResponse;
 import com.casms.ship.entity.Cruise;
 import com.casms.ship.entity.Itinerary;
+import com.casms.ship.entity.ItineraryDay;
 import com.casms.ship.enums.ItineraryStatus;
 import com.casms.ship.enums.ItineraryType;
 import com.casms.ship.repository.CruiseRepository;
@@ -22,6 +23,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -256,5 +258,71 @@ class ItineraryServiceTest {
         assertEquals(ItineraryStatus.REJECTED, response.getStatus());
         assertEquals(approverUserId, response.getApprovedByUserId());
         assertNotNull(response.getApprovedAt());
+    }
+
+    @Test
+    void approve_sameUserAsCreator_throwsSelfApprovalForbidden() {
+        UUID itineraryId = UUID.randomUUID();
+        Itinerary itinerary = new Itinerary();
+        itinerary.setItineraryId(itineraryId);
+        itinerary.setStatus(ItineraryStatus.PENDING_APPROVAL);
+        itinerary.setCreatedByUser(approverUser); // Người duyệt cũng chính là người tạo!
+
+        when(itineraryRepository.findById(itineraryId)).thenReturn(Optional.of(itinerary));
+
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> itineraryService.approve(itineraryId, approverUserId));
+        assertEquals("SELF_APPROVAL_FORBIDDEN", ex.getCode());
+    }
+
+    @Test
+    void returnToDraft_rejectedStatus_success() {
+        UUID itineraryId = UUID.randomUUID();
+        Itinerary itinerary = new Itinerary();
+        itinerary.setItineraryId(itineraryId);
+        itinerary.setStatus(ItineraryStatus.REJECTED);
+
+        when(itineraryRepository.findById(itineraryId)).thenReturn(Optional.of(itinerary));
+        when(itineraryRepository.save(any(Itinerary.class))).thenAnswer(i -> i.getArgument(0));
+
+        ItineraryResponse response = itineraryService.returnToDraft(itineraryId, creatorUserId);
+        assertNotNull(response);
+        assertEquals(ItineraryStatus.DRAFT, response.getStatus());
+    }
+
+    @Test
+    void validateFeasibility_emptyDays_throwsEmptyDaysException() {
+        UUID itineraryId = UUID.randomUUID();
+        Itinerary itinerary = new Itinerary();
+        itinerary.setItineraryId(itineraryId);
+        itinerary.setStartDate(LocalDate.of(2026, 11, 1));
+        itinerary.setEndDate(LocalDate.of(2026, 11, 8));
+        itinerary.setDays(List.of());
+
+        when(itineraryRepository.findById(itineraryId)).thenReturn(Optional.of(itinerary));
+
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> itineraryService.validateFeasibility(itineraryId));
+        assertEquals("EMPTY_ITINERARY_DAYS", ex.getCode());
+    }
+
+    @Test
+    void validateFeasibility_dayCountMismatch_throwsInvalidDayCount() {
+        UUID itineraryId = UUID.randomUUID();
+        Itinerary itinerary = new Itinerary();
+        itinerary.setItineraryId(itineraryId);
+        itinerary.setStartDate(LocalDate.of(2026, 11, 1));
+        itinerary.setEndDate(LocalDate.of(2026, 11, 3)); // Khoảng cách 3 ngày (1, 2, 3)
+
+        ItineraryDay day1 = new ItineraryDay();
+        day1.setDayNumber(1);
+        day1.setDate(LocalDate.of(2026, 11, 1));
+        itinerary.setDays(new java.util.ArrayList<>(List.of(day1))); // Chỉ có 1 ngày thay vì 3
+
+        when(itineraryRepository.findById(itineraryId)).thenReturn(Optional.of(itinerary));
+
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> itineraryService.validateFeasibility(itineraryId));
+        assertEquals("INVALID_DAY_COUNT", ex.getCode());
     }
 }

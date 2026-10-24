@@ -91,14 +91,38 @@ public class ItineraryService {
         return mapToResponse(itinerary);
     }
 
+    private boolean hasInternalStaffRole() {
+        var auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || !auth.isAuthenticated() || auth instanceof org.springframework.security.authentication.AnonymousAuthenticationToken) {
+            return false;
+        }
+        return auth.getAuthorities().stream().anyMatch(a ->
+                a.getAuthority().equals("ITINERARY_READ") ||
+                a.getAuthority().equals("CRUISE_MANAGER") ||
+                a.getAuthority().equals("OPERATIONS_MANAGER") ||
+                a.getAuthority().equals("ADMIN")
+        );
+    }
+
     @Transactional(readOnly = true)
     public Page<ItineraryResponse> list(Pageable pageable) {
+        if (!hasInternalStaffRole()) {
+            return itineraryRepository.findByStatusIn(
+                    List.of(ItineraryStatus.APPROVED, ItineraryStatus.OPEN_FOR_SALE), pageable)
+                    .map(this::mapToResponse);
+        }
         return itineraryRepository.findAll(pageable).map(this::mapToResponse);
     }
 
     @Transactional(readOnly = true)
     public ItineraryResponse detail(UUID itineraryId) {
         Itinerary itinerary = getItineraryById(itineraryId);
+        if (itinerary.getStatus() != ItineraryStatus.APPROVED && itinerary.getStatus() != ItineraryStatus.OPEN_FOR_SALE) {
+            if (!hasInternalStaffRole()) {
+                throw new BusinessException(org.springframework.http.HttpStatus.FORBIDDEN, "FORBIDDEN",
+                        "Chỉ nhân viên quản lý mới có quyền xem bản nháp hoặc lịch trình chưa phát hành");
+            }
+        }
         return mapToResponse(itinerary);
     }
 
@@ -150,35 +174,50 @@ public class ItineraryService {
     public void validateFeasibility(UUID itineraryId) {
         Itinerary itinerary = getItineraryById(itineraryId);
 
-        if (!itinerary.getEndDate().isAfter(itinerary.getStartDate())) {
-            throw new BusinessException("INVALID_DATE_RANGE", "End date must be after start date");
+        if (itinerary.getStartDate() == null || itinerary.getEndDate() == null) {
+            throw new BusinessException("INVALID_DATE_RANGE", "Start date and end date must not be null");
+        }
+
+        if (itinerary.getEndDate().isBefore(itinerary.getStartDate())) {
+            throw new BusinessException("INVALID_DATE_RANGE", "End date must not be before start date");
         }
 
         List<ItineraryDay> days = itinerary.getDays();
-        if (days != null && !days.isEmpty()) {
-            days.sort((d1, d2) -> d1.getDayNumber().compareTo(d2.getDayNumber()));
-            
-            for (int i = 0; i < days.size(); i++) {
-                if (days.get(i).getDayNumber() != i + 1) {
-                    throw new BusinessException("INVALID_DAY_SEQUENCE", "Day numbers must be sequential starting from 1");
-                }
-                
-                if (days.get(i).getDate().isBefore(itinerary.getStartDate()) || 
-                    days.get(i).getDate().isAfter(itinerary.getEndDate())) {
-                    throw new BusinessException("DAY_DATE_OUT_OF_RANGE", 
-                        "Day " + days.get(i).getDayNumber() + " date is outside itinerary range");
-                }
+        if (days == null || days.isEmpty()) {
+            throw new BusinessException("EMPTY_ITINERARY_DAYS", "Lịch trình phải có ít nhất một ngày trước khi gửi duyệt hoặc kiểm tra tính khả thi");
+        }
+
+        long expectedDayCount = java.time.temporal.ChronoUnit.DAYS.between(itinerary.getStartDate(), itinerary.getEndDate()) + 1;
+        if (days.size() != expectedDayCount) {
+            throw new BusinessException("INVALID_DAY_COUNT",
+                    String.format("Số lượng ngày trong lịch trình (%d ngày) không khớp với khoảng thời gian từ %s đến %s (%d ngày)",
+                            days.size(), itinerary.getStartDate(), itinerary.getEndDate(), expectedDayCount));
+        }
+
+        days.sort((d1, d2) -> d1.getDayNumber().compareTo(d2.getDayNumber()));
+
+        for (int i = 0; i < days.size(); i++) {
+            if (days.get(i).getDayNumber() != i + 1) {
+                throw new BusinessException("INVALID_DAY_SEQUENCE", "Day numbers must be sequential starting from 1");
+            }
+
+            if (days.get(i).getDate().isBefore(itinerary.getStartDate()) ||
+                days.get(i).getDate().isAfter(itinerary.getEndDate())) {
+                throw new BusinessException("DAY_DATE_OUT_OF_RANGE",
+                    "Day " + days.get(i).getDayNumber() + " date is outside itinerary range");
             }
         }
 
         if (itinerary.getCruise() != null) {
             Cruise cruise = itinerary.getCruise();
-            LocalDate departureDate = cruise.getDepartureDatetime().atZone(ZoneId.systemDefault()).toLocalDate();
-            LocalDate returnDate = cruise.getReturnDatetime().atZone(ZoneId.systemDefault()).toLocalDate();
-            if (itinerary.getStartDate().isBefore(departureDate) ||
-                itinerary.getEndDate().isAfter(returnDate)) {
-                throw new BusinessException("ITINERARY_OUTSIDE_CRUISE_RANGE", 
-                    "Itinerary dates must be within cruise departure and return dates");
+            if (cruise.getDepartureDatetime() != null && cruise.getReturnDatetime() != null) {
+                LocalDate departureDate = cruise.getDepartureDatetime().atZone(java.time.ZoneOffset.UTC).toLocalDate();
+                LocalDate returnDate = cruise.getReturnDatetime().atZone(java.time.ZoneOffset.UTC).toLocalDate();
+                if (itinerary.getStartDate().isBefore(departureDate) ||
+                    itinerary.getEndDate().isAfter(returnDate)) {
+                    throw new BusinessException("ITINERARY_OUTSIDE_CRUISE_RANGE",
+                        "Itinerary dates must be within cruise departure and return dates");
+                }
             }
         }
     }
@@ -205,6 +244,11 @@ public class ItineraryService {
 
         if (itinerary.getStatus() != ItineraryStatus.PENDING_APPROVAL) {
             throw new BusinessException("INVALID_STATUS", "Only pending approval itineraries can be approved");
+        }
+
+        // Maker-Checker: Người tạo không thể tự phê duyệt lịch trình
+        if (itinerary.getCreatedByUser() != null && itinerary.getCreatedByUser().getUserId().equals(approverId)) {
+            throw new BusinessException("SELF_APPROVAL_FORBIDDEN", "Người tạo lịch trình không thể tự phê duyệt lịch trình của chính mình");
         }
 
         User approver = userRepository.findById(approverId)
@@ -236,6 +280,20 @@ public class ItineraryService {
 
         itinerary = itineraryRepository.save(itinerary);
         log.info("Rejected itinerary: {}", itinerary.getItineraryId());
+        return mapToResponse(itinerary);
+    }
+
+    @Transactional
+    public ItineraryResponse returnToDraft(UUID itineraryId, UUID actorId) {
+        Itinerary itinerary = getItineraryById(itineraryId);
+
+        if (itinerary.getStatus() != ItineraryStatus.REJECTED && itinerary.getStatus() != ItineraryStatus.PENDING_APPROVAL) {
+            throw new BusinessException("INVALID_STATUS", "Chỉ có thể mở lại bản nháp cho lịch trình bị từ chối (REJECTED) hoặc đang chờ duyệt (PENDING_APPROVAL)");
+        }
+
+        itinerary.setStatus(ItineraryStatus.DRAFT);
+        itinerary = itineraryRepository.save(itinerary);
+        log.info("Returned itinerary {} to DRAFT by actor {}", itineraryId, actorId);
         return mapToResponse(itinerary);
     }
 
