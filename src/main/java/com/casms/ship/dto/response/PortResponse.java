@@ -45,6 +45,9 @@ public class PortResponse {
     @Schema(description = "Kinh độ", example = "106.6881")
     private BigDecimal longitude;
 
+    @Schema(description = "Loại vị trí cảng/neo đậu", example = "PORT")
+    private com.casms.ship.enums.PortLocationType locationType;
+
     @Schema(description = "Trạng thái cảng", example = "ACTIVE")
     private PortStatus status;
 

@@ -106,6 +106,16 @@ public class RolePermissionInitializer implements CommandLineRunner {
 
                 Permission.REPORT_GENERATE,
 
+                // Trip Planning permissions
+                Permission.TRIP_CREATE,
+                Permission.TRIP_READ,
+                Permission.TRIP_UPDATE,
+                Permission.TRIP_DELETE,
+                Permission.TRIP_SUBMIT,
+                Permission.TRIP_PLAN_WRITE,
+                Permission.TRIP_PLAN_VALIDATE,
+                Permission.TRIP_PLAN_SUBMIT,
+
                 // Cross-module read permissions
                 Permission.SHIP_READ,
                 Permission.OPERATIONAL_ISSUE_READ,
@@ -274,6 +284,12 @@ public class RolePermissionInitializer implements CommandLineRunner {
 
                 Permission.REPORT_GENERATE,
                 Permission.REPORT_EXPORT,
+
+                // Trip Planning permissions
+                Permission.TRIP_READ,
+                Permission.TRIP_PUBLISH,
+                Permission.TRIP_PLAN_VALIDATE,
+                Permission.TRIP_PLAN_REVIEW,
 
                 // Cross-module
                 Permission.SUPPLIER_CREATE,

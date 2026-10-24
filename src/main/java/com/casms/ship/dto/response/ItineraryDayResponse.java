@@ -29,6 +29,12 @@ public class ItineraryDayResponse {
     @Schema(description = "Múi giờ tàu", example = "Asia/Ho_Chi_Minh")
     private String shipTimeZoneId;
 
+    @Schema(description = "Độ lệch giờ UTC trên tàu", example = "+07:00")
+    private String shipUtcOffset;
+
+    @Schema(description = "Chuỗi hiển thị múi giờ trên tàu", example = "Asia/Ho_Chi_Minh (UTC+07:00)")
+    private String formattedShipTimeZone;
+
     @Schema(description = "Mô tả ngày", example = "Khám phá Vịnh Hạ Long")
     private String description;
 

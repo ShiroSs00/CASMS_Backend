@@ -4,6 +4,7 @@ import com.casms.common.response.ApiResponse;
 import com.casms.ship.dto.request.PortCreateRequest;
 import com.casms.ship.dto.request.PortUpdateRequest;
 import com.casms.ship.dto.response.PortResponse;
+import com.casms.ship.dto.response.TimeZoneOptionResponse;
 import com.casms.ship.service.PortService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -26,6 +27,26 @@ import java.util.UUID;
 public class PortController {
 
     private final PortService service;
+
+    @Operation(summary = "Danh sách múi giờ IANA", description = "Lấy danh sách các múi giờ IANA chuẩn cho dropdown (hỗ trợ tìm kiếm theo tên hoặc mã quốc gia)")
+    @PreAuthorize("permitAll()")
+    @GetMapping("/timezones")
+    public ApiResponse<List<TimeZoneOptionResponse>> listTimeZones(
+            @Parameter(description = "Từ khóa tìm kiếm múi giờ (ví dụ: Tokyo, Paris, New_York)")
+            @RequestParam(required = false) String search,
+            @Parameter(description = "Mã quốc gia ISO-2 để gợi ý múi giờ (ví dụ: JP, FR, US)")
+            @RequestParam(required = false) String countryCode) {
+        return ApiResponse.success(service.listSupportedTimeZones(search, countryCode));
+    }
+
+    @Operation(summary = "Suy luận múi giờ theo quốc gia", description = "Lấy múi giờ mặc định dựa trên mã quốc gia (ISO 3166-1 alpha-2)")
+    @PreAuthorize("permitAll()")
+    @GetMapping("/timezones/resolve")
+    public ApiResponse<TimeZoneOptionResponse> resolveTimeZone(
+            @Parameter(description = "Mã quốc gia ISO-2 (ví dụ: JP, VN, SG, FR, US)", required = true)
+            @RequestParam String countryCode) {
+        return ApiResponse.success(service.resolveTimeZoneByCountry(countryCode));
+    }
 
     @Operation(summary = "Tạo cảng mới", description = "Đăng ký cảng biển mới vào hệ thống")
     @PreAuthorize("hasAuthority('PORT_CREATE')")

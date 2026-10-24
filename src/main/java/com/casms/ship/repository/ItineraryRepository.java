@@ -18,4 +18,8 @@ public interface ItineraryRepository extends JpaRepository<Itinerary, UUID> {
     java.util.List<Itinerary> findByCruiseCruiseIdInAndStatusIn(
             java.util.Collection<UUID> cruiseIds,
             java.util.Collection<ItineraryStatus> statuses);
+
+    org.springframework.data.domain.Page<Itinerary> findByStatusIn(
+            java.util.Collection<ItineraryStatus> statuses,
+            org.springframework.data.domain.Pageable pageable);
 }

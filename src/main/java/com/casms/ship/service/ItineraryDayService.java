@@ -5,18 +5,21 @@ import com.casms.common.exception.ResourceNotFoundException;
 import com.casms.ship.dto.request.ItineraryDayCreateRequest;
 import com.casms.ship.dto.request.ItineraryDayUpdateRequest;
 import com.casms.ship.dto.response.ItineraryDayResponse;
+import com.casms.ship.entity.CruiseStop;
 import com.casms.ship.entity.Itinerary;
 import com.casms.ship.entity.ItineraryDay;
 import com.casms.ship.enums.ItineraryDayType;
 import com.casms.ship.enums.ItineraryStatus;
 import com.casms.ship.repository.ItineraryDayRepository;
 import com.casms.ship.repository.ItineraryRepository;
+import com.casms.ship.util.PortTimeZoneHelper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
+import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -36,8 +39,8 @@ public class ItineraryDayService {
         Itinerary itinerary = itineraryRepository.findById(request.getItineraryId())
                 .orElseThrow(() -> new ResourceNotFoundException("Itinerary", request.getItineraryId()));
 
-        if (itinerary.getStatus() != ItineraryStatus.DRAFT && itinerary.getStatus() != ItineraryStatus.PENDING_APPROVAL) {
-            throw new BusinessException("ITINERARY_NOT_EDITABLE", "Cannot add days to itinerary with status: " + itinerary.getStatus());
+        if (itinerary.getStatus() != ItineraryStatus.DRAFT) {
+            throw new BusinessException("ITINERARY_NOT_EDITABLE", "Cannot add days to itinerary with status: " + itinerary.getStatus() + ". Only DRAFT itineraries can be modified.");
         }
 
         Integer dayNumber = request.getDayNumber();
@@ -60,7 +63,11 @@ public class ItineraryDayService {
         ItineraryDayType dayType = request.getDayType() == null ? ItineraryDayType.PORT_DAY : request.getDayType();
 
         String tz = request.getShipTimeZoneId();
-        if (tz == null && itinerary.getCruise() != null && itinerary.getCruise().getDeparturePort() != null) {
+        if (tz != null && !tz.isBlank()) {
+            if (!PortTimeZoneHelper.isValidTimeZoneId(tz)) {
+                throw new BusinessException("INVALID_TIME_ZONE", "Múi giờ tàu không hợp lệ: " + tz);
+            }
+        } else if (itinerary.getCruise() != null && itinerary.getCruise().getDeparturePort() != null) {
             tz = itinerary.getCruise().getDeparturePort().getTimeZoneId();
         }
 
@@ -97,8 +104,8 @@ public class ItineraryDayService {
         ItineraryDay day = getDayById(itineraryDayId);
 
         Itinerary itinerary = day.getItinerary();
-        if (itinerary.getStatus() != ItineraryStatus.DRAFT && itinerary.getStatus() != ItineraryStatus.PENDING_APPROVAL) {
-            throw new BusinessException("ITINERARY_NOT_EDITABLE", "Cannot update days in itinerary with status: " + itinerary.getStatus());
+        if (itinerary.getStatus() != ItineraryStatus.DRAFT) {
+            throw new BusinessException("ITINERARY_NOT_EDITABLE", "Cannot update days in itinerary with status: " + itinerary.getStatus() + ". Only DRAFT itineraries can be modified.");
         }
 
         if (request.getDayNumber() != null && !request.getDayNumber().equals(day.getDayNumber())) {
@@ -119,6 +126,9 @@ public class ItineraryDayService {
             day.setDayType(request.getDayType());
         }
         if (request.getShipTimeZoneId() != null) {
+            if (!PortTimeZoneHelper.isValidTimeZoneId(request.getShipTimeZoneId())) {
+                throw new BusinessException("INVALID_TIME_ZONE", "Múi giờ tàu không hợp lệ: " + request.getShipTimeZoneId());
+            }
             day.setShipTimeZoneId(request.getShipTimeZoneId());
         }
         if (request.getDescription() != null) {
@@ -134,8 +144,8 @@ public class ItineraryDayService {
         ItineraryDay day = getDayById(itineraryDayId);
 
         Itinerary itinerary = day.getItinerary();
-        if (itinerary.getStatus() != ItineraryStatus.DRAFT && itinerary.getStatus() != ItineraryStatus.PENDING_APPROVAL) {
-            throw new BusinessException("ITINERARY_NOT_EDITABLE", "Cannot delete days from itinerary with status: " + itinerary.getStatus());
+        if (itinerary.getStatus() != ItineraryStatus.DRAFT) {
+            throw new BusinessException("ITINERARY_NOT_EDITABLE", "Cannot delete days from itinerary with status: " + itinerary.getStatus() + ". Only DRAFT itineraries can be modified.");
         }
 
         // Check if day has cruise stops (arrival or departure)
@@ -151,6 +161,9 @@ public class ItineraryDayService {
     @Transactional
     public ItineraryDayResponse setDayType(UUID itineraryDayId, ItineraryDayType dayType) {
         ItineraryDay day = getDayById(itineraryDayId);
+        if (day.getItinerary().getStatus() != ItineraryStatus.DRAFT) {
+            throw new BusinessException("ITINERARY_NOT_EDITABLE", "Cannot modify day type in itinerary with status: " + day.getItinerary().getStatus());
+        }
         day.setDayType(dayType);
         day = itineraryDayRepository.save(day);
         return mapToResponse(day);
@@ -158,7 +171,13 @@ public class ItineraryDayService {
 
     @Transactional
     public ItineraryDayResponse setShipTimeZone(UUID itineraryDayId, String shipTimeZoneId) {
+        if (shipTimeZoneId != null && !shipTimeZoneId.isBlank() && !PortTimeZoneHelper.isValidTimeZoneId(shipTimeZoneId)) {
+            throw new BusinessException("INVALID_TIME_ZONE", "Múi giờ tàu không hợp lệ: " + shipTimeZoneId);
+        }
         ItineraryDay day = getDayById(itineraryDayId);
+        if (day.getItinerary().getStatus() != ItineraryStatus.DRAFT) {
+            throw new BusinessException("ITINERARY_NOT_EDITABLE", "Cannot modify ship timezone in itinerary with status: " + day.getItinerary().getStatus());
+        }
         day.setShipTimeZoneId(shipTimeZoneId);
         day = itineraryDayRepository.save(day);
         return mapToResponse(day);
@@ -167,6 +186,9 @@ public class ItineraryDayService {
     @Transactional
     public ItineraryDayResponse setDate(UUID itineraryDayId, java.time.LocalDate date) {
         ItineraryDay day = getDayById(itineraryDayId);
+        if (day.getItinerary().getStatus() != ItineraryStatus.DRAFT) {
+            throw new BusinessException("ITINERARY_NOT_EDITABLE", "Cannot modify date in itinerary with status: " + day.getItinerary().getStatus());
+        }
         day.setDate(date);
         day = itineraryDayRepository.save(day);
         return mapToResponse(day);
@@ -188,6 +210,59 @@ public class ItineraryDayService {
         getDayById(itineraryDayId);
     }
 
+    /**
+     * Tự động đồng bộ và xác định múi giờ trên tàu (Ship Time Zone) cho toàn bộ các ngày
+     * trong hải trình đa quốc gia dựa trên các điểm dừng cảng và ngày trên biển.
+     */
+    @Transactional
+    public List<ItineraryDayResponse> syncShipTimeZonesFromStops(UUID itineraryId) {
+        log.info("Syncing ship timezones for multi-country itinerary: {}", itineraryId);
+        Itinerary itinerary = itineraryRepository.findById(itineraryId)
+                .orElseThrow(() -> new ResourceNotFoundException("Itinerary", itineraryId));
+
+        if (itinerary.getStatus() != ItineraryStatus.DRAFT && itinerary.getStatus() != ItineraryStatus.PENDING_APPROVAL) {
+            throw new BusinessException("ITINERARY_NOT_EDITABLE", "Cannot sync timezones for itinerary with status: " + itinerary.getStatus());
+        }
+
+        List<ItineraryDay> days = itineraryDayRepository.findByItineraryItineraryIdOrderByDayNumberAsc(itineraryId);
+        if (days.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        String defaultTz = (itinerary.getCruise() != null && itinerary.getCruise().getDeparturePort() != null)
+                ? itinerary.getCruise().getDeparturePort().getTimeZoneId()
+                : "UTC";
+
+        String currentShipTz = defaultTz;
+
+        for (ItineraryDay day : days) {
+            CruiseStop stop = null;
+            if (day.getArrivalStops() != null && !day.getArrivalStops().isEmpty()) {
+                stop = day.getArrivalStops().get(0);
+            } else if (day.getDepartureStops() != null && !day.getDepartureStops().isEmpty()) {
+                stop = day.getDepartureStops().get(0);
+            }
+
+            if (stop != null && stop.getPort() != null && stop.getPort().getTimeZoneId() != null) {
+                // Ngày tàu cập cảng tại quốc gia: Áp dụng múi giờ của Cảng đó
+                currentShipTz = stop.getPort().getTimeZoneId();
+                day.setDayType(ItineraryDayType.PORT_DAY);
+                day.setShipTimeZoneId(currentShipTz);
+            } else {
+                // Ngày tàu di chuyển trên biển giữa các nước: Duy trì múi giờ tàu hiện tại
+                day.setDayType(ItineraryDayType.SEA_DAY);
+                if (day.getShipTimeZoneId() == null || !PortTimeZoneHelper.isValidTimeZoneId(day.getShipTimeZoneId())) {
+                    day.setShipTimeZoneId(currentShipTz);
+                } else {
+                    currentShipTz = day.getShipTimeZoneId();
+                }
+            }
+        }
+
+        days = itineraryDayRepository.saveAll(days);
+        return days.stream().map(this::mapToResponse).collect(Collectors.toList());
+    }
+
     private ItineraryDay getDayById(UUID itineraryDayId) {
         return itineraryDayRepository.findById(itineraryDayId)
                 .orElseThrow(() -> new ResourceNotFoundException("ItineraryDay", itineraryDayId));
@@ -201,6 +276,10 @@ public class ItineraryDayService {
         res.setDate(day.getDate());
         res.setDayType(day.getDayType());
         res.setShipTimeZoneId(day.getShipTimeZoneId());
+        if (day.getShipTimeZoneId() != null) {
+            res.setShipUtcOffset(PortTimeZoneHelper.calculateUtcOffset(day.getShipTimeZoneId()));
+            res.setFormattedShipTimeZone(PortTimeZoneHelper.formatTimeZoneDisplay(day.getShipTimeZoneId()));
+        }
         res.setDescription(day.getDescription());
         return res;
     }

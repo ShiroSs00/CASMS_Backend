@@ -45,6 +45,9 @@ public class PortCreateRequest {
     @Schema(description = "Kinh độ", example = "139.6486")
     private BigDecimal longitude;
 
+    @Schema(description = "Loại vị trí cảng/neo đậu (PORT, PIER, ANCHORAGE)", example = "PORT")
+    private com.casms.ship.enums.PortLocationType locationType = com.casms.ship.enums.PortLocationType.PORT;
+
     @Schema(description = "Trạng thái ban đầu", example = "ACTIVE")
     private PortStatus status = PortStatus.ACTIVE;
 }

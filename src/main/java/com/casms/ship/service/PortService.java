@@ -5,20 +5,13 @@ import com.casms.common.exception.ResourceNotFoundException;
 import com.casms.ship.dto.request.PortCreateRequest;
 import com.casms.ship.dto.request.PortUpdateRequest;
 import com.casms.ship.dto.response.PortResponse;
-import com.casms.ship.entity.Port;
-import com.casms.ship.enums.PortStatus;
-import com.casms.ship.repository.PortRepository;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
-import java.util.List;
-import java.util.UUID;
+import com.casms.ship.dto.response.TimeZoneOptionResponse;
 import com.casms.ship.entity.Destination;
+import com.casms.ship.entity.Port;
+import com.casms.ship.enums.PortLocationType;
+import com.casms.ship.enums.PortStatus;
 import com.casms.ship.repository.DestinationRepository;
+import com.casms.ship.repository.PortRepository;
 import com.casms.ship.util.PortTimeZoneHelper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -78,6 +71,7 @@ public class PortService {
         port.setDescription(request.getDescription());
         port.setLatitude(request.getLatitude());
         port.setLongitude(request.getLongitude());
+        port.setLocationType(request.getLocationType() != null ? request.getLocationType() : PortLocationType.PORT);
         port.setStatus(request.getStatus() != null ? request.getStatus() : PortStatus.ACTIVE);
 
         port = portRepository.save(port);
@@ -100,6 +94,30 @@ public class PortService {
     public PortResponse detail(UUID portId) {
         Port port = getPortById(portId);
         return mapToResponse(port);
+    }
+
+    @Transactional(readOnly = true)
+    public List<TimeZoneOptionResponse> listSupportedTimeZones(String search, String countryCode) {
+        return PortTimeZoneHelper.getSupportedTimeZoneOptions(search, countryCode);
+    }
+
+    @Transactional(readOnly = true)
+    public TimeZoneOptionResponse resolveTimeZoneByCountry(String countryCode) {
+        String tzId = PortTimeZoneHelper.resolveDefaultTimeZoneByCountry(countryCode)
+                .orElseThrow(() -> new BusinessException("TIME_ZONE_NOT_FOUND",
+                        "Không tìm thấy múi giờ mặc định cho quốc gia: " + countryCode));
+        String offset = PortTimeZoneHelper.calculateUtcOffset(tzId);
+        String display = PortTimeZoneHelper.formatTimeZoneDisplay(tzId);
+        String localTime = PortTimeZoneHelper.getCurrentLocalTimeIso(tzId);
+
+        return TimeZoneOptionResponse.builder()
+                .timeZoneId(tzId)
+                .displayName(display)
+                .countryCode(countryCode != null ? countryCode.trim().toUpperCase() : null)
+                .utcOffset(offset)
+                .currentLocalTime(localTime)
+                .isRecommended(true)
+                .build();
     }
 
     @Transactional
@@ -128,6 +146,9 @@ public class PortService {
                 throw new BusinessException("INVALID_TIME_ZONE", "Múi giờ IANA không hợp lệ: " + request.getTimeZoneId());
             }
             port.setTimeZoneId(request.getTimeZoneId());
+        }
+        if (request.getLocationType() != null) {
+            port.setLocationType(request.getLocationType());
         }
 
         port = portRepository.save(port);
@@ -207,6 +228,7 @@ public class PortService {
         res.setCurrentLocalTime(PortTimeZoneHelper.getCurrentLocalTimeIso(port.getTimeZoneId()));
         res.setLatitude(port.getLatitude());
         res.setLongitude(port.getLongitude());
+        res.setLocationType(port.getLocationType() != null ? port.getLocationType() : PortLocationType.PORT);
         res.setStatus(port.getStatus());
         if (port.getDestination() != null) {
             res.setDestinationId(port.getDestination().getDestinationId());
