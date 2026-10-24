@@ -30,10 +30,11 @@ public class RolePermissionInitializer implements CommandLineRunner {
     public void initializeRolePermissions() {
         log.info("Initializing role permissions...");
 
-        // ADMIN: identity administration and technical ship/device configuration only.
+        // ADMIN: identity administration, technical configuration and manifest-based ship import.
         saveRolePermission(Role.ADMIN, EnumSet.of(
                 Permission.USER_CREATE, Permission.USER_READ, Permission.USER_UPDATE,
                 Permission.USER_ROLE_ASSIGN, Permission.USER_STATUS_CHANGE,
+                Permission.SHIP_CREATE, Permission.SHIP_READ, Permission.SHIP_UPDATE,
                 Permission.SHIP_MODEL_CREATE, Permission.SHIP_MODEL_READ, Permission.SHIP_MODEL_UPDATE,
                 Permission.SHIP_MODEL_DELETE, Permission.SHIP_MODEL_PUBLISH,
                 Permission.SHIP_MODEL_OBJECT_CREATE, Permission.SHIP_MODEL_OBJECT_UPDATE,

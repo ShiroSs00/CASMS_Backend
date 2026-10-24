@@ -13,6 +13,7 @@ public interface PassengerBleIdentityRepository extends JpaRepository<PassengerB
             UUID cruiseId, UUID bookingPassengerId, PassengerBleIdentityStatus status);
     List<PassengerBleIdentity> findByCruiseCruiseIdAndBookingPassengerBookingPassengerIdOrderByAssignedAtDesc(
             UUID cruiseId, UUID bookingPassengerId);
+    @org.springframework.data.jpa.repository.EntityGraph(attributePaths = {"bookingPassenger", "bookingPassenger.passenger"})
     List<PassengerBleIdentity> findByCruiseCruiseIdAndStatusOrderByAssignedAtDesc(
             UUID cruiseId, PassengerBleIdentityStatus status);
     boolean existsByCruiseCruiseIdAndActiveBleIdentifier(UUID cruiseId, String bleIdentifier);
