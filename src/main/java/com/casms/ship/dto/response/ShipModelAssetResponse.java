@@ -17,5 +17,7 @@ public record ShipModelAssetResponse(
         int mappedCabinCount,
         int deckCount,
         int mappedDeckCount,
-        List<Integer> deckNumbers) {
+        List<Integer> deckNumbers,
+        String shipManufacturerName,
+        String modelProvider) {
 }

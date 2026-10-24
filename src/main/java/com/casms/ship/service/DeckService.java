@@ -37,6 +37,11 @@ public class DeckService {
 
     @Transactional
     public DeckResponse create(DeckCreateRequest request) {
+        if (request.getModelPositionX() != null || request.getModelPositionY() != null || request.getModelPositionZ() != null
+                || request.getModelRotationX() != null || request.getModelRotationY() != null || request.getModelRotationZ() != null) {
+            throw new BusinessException("DECK_MODEL_FIELDS_IMMUTABLE",
+                    "Deck model transforms are managed by the registered ship model import workflow");
+        }
         Ship ship = shipRepository.findById(request.getShipId())
                 .orElseThrow(() -> new ResourceNotFoundException("Ship", request.getShipId()));
 
@@ -70,9 +75,6 @@ public class DeckService {
         deck.setDeckNumber(deckNumber);
         deck.setDeckName(deckName);
         deck.setPriceMultiplier(request.getPriceMultiplier() != null ? request.getPriceMultiplier() : java.math.BigDecimal.valueOf(1.00));
-        applyModelTransform(deck, request.getModelPositionX(), request.getModelPositionY(), request.getModelPositionZ(),
-                request.getModelRotationX(), request.getModelRotationY(), request.getModelRotationZ());
-
         deck = deckRepository.save(deck);
         return mapToResponse(deck);
     }
@@ -98,6 +100,12 @@ public class DeckService {
     public DeckResponse update(UUID deckId, DeckUpdateRequest request) {
         Deck deck = getDeckById(deckId);
 
+        if (request.getModelPositionX() != null || request.getModelPositionY() != null || request.getModelPositionZ() != null
+                || request.getModelRotationX() != null || request.getModelRotationY() != null || request.getModelRotationZ() != null) {
+            throw new BusinessException("DECK_MODEL_FIELDS_IMMUTABLE",
+                    "Deck model transforms are managed by the registered ship model import workflow");
+        }
+
         if (request.getDeckNumber() != null && !request.getDeckNumber().equals(deck.getDeckNumber())) {
             if (request.getDeckNumber() < 1) {
                 throw new BusinessException("INVALID_DECK_NUMBER", "Deck number must be at least 1");
@@ -119,21 +127,6 @@ public class DeckService {
         if (request.getPriceMultiplier() != null) {
             deck.setPriceMultiplier(request.getPriceMultiplier());
         }
-        Double px = request.getModelPositionX() == null ? deck.getModelPositionX() : request.getModelPositionX();
-        Double py = request.getModelPositionY() == null ? deck.getModelPositionY() : request.getModelPositionY();
-        Double pz = request.getModelPositionZ() == null ? deck.getModelPositionZ() : request.getModelPositionZ();
-        Double rx = request.getModelRotationX() == null ? deck.getModelRotationX() : request.getModelRotationX();
-        Double ry = request.getModelRotationY() == null ? deck.getModelRotationY() : request.getModelRotationY();
-        Double rz = request.getModelRotationZ() == null ? deck.getModelRotationZ() : request.getModelRotationZ();
-        validateTriplet(px, py, pz, "position");
-        validateTriplet(rx, ry, rz, "rotation");
-        if (px != null) deck.setModelPositionX(coordinate(px));
-        if (py != null) deck.setModelPositionY(coordinate(py));
-        if (pz != null) deck.setModelPositionZ(coordinate(pz));
-        if (rx != null) deck.setModelRotationX(coordinate(rx));
-        if (ry != null) deck.setModelRotationY(coordinate(ry));
-        if (rz != null) deck.setModelRotationZ(coordinate(rz));
-
         deck = deckRepository.save(deck);
         return mapToResponse(deck);
     }
@@ -215,30 +208,6 @@ public class DeckService {
         res.setCreatedAt(deck.getCreatedAt());
         res.setUpdatedAt(deck.getUpdatedAt());
         return res;
-    }
-
-    private void applyModelTransform(Deck deck, Double x, Double y, Double z, Double rx, Double ry, Double rz) {
-        validateTriplet(x, y, z, "position");
-        validateTriplet(rx, ry, rz, "rotation");
-        deck.setModelPositionX(x == null ? null : coordinate(x));
-        deck.setModelPositionY(y == null ? null : coordinate(y));
-        deck.setModelPositionZ(z == null ? null : coordinate(z));
-        deck.setModelRotationX(rx == null ? null : coordinate(rx));
-        deck.setModelRotationY(ry == null ? null : coordinate(ry));
-        deck.setModelRotationZ(rz == null ? null : coordinate(rz));
-    }
-
-    private void validateTriplet(Double x, Double y, Double z, String name) {
-        if ((x == null || y == null || z == null) && (x != null || y != null || z != null)) {
-            throw new BusinessException("INCOMPLETE_MODEL_TRANSFORM", "Model " + name + " requires x, y and z values together");
-        }
-    }
-
-    private Double coordinate(Double value) {
-        if (!Double.isFinite(value) || Math.abs(value) > 1000) {
-            throw new BusinessException("INVALID_MODEL_TRANSFORM", "Model coordinates and rotations must be finite and within ±1000 model units");
-        }
-        return value;
     }
 
     private CabinSummaryResponse mapToCabinResponse(Cabin cabin) {

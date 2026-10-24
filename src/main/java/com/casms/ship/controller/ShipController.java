@@ -6,6 +6,7 @@ import com.casms.ship.dto.request.ShipUpdateRequest;
 import com.casms.ship.dto.response.CruiseSummaryResponse;
 import com.casms.ship.dto.response.ShipCapacitySummaryResponse;
 import com.casms.ship.dto.response.ShipResponse;
+import com.casms.ship.dto.response.ShipReadinessAssessmentResponse;
 import com.casms.ship.enums.ShipStatus;
 import com.casms.ship.service.ShipService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -48,7 +49,7 @@ public class ShipController {
     }
 
     @Operation(summary = "Chi tiết tàu", description = "Xem thông tin chi tiết của một tàu theo ID")
-    @PreAuthorize("permitAll()")
+    @PreAuthorize("hasAuthority('SHIP_READ')")
     @GetMapping("/{shipId}")
     public ApiResponse<ShipResponse> detail(
             @Parameter(description = "ID của tàu", required = true) @PathVariable UUID shipId) {
@@ -134,5 +135,11 @@ public class ShipController {
     public ApiResponse<Boolean> validateOperationalReadiness(
             @Parameter(description = "ID của tàu", required = true) @PathVariable UUID shipId) {
         return ApiResponse.success(service.validateOperationalReadiness(shipId));
+    }
+
+    @PreAuthorize("hasAuthority('SHIP_READINESS')")
+    @GetMapping("/{shipId}/readiness-assessment")
+    public ApiResponse<ShipReadinessAssessmentResponse> assessOperationalReadiness(@PathVariable UUID shipId) {
+        return ApiResponse.success(service.assessOperationalReadiness(shipId));
     }
 }

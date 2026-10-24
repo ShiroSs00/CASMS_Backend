@@ -91,6 +91,8 @@ public class ShipModelAssetService {
         model.setShip(ship);
         model.setModelKey(request.modelKey());
         model.setAssetVersion(request.assetVersion());
+        model.setShipManufacturerName(optionalManifestText(manifest, "shipManufacturerName"));
+        model.setModelProvider(optionalManifestText(manifest, "modelProvider"));
         model.setAssetRevision(manifest.path("revision").asText());
         model.setVersion(request.modelKey() + "@" + request.assetVersion());
         model.setFileUri("database://model-assets/" + request.modelKey() + "/" + request.assetVersion() + "/manifest.json");
@@ -218,6 +220,11 @@ public class ShipModelAssetService {
         return value;
     }
 
+    private static String optionalManifestText(JsonNode manifest, String field) {
+        String value = manifest.path(field).asText("").trim();
+        return value.isEmpty() ? null : value;
+    }
+
     private static Integer manifestInt(JsonNode manifest, String field) {
         JsonNode value = manifest.path(field);
         return value.isIntegralNumber() && value.canConvertToInt() ? value.asInt() : null;
@@ -242,7 +249,7 @@ public class ShipModelAssetService {
         return new ShipModelAssetResponse(modelId, model.getModelKey(), model.getAssetRevision(), model.getAssetVersion(),
                 apiStatus(model), base, base + "manifest.json", manifest.path("units").asText(),
                 manifest.path("gltfAxes").path("up").asText(), manifest.path("cabins").size(), mappedCabins,
-                deckNumbers.size(), mappedDecks, deckNumbers);
+                deckNumbers.size(), mappedDecks, deckNumbers, model.getShipManufacturerName(), model.getModelProvider());
     }
 
     @Transactional(readOnly = true)

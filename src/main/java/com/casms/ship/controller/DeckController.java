@@ -44,14 +44,14 @@ public class DeckController {
         return ApiResponse.success(service.list(pageable));
     }
 
-    @PreAuthorize("permitAll()")
+    @PreAuthorize("hasAuthority('DECK_READ')")
     @GetMapping("/by-ship/{shipId}")
     public ApiResponse<Page<DeckResponse>> listByShip(@PathVariable UUID shipId, Pageable pageable) {
         return ApiResponse.success(service.listByShip(shipId, pageable));
     }
 
     @Operation(summary = "Chi tiết tầng", description = "Lấy thông tin chi tiết của một tầng theo ID")
-    @PreAuthorize("permitAll()")
+    @PreAuthorize("hasAuthority('DECK_READ')")
     @GetMapping("/{deckId}")
     public ApiResponse<DeckResponse> detail(
             @Parameter(description = "ID của tầng", required = true) @PathVariable UUID deckId) {
@@ -78,7 +78,7 @@ public class DeckController {
     }
 
     @Operation(summary = "Danh sách phòng theo tầng", description = "Lấy toàn bộ danh sách cabin thuộc về tầng này")
-    @PreAuthorize("permitAll()")
+    @PreAuthorize("hasAuthority('DECK_READ')")
     @GetMapping("/{deckId}/cabins")
     public ApiResponse<List<CabinSummaryResponse>> listCabinsByDeck(
             @Parameter(description = "ID của tầng", required = true) @PathVariable UUID deckId) {

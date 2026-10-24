@@ -40,6 +40,14 @@ public class ShipModel {
     @Column(name = "asset_version", length = 80)
     private String assetVersion;
 
+    /** Vessel builder/manufacturer. This is separate from the model asset author/provider. */
+    @Column(name = "ship_manufacturer_name", length = 200)
+    private String shipManufacturerName;
+
+    /** Organization or person that supplied/authored this 3D asset. */
+    @Column(name = "model_provider", length = 200)
+    private String modelProvider;
+
     @Column(name = "file_uri", nullable = false, length = 1000)
     private String fileUri;
 

@@ -45,20 +45,20 @@ public class CabinController {
         return ApiResponse.success(service.list(pageable));
     }
 
-    @PreAuthorize("permitAll()")
+    @PreAuthorize("hasAuthority('CABIN_READ')")
     @GetMapping("/by-ship/{shipId}")
     public ApiResponse<Page<CabinSummaryResponse>> listByShip(@PathVariable UUID shipId, Pageable pageable) {
         return ApiResponse.success(service.listByShip(shipId, pageable));
     }
 
-    @PreAuthorize("permitAll()")
+    @PreAuthorize("hasAuthority('CABIN_READ')")
     @GetMapping("/by-deck/{deckId}")
     public ApiResponse<Page<CabinSummaryResponse>> listByDeck(@PathVariable UUID deckId, Pageable pageable) {
         return ApiResponse.success(service.listByDeck(deckId, pageable));
     }
 
     @Operation(summary = "Chi tiết phòng", description = "Lấy thông tin chi tiết của một cabin theo ID")
-    @PreAuthorize("permitAll()")
+    @PreAuthorize("hasAuthority('CABIN_READ')")
     @GetMapping("/{cabinId}")
     public ApiResponse<CabinSummaryResponse> detail(
             @Parameter(description = "ID của phòng", required = true) @PathVariable UUID cabinId) {

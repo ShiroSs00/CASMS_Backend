@@ -74,6 +74,38 @@ class ShipModelImportPostgresIntegrationTest {
     private final List<Path> tempArchives = new ArrayList<>();
 
     @Test
+    void shipDeckCabinReadAndReadinessRoutesRequireTheirPermissions() throws Exception {
+        Ship ship = createShip(2);
+        String shipManager = token(Role.SHIP_MANAGER);
+        String adminWithoutShipRead = token(Role.ADMIN);
+
+        mockMvc.perform(get("/ships/{shipId}", ship.getShipId()).header("Authorization", "Bearer " + shipManager))
+                .andExpect(status().isOk());
+        mockMvc.perform(get("/ships/{shipId}", ship.getShipId()).header("Authorization", "Bearer " + adminWithoutShipRead))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(get("/decks/by-ship/{shipId}", ship.getShipId()).header("Authorization", "Bearer " + shipManager))
+                .andExpect(status().isOk());
+        mockMvc.perform(get("/decks/by-ship/{shipId}", ship.getShipId()).header("Authorization", "Bearer " + adminWithoutShipRead))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(get("/cabins/by-ship/{shipId}", ship.getShipId()).header("Authorization", "Bearer " + shipManager))
+                .andExpect(status().isOk());
+        mockMvc.perform(get("/cabins/by-ship/{shipId}", ship.getShipId()).header("Authorization", "Bearer " + adminWithoutShipRead))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(get("/ships/{shipId}/readiness-assessment", ship.getShipId())
+                        .header("Authorization", "Bearer " + shipManager))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.readiness").value("NOT_READY"))
+                .andExpect(jsonPath("$.data.deckCount").value(0))
+                .andExpect(jsonPath("$.data.cabinCount").value(0));
+        mockMvc.perform(get("/ships/{shipId}/readiness-assessment", ship.getShipId())
+                        .header("Authorization", "Bearer " + adminWithoutShipRead))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
     void committedZaandamBundle_uploadImportReadAndRetry_isIdempotent() throws Exception {
         Ship ship = createShip(10);
         String token = token(Role.SHIP_MANAGER);
@@ -286,6 +318,7 @@ class ShipModelImportPostgresIntegrationTest {
                 .andExpect(status().isCreated()).andReturn();
         JsonNode first = mapper.readTree(firstResult.getResponse().getContentAsByteArray()).path("data");
         UUID shipId = UUID.fromString(first.path("shipId").asText());
+        testShipIds.add(shipId);
         assertTrue(first.path("shipCreated").asBoolean());
         Ship createdShip = ships.findById(shipId).orElseThrow();
         assertEquals(key, createdShip.getManifestModelId());
@@ -328,6 +361,7 @@ class ShipModelImportPostgresIntegrationTest {
                 .andExpect(status().isCreated()).andReturn();
         JsonNode registered = mapper.readTree(registration.getResponse().getContentAsByteArray()).path("data");
         UUID shipId = UUID.fromString(registered.path("shipId").asText());
+        testShipIds.add(shipId);
         UUID modelId = UUID.fromString(registered.path("shipModelId").asText());
         Ship ship = ships.findById(shipId).orElseThrow();
         assertEquals(13, ship.getTotalDecks());

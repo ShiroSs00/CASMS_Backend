@@ -15,4 +15,6 @@ public class ShipModelCreateRequest {
     @NotBlank @Size(max = 30) private String coordinateSystem = "MODEL_LOCAL";
     @NotBlank @Size(max = 30) private String coordinateUnit = "model_unit";
     @NotNull @Positive private Double modelUnitsPerMeter = 1.0;
+    @Size(max = 200) private String shipManufacturerName;
+    @Size(max = 200) private String modelProvider;
 }

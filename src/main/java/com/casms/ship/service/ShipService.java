@@ -224,24 +224,33 @@ public class ShipService {
 
     @Transactional(readOnly = true)
     public boolean validateOperationalReadiness(UUID shipId) {
+        return assessOperationalReadiness(shipId).readiness().equals("READY");
+    }
+
+    @Transactional(readOnly = true)
+    public ShipReadinessAssessmentResponse assessOperationalReadiness(UUID shipId) {
         Ship ship = getShipById(shipId);
-        
-        // A ship is operationally ready if:
-        // 1. Status is ACTIVE
-        if (ship.getStatus() != ShipStatus.ACTIVE) {
-            return false;
-        }
-        
-        // 2. Has at least 1 deck and 1 cabin configured
         long deckCount = deckRepository.countByShipShipId(shipId);
         long cabinCount = cabinRepository.countByShipShipId(shipId);
-        
-        if (deckCount == 0 || cabinCount == 0) {
-            return false;
+        List<ShipReadinessAssessmentResponse.Issue> issues = new java.util.ArrayList<>();
+        String readiness;
+        if (ship.getStatus() != ShipStatus.ACTIVE) {
+            readiness = "BLOCKED";
+            issues.add(new ShipReadinessAssessmentResponse.Issue("SHIP_NOT_ACTIVE",
+                    "Ship lifecycle status must be ACTIVE for operational readiness"));
+        } else {
+            readiness = "READY";
+            if (deckCount == 0) {
+                readiness = "NOT_READY";
+                issues.add(new ShipReadinessAssessmentResponse.Issue("NO_CONFIGURED_DECKS", "Configure at least one deck"));
+            }
+            if (cabinCount == 0) {
+                readiness = "NOT_READY";
+                issues.add(new ShipReadinessAssessmentResponse.Issue("NO_CONFIGURED_CABINS", "Configure at least one cabin"));
+            }
         }
-        
-        // Additional operational regulation checks can be added here
-        return true;
+        return new ShipReadinessAssessmentResponse(shipId, ship.getStatus().name(), readiness, deckCount, cabinCount,
+                List.copyOf(issues), "Structural readiness only. Cruise schedule, regulatory approval, and cabin vacancy are not assessed.");
     }
 
     private void validateShipDimensions(Integer totalCapacity, Integer totalDecks) {

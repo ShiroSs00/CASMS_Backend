@@ -48,6 +48,8 @@ public class ShipModelService {
         model.setCoordinateSystem(request.getCoordinateSystem().trim());
         model.setCoordinateUnit(request.getCoordinateUnit().trim());
         model.setModelUnitsPerMeter(request.getModelUnitsPerMeter());
+        model.setShipManufacturerName(normalize(request.getShipManufacturerName()));
+        model.setModelProvider(normalize(request.getModelProvider()));
         model.setStatus(ShipModelStatus.DRAFT);
         return response(models.save(model));
     }
@@ -77,6 +79,8 @@ public class ShipModelService {
         model.setCoordinateSystem(request.getCoordinateSystem().trim());
         model.setCoordinateUnit(request.getCoordinateUnit().trim());
         model.setModelUnitsPerMeter(request.getModelUnitsPerMeter());
+        model.setShipManufacturerName(normalize(request.getShipManufacturerName()));
+        model.setModelProvider(normalize(request.getModelProvider()));
         return response(models.save(model));
     }
 
@@ -340,7 +344,8 @@ public class ShipModelService {
     }
     private static ShipModelResponse response(ShipModel m) {
         return new ShipModelResponse(m.getShipModelId(), m.getShip().getShipId(), m.getVersion(), m.getFileUri(), m.getFileFormat(),
-                m.getChecksumSha256(), m.getCoordinateSystem(), m.getCoordinateUnit(), m.getModelUnitsPerMeter(), m.getStatus(), m.getCreatedAt(), m.getUpdatedAt());
+                m.getChecksumSha256(), m.getCoordinateSystem(), m.getCoordinateUnit(), m.getModelUnitsPerMeter(), m.getStatus(), m.getCreatedAt(), m.getUpdatedAt(),
+                m.getShipManufacturerName(), m.getModelProvider());
     }
     private static ShipModelObjectResponse objectResponse(ShipModelObject o) {
         return new ShipModelObjectResponse(o.getShipModelObjectId(), o.getShipModel().getShipModelId(), o.getNodeKey(), o.getDisplayName(),
