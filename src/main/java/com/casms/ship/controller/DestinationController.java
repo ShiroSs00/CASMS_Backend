@@ -78,7 +78,7 @@ public class DestinationController {
     }
 
     @Operation(summary = "Danh sách cảng theo điểm đến", description = "Lấy danh sách các cảng thuộc về điểm đến này")
-    @PreAuthorize("hasAuthority('DESTINATION_PORTS_VIEW')")
+    @PreAuthorize("permitAll()")
     @GetMapping("/{destinationId}/ports")
     public ApiResponse<List<PortSummaryResponse>> listPortsByDestination(
             @Parameter(description = "ID của điểm đến", required = true) @PathVariable UUID destinationId) {

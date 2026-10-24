@@ -22,4 +22,8 @@ public interface PortRepository extends JpaRepository<Port, UUID> {
 
     @Query("SELECT p FROM Port p WHERE p.status = 'ACTIVE'")
     List<Port> findAllActivePorts();
+
+    List<Port> findByDestinationDestinationIdOrderByPortNameAsc(UUID destinationId);
+
+    List<Port> findByDestinationDestinationIdAndStatusOrderByPortNameAsc(UUID destinationId, PortStatus status);
 }

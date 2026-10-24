@@ -34,6 +34,24 @@ public class CruiseStopResponse {
     @Schema(description = "Tên cảng", example = "Cảng Hải Phòng")
     private String portName;
 
+    @Schema(description = "Múi giờ của cảng", example = "Asia/Tokyo")
+    private String portTimeZoneId;
+
+    @Schema(description = "Độ lệch giờ UTC của cảng", example = "+09:00")
+    private String portUtcOffset;
+
+    @Schema(description = "Chuỗi hiển thị múi giờ cảng", example = "Asia/Tokyo (UTC+09:00)")
+    private String formattedPortTimeZone;
+
+    @Schema(description = "Múi giờ trên tàu", example = "Asia/Singapore")
+    private String shipTimeZoneId;
+
+    @Schema(description = "Độ lệch giờ UTC trên tàu", example = "+08:00")
+    private String shipUtcOffset;
+
+    @Schema(description = "Chuỗi hiển thị múi giờ trên tàu", example = "Asia/Singapore (UTC+08:00)")
+    private String formattedShipTimeZone;
+
     @Schema(description = "ID điểm đến", example = "3fa85f64-5717-4562-b3fc-2c963f66afa6")
     private UUID destinationId;
 
