@@ -56,6 +56,12 @@ public class TripPlanEntryResponse {
     @Schema(description = "Tên tầng", example = "Lotus Wellness & Spa Deck")
     private String deckName;
 
+    @Schema(description = "ID tàu tham chiếu mẫu (khi lập lịch trình trước khi chốt tàu cụ thể)")
+    private UUID referenceShipId;
+
+    @Schema(description = "Tên tàu tham chiếu mẫu", example = "Paradise Elegance")
+    private String referenceShipName;
+
     @Schema(description = "Phân loại danh mục hoạt động trên tàu", example = "SPORTS_WELLNESS")
     private com.casms.activity.enums.OnboardActivityCategory category;
 

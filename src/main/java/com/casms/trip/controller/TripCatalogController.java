@@ -100,7 +100,8 @@ public class TripCatalogController {
                         "EMBARKATION_DAY_1",
                         "DISEMBARKATION_LAST_DAY",
                         "MAKER_CHECKER_SEPARATION",
-                        "TIME_BASIS_PORT_OR_SHIP"
+                        "TIME_BASIS_PORT_OR_SHIP",
+                        "DECK_CABIN_REFERENCE_POLICY"
                 ))
                 .domesticRegions(domesticRegions)
                 .countries(countries)
@@ -115,7 +116,7 @@ public class TripCatalogController {
     @PreAuthorize("hasAuthority('TRIP_READ')")
     @GetMapping("/sources/activities")
     public ApiResponse<List<PlanningSourceActivityResponse>> getSourceActivities(
-            @Parameter(description = "Lọc theo danh mục hoạt động (ENTERTAINMENT, SPORTS_WELLNESS, FAMILY_KIDS, SPECIAL_EVENTS, WORKSHOPS_CLASSES)")
+            @Parameter(description = "Lọc theo danh mục hoạt động (ENTERTAINMENT, SPORTS_WELLNESS, FAMILY_KIDS, SPECIAL_EVENTS)")
             @RequestParam(required = false) OnboardActivityCategory category,
             @Parameter(description = "Từ khóa tìm kiếm theo tên hoặc mã hoạt động")
             @RequestParam(required = false) String keyword) {
@@ -376,8 +377,8 @@ public class TripCatalogController {
         return getSourceCabins(null, null, null);
     }
 
-    @Operation(summary = "Danh mục 5 nhóm hoạt động trên tàu",
-               description = "Cung cấp danh mục các nhóm hoạt động chuẩn (Giải trí, Thể thao & Sức khỏe, Gia đình & Trẻ em, Sự kiện đặc biệt, Trải nghiệm & Lớp học) cho Frontend render tabs/chips bộ lọc (yêu cầu TRIP_READ)")
+    @Operation(summary = "Danh mục 4 nhóm hoạt động trên tàu",
+               description = "Cung cấp danh mục các nhóm hoạt động chuẩn (Giải trí, Thể thao & Sức khỏe, Gia đình & Trẻ em, Sự kiện đặc biệt) cho Frontend render tabs/chips bộ lọc (yêu cầu TRIP_READ)")
     @PreAuthorize("hasAuthority('TRIP_READ')")
     @GetMapping("/catalogs/activity-categories")
     public ApiResponse<List<ActivityCategoryResponse>> getActivityCategories() {
@@ -386,7 +387,7 @@ public class TripCatalogController {
                         .code(OnboardActivityCategory.ENTERTAINMENT)
                         .name(OnboardActivityCategory.ENTERTAINMENT.getDisplayName())
                         .icon(OnboardActivityCategory.ENTERTAINMENT.getIcon())
-                        .description("Đại nhạc hội, biểu diễn ảo thuật & xiếc, ban nhạc Jazz, chiếu phim ngoài trời, tiệc DJ bể bơi")
+                        .description("Đại nhạc hội, biểu diễn ảo thuật & xiếc, ban nhạc Jazz, chiếu phim ngoài trời, tiệc DJ bể bơi, lớp trà chiều")
                         .build(),
                 ActivityCategoryResponse.builder()
                         .code(OnboardActivityCategory.SPORTS_WELLNESS)
@@ -405,12 +406,6 @@ public class TripCatalogController {
                         .name(OnboardActivityCategory.SPECIAL_EVENTS.getDisplayName())
                         .icon(OnboardActivityCategory.SPECIAL_EVENTS.getIcon())
                         .description("Đêm tiệc Gala Thuyền trưởng, White Night Deck Party, lễ hội đếm ngược, dạ vũ khiêu vũ hoàng gia")
-                        .build(),
-                ActivityCategoryResponse.builder()
-                        .code(OnboardActivityCategory.WORKSHOPS_CLASSES)
-                        .name(OnboardActivityCategory.WORKSHOPS_CLASSES.getDisplayName())
-                        .icon(OnboardActivityCategory.WORKSHOPS_CLASSES.getIcon())
-                        .description("Lớp học làm bánh Pháp & nấu ăn cùng bếp trưởng 5 sao, workshop pha chế cocktail, khiêu vũ")
                         .build()
         );
         return ApiResponse.success(result);
@@ -444,6 +439,7 @@ public class TripCatalogController {
                         .portCode(p.getPortCode())
                         .portName(p.getPortName())
                         .countryCode(p.getCountryCode())
+                        .domesticRegion(com.casms.trip.service.VietnamGeographyRegistry.resolveDomesticRegion(p))
                         .timeZoneId(p.getTimeZoneId())
                         .destinationId(p.getDestination() != null ? p.getDestination().getDestinationId() : null)
                         .destinationName(p.getDestination() != null ? p.getDestination().getDestinationName() : null)

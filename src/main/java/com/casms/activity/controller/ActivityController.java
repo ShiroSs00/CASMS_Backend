@@ -48,7 +48,7 @@ public class ActivityController {
             UUID deckId, Integer deckNumber, String deckName,
             UUID cabinId, String cabinNumber,
             Integer capacity, BigDecimal price, String currencyCode, String status, UUID cruiseId) {
-        static ActivityView of(OnboardActivity a) {
+        public static ActivityView of(OnboardActivity a) {
             return new ActivityView(
                     a.getOnboardActivityId(), a.getActivityCode(), a.getActivityName(), a.getDescription(),
                     a.getStartTime(), a.getEndTime(), a.getLocation(),
@@ -57,7 +57,8 @@ public class ActivityController {
                     a.getDeck() != null ? a.getDeck().getDeckName() : null,
                     a.getCabin() != null ? a.getCabin().getCabinId() : null,
                     a.getCabin() != null ? a.getCabin().getCabinNumber() : null,
-                    a.getCapacity(), a.getPrice(), a.getCurrencyCode(), a.getStatus().name(), a.getCruise().getCruiseId());
+                    a.getCapacity(), a.getPrice(), a.getCurrencyCode(), a.getStatus().name(),
+                    a.getCruise() != null ? a.getCruise().getCruiseId() : null);
         }
     }
     public record RegistrationView(UUID id, UUID passengerId, UUID bookingPassengerId, UUID activityId, UUID excursionId, Integer quantity, String status, String notes, Instant registeredAt) {

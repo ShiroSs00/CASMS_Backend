@@ -145,10 +145,15 @@ public class PassengerItineraryService {
     }
 
     private static boolean belongsToCruise(Registration registration, UUID cruiseId) {
+        if (cruiseId == null) return false;
         if (registration.getOnboardActivity() != null) {
-            return registration.getOnboardActivity().getCruise().getCruiseId().equals(cruiseId);
+            return registration.getOnboardActivity().getCruise() != null
+                    && cruiseId.equals(registration.getOnboardActivity().getCruise().getCruiseId());
         }
         return registration.getShoreExcursion() != null
-                && registration.getShoreExcursion().getCruiseStop().getItinerary().getCruise().getCruiseId().equals(cruiseId);
+                && registration.getShoreExcursion().getCruiseStop() != null
+                && registration.getShoreExcursion().getCruiseStop().getItinerary() != null
+                && registration.getShoreExcursion().getCruiseStop().getItinerary().getCruise() != null
+                && cruiseId.equals(registration.getShoreExcursion().getCruiseStop().getItinerary().getCruise().getCruiseId());
     }
 }
