@@ -1,6 +1,7 @@
 package com.casms.trip.dto.request;
 
 import com.casms.trip.enums.TripPlanEntryKind;
+import com.fasterxml.jackson.annotation.JsonFormat;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -29,8 +30,17 @@ public class TripPlanEntryDraftDto {
     @Schema(description = "Khóa tương quan clientKey của điểm dừng (BẮT BUỘC nếu kind == SHORE_EXCURSION)", example = "stop-hph-01")
     private String stopClientKey;
 
-    @Schema(description = "ID dịch vụ liên kết trong Service Catalog hiện hữu (nếu có)")
+    @Schema(description = "ID hoạt động nguồn được chọn từ danh mục (nếu kind == ONBOARD_ACTIVITY)")
+    private UUID sourceActivityId;
+
+    @Schema(description = "ID tour tham quan nguồn được chọn từ danh mục (nếu kind == SHORE_EXCURSION)")
+    private UUID sourceExcursionId;
+
+    @Schema(description = "ID dịch vụ liên kết trong Service Catalog hiện hữu (nếu kind == SERVING_WINDOW)")
     private UUID serviceId;
+
+    @Schema(description = "Khóa nhận diện nhóm lặp (series/group key) để liên kết và chỉnh sửa đồng loạt các khung phục vụ/hoạt động lặp qua nhiều ngày", example = "series-buffet-breakfast")
+    private String seriesClientKey;
 
     @Schema(description = "ID điểm đến liên kết cho tour trên bờ (nếu có)")
     private UUID destinationId;
@@ -45,7 +55,8 @@ public class TripPlanEntryDraftDto {
     private Integer startDayNumber;
 
     @NotNull(message = "Planned start time is required")
-    @Schema(description = "Giờ bắt đầu tương đối", example = "09:00:00")
+    @JsonFormat(pattern = "HH:mm:ss", shape = JsonFormat.Shape.STRING)
+    @Schema(type = "string", pattern = "^(0[0-9]|1[0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]$", description = "Giờ bắt đầu tương đối", example = "09:00:00")
     private LocalTime plannedStartTime;
 
     @NotNull(message = "End day number is required")
@@ -53,10 +64,11 @@ public class TripPlanEntryDraftDto {
     private Integer endDayNumber;
 
     @NotNull(message = "Planned end time is required")
-    @Schema(description = "Giờ kết thúc tương đối", example = "16:00:00")
+    @JsonFormat(pattern = "HH:mm:ss", shape = JsonFormat.Shape.STRING)
+    @Schema(type = "string", pattern = "^(0[0-9]|1[0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]$", description = "Giờ kết thúc tương đối", example = "16:00:00")
     private LocalTime plannedEndTime;
 
-    @Schema(description = "Múi giờ IANA áp dụng cho sự kiện này (mặc định dùng múi giờ cảng cho tour, múi giờ tàu cho onboard)")
+    @Schema(description = "Múi giờ IANA áp dụng cho sự kiện này (mặc định dùng múi giờ cảng cho tour, Asia/Ho_Chi_Minh cho tàu/khung phục vụ)", example = "Asia/Ho_Chi_Minh")
     private String timeZoneId;
 
     @Size(max = 255)

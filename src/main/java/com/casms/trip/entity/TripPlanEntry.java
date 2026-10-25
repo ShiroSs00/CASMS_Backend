@@ -43,6 +43,15 @@ public class TripPlanEntry {
     @Column(name = "service_id")
     private UUID serviceId;
 
+    @Column(name = "source_activity_id")
+    private UUID sourceActivityId;
+
+    @Column(name = "source_excursion_id")
+    private UUID sourceExcursionId;
+
+    @Column(name = "series_client_key", length = 100)
+    private String seriesClientKey;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "destination_id")
     private Destination destination;

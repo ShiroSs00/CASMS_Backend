@@ -37,11 +37,13 @@ D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\ship\service\Itinerar
 D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\ship\service\OperationalIssueServiceTest.java
 D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\ship\service\OperationalRegulationServiceTest.java
 D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\ship\service\PassengerItineraryServiceTest.java
+D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\ship\service\PassengerTrackingOverviewTest.java
 D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\ship\service\PortDestinationTimeZoneServiceTest.java
 D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\ship\service\ShipModelImportPostgresIntegrationTest.java
 D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\ship\service\ShipReadinessAssessmentTest.java
 D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\ship\service\ShipRegulationServiceTest.java
 D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\ship\service\ShipServiceTest.java
 D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\trip\contract\TripPlanningContractTest.java
+D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\trip\service\TripPlanningEnhancementTest.java
 D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\trip\service\TripScheduleVersionServiceTest.java
 D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\trip\service\TripServiceTest.java

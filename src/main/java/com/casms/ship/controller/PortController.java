@@ -24,7 +24,8 @@ import java.util.UUID;
 @RestController
 @RequestMapping("/ports")
 @RequiredArgsConstructor
-public class PortController {
+public class
+PortController {
 
     private final PortService service;
 

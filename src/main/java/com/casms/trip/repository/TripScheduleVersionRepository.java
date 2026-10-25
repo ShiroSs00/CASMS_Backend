@@ -21,5 +21,7 @@ public interface TripScheduleVersionRepository extends JpaRepository<TripSchedul
 
     boolean existsByTrip_TripIdAndStatusIn(UUID tripId, Collection<TripScheduleVersionStatus> statuses);
 
+    boolean existsByTrip_TripIdAndStatus(UUID tripId, TripScheduleVersionStatus status);
+
     Optional<TripScheduleVersion> findByTrip_TripIdAndStatus(UUID tripId, TripScheduleVersionStatus status);
 }
