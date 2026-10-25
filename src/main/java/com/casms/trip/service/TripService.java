@@ -25,6 +25,11 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import com.casms.audit.AuditLog;
+import com.casms.audit.AuditRepository;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -36,7 +41,6 @@ import java.util.stream.Collectors;
 
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class TripService {
 
     private final TripRepository tripRepository;
@@ -45,6 +49,37 @@ public class TripService {
     private final UserRepository userRepository;
     private final BusinessCodeGenerator businessCodeGenerator;
     private final AuditService auditService;
+    private AuditRepository auditRepository;
+
+    public TripService(TripRepository tripRepository,
+                       TripScheduleVersionRepository versionRepository,
+                       TripPlanDayRepository dayRepository,
+                       UserRepository userRepository,
+                       BusinessCodeGenerator businessCodeGenerator,
+                       AuditService auditService) {
+        this.tripRepository = tripRepository;
+        this.versionRepository = versionRepository;
+        this.dayRepository = dayRepository;
+        this.userRepository = userRepository;
+        this.businessCodeGenerator = businessCodeGenerator;
+        this.auditService = auditService;
+    }
+
+    @Autowired
+    public TripService(TripRepository tripRepository,
+                       TripScheduleVersionRepository versionRepository,
+                       TripPlanDayRepository dayRepository,
+                       UserRepository userRepository,
+                       BusinessCodeGenerator businessCodeGenerator,
+                       AuditService auditService,
+                       @Autowired(required = false) AuditRepository auditRepository) {
+        this(tripRepository, versionRepository, dayRepository, userRepository, businessCodeGenerator, auditService);
+        this.auditRepository = auditRepository;
+    }
+
+    public void setAuditRepository(AuditRepository auditRepository) {
+        this.auditRepository = auditRepository;
+    }
 
     @Transactional
     public TripDetailResponse createTrip(TripCreateRequest request, UUID actorId) {
@@ -155,70 +190,38 @@ public class TripService {
                 throw new BusinessException(HttpStatus.UNPROCESSABLE_ENTITY, "TRIP_DURATION_LOCKED",
                         "Không thể thay đổi nhóm thời lượng, số ngày hoặc số đêm khi Trip đã có phiên bản được phê duyệt xuất bản.");
             }
-        } else {
-            if (request.getDurationGroup() != null) {
-                trip.setDurationGroup(request.getDurationGroup());
-            }
-
-            if (request.getDurationDays() != null && !request.getDurationDays().equals(trip.getDurationDays())) {
-                TripDurationGroup group = trip.getDurationGroup();
-                if (group == null) {
-                    int refDays = request.getDurationDays() != null ? request.getDurationDays() : trip.getDurationDays();
-                    group = refDays >= 3 ? TripDurationGroup.LONG : TripDurationGroup.SHORT;
-                    trip.setDurationGroup(group);
-                }
-                if (!group.isValidDays(request.getDurationDays())) {
-                    throw new BusinessException(HttpStatus.UNPROCESSABLE_ENTITY, "INVALID_DURATION",
-                            "Số ngày (" + request.getDurationDays() + ") không nằm trong giới hạn của nhóm "
-                                    + group + " (" + group.getMinDays() + " - " + group.getMaxDays() + " ngày)");
-                }
-
-                int oldDays = trip.getDurationDays();
-                int newDays = request.getDurationDays();
-
-                List<TripScheduleVersion> draftVersions = versionRepository.findByTrip_TripIdOrderByVersionNumberAsc(tripId)
-                        .stream()
-                        .filter(v -> v.getStatus() == TripScheduleVersionStatus.DRAFT)
-                        .collect(Collectors.toList());
-
-                // Prevent silent content deletion when reducing days via PATCH
-                if (newDays < oldDays) {
-                    for (TripScheduleVersion draftVer : draftVersions) {
-                        boolean hasEntries = draftVer.getEntries().stream()
-                                .anyMatch(e -> e.getEndDayNumber() > newDays || e.getStartDayNumber() > newDays);
-                        boolean hasStops = draftVer.getStops().stream()
-                                .anyMatch(s -> s.getDepartureDayNumber() > newDays || s.getArrivalDayNumber() > newDays);
-                        if (hasEntries || hasStops) {
-                            throw new BusinessException(HttpStatus.CONFLICT, "DAY_CONTENT_CONFLICT",
-                                    "Không thể giảm số ngày vì các ngày từ " + (newDays + 1) + " đến " + oldDays
-                                            + " đang chứa hoạt động hoặc điểm dừng cảng. Vui lòng sử dụng thao tác quản lý ngày hoặc xóa nội dung trước.");
-                        }
-                    }
-                }
-
-                trip.setDurationDays(newDays);
-
-                for (TripScheduleVersion draftVer : draftVersions) {
-                    if (newDays > oldDays) {
-                        for (int i = oldDays + 1; i <= newDays; i++) {
-                            TripPlanDay day = new TripPlanDay();
-                            day.setVersion(draftVer);
-                            day.setDayNumber(i);
-                            day.setDayType(null);
-                            day.setShipTimeZoneId("Asia/Ho_Chi_Minh");
-                            day.setTitle("Ngày " + i);
-                            draftVer.getDays().add(day);
-                        }
-                    } else {
-                        draftVer.getDays().removeIf(d -> d.getDayNumber() > newDays);
-                    }
-                    draftVer.setRevision(draftVer.getRevision() + 1);
-                    versionRepository.save(draftVer);
-                }
-            }
         }
 
-        if (request.getDurationNights() != null) {
+        // BE-09: durationDays can only change via /days/manage endpoint
+        if (request.getDurationDays() != null && !request.getDurationDays().equals(trip.getDurationDays())) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "INVALID_DAY_COUNT",
+                    "Số ngày (durationDays) chỉ có thể thay đổi thông qua endpoint quản lý ngày /days/manage.");
+        }
+
+        // BE-03: durationGroup policy
+        if (request.getDurationGroup() != null && !request.getDurationGroup().equals(trip.getDurationGroup())) {
+            if (versionRepository.existsByTrip_TripIdAndStatus(tripId, TripScheduleVersionStatus.IN_REVIEW)) {
+                throw new BusinessException(HttpStatus.CONFLICT, "CONCURRENT_REVIEW_IN_PROGRESS",
+                        "Không thể thay đổi nhóm thời lượng khi đang có phiên bản chờ duyệt (IN_REVIEW).");
+            }
+            if (!request.getDurationGroup().isValidDays(trip.getDurationDays())) {
+                throw new BusinessException(HttpStatus.UNPROCESSABLE_ENTITY, "INVALID_DURATION",
+                        "Nhóm thời lượng " + request.getDurationGroup() + " (" + request.getDurationGroup().getMinDays()
+                                + " - " + request.getDurationGroup().getMaxDays() + " ngày) không tương thích với số ngày hiện tại ("
+                                + trip.getDurationDays() + " ngày). Vui lòng điều chỉnh số ngày qua /days/manage trước.");
+            }
+            trip.setDurationGroup(request.getDurationGroup());
+        }
+
+        if (request.getDurationNights() != null && !request.getDurationNights().equals(trip.getDurationNights())) {
+            if (isLocked) {
+                throw new BusinessException(HttpStatus.UNPROCESSABLE_ENTITY, "TRIP_DURATION_LOCKED",
+                        "Không thể thay đổi số đêm khi Trip đã có phiên bản được phê duyệt xuất bản.");
+            }
+            if (request.getDurationNights() < 0 || request.getDurationNights() > trip.getDurationDays()) {
+                throw new BusinessException(HttpStatus.BAD_REQUEST, "INVALID_INPUT",
+                        "Số đêm (durationNights) không hợp lệ (phải từ 0 đến " + trip.getDurationDays() + ").");
+            }
             trip.setDurationNights(request.getDurationNights());
         }
         if (request.getName() != null && !request.getName().isBlank()) {
@@ -246,8 +249,8 @@ public class TripService {
             trip.setCandidateDestinations(request.getCandidateDestinations());
         }
 
-        trip.setRevision(trip.getRevision() + 1);
         trip = tripRepository.save(trip);
+        tripRepository.flush();
 
         if (auditService != null) {
             auditService.record(actorId, "PATCH_DRAFT", "Trip", trip.getTripId(), "SUCCESS", "Patched Trip " + trip.getTripCode());
@@ -258,6 +261,7 @@ public class TripService {
     @Transactional
     public TripDetailResponse updateTrip(UUID tripId, TripUpdateRequest request, UUID actorId) {
         TripDraftPatchRequest patch = new TripDraftPatchRequest();
+        patch.setExpectedRevision(request.getExpectedRevision());
         patch.setName(request.getName());
         patch.setDescription(request.getDescription());
         patch.setDurationGroup(request.getDurationGroup());
@@ -337,18 +341,22 @@ public class TripService {
                 day.setShipTimeZoneId("Asia/Ho_Chi_Minh");
                 day.setTitle("Ngày " + newDayNumber);
                 draftVer.getDays().add(day);
-                draftVer.setRevision(draftVer.getRevision() + 1);
-                versionRepository.save(draftVer);
+                draftVer = versionRepository.save(draftVer);
+                versionRepository.flush();
             }
 
             trip.setDurationDays(newDayNumber);
             trip.setDurationNights(Math.max(0, newDayNumber - 1));
-            trip.setRevision(trip.getRevision() + 1);
             trip = tripRepository.save(trip);
+            tripRepository.flush();
 
             if (auditService != null) {
                 auditService.record(actorId, "MANAGE_DAYS_ADD", "Trip", tripId, "SUCCESS",
-                        "Added Day " + newDayNumber + " to Trip " + trip.getTripCode());
+                        "Added Day " + newDayNumber + " to Trip " + trip.getTripCode() + " (primary version: " + versionId + ")");
+                for (TripScheduleVersion draftVer : draftVersions) {
+                    auditService.record(actorId, "MANAGE_DAYS_ADD", "TripScheduleVersion", draftVer.getVersionId(), "SUCCESS",
+                            "Added Day " + newDayNumber + " via Trip " + trip.getTripCode());
+                }
             }
         } else if (request.getAction() == TripDayManageAction.REMOVE) {
             int currentDays = trip.getDurationDays();
@@ -431,18 +439,22 @@ public class TripService {
                     }
                 }
 
-                draftVer.setRevision(draftVer.getRevision() + 1);
-                versionRepository.save(draftVer);
+                draftVer = versionRepository.save(draftVer);
+                versionRepository.flush();
             }
 
             trip.setDurationDays(newDayNumber);
             trip.setDurationNights(Math.max(0, newDayNumber - 1));
-            trip.setRevision(trip.getRevision() + 1);
             trip = tripRepository.save(trip);
+            tripRepository.flush();
 
             if (auditService != null) {
                 auditService.record(actorId, "MANAGE_DAYS_REMOVE", "Trip", tripId, "SUCCESS",
-                        "Removed Day " + targetDay + " from Trip " + trip.getTripCode());
+                        "Removed Day " + targetDay + " from Trip " + trip.getTripCode() + " (primary version: " + versionId + ")");
+                for (TripScheduleVersion draftVer : draftVersions) {
+                    auditService.record(actorId, "MANAGE_DAYS_REMOVE", "TripScheduleVersion", draftVer.getVersionId(), "SUCCESS",
+                            "Removed Day " + targetDay + " via Trip " + trip.getTripCode());
+                }
             }
         }
 
@@ -776,17 +788,34 @@ public class TripService {
     }
 
     @Transactional
-    public TripDetailResponse archiveTrip(UUID tripId, UUID actorId) {
+    public TripDetailResponse archiveTrip(UUID tripId, TripArchiveRequest request, UUID actorId) {
         Trip trip = getTripById(tripId);
         if (trip.getStatus() == TripStatus.ARCHIVED) {
             throw new BusinessException(HttpStatus.CONFLICT, "TRIP_ARCHIVED", "Trip đã ở trạng thái lưu trữ (ARCHIVED)");
         }
+        if (request != null && request.getExpectedRevision() != null && !request.getExpectedRevision().equals(trip.getRevision())) {
+            throw new BusinessException(HttpStatus.CONFLICT, "STALE_REVISION",
+                    "Revision của Trip không khớp (expected: " + request.getExpectedRevision() + ", current: " + trip.getRevision() + ")");
+        }
+        if (versionRepository.existsByTrip_TripIdAndStatus(tripId, TripScheduleVersionStatus.IN_REVIEW)) {
+            throw new BusinessException(HttpStatus.CONFLICT, "CONCURRENT_REVIEW_IN_PROGRESS",
+                    "Không thể lưu trữ Trip khi đang có phiên bản chờ duyệt (IN_REVIEW). Vui lòng xử lý hoặc thu hồi phiên bản trước.");
+        }
         trip.setStatus(TripStatus.ARCHIVED);
         trip = tripRepository.save(trip);
-        if (auditService != null && trip != null) {
-            auditService.record(actorId, "ARCHIVE_TRIP", "Trip", tripId, "SUCCESS", "Archived Trip " + trip.getTripCode());
+        tripRepository.flush();
+        if (auditService != null) {
+            String detail = "Archived Trip " + trip.getTripCode()
+                    + (request != null && request.getReason() != null && !request.getReason().isBlank()
+                            ? ". Lý do: " + request.getReason().trim() : "");
+            auditService.record(actorId, "ARCHIVE_TRIP", "Trip", tripId, "SUCCESS", detail);
         }
         return mapToDetailResponse(trip);
+    }
+
+    @Transactional
+    public TripDetailResponse archiveTrip(UUID tripId, UUID actorId) {
+        return archiveTrip(tripId, null, actorId);
     }
 
     public Trip getTripById(UUID tripId) {
@@ -810,6 +839,10 @@ public class TripService {
         res.setStatus(trip.getStatus());
         res.setStructuralLockedAt(trip.getStructuralLockedAt());
         res.setRevision(trip.getRevision());
+        if (trip.getCreatedByUser() != null) {
+            res.setCreatedByUserId(trip.getCreatedByUser().getUserId());
+            res.setCreatedByUserName(trip.getCreatedByUser().getUsername());
+        }
         res.setCreatedAt(trip.getCreatedAt());
         res.setUpdatedAt(trip.getUpdatedAt());
 
@@ -844,6 +877,7 @@ public class TripService {
         res.setRevision(trip.getRevision());
         if (trip.getCreatedByUser() != null) {
             res.setCreatedByUserId(trip.getCreatedByUser().getUserId());
+            res.setCreatedByUserName(trip.getCreatedByUser().getUsername());
         }
         res.setCreatedAt(trip.getCreatedAt());
         res.setUpdatedAt(trip.getUpdatedAt());
@@ -872,13 +906,17 @@ public class TripService {
         res.setContentHash(version.getContentHash());
         if (version.getCreator() != null) {
             res.setCreatorId(version.getCreator().getUserId());
+            res.setCreatorName(version.getCreator().getUsername());
         }
         if (version.getSubmitter() != null) {
             res.setSubmitterId(version.getSubmitter().getUserId());
+            res.setSubmitterName(version.getSubmitter().getUsername());
         }
         res.setSubmittedRevision(version.getSubmittedRevision());
+        res.setSubmittedAt(version.getSubmittedAt());
         if (version.getPublishedBy() != null) {
             res.setPublishedBy(version.getPublishedBy().getUserId());
+            res.setPublishedByName(version.getPublishedBy().getUsername());
         }
         res.setPublishedAt(version.getPublishedAt());
         res.setRejectionReason(version.getRejectionReason());
@@ -900,13 +938,17 @@ public class TripService {
         res.setContentHash(version.getContentHash());
         if (version.getCreator() != null) {
             res.setCreatorId(version.getCreator().getUserId());
+            res.setCreatorName(version.getCreator().getUsername());
         }
         if (version.getSubmitter() != null) {
             res.setSubmitterId(version.getSubmitter().getUserId());
+            res.setSubmitterName(version.getSubmitter().getUsername());
         }
         res.setSubmittedRevision(version.getSubmittedRevision());
+        res.setSubmittedAt(version.getSubmittedAt());
         if (version.getPublishedBy() != null) {
             res.setPublishedBy(version.getPublishedBy().getUserId());
+            res.setPublishedByName(version.getPublishedBy().getUsername());
         }
         res.setPublishedAt(version.getPublishedAt());
         res.setRejectionReason(version.getRejectionReason());
@@ -990,5 +1032,51 @@ public class TripService {
         }).collect(Collectors.toList()));
 
         return res;
+    }
+
+    @Transactional(readOnly = true)
+    public List<TripAuditResponse> getTripHistory(UUID tripId) {
+        Trip trip = getTripById(tripId);
+        List<AuditLog> logs = auditRepository != null
+                ? auditRepository.findByEntityIdOrderByOccurredAtDesc(trip.getTripId())
+                : List.of();
+        return logs.stream().map(this::mapToAuditResponse).collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public Page<TripAuditResponse> getTripHistory(UUID tripId, Pageable pageable) {
+        Trip trip = getTripById(tripId);
+        if (auditRepository == null) {
+            return Page.empty(pageable);
+        }
+        if (pageable == null) {
+            pageable = PageRequest.of(0, 20);
+        }
+        if (pageable.getSort().isUnsorted()) {
+            pageable = PageRequest.of(pageable.getPageNumber(), pageable.getPageSize(),
+                    Sort.by(Sort.Direction.DESC, "occurredAt"));
+        }
+        Page<AuditLog> logs = auditRepository.findByEntityIdOrderByOccurredAtDesc(trip.getTripId(), pageable);
+        return logs.map(this::mapToAuditResponse);
+    }
+
+    private TripAuditResponse mapToAuditResponse(AuditLog log) {
+        String actorName = null;
+        if (log.getActorUserId() != null && userRepository != null) {
+            actorName = userRepository.findById(log.getActorUserId())
+                    .map(User::getUsername)
+                    .orElse(null);
+        }
+        return TripAuditResponse.builder()
+                .auditId(log.getAuditId())
+                .actorUserId(log.getActorUserId())
+                .actorName(actorName)
+                .action(log.getAction())
+                .entityType(log.getEntityType())
+                .entityId(log.getEntityId())
+                .result(log.getResult())
+                .detail(log.getDetail())
+                .occurredAt(log.getOccurredAt())
+                .build();
     }
 }

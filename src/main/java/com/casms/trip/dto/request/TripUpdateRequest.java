@@ -13,6 +13,9 @@ import java.util.List;
 @Schema(description = "Yêu cầu cập nhật thông tin khung Trip")
 public class TripUpdateRequest {
 
+    @Schema(description = "Revision hiện tại của Trip để đối chiếu lạc quan (optimistic lock)")
+    private Long expectedRevision;
+
     @Size(max = 200, message = "Trip name must not exceed 200 characters")
     @Schema(description = "Tên hành trình định tuyến Trip")
     private String name;

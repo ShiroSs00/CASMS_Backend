@@ -6,18 +6,24 @@ import com.casms.security.principal.CasmsPrincipal;
 import com.casms.trip.dto.request.ActionRevisionRequest;
 import com.casms.trip.dto.request.ScheduleDraftSaveRequest;
 import com.casms.trip.dto.request.TripDayManageRequest;
+import com.casms.trip.dto.request.VersionCancelRequest;
 import com.casms.trip.dto.request.VersionReturnRequest;
+import com.casms.trip.dto.request.VersionWithdrawRequest;
 import com.casms.trip.dto.response.TripAuditResponse;
 import com.casms.trip.dto.response.TripDayManageResponse;
 import com.casms.trip.dto.response.TripScheduleVersionDetailResponse;
 import com.casms.trip.dto.response.ValidationReport;
 import com.casms.trip.service.TripScheduleVersionService;
 import com.casms.trip.service.TripService;
+import com.casms.trip.dto.response.TripReviewQueueItemResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -88,6 +94,30 @@ public class TripScheduleVersionController {
                 versionService.returnToDraftById(versionId, request, actorId));
     }
 
+    @Operation(summary = "Hủy bản nháp dở dang (Cancel Draft)", description = "Hủy bỏ bản nháp dở dang, giải phóng Trip để tạo bản nháp mới mà không bị kẹt CONCURRENT_UNFINISHED_VERSION, giữ dấu vết audit.")
+    @PreAuthorize("hasAuthority('TRIP_PLAN_WRITE')")
+    @PostMapping("/{versionId}/cancel")
+    public ApiResponse<TripScheduleVersionDetailResponse> cancelDraft(
+            @Parameter(description = "ID của phiên bản lịch trình", required = true) @PathVariable UUID versionId,
+            @RequestBody(required = false) VersionCancelRequest request,
+            @AuthenticationPrincipal CasmsPrincipal principal) {
+        UUID actorId = principal != null ? principal.getUserId() : null;
+        return ApiResponse.success("Cancelled version draft successfully",
+                versionService.cancelDraftById(versionId, request, actorId));
+    }
+
+    @Operation(summary = "Thu hồi phiên bản đang chờ duyệt (Withdraw from Review)", description = "Thu hồi phiên bản từ IN_REVIEW về DRAFT để tiếp tục chỉnh sửa trước khi người duyệt thẩm định, giải phóng khỏi hàng đợi duyệt.")
+    @PreAuthorize("hasAuthority('TRIP_PLAN_SUBMIT') or hasAuthority('TRIP_PLAN_WRITE')")
+    @PostMapping("/{versionId}/withdraw")
+    public ApiResponse<TripScheduleVersionDetailResponse> withdraw(
+            @Parameter(description = "ID của phiên bản lịch trình", required = true) @PathVariable UUID versionId,
+            @RequestBody(required = false) VersionWithdrawRequest request,
+            @AuthenticationPrincipal CasmsPrincipal principal) {
+        UUID actorId = principal != null ? principal.getUserId() : null;
+        return ApiResponse.success("Withdrawn version from review successfully",
+                versionService.withdrawById(versionId, request, actorId));
+    }
+
     @Operation(summary = "Phê duyệt xuất bản (Maker-Checker)", description = "Phê duyệt phiên bản từ IN_REVIEW sang PUBLISHED. Tự động kiểm tra thẩm định lại và quy tắc Maker-Checker.")
     @PreAuthorize("hasAuthority('TRIP_PLAN_REVIEW')")
     @PostMapping("/{versionId}/publish")
@@ -103,11 +133,25 @@ public class TripScheduleVersionController {
                 versionService.publishVersionById(versionId, expectedRevision, principal.getUserId()));
     }
 
-    @Operation(summary = "Lịch sử kiểm toán phiên bản", description = "Tra cứu nhật ký audit events của phiên bản; không trả credentials hoặc PII không cần thiết.")
+    @Operation(summary = "Hàng đợi duyệt lịch trình (Review Queue)", description = "Lấy danh sách các phiên bản lịch trình đang ở trạng thái IN_REVIEW chờ duyệt, hỗ trợ phân trang và sắp xếp.")
+    @PreAuthorize("hasAuthority('TRIP_PLAN_REVIEW')")
+    @GetMapping("/review-queue")
+    public ApiResponse<Page<TripReviewQueueItemResponse>> getReviewQueue(Pageable pageable) {
+        return ApiResponse.success(versionService.getReviewQueue(pageable));
+    }
+
+    @Operation(summary = "Lịch sử kiểm toán phiên bản", description = "Tra cứu nhật ký audit events của phiên bản (hỗ trợ phân trang tùy chọn khi truyền page, size); không trả credentials hoặc PII không cần thiết.")
     @PreAuthorize("hasAuthority('TRIP_READ')")
     @GetMapping("/{versionId}/history")
-    public ApiResponse<List<TripAuditResponse>> getVersionHistory(
-            @Parameter(description = "ID của phiên bản lịch trình", required = true) @PathVariable UUID versionId) {
+    public ApiResponse<?> getVersionHistory(
+            @Parameter(description = "ID của phiên bản lịch trình", required = true) @PathVariable UUID versionId,
+            @RequestParam(required = false) Integer page,
+            @RequestParam(required = false) Integer size) {
+        if (page != null || size != null) {
+            int p = page != null ? page : 0;
+            int s = size != null ? size : 20;
+            return ApiResponse.success(versionService.getVersionHistory(versionId, PageRequest.of(p, s)));
+        }
         return ApiResponse.success(versionService.getVersionHistory(versionId));
     }
 

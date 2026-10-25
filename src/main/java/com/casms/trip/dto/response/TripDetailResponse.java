@@ -36,6 +36,7 @@ public class TripDetailResponse {
     private TripScheduleVersionStatus latestVersionStatus;
     private UUID clonedDraftVersionId;
     private UUID createdByUserId;
+    private String createdByUserName;
     private Instant createdAt;
     private Instant updatedAt;
     private List<TripScheduleVersionSummaryResponse> versions = new ArrayList<>();

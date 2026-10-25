@@ -23,6 +23,8 @@ public class TripPlanEntryResponse {
     private String sourceActivityTitle;
     private UUID sourceExcursionId;
     private String sourceExcursionTitle;
+    private UUID supplierId;
+    private String supplierName;
     private UUID serviceId;
     private String serviceName;
     @Schema(description = "Khóa nhận diện nhóm lặp (series/group key) để liên kết và chỉnh sửa đồng loạt", example = "series-buffet-breakfast")
