@@ -16,6 +16,7 @@ com\casms\identity\service\RolePermissionInitializerTest.class
 com\casms\ship\service\ShipModelImportPostgresIntegrationTest$FileBackedMultipartFile.class
 com\casms\ship\service\PortDestinationTimeZoneServiceTest.class
 com\casms\trip\service\TripServiceTest.class
+com\casms\ship\service\PassengerTrackingOverviewTest.class
 com\casms\activity\service\ShoreExcursionServiceTest.class
 com\casms\booking\service\BookingServiceTest.class
 com\casms\servicepackage\controller\ServicepackageControllerTest.class
@@ -27,6 +28,7 @@ com\casms\payment\service\PaymentServiceTest.class
 com\casms\servicepackage\service\ServiceRequestServiceTest.class
 com\casms\trip\contract\TripPlanningContractTest.class
 com\casms\ship\service\ItineraryServiceTest.class
+com\casms\trip\service\TripPlanningEnhancementTest.class
 com\casms\identity\service\IdentityServiceTest.class
 com\casms\servicepackage\service\ServicepackageWorkflowTest.class
 com\casms\ship\service\CruiseServiceTest.class

@@ -1,10 +1,13 @@
 package com.casms.trip.dto.request;
 
 import com.casms.ship.enums.ItineraryType;
+import com.casms.trip.enums.TripDurationGroup;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Size;
 import lombok.Data;
+
+import java.util.List;
 
 @Data
 @Schema(description = "Yêu cầu chỉnh sửa bản nháp khung Trip (PATCH)")
@@ -20,6 +23,9 @@ public class TripDraftPatchRequest {
     @Schema(description = "Mô tả chi tiết hành trình")
     private String description;
 
+    @Schema(description = "Nhóm thời lượng (SHORT: 1-2 ngày | LONG: 3-5 ngày)")
+    private TripDurationGroup durationGroup;
+
     @Min(value = 1, message = "Duration days must be at least 1")
     @Schema(description = "Số ngày (chỉ sửa được khi chưa có phiên bản nào PUBLISHED)")
     private Integer durationDays;
@@ -31,8 +37,14 @@ public class TripDraftPatchRequest {
     @Schema(description = "Loại chuyến (ROUND_TRIP hoặc ONE_WAY)")
     private ItineraryType tripType;
 
-    @Schema(description = "Phạm vi chuyến đi (DOMESTIC, REGIONAL, INTERNATIONAL)")
+    @Schema(description = "Phạm vi chuyến đi (DOMESTIC | INTERNATIONAL)")
     private String plannedScope;
+
+    @Schema(description = "Danh sách mã miền (nếu phạm vi là DOMESTIC)")
+    private List<String> domesticRegions;
+
+    @Schema(description = "Danh sách mã quốc gia/vùng lãnh thổ ISO-2 (nếu phạm vi là INTERNATIONAL)")
+    private List<String> countryCodes;
 
     @Schema(description = "Yêu cầu kỹ thuật tàu (ghi chú tự do)")
     private String shipRequirements;

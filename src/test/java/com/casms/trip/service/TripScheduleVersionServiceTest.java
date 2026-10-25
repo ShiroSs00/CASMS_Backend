@@ -522,7 +522,7 @@ class TripScheduleVersionServiceTest {
 
         BusinessException ex = assertThrows(BusinessException.class,
                 () -> versionService.returnToDraftById(version.getVersionId(), req, approverId));
-        assertEquals("INVALID_INPUT", ex.getCode());
+        assertEquals("REJECTION_REASON_REQUIRED", ex.getCode());
     }
 
     @Test

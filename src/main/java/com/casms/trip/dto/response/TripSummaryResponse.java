@@ -1,12 +1,14 @@
 package com.casms.trip.dto.response;
 
 import com.casms.ship.enums.ItineraryType;
+import com.casms.trip.enums.TripDurationGroup;
 import com.casms.trip.enums.TripScheduleVersionStatus;
 import com.casms.trip.enums.TripStatus;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 @Data
@@ -17,10 +19,13 @@ public class TripSummaryResponse {
     private String tripCode;
     private String name;
     private String description;
+    private TripDurationGroup durationGroup;
     private Integer durationDays;
     private Integer durationNights;
     private ItineraryType tripType;
     private String plannedScope;
+    private List<String> domesticRegions;
+    private List<String> countryCodes;
     private TripStatus status;
     private Instant structuralLockedAt;
     private Long revision;

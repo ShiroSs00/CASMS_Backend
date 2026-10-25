@@ -5,11 +5,14 @@ import com.casms.common.response.ApiResponse;
 import com.casms.security.principal.CasmsPrincipal;
 import com.casms.trip.dto.request.ActionRevisionRequest;
 import com.casms.trip.dto.request.ScheduleDraftSaveRequest;
+import com.casms.trip.dto.request.TripDayManageRequest;
 import com.casms.trip.dto.request.VersionReturnRequest;
 import com.casms.trip.dto.response.TripAuditResponse;
+import com.casms.trip.dto.response.TripDayManageResponse;
 import com.casms.trip.dto.response.TripScheduleVersionDetailResponse;
 import com.casms.trip.dto.response.ValidationReport;
 import com.casms.trip.service.TripScheduleVersionService;
+import com.casms.trip.service.TripService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -30,6 +33,7 @@ import java.util.UUID;
 public class TripScheduleVersionController {
 
     private final TripScheduleVersionService versionService;
+    private final TripService tripService;
 
     @Operation(summary = "Lấy chi tiết một phiên bản", description = "Lấy toàn bộ cây dữ liệu của phiên bản lịch trình (days, stops, entries)")
     @PreAuthorize("hasAuthority('TRIP_READ')")
@@ -105,5 +109,18 @@ public class TripScheduleVersionController {
     public ApiResponse<List<TripAuditResponse>> getVersionHistory(
             @Parameter(description = "ID của phiên bản lịch trình", required = true) @PathVariable UUID versionId) {
         return ApiResponse.success(versionService.getVersionHistory(versionId));
+    }
+
+    @Operation(summary = "Quản lý ngày an toàn (Thêm/Xóa ngày theo versionId)", description = "Thêm hoặc xóa ngày an toàn trong giao dịch duy nhất với kiểm tra dual revision, giới hạn thời lượng theo nhóm, và kiểm tra tham chiếu.")
+    @PreAuthorize("hasAuthority('TRIP_PLAN_WRITE')")
+    @PostMapping("/{versionId}/days/manage")
+    public ApiResponse<TripDayManageResponse> manageDays(
+            @Parameter(description = "ID của phiên bản lịch trình", required = true) @PathVariable UUID versionId,
+            @Valid @RequestBody TripDayManageRequest request,
+            @AuthenticationPrincipal CasmsPrincipal principal) {
+        UUID actorId = principal != null ? principal.getUserId() : null;
+        TripScheduleVersionDetailResponse detail = versionService.getVersionDetailById(versionId);
+        return ApiResponse.success("Managed days successfully",
+                tripService.manageDays(detail.getTripId(), versionId, request, actorId));
     }
 }

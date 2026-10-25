@@ -2,6 +2,7 @@ package com.casms.trip.dto.request;
 
 import com.casms.ship.enums.CruiseStopArrivalMethod;
 import com.casms.ship.enums.CruiseStopCallType;
+import com.fasterxml.jackson.annotation.JsonFormat;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -33,14 +34,16 @@ public class TripPlanStopDraftDto {
     @Schema(description = "Ngày cập cảng tương đối (1..N)", example = "1")
     private Integer arrivalDayNumber;
 
-    @Schema(description = "Giờ cập cảng dự kiến tương đối", example = "08:00:00")
+    @JsonFormat(pattern = "HH:mm:ss", shape = JsonFormat.Shape.STRING)
+    @Schema(type = "string", pattern = "^(0[0-9]|1[0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]$", description = "Giờ cập cảng dự kiến tương đối", example = "08:00:00")
     private LocalTime plannedArrivalTime;
 
     @NotNull(message = "Departure day number is required")
     @Schema(description = "Ngày rời cảng tương đối (>= arrivalDayNumber)", example = "1")
     private Integer departureDayNumber;
 
-    @Schema(description = "Giờ rời cảng dự kiến tương đối", example = "18:00:00")
+    @JsonFormat(pattern = "HH:mm:ss", shape = JsonFormat.Shape.STRING)
+    @Schema(type = "string", pattern = "^(0[0-9]|1[0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]$", description = "Giờ rời cảng dự kiến tương đối", example = "18:00:00")
     private LocalTime plannedDepartureTime;
 
     @Schema(description = "Loại ghé cảng (NORMAL, LATE_NIGHT, OVERNIGHT)", example = "NORMAL")
@@ -52,7 +55,8 @@ public class TripPlanStopDraftDto {
     @Schema(description = "Ngày tất cả lên tàu tương đối (thường là departureDayNumber)", example = "1")
     private Integer allAboardDayNumber;
 
-    @Schema(description = "Giờ tất cả lên tàu tương đối (<= departureTime)", example = "17:30:00")
+    @JsonFormat(pattern = "HH:mm:ss", shape = JsonFormat.Shape.STRING)
+    @Schema(type = "string", pattern = "^(0[0-9]|1[0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]$", description = "Giờ tất cả lên tàu tương đối (<= departureTime)", example = "17:30:00")
     private LocalTime allAboardTime;
 
     @Schema(description = "Đánh dấu là cảng đón khách (Embarkation)", example = "true")

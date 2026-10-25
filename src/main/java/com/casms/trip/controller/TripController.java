@@ -3,6 +3,9 @@ package com.casms.trip.controller;
 import com.casms.common.exception.BusinessException;
 import com.casms.common.response.ApiResponse;
 import com.casms.security.principal.CasmsPrincipal;
+import com.casms.trip.dto.request.TripDayManageRequest;
+import com.casms.trip.dto.response.TripDayManageResponse;
+import com.casms.trip.enums.TripDurationGroup;
 import com.casms.trip.dto.request.ScheduleVersionCreateRequest;
 import com.casms.trip.dto.request.TripCreateRequest;
 import com.casms.trip.dto.request.TripDraftPatchRequest;
@@ -56,13 +59,32 @@ public class TripController {
         return ApiResponse.success("Created Trip successfully", response);
     }
 
-    @Operation(summary = "Danh sách Trip", description = "Tra cứu danh sách Trip có phân trang và lọc theo trạng thái")
+    @Operation(summary = "Danh sách Trip", description = "Tra cứu danh sách Trip có phân trang và lọc theo trạng thái, nhóm thời lượng, phạm vi, từ khóa tìm kiếm và lưu trữ")
     @PreAuthorize("hasAuthority('TRIP_READ')")
     @GetMapping
     public ApiResponse<Page<TripSummaryResponse>> listTrips(
             @Parameter(description = "Lọc theo trạng thái Trip") @RequestParam(required = false) TripStatus status,
+            @Parameter(description = "Lọc theo nhóm thời lượng (SHORT, LONG)") @RequestParam(required = false) TripDurationGroup durationGroup,
+            @Parameter(description = "Lọc theo phạm vi (DOMESTIC, INTERNATIONAL)") @RequestParam(required = false) String plannedScope,
+            @Parameter(description = "Tìm kiếm theo mã TR hoặc tên Trip") @RequestParam(required = false) String search,
+            @Parameter(description = "Bao gồm các Trip đã lưu trữ (mặc định false)") @RequestParam(required = false, defaultValue = "false") Boolean includeArchived,
             Pageable pageable) {
-        return ApiResponse.success(tripService.listTrips(status, pageable));
+        if (durationGroup == null && plannedScope == null && search == null && (includeArchived == null || !includeArchived)) {
+            return ApiResponse.success(tripService.listTrips(status, pageable));
+        }
+        return ApiResponse.success(tripService.listTrips(status, durationGroup, plannedScope, search, includeArchived, pageable));
+    }
+
+    @Operation(summary = "Quản lý ngày an toàn (Thêm/Xóa ngày)", description = "Thêm hoặc xóa ngày an toàn trong giao dịch duy nhất với kiểm tra dual revision, giới hạn thời lượng theo nhóm, và kiểm tra tham chiếu.")
+    @PreAuthorize("hasAuthority('TRIP_PLAN_WRITE')")
+    @PostMapping("/{tripId}/versions/{versionId}/days/manage")
+    public ApiResponse<TripDayManageResponse> manageDays(
+            @Parameter(description = "ID của Trip", required = true) @PathVariable UUID tripId,
+            @Parameter(description = "ID của Version", required = true) @PathVariable UUID versionId,
+            @Valid @RequestBody TripDayManageRequest request,
+            @AuthenticationPrincipal CasmsPrincipal principal) {
+        UUID actorId = principal != null ? principal.getUserId() : null;
+        return ApiResponse.success("Managed days successfully", tripService.manageDays(tripId, versionId, request, actorId));
     }
 
     @Operation(summary = "Chi tiết Trip", description = "Lấy chi tiết Trip kèm danh sách các phiên bản lịch trình mẫu")

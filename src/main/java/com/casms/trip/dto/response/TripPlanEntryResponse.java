@@ -1,6 +1,7 @@
 package com.casms.trip.dto.response;
 
 import com.casms.trip.enums.TripPlanEntryKind;
+import com.fasterxml.jackson.annotation.JsonFormat;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
@@ -18,14 +19,29 @@ public class TripPlanEntryResponse {
     private TripPlanEntryKind kind;
     private UUID stopId;
     private String stopClientKey;
+    private UUID sourceActivityId;
+    private String sourceActivityTitle;
+    private UUID sourceExcursionId;
+    private String sourceExcursionTitle;
     private UUID serviceId;
+    private String serviceName;
+    @Schema(description = "Khóa nhận diện nhóm lặp (series/group key) để liên kết và chỉnh sửa đồng loạt", example = "series-buffet-breakfast")
+    private String seriesClientKey;
     private UUID destinationId;
     private String destinationName;
     private String title;
     private Integer startDayNumber;
+
+    @JsonFormat(pattern = "HH:mm:ss", shape = JsonFormat.Shape.STRING)
+    @Schema(type = "string", pattern = "^(0[0-9]|1[0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]$", example = "09:00:00")
     private LocalTime plannedStartTime;
+
     private Integer endDayNumber;
+
+    @JsonFormat(pattern = "HH:mm:ss", shape = JsonFormat.Shape.STRING)
+    @Schema(type = "string", pattern = "^(0[0-9]|1[0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]$", example = "16:00:00")
     private LocalTime plannedEndTime;
+
     private String timeZoneId;
     private String locationText;
     private String meetingPoint;
