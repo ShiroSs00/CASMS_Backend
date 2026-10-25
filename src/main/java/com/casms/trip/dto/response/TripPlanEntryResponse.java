@@ -56,11 +56,29 @@ public class TripPlanEntryResponse {
     @Schema(description = "Tên tầng", example = "Lotus Wellness & Spa Deck")
     private String deckName;
 
+    @Schema(description = "Phân loại danh mục hoạt động trên tàu", example = "SPORTS_WELLNESS")
+    private com.casms.activity.enums.OnboardActivityCategory category;
+
+    @Schema(description = "Tên hiển thị danh mục tiếng Việt", example = "Thể thao & Sức khỏe")
+    private String categoryName;
+
+    @Schema(description = "Biểu tượng danh mục", example = "🧘")
+    private String categoryIcon;
+
+    @Schema(description = "Phân loại không gian (FUNCTIONAL_ROOM: phòng có số, VENUE_OPEN_AREA: sảnh/boong mở)", example = "FUNCTIONAL_ROOM")
+    private String locationType;
+
     @Schema(description = "ID phòng / cabin cụ thể")
     private UUID cabinId;
 
-    @Schema(description = "Số phòng / cabin", example = "204")
+    @Schema(description = "Số phòng / cabin", example = "202")
     private String cabinNumber;
+
+    @Schema(description = "Tên phòng / tên công năng chuyên biệt", example = "Phòng Massage Đá Nóng VIP")
+    private String roomName;
+
+    @Schema(description = "Địa điểm hiển thị trực quan tổng hợp cho khách", example = "Tầng 2 (Lotus Wellness & Spa Deck) - Phòng 202 (Phòng Massage Đá Nóng VIP)")
+    private String displayLocation;
 
     private String meetingPoint;
     private String notes;

@@ -348,18 +348,27 @@ public class TripScheduleVersionService {
                 entry.setCabin(null);
             }
 
-            // Kế thừa vị trí (Deck/Cabin) từ nguồn hoạt động nếu không chọn thủ công
-            if (entry.getDeck() == null && entry.getCabin() == null && entry.getSourceActivityId() != null && onboardActivityRepository != null) {
+            // Kế thừa vị trí (Deck/Cabin) và danh mục (Category) từ nguồn hoạt động nếu không chọn thủ công
+            if (entry.getSourceActivityId() != null && onboardActivityRepository != null) {
                 var srcActOpt = onboardActivityRepository.findById(entry.getSourceActivityId());
                 if (srcActOpt.isPresent()) {
                     var srcAct = srcActOpt.get();
-                    if (srcAct.getDeck() != null) {
-                        entry.setDeck(srcAct.getDeck());
+                    if (entry.getDeck() == null && entry.getCabin() == null) {
+                        if (srcAct.getDeck() != null) {
+                            entry.setDeck(srcAct.getDeck());
+                        }
+                        if (srcAct.getCabin() != null) {
+                            entry.setCabin(srcAct.getCabin());
+                        }
                     }
-                    if (srcAct.getCabin() != null) {
-                        entry.setCabin(srcAct.getCabin());
+                    if (entryDto.getCategory() == null && srcAct.getCategory() != null) {
+                        entry.setCategory(srcAct.getCategory());
                     }
                 }
+            }
+
+            if (entryDto.getCategory() != null) {
+                entry.setCategory(entryDto.getCategory());
             }
 
             entry.setMeetingPoint(entryDto.getMeetingPoint());
@@ -882,6 +891,7 @@ public class TripScheduleVersionService {
             newEntry.setClientKey(oldEntry.getClientKey());
             newEntry.setDay(dayMap.get(oldEntry.getDay().getDayNumber()));
             newEntry.setKind(oldEntry.getKind());
+            newEntry.setCategory(oldEntry.getCategory());
             if (oldEntry.getStop() != null) {
                 newEntry.setStop(stopMap.get(oldEntry.getStop().getClientKey()));
             }
@@ -1655,6 +1665,12 @@ public class TripScheduleVersionService {
         res.setTimeZoneId(entry.getTimeZoneId());
         res.setLocationText(entry.getLocationText());
 
+        if (entry.getCategory() != null) {
+            res.setCategory(entry.getCategory());
+            res.setCategoryName(entry.getCategory().getDisplayName());
+            res.setCategoryIcon(entry.getCategory().getIcon());
+        }
+
         if (entry.getDeck() != null) {
             res.setDeckId(entry.getDeck().getDeckId());
             res.setDeckNumber(entry.getDeck().getDeckNumber());
@@ -1663,6 +1679,20 @@ public class TripScheduleVersionService {
         if (entry.getCabin() != null) {
             res.setCabinId(entry.getCabin().getCabinId());
             res.setCabinNumber(entry.getCabin().getCabinNumber());
+            res.setRoomName(entry.getCabin().getRoomName());
+            res.setLocationType("FUNCTIONAL_ROOM");
+            String disp = (entry.getDeck() != null ? "Tầng " + entry.getDeck().getDeckNumber() + " (" + entry.getDeck().getDeckName() + ") - " : "")
+                    + "Phòng " + entry.getCabin().getCabinNumber()
+                    + (entry.getCabin().getRoomName() != null ? " (" + entry.getCabin().getRoomName() + ")" : "");
+            res.setDisplayLocation(disp);
+        } else if (entry.getDeck() != null) {
+            res.setLocationType("VENUE_OPEN_AREA");
+            String disp = "Tầng " + entry.getDeck().getDeckNumber() + " (" + entry.getDeck().getDeckName() + ")"
+                    + (entry.getLocationText() != null ? " - " + entry.getLocationText() : "");
+            res.setDisplayLocation(disp);
+        } else if (entry.getLocationText() != null) {
+            res.setLocationType("GENERAL");
+            res.setDisplayLocation(entry.getLocationText());
         }
 
         res.setMeetingPoint(entry.getMeetingPoint());

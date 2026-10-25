@@ -31,6 +31,11 @@ public class OnboardActivity {
     @Column(name = "activity_name", nullable = false, length = 200)
     private String activityName;
 
+    /** Phân loại danh mục hoạt động trên tàu (Giải trí, Thể thao, Gia đình, Sự kiện, Lớp học) */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "category", length = 50)
+    private com.casms.activity.enums.OnboardActivityCategory category;
+
     @Column(name = "description", length = 1000)
     private String description;
 

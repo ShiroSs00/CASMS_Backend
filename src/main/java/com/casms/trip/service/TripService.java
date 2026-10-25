@@ -1051,6 +1051,12 @@ public class TripService {
             entryRes.setTimeZoneId(e.getTimeZoneId());
             entryRes.setLocationText(e.getLocationText());
 
+            if (e.getCategory() != null) {
+                entryRes.setCategory(e.getCategory());
+                entryRes.setCategoryName(e.getCategory().getDisplayName());
+                entryRes.setCategoryIcon(e.getCategory().getIcon());
+            }
+
             if (e.getDeck() != null) {
                 entryRes.setDeckId(e.getDeck().getDeckId());
                 entryRes.setDeckNumber(e.getDeck().getDeckNumber());
@@ -1059,6 +1065,20 @@ public class TripService {
             if (e.getCabin() != null) {
                 entryRes.setCabinId(e.getCabin().getCabinId());
                 entryRes.setCabinNumber(e.getCabin().getCabinNumber());
+                entryRes.setRoomName(e.getCabin().getRoomName());
+                entryRes.setLocationType("FUNCTIONAL_ROOM");
+                String disp = (e.getDeck() != null ? "Tầng " + e.getDeck().getDeckNumber() + " (" + e.getDeck().getDeckName() + ") - " : "")
+                        + "Phòng " + e.getCabin().getCabinNumber()
+                        + (e.getCabin().getRoomName() != null ? " (" + e.getCabin().getRoomName() + ")" : "");
+                entryRes.setDisplayLocation(disp);
+            } else if (e.getDeck() != null) {
+                entryRes.setLocationType("VENUE_OPEN_AREA");
+                String disp = "Tầng " + e.getDeck().getDeckNumber() + " (" + e.getDeck().getDeckName() + ")"
+                        + (e.getLocationText() != null ? " - " + e.getLocationText() : "");
+                entryRes.setDisplayLocation(disp);
+            } else if (e.getLocationText() != null) {
+                entryRes.setLocationType("GENERAL");
+                entryRes.setDisplayLocation(e.getLocationText());
             }
 
             entryRes.setMeetingPoint(e.getMeetingPoint());

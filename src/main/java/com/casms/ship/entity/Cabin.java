@@ -35,6 +35,10 @@ public class Cabin {
     @Column(name = "cabin_number", nullable = false, length = 10)
     private String cabinNumber;
 
+    /** Tên phòng / tên công năng chuyên biệt (ví dụ: Phòng Massage Đá Nóng VIP, Studio Bếp) */
+    @Column(name = "room_name", length = 150)
+    private String roomName;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "cabin_type", nullable = false)
     private CabinType cabinType;

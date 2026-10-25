@@ -33,6 +33,9 @@ public class TripPlanEntryDraftDto {
     @Schema(description = "ID hoạt động nguồn được chọn từ danh mục (nếu kind == ONBOARD_ACTIVITY)")
     private UUID sourceActivityId;
 
+    @Schema(description = "Phân loại danh mục hoạt động trên tàu (nếu kind == ONBOARD_ACTIVITY)", example = "SPORTS_WELLNESS")
+    private com.casms.activity.enums.OnboardActivityCategory category;
+
     @Schema(description = "ID tour tham quan nguồn được chọn từ danh mục (nếu kind == SHORE_EXCURSION)")
     private UUID sourceExcursionId;
 

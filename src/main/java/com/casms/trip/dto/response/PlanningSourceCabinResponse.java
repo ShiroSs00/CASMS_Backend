@@ -19,8 +19,14 @@ public class PlanningSourceCabinResponse {
     @Schema(description = "ID cabin / phòng")
     private UUID cabinId;
 
-    @Schema(description = "Số phòng / mã vị trí", example = "204")
+    @Schema(description = "Số phòng / mã vị trí", example = "202")
     private String cabinNumber;
+
+    @Schema(description = "Tên phòng / tên công năng chuyên biệt", example = "Phòng Massage Đá Nóng VIP")
+    private String roomName;
+
+    @Schema(description = "Tên hiển thị trực quan cho khách (Số phòng + Tên công năng)", example = "Phòng 202 - Phòng Massage Đá Nóng VIP")
+    private String displayName;
 
     @Schema(description = "Loại phòng / phân loại cabin", example = "SUITE")
     private CabinType cabinType;

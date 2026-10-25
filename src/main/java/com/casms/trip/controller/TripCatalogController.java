@@ -14,6 +14,8 @@ import com.casms.ship.repository.CabinRepository;
 import com.casms.ship.repository.DeckRepository;
 import com.casms.ship.repository.DestinationRepository;
 import com.casms.ship.repository.PortRepository;
+import com.casms.activity.enums.OnboardActivityCategory;
+import com.casms.trip.dto.response.ActivityCategoryResponse;
 import com.casms.trip.dto.response.PlanningSourceActivityResponse;
 import com.casms.trip.dto.response.PlanningSourceCabinResponse;
 import com.casms.trip.dto.response.PlanningSourceDeckResponse;
@@ -109,16 +111,20 @@ public class TripCatalogController {
     }
 
     @Operation(summary = "Nguồn hoạt động trên tàu (Onboard Activities) cho lập kế hoạch",
-               description = "Cung cấp danh sách mẫu hoạt động trên tàu được phép tái sử dụng cho lập kế hoạch lịch trình, hỗ trợ tìm kiếm theo từ khóa (yêu cầu TRIP_READ)")
+               description = "Cung cấp danh sách mẫu hoạt động trên tàu được phép tái sử dụng cho lập kế hoạch lịch trình, hỗ trợ lọc theo danh mục và tìm kiếm (yêu cầu TRIP_READ)")
     @PreAuthorize("hasAuthority('TRIP_READ')")
     @GetMapping("/sources/activities")
     public ApiResponse<List<PlanningSourceActivityResponse>> getSourceActivities(
-            @Parameter(description = "Từ khóa tìm kiếm theo tên hoặc mã hoạt động") @RequestParam(required = false) String keyword) {
+            @Parameter(description = "Lọc theo danh mục hoạt động (ENTERTAINMENT, SPORTS_WELLNESS, FAMILY_KIDS, SPECIAL_EVENTS, WORKSHOPS_CLASSES)")
+            @RequestParam(required = false) OnboardActivityCategory category,
+            @Parameter(description = "Từ khóa tìm kiếm theo tên hoặc mã hoạt động")
+            @RequestParam(required = false) String keyword) {
         List<OnboardActivity> activities = onboardActivityRepository.findAll();
         String kw = keyword != null ? keyword.trim().toLowerCase() : null;
 
         List<PlanningSourceActivityResponse> result = activities.stream()
                 .filter(a -> a.getStatus() != com.casms.activity.enums.OnboardActivityStatus.CANCELLED)
+                .filter(a -> category == null || a.getCategory() == category)
                 .filter(a -> kw == null || (a.getActivityName() != null && a.getActivityName().toLowerCase().contains(kw))
                         || (a.getActivityCode() != null && a.getActivityCode().toLowerCase().contains(kw)))
                 .map(a -> {
@@ -132,16 +138,39 @@ public class TripCatalogController {
                             .price(a.getPrice())
                             .currencyCode(a.getCurrencyCode());
 
+                    // Category info
+                    if (a.getCategory() != null) {
+                        builder.category(a.getCategory())
+                               .categoryName(a.getCategory().getDisplayName())
+                               .categoryIcon(a.getCategory().getIcon());
+                    }
+
                     // Deck info — tầng nơi hoạt động diễn ra
                     if (a.getDeck() != null) {
                         builder.deckId(a.getDeck().getDeckId())
                                .deckNumber(a.getDeck().getDeckNumber())
                                .deckName(a.getDeck().getDeckName());
                     }
-                    // Cabin info — phòng cụ thể
+
+                    // Cabin info — phòng cụ thể & phân tách không gian
                     if (a.getCabin() != null) {
                         builder.cabinId(a.getCabin().getCabinId())
-                               .cabinNumber(a.getCabin().getCabinNumber());
+                               .cabinNumber(a.getCabin().getCabinNumber())
+                               .roomName(a.getCabin().getRoomName())
+                               .locationType("FUNCTIONAL_ROOM");
+
+                        String disp = (a.getDeck() != null ? "Tầng " + a.getDeck().getDeckNumber() + " (" + a.getDeck().getDeckName() + ") - " : "")
+                                + "Phòng " + a.getCabin().getCabinNumber()
+                                + (a.getCabin().getRoomName() != null ? " (" + a.getCabin().getRoomName() + ")" : "");
+                        builder.displayLocation(disp);
+                    } else if (a.getDeck() != null) {
+                        builder.locationType("VENUE_OPEN_AREA");
+                        String disp = "Tầng " + a.getDeck().getDeckNumber() + " (" + a.getDeck().getDeckName() + ")"
+                                + (a.getLocation() != null ? " - " + a.getLocation() : "");
+                        builder.displayLocation(disp);
+                    } else if (a.getLocation() != null) {
+                        builder.locationType("GENERAL");
+                        builder.displayLocation(a.getLocation());
                     }
 
                     return builder.build();
@@ -150,8 +179,12 @@ public class TripCatalogController {
         return ApiResponse.success(result);
     }
 
+    public ApiResponse<List<PlanningSourceActivityResponse>> getSourceActivities(String keyword) {
+        return getSourceActivities(null, keyword);
+    }
+
     public ApiResponse<List<PlanningSourceActivityResponse>> getSourceActivities() {
-        return getSourceActivities(null);
+        return getSourceActivities(null, null);
     }
 
     @Operation(summary = "Nguồn tham quan trên bờ (Shore Excursions) cho lập kế hoạch",
@@ -318,23 +351,69 @@ public class TripCatalogController {
         List<PlanningSourceCabinResponse> result = cabins.stream()
                 .filter(c -> kw == null || (c.getCabinNumber() != null && c.getCabinNumber().toLowerCase().contains(kw))
                         || (c.getLocationCode() != null && c.getLocationCode().toLowerCase().contains(kw)))
-                .map(c -> PlanningSourceCabinResponse.builder()
-                        .cabinId(c.getCabinId())
-                        .cabinNumber(c.getCabinNumber())
-                        .cabinType(c.getCabinType())
-                        .capacity(c.getCapacity())
-                        .deckId(c.getDeck() != null ? c.getDeck().getDeckId() : null)
-                        .deckNumber(c.getDeck() != null ? c.getDeck().getDeckNumber() : null)
-                        .deckName(c.getDeck() != null ? c.getDeck().getDeckName() : null)
-                        .locationCode(c.getLocationCode())
-                        .shipId(c.getShip() != null ? c.getShip().getShipId() : null)
-                        .build())
+                .map(c -> {
+                    String disp = "Phòng " + c.getCabinNumber()
+                            + (c.getRoomName() != null ? " - " + c.getRoomName() : "");
+                    return PlanningSourceCabinResponse.builder()
+                            .cabinId(c.getCabinId())
+                            .cabinNumber(c.getCabinNumber())
+                            .roomName(c.getRoomName())
+                            .displayName(disp)
+                            .cabinType(c.getCabinType())
+                            .capacity(c.getCapacity())
+                            .deckId(c.getDeck() != null ? c.getDeck().getDeckId() : null)
+                            .deckNumber(c.getDeck() != null ? c.getDeck().getDeckNumber() : null)
+                            .deckName(c.getDeck() != null ? c.getDeck().getDeckName() : null)
+                            .locationCode(c.getLocationCode())
+                            .shipId(c.getShip() != null ? c.getShip().getShipId() : null)
+                            .build();
+                })
                 .collect(Collectors.toList());
         return ApiResponse.success(result);
     }
 
     public ApiResponse<List<PlanningSourceCabinResponse>> getSourceCabins() {
         return getSourceCabins(null, null, null);
+    }
+
+    @Operation(summary = "Danh mục 5 nhóm hoạt động trên tàu",
+               description = "Cung cấp danh mục các nhóm hoạt động chuẩn (Giải trí, Thể thao & Sức khỏe, Gia đình & Trẻ em, Sự kiện đặc biệt, Trải nghiệm & Lớp học) cho Frontend render tabs/chips bộ lọc (yêu cầu TRIP_READ)")
+    @PreAuthorize("hasAuthority('TRIP_READ')")
+    @GetMapping("/catalogs/activity-categories")
+    public ApiResponse<List<ActivityCategoryResponse>> getActivityCategories() {
+        List<ActivityCategoryResponse> result = List.of(
+                ActivityCategoryResponse.builder()
+                        .code(OnboardActivityCategory.ENTERTAINMENT)
+                        .name(OnboardActivityCategory.ENTERTAINMENT.getDisplayName())
+                        .icon(OnboardActivityCategory.ENTERTAINMENT.getIcon())
+                        .description("Đại nhạc hội, biểu diễn ảo thuật & xiếc, ban nhạc Jazz, chiếu phim ngoài trời, tiệc DJ bể bơi")
+                        .build(),
+                ActivityCategoryResponse.builder()
+                        .code(OnboardActivityCategory.SPORTS_WELLNESS)
+                        .name(OnboardActivityCategory.SPORTS_WELLNESS.getDisplayName())
+                        .icon(OnboardActivityCategory.SPORTS_WELLNESS.getIcon())
+                        .description("Lớp Yoga & Thiền bình minh, trị liệu massage đá nóng Lotus Spa, phòng Gym & Fitness")
+                        .build(),
+                ActivityCategoryResponse.builder()
+                        .code(OnboardActivityCategory.FAMILY_KIDS)
+                        .name(OnboardActivityCategory.FAMILY_KIDS.getDisplayName())
+                        .icon(OnboardActivityCategory.FAMILY_KIDS.getIcon())
+                        .description("Đấu trường thực tế ảo VR, tìm kho báu hải tặc quanh tàu, rạp chiếu 3D, câu lạc bộ thiếu nhi Kids Club")
+                        .build(),
+                ActivityCategoryResponse.builder()
+                        .code(OnboardActivityCategory.SPECIAL_EVENTS)
+                        .name(OnboardActivityCategory.SPECIAL_EVENTS.getDisplayName())
+                        .icon(OnboardActivityCategory.SPECIAL_EVENTS.getIcon())
+                        .description("Đêm tiệc Gala Thuyền trưởng, White Night Deck Party, lễ hội đếm ngược, dạ vũ khiêu vũ hoàng gia")
+                        .build(),
+                ActivityCategoryResponse.builder()
+                        .code(OnboardActivityCategory.WORKSHOPS_CLASSES)
+                        .name(OnboardActivityCategory.WORKSHOPS_CLASSES.getDisplayName())
+                        .icon(OnboardActivityCategory.WORKSHOPS_CLASSES.getIcon())
+                        .description("Lớp học làm bánh Pháp & nấu ăn cùng bếp trưởng 5 sao, workshop pha chế cocktail, khiêu vũ")
+                        .build()
+        );
+        return ApiResponse.success(result);
     }
 
     @Operation(summary = "Danh sách cảng ghé (Ports) cho lập kế hoạch hành trình",
