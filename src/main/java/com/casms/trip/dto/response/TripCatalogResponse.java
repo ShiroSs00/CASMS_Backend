@@ -31,4 +31,44 @@ public class TripCatalogResponse {
     @Builder.Default
     @Schema(description = "Danh sách các chính sách quy tắc hành trình hỗ trợ")
     private List<String> supportedPolicies = new ArrayList<>();
+
+    @Builder.Default
+    @Schema(description = "Danh mục các miền trong nước (Bắc - Trung - Nam)")
+    private List<RegionCatalogItem> domesticRegions = new ArrayList<>();
+
+    @Builder.Default
+    @Schema(description = "Danh mục các quốc gia/vùng lãnh thổ chuẩn")
+    private List<CountryCatalogItem> countries = new ArrayList<>();
+
+    @Builder.Default
+    @Schema(description = "Danh mục nhóm thời lượng hành trình")
+    private List<DurationGroupCatalogItem> durationGroups = new ArrayList<>();
+
+    @Data
+    @AllArgsConstructor
+    @NoArgsConstructor
+    public static class RegionCatalogItem {
+        private String code;
+        private String name;
+        private String description;
+    }
+
+    @Data
+    @AllArgsConstructor
+    @NoArgsConstructor
+    public static class CountryCatalogItem {
+        private String code;
+        private String name;
+    }
+
+    @Data
+    @AllArgsConstructor
+    @NoArgsConstructor
+    public static class DurationGroupCatalogItem {
+        private String code;
+        private String name;
+        private int minDays;
+        private int maxDays;
+        private int defaultDays;
+    }
 }

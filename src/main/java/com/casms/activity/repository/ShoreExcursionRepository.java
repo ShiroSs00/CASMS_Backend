@@ -33,6 +33,8 @@ public interface ShoreExcursionRepository
 
     List<ShoreExcursion> findByCruiseStop_CruiseStopId(UUID cruiseStopId);
 
+    List<ShoreExcursion> findByPort_PortId(UUID portId);
+
     List<ShoreExcursion> findBySupplier_SupplierId(UUID supplierId);
 
     List<ShoreExcursion> findByStatus(ShoreExcursionStatus status);

@@ -1,5 +1,7 @@
 package com.casms.trip.entity;
 
+import com.casms.ship.entity.Cabin;
+import com.casms.ship.entity.Deck;
 import com.casms.ship.entity.Destination;
 import com.casms.trip.enums.TripPlanEntryKind;
 import jakarta.persistence.*;
@@ -76,6 +78,14 @@ public class TripPlanEntry {
 
     @Column(name = "location_text", length = 255)
     private String locationText;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "deck_id")
+    private Deck deck;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "cabin_id")
+    private Cabin cabin;
 
     @Column(name = "meeting_point", length = 255)
     private String meetingPoint;

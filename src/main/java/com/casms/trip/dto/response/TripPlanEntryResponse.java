@@ -46,6 +46,22 @@ public class TripPlanEntryResponse {
 
     private String timeZoneId;
     private String locationText;
+
+    @Schema(description = "ID tầng / boong tàu nơi diễn ra hoạt động")
+    private UUID deckId;
+
+    @Schema(description = "Số tầng", example = "2")
+    private Integer deckNumber;
+
+    @Schema(description = "Tên tầng", example = "Lotus Wellness & Spa Deck")
+    private String deckName;
+
+    @Schema(description = "ID phòng / cabin cụ thể")
+    private UUID cabinId;
+
+    @Schema(description = "Số phòng / cabin", example = "204")
+    private String cabinNumber;
+
     private String meetingPoint;
     private String notes;
 }
