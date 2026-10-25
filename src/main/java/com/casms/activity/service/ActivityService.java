@@ -124,7 +124,11 @@ public class ActivityService {
         if(a.getCruise()!=null&&a.getLocation()!=null&&!a.getLocation().isBlank()&&activities.countScheduleConflicts(a.getCruise().getCruiseId(),a.getLocation(),a.getStartTime(),a.getEndTime(),List.of(OnboardActivityStatus.PLANNED,OnboardActivityStatus.OPEN,OnboardActivityStatus.FULL,OnboardActivityStatus.IN_PROGRESS),exclude)>0)throw new IllegalArgumentException("Activity schedule conflicts at the same location on this cruise");
     }
     @Transactional(readOnly=true)
-    public long scheduleConflicts(UUID id){OnboardActivity a=activity(id);if(a.getLocation()==null||a.getLocation().isBlank())return 0;return activities.countScheduleConflicts(a.getCruise().getCruiseId(),a.getLocation(),a.getStartTime(),a.getEndTime(),List.of(OnboardActivityStatus.PLANNED,OnboardActivityStatus.OPEN,OnboardActivityStatus.FULL,OnboardActivityStatus.IN_PROGRESS),id);}
+    public long scheduleConflicts(UUID id){
+        OnboardActivity a=activity(id);
+        if(a.getCruise()==null || a.getLocation()==null || a.getLocation().isBlank()) return 0;
+        return activities.countScheduleConflicts(a.getCruise().getCruiseId(),a.getLocation(),a.getStartTime(),a.getEndTime(),List.of(OnboardActivityStatus.PLANNED,OnboardActivityStatus.OPEN,OnboardActivityStatus.FULL,OnboardActivityStatus.IN_PROGRESS),id);
+    }
 
     @Transactional(readOnly = true)
     public List<Registration> listRegistrations(UUID activityId) { return activityId==null ? registrations.findAll() : registrations.findByOnboardActivity_OnboardActivityId(activityId); }
@@ -140,7 +144,7 @@ public class ActivityService {
         assertBookingPassengerOwner(bp,userId,staff);
         if (bp.getBooking().getBookingStatus() != BookingStatus.Confirmed) throw new IllegalStateException("Booking is not confirmed");
         OnboardActivity a = activities.lockActivity(activityId).orElseThrow(() -> missing("Activity", activityId));
-        if(!bp.getBooking().getCruise().getCruiseId().equals(a.getCruise().getCruiseId()))throw new IllegalStateException("Activity does not belong to the passenger's booking cruise");
+        if(a.getCruise() == null || bp.getBooking().getCruise() == null || !bp.getBooking().getCruise().getCruiseId().equals(a.getCruise().getCruiseId()))throw new IllegalStateException("Activity does not belong to the passenger's booking cruise");
         if (a.getStatus()!=OnboardActivityStatus.OPEN || !a.getEndTime().isAfter(Instant.now())) throw new IllegalStateException("Activity is not open for registration");
         if (registrations.existsByBookingPassenger_BookingPassengerIdAndOnboardActivity_OnboardActivityIdAndStatusIn(bookingPassengerId, activityId, List.of(RegistrationStatus.PENDING, RegistrationStatus.CONFIRMED))) throw new IllegalStateException("Passenger is already registered");
         if (occupied(activityId) + effectiveQuantity > a.getCapacity()) throw new IllegalStateException("Activity capacity exceeded");

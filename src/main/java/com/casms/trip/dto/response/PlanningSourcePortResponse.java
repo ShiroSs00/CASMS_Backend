@@ -27,6 +27,9 @@ public class PlanningSourcePortResponse {
     @Schema(description = "Mã quốc gia ISO", example = "VN")
     private String countryCode;
 
+    @Schema(description = "Miền địa lý nội địa (BAC_BO, TRUNG_BO, NAM_BO) đối với cảng Việt Nam", example = "BAC_BO")
+    private String domesticRegion;
+
     @Schema(description = "Múi giờ cảng", example = "Asia/Ho_Chi_Minh")
     private String timeZoneId;
 

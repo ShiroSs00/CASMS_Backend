@@ -63,7 +63,7 @@ public class IdempotencyReservationService {
         return repository.saveAndFlush(record);
     }
 
-    @Transactional(propagation = Propagation.REQUIRES_NEW, readOnly = true)
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public ReservationResult checkStatus(UUID actorId, String operation, String idempotencyKey, String requestHash) {
         Optional<IdempotencyRecord> existingOpt = repository.findByActorIdAndOperationAndIdempotencyKey(
                 actorId, operation, idempotencyKey);
@@ -74,8 +74,22 @@ public class IdempotencyReservationService {
         if (!existing.getRequestHash().equals(requestHash)) {
             return new ReservationResult(ReservationStatus.CONFLICT, existing);
         }
-        if (existing.getResponsePayload() != null && !existing.getResponsePayload().isBlank()) {
+        // Completed: has responsePayload OR has resultingId (can be reconstructed via entityRecoveryFunction)
+        if ((existing.getResponsePayload() != null && !existing.getResponsePayload().isBlank())
+                || existing.getResultingId() != null) {
             return new ReservationResult(ReservationStatus.CACHED, existing);
+        }
+        // If the record has no result and is older than 60 seconds, treat it as abandoned/dead and allow re-execution
+        if (existing.getCreatedAt() != null && existing.getCreatedAt().isBefore(Instant.now().minusSeconds(60))) {
+            log.warn("Stale idempotency record detected for key {} (operation: {}, created: {}). Releasing stale key.",
+                    idempotencyKey, operation, existing.getCreatedAt());
+            try {
+                repository.delete(existing);
+                repository.flush();
+                return new ReservationResult(ReservationStatus.RESERVED, null);
+            } catch (Exception e) {
+                log.warn("Failed to delete stale idempotency record {}: {}", existing.getIdempotencyId(), e.getMessage());
+            }
         }
         return new ReservationResult(ReservationStatus.IN_PROGRESS, existing);
     }

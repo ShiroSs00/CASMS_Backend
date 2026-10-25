@@ -1506,24 +1506,7 @@ public class TripScheduleVersionService {
     }
 
     public static String resolveDomesticRegion(Port port) {
-        if (port == null) return null;
-        String code = port.getPortCode() != null ? port.getPortCode().trim().toUpperCase() : "";
-        if ("VNHLG".equals(code) || "VNHPH".equals(code)) {
-            return "BAC_BO";
-        }
-        if ("VNDAD".equals(code) || "VNNHA".equals(code) || "VNHUE".equals(code) || "VNCNA".equals(code)) {
-            return "TRUNG_BO";
-        }
-        if ("VNSGN".equals(code) || "VNVUT".equals(code) || "VNPQC".equals(code)) {
-            return "NAM_BO";
-        }
-        if (port.getDestination() != null && port.getDestination().getDestinationName() != null) {
-            String destName = port.getDestination().getDestinationName();
-            if (destName.contains("Bắc Bộ")) return "BAC_BO";
-            if (destName.contains("Miền Trung")) return "TRUNG_BO";
-            if (destName.contains("Nam Bộ")) return "NAM_BO";
-        }
-        return null;
+        return VietnamGeographyRegistry.resolveDomesticRegion(port);
     }
 
     private TripScheduleVersion getVersion(UUID tripId, Integer versionNumber) {
@@ -1597,6 +1580,7 @@ public class TripScheduleVersionService {
             res.setPortCode(stop.getPort().getPortCode());
             res.setPortName(stop.getPort().getPortName());
             res.setCountryCode(stop.getPort().getCountryCode());
+            res.setDomesticRegion(resolveDomesticRegion(stop.getPort()));
             res.setTimeZoneId(stop.getPort().getTimeZoneId());
         }
         if (stop.getDestination() != null) {
@@ -1675,11 +1659,19 @@ public class TripScheduleVersionService {
             res.setDeckId(entry.getDeck().getDeckId());
             res.setDeckNumber(entry.getDeck().getDeckNumber());
             res.setDeckName(entry.getDeck().getDeckName());
+            if (entry.getDeck().getShip() != null) {
+                res.setReferenceShipId(entry.getDeck().getShip().getShipId());
+                res.setReferenceShipName(entry.getDeck().getShip().getShipName());
+            }
         }
         if (entry.getCabin() != null) {
             res.setCabinId(entry.getCabin().getCabinId());
             res.setCabinNumber(entry.getCabin().getCabinNumber());
             res.setRoomName(entry.getCabin().getRoomName());
+            if (res.getReferenceShipId() == null && entry.getCabin().getShip() != null) {
+                res.setReferenceShipId(entry.getCabin().getShip().getShipId());
+                res.setReferenceShipName(entry.getCabin().getShip().getShipName());
+            }
             res.setLocationType("FUNCTIONAL_ROOM");
             String disp = (entry.getDeck() != null ? "Tầng " + entry.getDeck().getDeckNumber() + " (" + entry.getDeck().getDeckName() + ") - " : "")
                     + "Phòng " + entry.getCabin().getCabinNumber()

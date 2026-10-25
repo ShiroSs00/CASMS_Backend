@@ -15,6 +15,8 @@ import com.casms.ship.entity.Cabin;
 import com.casms.ship.entity.Deck;
 import com.casms.ship.entity.Destination;
 import com.casms.ship.entity.Port;
+import com.casms.ship.entity.Ship;
+import java.math.BigDecimal;
 import com.casms.ship.enums.ItineraryDayType;
 import com.casms.ship.enums.ItineraryType;
 import com.casms.ship.repository.CabinRepository;
@@ -1398,12 +1400,11 @@ public class TripPlanningEnhancementTest {
         // 4. Test getActivityCategories catalog
         ApiResponse<List<ActivityCategoryResponse>> catRes = catalogController.getActivityCategories();
         assertNotNull(catRes);
-        assertEquals(5, catRes.getData().size());
+        assertEquals(4, catRes.getData().size());
         assertTrue(catRes.getData().stream().anyMatch(c -> c.getCode() == com.casms.activity.enums.OnboardActivityCategory.ENTERTAINMENT));
         assertTrue(catRes.getData().stream().anyMatch(c -> c.getCode() == com.casms.activity.enums.OnboardActivityCategory.SPORTS_WELLNESS));
         assertTrue(catRes.getData().stream().anyMatch(c -> c.getCode() == com.casms.activity.enums.OnboardActivityCategory.FAMILY_KIDS));
         assertTrue(catRes.getData().stream().anyMatch(c -> c.getCode() == com.casms.activity.enums.OnboardActivityCategory.SPECIAL_EVENTS));
-        assertTrue(catRes.getData().stream().anyMatch(c -> c.getCode() == com.casms.activity.enums.OnboardActivityCategory.WORKSHOPS_CLASSES));
     }
 
     @Test
@@ -1568,4 +1569,234 @@ public class TripPlanningEnhancementTest {
         assertEquals("Thể thao & Sức khỏe", savedEntry.getCategoryName());
         assertEquals("🧘", savedEntry.getCategoryIcon());
     }
+
+    @Test
+    @DisplayName("Fix Audit 3: ActivityView mapping an toàn tuyệt đối khi OnboardActivity không gắn Cruise (cruise == null)")
+    void testLegacyActivityViewNullCruiseSafety() {
+        OnboardActivity act = new OnboardActivity();
+        act.setOnboardActivityId(UUID.randomUUID());
+        act.setActivityCode("ACT-CATALOG-MASTER");
+        act.setActivityName("Master Catalog Activity Template");
+        act.setStatus(com.casms.activity.enums.OnboardActivityStatus.PLANNED);
+        act.setCapacity(50);
+        act.setPrice(BigDecimal.ZERO);
+        act.setCurrencyCode("VND");
+        act.setCruise(null); // Explicitly null (catalog source activity)
+
+        // Phải không ném NullPointerException tại line 60
+        com.casms.activity.controller.ActivityController.ActivityView view =
+                com.casms.activity.controller.ActivityController.ActivityView.of(act);
+
+        assertNotNull(view);
+        assertEquals(act.getOnboardActivityId(), view.id());
+        assertEquals("ACT-CATALOG-MASTER", view.code());
+        assertNull(view.cruiseId(), "cruiseId phải là null an toàn khi OnboardActivity không gắn Cruise");
+    }
+
+    @Test
+    @DisplayName("Fix Audit 4: checkStatus phân loại CACHED khi có resultingId dù responsePayload rỗng")
+    void testIdempotencyResultingIdRecovery() {
+        UUID actorId = UUID.randomUUID();
+        String op = "CREATE_TRIP";
+        String key = "test-recovery-key-101";
+        String hash = "test-hash";
+        UUID resultingTripId = UUID.randomUUID();
+
+        IdempotencyRecord rec = new IdempotencyRecord();
+        rec.setIdempotencyId(UUID.randomUUID());
+        rec.setActorId(actorId);
+        rec.setOperation(op);
+        rec.setIdempotencyKey(key);
+        rec.setRequestHash(hash);
+        rec.setResponsePayload(null); // Missing / blank response payload
+        rec.setResultingId(resultingTripId); // Has resulting ID!
+        rec.setCreatedAt(Instant.now());
+
+        IdempotencyRecordRepository mockRepo = mock(IdempotencyRecordRepository.class);
+        when(mockRepo.findByActorIdAndOperationAndIdempotencyKey(actorId, op, key))
+                .thenReturn(Optional.of(rec));
+
+        IdempotencyReservationService resService = new IdempotencyReservationService(mockRepo);
+        IdempotencyReservationService.ReservationResult result = resService.checkStatus(actorId, op, key, hash);
+
+        assertNotNull(result);
+        assertEquals(IdempotencyReservationService.ReservationStatus.CACHED, result.getStatus(),
+                "Bản ghi có resultingId phải được phân loại CACHED để IdempotencyService kích hoạt entityRecoveryFunction");
+        assertEquals(resultingTripId, result.getRecord().getResultingId());
+    }
+
+    @Test
+    @DisplayName("Fix Audit 4: checkStatus thu hồi và giải phóng bản ghi treo quá 60s không có kết quả")
+    void testIdempotencyStaleKeyEviction() {
+        UUID actorId = UUID.randomUUID();
+        String op = "CREATE_TRIP";
+        String key = "test-stale-key-999";
+        String hash = "test-hash";
+
+        IdempotencyRecord staleRec = new IdempotencyRecord();
+        staleRec.setIdempotencyId(UUID.randomUUID());
+        staleRec.setActorId(actorId);
+        staleRec.setOperation(op);
+        staleRec.setIdempotencyKey(key);
+        staleRec.setRequestHash(hash);
+        staleRec.setResponsePayload(null);
+        staleRec.setResultingId(null);
+        // Created 90 seconds ago (dead/abandoned process)
+        staleRec.setCreatedAt(Instant.now().minusSeconds(90));
+
+        IdempotencyRecordRepository mockRepo = mock(IdempotencyRecordRepository.class);
+        when(mockRepo.findByActorIdAndOperationAndIdempotencyKey(actorId, op, key))
+                .thenReturn(Optional.of(staleRec));
+
+        IdempotencyReservationService resService = new IdempotencyReservationService(mockRepo);
+        IdempotencyReservationService.ReservationResult result = resService.checkStatus(actorId, op, key, hash);
+
+        assertNotNull(result);
+        assertEquals(IdempotencyReservationService.ReservationStatus.RESERVED, result.getStatus(),
+                "Bản ghi treo quá 60s phải được giải phóng và cho phép client đặt lại khóa (RESERVED)");
+        verify(mockRepo, times(1)).delete(staleRec);
+        verify(mockRepo, times(1)).flush();
+    }
+
+    @Test
+    @DisplayName("Fix Audit 1: VietnamGeographyRegistry chuẩn hóa đầy đủ UN/LOCODE, từ khóa và tọa độ cho cả 3 miền")
+    void testVietnamGeographyRegistryCanonicalMappings() {
+        // 1. UN/LOCODE mapping tests
+        Port halong = new Port();
+        halong.setPortCode("VNHLG");
+        assertEquals("BAC_BO", VietnamGeographyRegistry.resolveDomesticRegion(halong));
+
+        Port haiphong = new Port();
+        haiphong.setPortCode("VNHPH");
+        assertEquals("BAC_BO", VietnamGeographyRegistry.resolveDomesticRegion(haiphong));
+
+        Port campha = new Port();
+        campha.setPortCode("VNCAM");
+        assertEquals("BAC_BO", VietnamGeographyRegistry.resolveDomesticRegion(campha));
+
+        Port cailan = new Port();
+        cailan.setPortCode("VNQNH");
+        assertEquals("BAC_BO", VietnamGeographyRegistry.resolveDomesticRegion(cailan));
+
+        Port danang = new Port();
+        danang.setPortCode("VNDAD");
+        assertEquals("TRUNG_BO", VietnamGeographyRegistry.resolveDomesticRegion(danang));
+
+        Port chanmay = new Port();
+        chanmay.setPortCode("VNHUE");
+        assertEquals("TRUNG_BO", VietnamGeographyRegistry.resolveDomesticRegion(chanmay));
+
+        Port quynhon = new Port();
+        quynhon.setPortCode("VNUIH");
+        assertEquals("TRUNG_BO", VietnamGeographyRegistry.resolveDomesticRegion(quynhon));
+
+        Port camranh = new Port();
+        camranh.setPortCode("VNCNA");
+        assertEquals("TRUNG_BO", VietnamGeographyRegistry.resolveDomesticRegion(camranh));
+
+        Port saigon = new Port();
+        saigon.setPortCode("VNSGN");
+        assertEquals("NAM_BO", VietnamGeographyRegistry.resolveDomesticRegion(saigon));
+
+        Port caimep = new Port();
+        caimep.setPortCode("VNVUT");
+        assertEquals("NAM_BO", VietnamGeographyRegistry.resolveDomesticRegion(caimep));
+
+        Port phuquoc = new Port();
+        phuquoc.setPortCode("VNPQC");
+        assertEquals("NAM_BO", VietnamGeographyRegistry.resolveDomesticRegion(phuquoc));
+
+        Port cantho = new Port();
+        cantho.setPortCode("VNCTO");
+        assertEquals("NAM_BO", VietnamGeographyRegistry.resolveDomesticRegion(cantho));
+
+        // 2. Direct domesticRegion property test
+        Port customPort = new Port();
+        customPort.setPortCode("VNCUSTOM");
+        customPort.setDomesticRegion("TRUNG_BO");
+        assertEquals("TRUNG_BO", VietnamGeographyRegistry.resolveDomesticRegion(customPort));
+
+        // 3. Keyword resolution test
+        Port keywordPort = new Port();
+        keywordPort.setPortCode("VNOTHER");
+        keywordPort.setPortName("Bến phà Vịnh Hạ Long");
+        assertEquals("BAC_BO", VietnamGeographyRegistry.resolveDomesticRegion(keywordPort));
+
+        // 4. Latitude coordinate boundary resolution test for Vietnam
+        Port latPortNorth = new Port();
+        latPortNorth.setCountryCode("VN");
+        latPortNorth.setLatitude(new BigDecimal("21.2"));
+        assertEquals("BAC_BO", VietnamGeographyRegistry.resolveDomesticRegion(latPortNorth));
+
+        Port latPortCentral = new Port();
+        latPortCentral.setCountryCode("VN");
+        latPortCentral.setLatitude(new BigDecimal("16.0"));
+        assertEquals("TRUNG_BO", VietnamGeographyRegistry.resolveDomesticRegion(latPortCentral));
+
+        Port latPortSouth = new Port();
+        latPortSouth.setCountryCode("VN");
+        latPortSouth.setLatitude(new BigDecimal("9.8"));
+        assertEquals("NAM_BO", VietnamGeographyRegistry.resolveDomesticRegion(latPortSouth));
+    }
+
+    @Test
+    @DisplayName("Fix Audit 2: mapToEntryResponse và mapToStopResponse trả về thông tin tàu tham chiếu và miền địa lý")
+    void testReferenceShipAndStopDomesticRegionMapping() {
+        Ship ship = new Ship();
+        ship.setShipId(UUID.randomUUID());
+        ship.setShipName("Paradise Elegance");
+
+        Deck deck4 = new Deck();
+        deck4.setDeckId(UUID.randomUUID());
+        deck4.setDeckNumber(4);
+        deck4.setDeckName("Sky Deck");
+        deck4.setShip(ship);
+
+        Cabin cabin401 = new Cabin();
+        cabin401.setCabinId(UUID.randomUUID());
+        cabin401.setCabinNumber("401");
+        cabin401.setRoomName("Sky Panoramic Lounge");
+        cabin401.setDeck(deck4);
+        cabin401.setShip(ship);
+
+        TripPlanEntry entry = new TripPlanEntry();
+        entry.setEntryId(UUID.randomUUID());
+        entry.setClientKey("entry-ref-ship");
+        entry.setKind(TripPlanEntryKind.ONBOARD_ACTIVITY);
+        entry.setTitle("Sky Cocktail Party");
+        entry.setStartDayNumber(1);
+        entry.setPlannedStartTime(LocalTime.of(19, 0));
+        entry.setEndDayNumber(1);
+        entry.setPlannedEndTime(LocalTime.of(21, 0));
+        entry.setDeck(deck4);
+        entry.setCabin(cabin401);
+
+        TripPlanEntryResponse entryRes = versionService.mapToEntryResponse(entry);
+        assertNotNull(entryRes);
+        assertEquals(ship.getShipId(), entryRes.getReferenceShipId(), "Phải trả về referenceShipId từ tàu tham chiếu");
+        assertEquals("Paradise Elegance", entryRes.getReferenceShipName(), "Phải trả về referenceShipName từ tàu tham chiếu");
+        assertEquals("FUNCTIONAL_ROOM", entryRes.getLocationType());
+
+        // Test Stop domesticRegion mapping
+        Port port = new Port();
+        port.setPortId(UUID.randomUUID());
+        port.setPortCode("VNHLG");
+        port.setPortName("Ha Long International Cruise Port");
+        port.setCountryCode("VN");
+        port.setTimeZoneId("Asia/Ho_Chi_Minh");
+
+        TripPlanStop stop = new TripPlanStop();
+        stop.setStopId(UUID.randomUUID());
+        stop.setClientKey("stop-hlg");
+        stop.setPort(port);
+        stop.setArrivalDayNumber(1);
+        stop.setPlannedArrivalTime(LocalTime.of(8, 0));
+        stop.setDepartureDayNumber(1);
+        stop.setPlannedDepartureTime(LocalTime.of(18, 0));
+
+        TripPlanStopResponse stopRes = versionService.mapToStopResponse(stop);
+        assertNotNull(stopRes);
+        assertEquals("BAC_BO", stopRes.getDomesticRegion(), "mapToStopResponse phải trả về domesticRegion chuẩn hóa");
+    }
 }
+

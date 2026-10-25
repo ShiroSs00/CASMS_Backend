@@ -56,6 +56,9 @@ public class Port {
     @Column(name = "description", length = 1000)
     private String description;
 
+    @Column(name = "domestic_region", length = 20)
+    private String domesticRegion;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 

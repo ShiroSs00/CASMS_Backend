@@ -19,6 +19,8 @@ public class TripPlanStopResponse {
     private String portCode;
     private String portName;
     private String countryCode;
+    @Schema(description = "Miền địa lý nội địa (BAC_BO, TRUNG_BO, NAM_BO) đối với cảng Việt Nam", example = "BAC_BO")
+    private String domesticRegion;
     private String timeZoneId;
     private UUID destinationId;
     private String destinationName;
