@@ -11,11 +11,16 @@ import com.casms.identity.entity.User;
 import com.casms.identity.repository.UserRepository;
 import com.casms.servicepackage.entity.Service;
 import com.casms.servicepackage.repository.ServiceRepository;
+import com.casms.ship.entity.Cabin;
+import com.casms.ship.entity.Deck;
 import com.casms.ship.entity.Destination;
 import com.casms.ship.entity.Port;
 import com.casms.ship.enums.ItineraryDayType;
 import com.casms.ship.enums.ItineraryType;
+import com.casms.ship.repository.CabinRepository;
+import com.casms.ship.repository.DeckRepository;
 import com.casms.ship.repository.DestinationRepository;
+import com.casms.ship.repository.PortRepository;
 import com.casms.trip.controller.TripCatalogController;
 import com.casms.trip.dto.request.TripCreateRequest;
 import com.casms.trip.dto.request.TripDayManageRequest;
@@ -86,6 +91,15 @@ public class TripPlanningEnhancementTest {
     @Mock
     private com.casms.audit.AuditRepository auditRepository;
 
+    @Mock
+    private DeckRepository deckRepository;
+
+    @Mock
+    private CabinRepository cabinRepository;
+
+    @Mock
+    private PortRepository portRepository;
+
     private TripService tripService;
     private TripScheduleVersionService versionService;
     private IdempotencyService idempotencyService;
@@ -109,6 +123,12 @@ public class TripPlanningEnhancementTest {
 
         catalogController = new TripCatalogController(destinationRepository,
                 onboardActivityRepository, shoreExcursionRepository, serviceRepository);
+        catalogController.setDeckRepository(deckRepository);
+        catalogController.setCabinRepository(cabinRepository);
+        catalogController.setPortRepository(portRepository);
+
+        versionService.setDeckRepository(deckRepository);
+        versionService.setCabinRepository(cabinRepository);
 
         actorId = UUID.randomUUID();
         actor = new User();
@@ -657,7 +677,7 @@ public class TripPlanningEnhancementTest {
         ver.setStops(List.of(s1, s2));
         ver.setEntries(new ArrayList<>());
 
-        versionService.validateVersionInternal(ver);
+        versionService.syncTripTypeFromStops(ver);
 
         assertEquals(ItineraryType.ROUND_TRIP, trip.getTripType(),
                 "Khi cảng đón và cảng trả trùng nhau, tripType phải tự động xác nhận là ROUND_TRIP");
@@ -665,7 +685,7 @@ public class TripPlanningEnhancementTest {
         // Đổi s2 sang cảng B khác cảng A -> ONE_WAY
         trip.setTripType(null);
         s2.setPort(portB);
-        versionService.validateVersionInternal(ver);
+        versionService.syncTripTypeFromStops(ver);
 
         assertEquals(ItineraryType.ONE_WAY, trip.getTripType(),
                 "Khi cảng đón và cảng trả khác nhau, tripType phải tự động xác nhận là ONE_WAY");
@@ -917,7 +937,7 @@ public class TripPlanningEnhancementTest {
         trip.setDurationDays(2);
 
         UUID nonExistentId = UUID.randomUUID();
-        when(onboardActivityRepository.existsById(nonExistentId)).thenReturn(false);
+        when(onboardActivityRepository.findById(nonExistentId)).thenReturn(Optional.empty());
 
         TripPlanEntry entry = new TripPlanEntry();
         entry.setClientKey("entry-act-src");
@@ -1034,5 +1054,421 @@ public class TripPlanningEnhancementTest {
         assertEquals("PATCH_DRAFT", history.get(0).getAction());
         assertEquals("planner@casms.com", history.get(0).getActorName());
         assertEquals(actorId, history.get(0).getActorUserId());
+    }
+
+    // =========================================================================
+    // BE-13 & BE-07: Additional Validation Tests (Meeting point, source checks)
+    // =========================================================================
+
+    @Test
+    @DisplayName("BE-13: Khung phục vụ (SERVING_WINDOW) KHÔNG bắt buộc có điểm tập trung (meetingPoint)")
+    void testBE13_ServingWindowDoesNotRequireMeetingPoint() {
+        Trip trip = new Trip();
+        trip.setDurationDays(2);
+
+        TripPlanEntry entry = new TripPlanEntry();
+        entry.setClientKey("entry-serving");
+        entry.setTitle("Buffet sáng nhà hàng Horizon");
+        entry.setKind(TripPlanEntryKind.SERVING_WINDOW);
+        entry.setStartDayNumber(1);
+        entry.setPlannedStartTime(LocalTime.of(6, 30));
+        entry.setEndDayNumber(1);
+        entry.setPlannedEndTime(LocalTime.of(10, 0));
+        entry.setMeetingPoint(null); // Không có meeting point
+        entry.setLocationText(null); // Không có location text
+
+        TripScheduleVersion ver = new TripScheduleVersion();
+        ver.setTrip(trip);
+        ver.setDays(List.of(new TripPlanDay(), new TripPlanDay()));
+        ver.setStops(new ArrayList<>());
+        ver.setEntries(List.of(entry));
+
+        List<PlanViolation> violations = versionService.validateVersionInternal(ver);
+
+        boolean hasMeetingPointViolation = violations.stream()
+                .anyMatch(v -> "MEETING_POINT_REQUIRED".equals(v.getCode()));
+        assertFalse(hasMeetingPointViolation, "Khung phục vụ không được báo lỗi MEETING_POINT_REQUIRED");
+    }
+
+    @Test
+    @DisplayName("BE-07: Tour tham quan nguồn không khớp cảng ghé báo lỗi SHORE_EXCURSION_PORT_MISMATCH")
+    void testBE07_ShoreExcursionPortMismatchViolation() {
+        Trip trip = new Trip();
+        trip.setDurationDays(2);
+
+        Port portA = new Port();
+        portA.setPortId(UUID.randomUUID());
+        portA.setPortCode("VNSGN");
+        portA.setPortName("Cảng Sài Gòn");
+
+        Port portB = new Port();
+        portB.setPortId(UUID.randomUUID());
+        portB.setPortCode("VNDAD");
+        portB.setPortName("Cảng Đà Nẵng");
+
+        TripPlanStop stop = new TripPlanStop();
+        stop.setClientKey("stop-sgn");
+        stop.setPort(portA);
+        stop.setArrivalDayNumber(1);
+        stop.setDepartureDayNumber(1);
+
+        UUID sourceExcursionId = UUID.randomUUID();
+        com.casms.activity.entity.ShoreExcursion masterTour = new com.casms.activity.entity.ShoreExcursion();
+        masterTour.setShoreExcursionId(sourceExcursionId);
+        masterTour.setExcursionName("Tour Bà Nà Hills");
+        masterTour.setPort(portB); // Cảng Đà Nẵng != Cảng Sài Gòn
+        masterTour.setStatus(com.casms.activity.enums.ShoreExcursionStatus.OPEN);
+
+        when(shoreExcursionRepository.findById(sourceExcursionId)).thenReturn(Optional.of(masterTour));
+
+        TripPlanEntry entry = new TripPlanEntry();
+        entry.setClientKey("entry-tour-mismatch");
+        entry.setTitle("Tour Bà Nà Hills");
+        entry.setKind(TripPlanEntryKind.SHORE_EXCURSION);
+        entry.setStop(stop);
+        entry.setSourceExcursionId(sourceExcursionId);
+        entry.setStartDayNumber(1);
+        entry.setPlannedStartTime(LocalTime.of(8, 0));
+        entry.setEndDayNumber(1);
+        entry.setPlannedEndTime(LocalTime.of(12, 0));
+        entry.setMeetingPoint("Cửa ga cáp treo");
+
+        TripScheduleVersion ver = new TripScheduleVersion();
+        ver.setTrip(trip);
+        ver.setDays(List.of(new TripPlanDay(), new TripPlanDay()));
+        ver.setStops(List.of(stop));
+        ver.setEntries(List.of(entry));
+
+        List<PlanViolation> violations = versionService.validateVersionInternal(ver);
+
+        PlanViolation mismatch = violations.stream()
+                .filter(v -> "SHORE_EXCURSION_PORT_MISMATCH".equals(v.getCode()))
+                .findFirst().orElse(null);
+        assertNotNull(mismatch, "Phải báo lỗi SHORE_EXCURSION_PORT_MISMATCH khi tour nguồn thuộc cảng khác");
+        assertEquals("ERROR", mismatch.getSeverity());
+    }
+
+    @Test
+    @DisplayName("BE-07: Tour tham quan nguồn bị CANCELLED báo lỗi SOURCE_EXCURSION_INACTIVE")
+    void testBE07_SourceExcursionInactiveViolation() {
+        Trip trip = new Trip();
+        trip.setDurationDays(2);
+
+        Port portA = new Port();
+        portA.setPortId(UUID.randomUUID());
+        portA.setPortCode("VNSGN");
+
+        TripPlanStop stop = new TripPlanStop();
+        stop.setClientKey("stop-sgn");
+        stop.setPort(portA);
+        stop.setArrivalDayNumber(1);
+        stop.setDepartureDayNumber(1);
+
+        UUID sourceExcursionId = UUID.randomUUID();
+        com.casms.activity.entity.ShoreExcursion cancelledTour = new com.casms.activity.entity.ShoreExcursion();
+        cancelledTour.setShoreExcursionId(sourceExcursionId);
+        cancelledTour.setExcursionName("Tour Củ Chi ngừng phục vụ");
+        cancelledTour.setPort(portA);
+        cancelledTour.setStatus(com.casms.activity.enums.ShoreExcursionStatus.CANCELLED);
+
+        when(shoreExcursionRepository.findById(sourceExcursionId)).thenReturn(Optional.of(cancelledTour));
+
+        TripPlanEntry entry = new TripPlanEntry();
+        entry.setClientKey("entry-tour-cancelled");
+        entry.setTitle("Tour Củ Chi");
+        entry.setKind(TripPlanEntryKind.SHORE_EXCURSION);
+        entry.setStop(stop);
+        entry.setSourceExcursionId(sourceExcursionId);
+        entry.setStartDayNumber(1);
+        entry.setPlannedStartTime(LocalTime.of(8, 0));
+        entry.setEndDayNumber(1);
+        entry.setPlannedEndTime(LocalTime.of(12, 0));
+        entry.setMeetingPoint("Cổng địa đạo");
+
+        TripScheduleVersion ver = new TripScheduleVersion();
+        ver.setTrip(trip);
+        ver.setDays(List.of(new TripPlanDay(), new TripPlanDay()));
+        ver.setStops(List.of(stop));
+        ver.setEntries(List.of(entry));
+
+        List<PlanViolation> violations = versionService.validateVersionInternal(ver);
+
+        PlanViolation inactive = violations.stream()
+                .filter(v -> "SOURCE_EXCURSION_INACTIVE".equals(v.getCode()))
+                .findFirst().orElse(null);
+        assertNotNull(inactive, "Phải báo lỗi SOURCE_EXCURSION_INACTIVE khi tour nguồn bị CANCELLED");
+    }
+
+    @Test
+    @DisplayName("BE-06B: Kiểm tra vi phạm miền địa lý (PORT_OUTSIDE_DOMESTIC_REGION) và quốc gia (PORT_OUTSIDE_COUNTRY_SCOPE)")
+    void testBE06B_DomesticRegionAndCountryScopeViolations() {
+        // Case 1: Chuyến nội địa Miền Bắc nhưng cảng thuộc Miền Nam (VNSGN)
+        Trip tripDomestic = new Trip();
+        tripDomestic.setDurationDays(2);
+        tripDomestic.setPlannedScope("DOMESTIC");
+        tripDomestic.setDomesticRegions(List.of("BAC_BO"));
+
+        Port portSGN = new Port();
+        portSGN.setPortId(UUID.randomUUID());
+        portSGN.setPortCode("VNSGN");
+        portSGN.setCountryCode("VN");
+
+        TripPlanStop stopDomestic = new TripPlanStop();
+        stopDomestic.setClientKey("stop-dom");
+        stopDomestic.setPort(portSGN);
+        stopDomestic.setArrivalDayNumber(1);
+        stopDomestic.setDepartureDayNumber(1);
+
+        TripScheduleVersion verDom = new TripScheduleVersion();
+        verDom.setTrip(tripDomestic);
+        verDom.setDays(List.of(new TripPlanDay(), new TripPlanDay()));
+        verDom.setStops(List.of(stopDomestic));
+        verDom.setEntries(new ArrayList<>());
+
+        List<PlanViolation> violationsDom = versionService.validateVersionInternal(verDom);
+        boolean hasRegionViolation = violationsDom.stream()
+                .anyMatch(v -> "PORT_OUTSIDE_DOMESTIC_REGION".equals(v.getCode()));
+        assertTrue(hasRegionViolation, "Phải báo lỗi PORT_OUTSIDE_DOMESTIC_REGION khi cảng Sài Gòn không thuộc miền Bắc");
+
+        // Case 2: Chuyến quốc tế giới hạn VN, TH nhưng ghé cảng Nhật Bản (JP)
+        Trip tripIntl = new Trip();
+        tripIntl.setDurationDays(2);
+        tripIntl.setPlannedScope("INTERNATIONAL");
+        tripIntl.setCountryCodes(List.of("VN", "TH"));
+
+        Port portTokyo = new Port();
+        portTokyo.setPortId(UUID.randomUUID());
+        portTokyo.setPortCode("JPTYO");
+        portTokyo.setCountryCode("JP");
+
+        TripPlanStop stopIntl = new TripPlanStop();
+        stopIntl.setClientKey("stop-intl");
+        stopIntl.setPort(portTokyo);
+        stopIntl.setArrivalDayNumber(1);
+        stopIntl.setDepartureDayNumber(1);
+
+        TripScheduleVersion verIntl = new TripScheduleVersion();
+        verIntl.setTrip(tripIntl);
+        verIntl.setDays(List.of(new TripPlanDay(), new TripPlanDay()));
+        verIntl.setStops(List.of(stopIntl));
+        verIntl.setEntries(new ArrayList<>());
+
+        List<PlanViolation> violationsIntl = versionService.validateVersionInternal(verIntl);
+        boolean hasCountryViolation = violationsIntl.stream()
+                .anyMatch(v -> "PORT_OUTSIDE_COUNTRY_SCOPE".equals(v.getCode()));
+        assertTrue(hasCountryViolation, "Phải báo lỗi PORT_OUTSIDE_COUNTRY_SCOPE khi cảng Tokyo không nằm trong phạm vi quốc gia đã đăng ký");
+    }
+
+    @Test
+    @DisplayName("BE-12/14: cloneTrip từ chối clone phiên bản bị CANCELLED")
+    void testCloneTrip_CannotCloneCancelledVersion() {
+        UUID tripId = UUID.randomUUID();
+        UUID versionId = UUID.randomUUID();
+
+        Trip trip = new Trip();
+        trip.setTripId(tripId);
+        trip.setTripCode("TR-CANCEL-1");
+        trip.setStatus(TripStatus.READY);
+
+        TripScheduleVersion cancelledVer = new TripScheduleVersion();
+        cancelledVer.setVersionId(versionId);
+        cancelledVer.setTrip(trip);
+        cancelledVer.setStatus(TripScheduleVersionStatus.CANCELLED);
+
+        when(tripRepository.findById(tripId)).thenReturn(Optional.of(trip));
+        when(versionRepository.findById(versionId)).thenReturn(Optional.of(cancelledVer));
+
+        BusinessException ex = assertThrows(BusinessException.class, () ->
+                tripService.cloneTrip(tripId, versionId, actorId));
+        assertEquals("CANNOT_CLONE_CANCELLED_VERSION", ex.getCode());
+    }
+
+    @Test
+    @DisplayName("BE-12/14: createNextDraftVersion tính maxVersionNumber + 1 ngay cả khi có phiên bản bị CANCELLED")
+    void testCreateNextVersion_HandlesCancelledVersionsWithoutUniqueCollision() {
+        UUID tripId = UUID.randomUUID();
+        Trip trip = new Trip();
+        trip.setTripId(tripId);
+        trip.setTripCode("TR-MULTI-VER");
+        trip.setStatus(TripStatus.READY);
+
+        TripScheduleVersion v1Published = new TripScheduleVersion();
+        v1Published.setVersionId(UUID.randomUUID());
+        v1Published.setVersionNumber(1);
+        v1Published.setTrip(trip);
+        v1Published.setStatus(TripScheduleVersionStatus.PUBLISHED);
+        v1Published.setDays(new ArrayList<>());
+        v1Published.setStops(new ArrayList<>());
+        v1Published.setEntries(new ArrayList<>());
+
+        TripScheduleVersion v2Cancelled = new TripScheduleVersion();
+        v2Cancelled.setVersionId(UUID.randomUUID());
+        v2Cancelled.setVersionNumber(2);
+        v2Cancelled.setTrip(trip);
+        v2Cancelled.setStatus(TripScheduleVersionStatus.CANCELLED);
+        v2Cancelled.setDays(new ArrayList<>());
+        v2Cancelled.setStops(new ArrayList<>());
+        v2Cancelled.setEntries(new ArrayList<>());
+
+        when(tripRepository.findById(tripId)).thenReturn(Optional.of(trip));
+        when(versionRepository.findByTrip_TripIdOrderByVersionNumberAsc(tripId))
+                .thenReturn(List.of(v1Published, v2Cancelled));
+        when(userRepository.findById(actorId)).thenReturn(Optional.of(actor));
+        when(versionRepository.save(any(TripScheduleVersion.class))).thenAnswer(i -> {
+            TripScheduleVersion v = i.getArgument(0);
+            v.setVersionId(UUID.randomUUID());
+            return v;
+        });
+
+        TripScheduleVersionDetailResponse nextVerRes = versionService.createNextDraftVersion(tripId, actorId);
+
+        assertNotNull(nextVerRes);
+        // Phiên bản tiếp theo phải là 3 (max(1, 2) + 1), không được là 2 (tránh uq_trip_version trùng lặp)
+        assertEquals(3, nextVerRes.getVersionNumber());
+        assertEquals(TripScheduleVersionStatus.DRAFT, nextVerRes.getStatus());
+    }
+
+    // =========================================================================
+    // Deck & Cabin Catalog and Physical Location Tests
+    // =========================================================================
+
+    @Test
+    @DisplayName("Deck/Cabin/Port API: Cung cấp API chọn boong tàu, phòng cabin và cảng ghé")
+    void testCatalog_GetDecksAndCabinsAndPorts() {
+        UUID shipId = UUID.randomUUID();
+        com.casms.ship.entity.Ship ship = new com.casms.ship.entity.Ship();
+        ship.setShipId(shipId);
+        ship.setShipName("OceVie Paradise of the Seas");
+
+        Deck deck2 = new Deck();
+        deck2.setDeckId(UUID.randomUUID());
+        deck2.setDeckNumber(2);
+        deck2.setDeckName("Lotus Wellness & Spa Deck");
+        deck2.setShip(ship);
+
+        Cabin cabin202 = new Cabin();
+        cabin202.setCabinId(UUID.randomUUID());
+        cabin202.setCabinNumber("202");
+        cabin202.setCabinType(com.casms.ship.enums.CabinType.SUITE);
+        cabin202.setCapacity(15);
+        cabin202.setDeck(deck2);
+        cabin202.setShip(ship);
+        cabin202.setLocationCode("MIDSHIP-PORT");
+
+        Port portSGN = new Port();
+        portSGN.setPortId(UUID.randomUUID());
+        portSGN.setPortCode("VNSGN");
+        portSGN.setPortName("Saigon Hiep Phuoc Cruise Port");
+        portSGN.setCountryCode("VN");
+        portSGN.setTimeZoneId("Asia/Ho_Chi_Minh");
+        portSGN.setStatus(com.casms.ship.enums.PortStatus.ACTIVE);
+        portSGN.setLatitude(java.math.BigDecimal.valueOf(10.6333));
+        portSGN.setLongitude(java.math.BigDecimal.valueOf(106.7500));
+
+        when(deckRepository.findAll(any(org.springframework.data.domain.Sort.class))).thenReturn(List.of(deck2));
+        when(cabinRepository.findAll()).thenReturn(List.of(cabin202));
+        when(portRepository.findAll()).thenReturn(List.of(portSGN));
+
+        // 1. Test getSourceDecks
+        ApiResponse<List<PlanningSourceDeckResponse>> deckRes = catalogController.getSourceDecks();
+        assertNotNull(deckRes);
+        assertEquals(1, deckRes.getData().size());
+        assertEquals(2, deckRes.getData().get(0).getDeckNumber());
+        assertEquals("Lotus Wellness & Spa Deck", deckRes.getData().get(0).getDeckName());
+        assertEquals("OceVie Paradise of the Seas", deckRes.getData().get(0).getShipName());
+
+        // 2. Test getSourceCabins
+        ApiResponse<List<PlanningSourceCabinResponse>> cabinRes = catalogController.getSourceCabins();
+        assertNotNull(cabinRes);
+        assertEquals(1, cabinRes.getData().size());
+        assertEquals("202", cabinRes.getData().get(0).getCabinNumber());
+        assertEquals(2, cabinRes.getData().get(0).getDeckNumber());
+        assertEquals("MIDSHIP-PORT", cabinRes.getData().get(0).getLocationCode());
+
+        // 3. Test getSourcePorts
+        ApiResponse<List<PlanningSourcePortResponse>> portRes = catalogController.getSourcePorts();
+        assertNotNull(portRes);
+        assertEquals(1, portRes.getData().size());
+        assertEquals("VNSGN", portRes.getData().get(0).getPortCode());
+        assertEquals("Saigon Hiep Phuoc Cruise Port", portRes.getData().get(0).getPortName());
+    }
+
+    @Test
+    @DisplayName("Lưu nháp lịch trình: Lưu thành công Deck/Cabin và hỗ trợ kế thừa (copy-on-select) từ nguồn hoạt động")
+    void testSaveDraft_SavesDeckAndCabinAndSupportsCopyOnSelect() {
+        UUID tripId = UUID.randomUUID();
+        Trip trip = new Trip();
+        trip.setTripId(tripId);
+        trip.setTripCode("TR-DECK-CABIN");
+        trip.setStatus(TripStatus.READY);
+        trip.setDurationDays(1);
+
+        UUID versionId = UUID.randomUUID();
+        TripScheduleVersion ver = new TripScheduleVersion();
+        ver.setVersionId(versionId);
+        ver.setVersionNumber(1);
+        ver.setTrip(trip);
+        ver.setStatus(TripScheduleVersionStatus.DRAFT);
+        ver.setRevision(1L);
+
+        TripPlanDay day1 = new TripPlanDay();
+        day1.setDayId(UUID.randomUUID());
+        day1.setDayNumber(1);
+        day1.setDayType(ItineraryDayType.SEA_DAY);
+        ver.setDays(new ArrayList<>(List.of(day1)));
+        ver.setStops(new ArrayList<>());
+        ver.setEntries(new ArrayList<>());
+
+        UUID deckId = UUID.randomUUID();
+        Deck deck = new Deck();
+        deck.setDeckId(deckId);
+        deck.setDeckNumber(2);
+        deck.setDeckName("Lotus Wellness & Spa Deck");
+
+        UUID cabinId = UUID.randomUUID();
+        Cabin cabin = new Cabin();
+        cabin.setCabinId(cabinId);
+        cabin.setCabinNumber("202");
+        cabin.setDeck(deck);
+
+        when(versionRepository.findByTrip_TripIdAndVersionNumber(tripId, 1)).thenReturn(Optional.of(ver));
+        when(versionRepository.save(any(TripScheduleVersion.class))).thenAnswer(i -> i.getArgument(0));
+        when(deckRepository.findById(deckId)).thenReturn(Optional.of(deck));
+        when(cabinRepository.findById(cabinId)).thenReturn(Optional.of(cabin));
+
+        // Tạo entry DTO có deckId và cabinId rõ ràng
+        com.casms.trip.dto.request.TripPlanEntryDraftDto entryDto = new com.casms.trip.dto.request.TripPlanEntryDraftDto();
+        entryDto.setClientKey("entry-spa-202");
+        entryDto.setDayNumber(1);
+        entryDto.setKind(TripPlanEntryKind.ONBOARD_ACTIVITY);
+        entryDto.setTitle("Massage đá nóng Lotus Spa");
+        entryDto.setStartDayNumber(1);
+        entryDto.setPlannedStartTime(LocalTime.of(9, 0));
+        entryDto.setEndDayNumber(1);
+        entryDto.setPlannedEndTime(LocalTime.of(10, 30));
+        entryDto.setDeckId(deckId);
+        entryDto.setCabinId(cabinId);
+
+        com.casms.trip.dto.request.ScheduleDraftSaveRequest saveReq =
+                new com.casms.trip.dto.request.ScheduleDraftSaveRequest();
+        saveReq.setExpectedRevision(1L);
+
+        com.casms.trip.dto.request.TripPlanDayDraftDto dayDto = new com.casms.trip.dto.request.TripPlanDayDraftDto();
+        dayDto.setDayNumber(1);
+        dayDto.setDayType(ItineraryDayType.SEA_DAY);
+        saveReq.setDays(List.of(dayDto));
+        saveReq.setStops(new ArrayList<>());
+        saveReq.setEntries(List.of(entryDto));
+
+        TripScheduleVersionDetailResponse res = versionService.saveDraft(tripId, 1, saveReq, actorId);
+
+        assertNotNull(res);
+        assertEquals(1, res.getEntries().size());
+        TripPlanEntryResponse savedEntry = res.getEntries().get(0);
+        assertEquals(deckId, savedEntry.getDeckId());
+        assertEquals(2, savedEntry.getDeckNumber());
+        assertEquals("Lotus Wellness & Spa Deck", savedEntry.getDeckName());
+        assertEquals(cabinId, savedEntry.getCabinId());
+        assertEquals("202", savedEntry.getCabinNumber());
     }
 }

@@ -493,9 +493,20 @@ public class TripService {
         TripScheduleVersion sourceVer = null;
         if (sourceVersionId != null) {
             sourceVer = versionRepository.findById(sourceVersionId).orElse(null);
+            if (sourceVer != null && sourceVer.getStatus() == TripScheduleVersionStatus.CANCELLED) {
+                throw new BusinessException(HttpStatus.BAD_REQUEST, "CANNOT_CLONE_CANCELLED_VERSION",
+                        "Không thể nhân bản (clone) từ phiên bản lịch trình đã bị hủy (CANCELLED).");
+            }
         }
         if (sourceVer == null) {
-            sourceVer = versionRepository.findTopByTrip_TripIdOrderByVersionNumberDesc(tripId).orElse(null);
+            // Prioritize latest PUBLISHED version, then fallback to latest non-cancelled version
+            sourceVer = versionRepository.findByTrip_TripIdOrderByVersionNumberAsc(tripId).stream()
+                    .filter(v -> v.getStatus() == TripScheduleVersionStatus.PUBLISHED)
+                    .reduce((first, second) -> second)
+                    .orElseGet(() -> versionRepository.findByTrip_TripIdOrderByVersionNumberAsc(tripId).stream()
+                            .filter(v -> v.getStatus() != TripScheduleVersionStatus.CANCELLED)
+                            .reduce((first, second) -> second)
+                            .orElse(null));
         }
 
         TripScheduleVersion newVer = new TripScheduleVersion();
@@ -823,6 +834,13 @@ public class TripService {
                 .orElseThrow(() -> new ResourceNotFoundException("Trip", tripId));
     }
 
+    @Autowired(required = false)
+    public void setIdempotencyService(IdempotencyService idempotencyService) {
+        if (idempotencyService != null) {
+            idempotencyService.setEntityRecoveryFunction(this::getTripDetail);
+        }
+    }
+
     public TripSummaryResponse mapToSummaryResponse(Trip trip) {
         TripSummaryResponse res = new TripSummaryResponse();
         res.setTripId(trip.getTripId());
@@ -850,7 +868,10 @@ public class TripService {
                 ? trip.getVersions()
                 : versionRepository.findByTrip_TripIdOrderByVersionNumberAsc(trip.getTripId());
         if (!versions.isEmpty()) {
-            TripScheduleVersion latest = versions.get(versions.size() - 1);
+            TripScheduleVersion latest = versions.stream()
+                    .filter(v -> v.getStatus() != TripScheduleVersionStatus.CANCELLED)
+                    .reduce((first, second) -> second)
+                    .orElse(versions.get(versions.size() - 1));
             res.setLatestVersionNumber(latest.getVersionNumber());
             res.setLatestVersionStatus(latest.getStatus());
         }
@@ -886,7 +907,10 @@ public class TripService {
                 ? trip.getVersions()
                 : versionRepository.findByTrip_TripIdOrderByVersionNumberAsc(trip.getTripId());
         if (!versions.isEmpty()) {
-            TripScheduleVersion latest = versions.get(versions.size() - 1);
+            TripScheduleVersion latest = versions.stream()
+                    .filter(v -> v.getStatus() != TripScheduleVersionStatus.CANCELLED)
+                    .reduce((first, second) -> second)
+                    .orElse(versions.get(versions.size() - 1));
             res.setLatestVersionNumber(latest.getVersionNumber());
             res.setLatestVersionStatus(latest.getStatus());
         }
@@ -1026,6 +1050,17 @@ public class TripService {
             entryRes.setPlannedEndTime(e.getPlannedEndTime());
             entryRes.setTimeZoneId(e.getTimeZoneId());
             entryRes.setLocationText(e.getLocationText());
+
+            if (e.getDeck() != null) {
+                entryRes.setDeckId(e.getDeck().getDeckId());
+                entryRes.setDeckNumber(e.getDeck().getDeckNumber());
+                entryRes.setDeckName(e.getDeck().getDeckName());
+            }
+            if (e.getCabin() != null) {
+                entryRes.setCabinId(e.getCabin().getCabinId());
+                entryRes.setCabinNumber(e.getCabin().getCabinNumber());
+            }
+
             entryRes.setMeetingPoint(e.getMeetingPoint());
             entryRes.setNotes(e.getNotes());
             return entryRes;

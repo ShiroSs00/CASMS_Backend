@@ -34,6 +34,21 @@ public class PlanningSourceActivityResponse {
     @Schema(description = "Vị trí / Địa điểm tổ chức")
     private String location;
 
+    @Schema(description = "ID tầng (deck) nơi hoạt động diễn ra")
+    private UUID deckId;
+
+    @Schema(description = "Số thứ tự tầng", example = "2")
+    private Integer deckNumber;
+
+    @Schema(description = "Tên tầng hiển thị", example = "Promenade Deck")
+    private String deckName;
+
+    @Schema(description = "ID phòng/cabin cụ thể (nếu có)")
+    private UUID cabinId;
+
+    @Schema(description = "Số phòng/cabin", example = "201")
+    private String cabinNumber;
+
     @Schema(description = "Giá tham khảo")
     private BigDecimal price;
 

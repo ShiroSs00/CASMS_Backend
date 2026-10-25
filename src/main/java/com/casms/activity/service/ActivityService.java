@@ -7,7 +7,11 @@ import com.casms.common.service.BusinessCodeGenerator;
 import com.casms.booking.entity.BookingPassenger;
 import com.casms.booking.enums.BookingStatus;
 import com.casms.booking.repository.BookingPassengerRepository;
+import com.casms.ship.entity.Cabin;
+import com.casms.ship.entity.Deck;
+import com.casms.ship.repository.CabinRepository;
 import com.casms.ship.repository.CruiseRepository;
+import com.casms.ship.repository.DeckRepository;
 import com.casms.servicepackage.repository.TourPackageActivityRepository;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
@@ -31,6 +35,8 @@ public class ActivityService {
     private final ShoreExcursionRepository excursions;
     private final TourPackageActivityRepository packageActivities;
     private final BusinessCodeGenerator businessCodeGenerator;
+    private final DeckRepository deckRepository;
+    private final CabinRepository cabinRepository;
 
     @Transactional(readOnly = true)
     public List<OnboardActivity> listActivities() { return activities.findAll(); }
@@ -40,6 +46,10 @@ public class ActivityService {
     public int availableSeats(UUID id){OnboardActivity a=activity(id);if(a.getStatus()!=OnboardActivityStatus.OPEN||!a.getEndTime().isAfter(Instant.now()))return 0;return (int)Math.max(0,a.getCapacity()-occupied(id));}
 
     public OnboardActivity createActivity(OnboardActivity a, UUID cruiseId) {
+        return createActivity(a, cruiseId, null, null);
+    }
+
+    public OnboardActivity createActivity(OnboardActivity a, UUID cruiseId, UUID deckId, UUID cabinId) {
         a.setCruise(cruises.findById(cruiseId).orElseThrow(() -> missing("Cruise", cruiseId)));
         a.setActivityCode(businessCodeGenerator.next("AC"));
         if (a.getCurrencyCode() == null || a.getCurrencyCode().isBlank()) {
@@ -48,16 +58,45 @@ public class ActivityService {
         if (a.getPrice() == null) {
             a.setPrice(java.math.BigDecimal.ZERO);
         }
+        resolveDeckAndCabin(a, deckId, cabinId);
         validateActivity(a, null);
         a.setStatus(OnboardActivityStatus.PLANNED);
         return activities.save(a);
     }
+
     public OnboardActivity updateActivity(UUID id, OnboardActivity input) {
+        return updateActivity(id, input, input.getDeck() != null ? input.getDeck().getDeckId() : null, input.getCabin() != null ? input.getCabin().getCabinId() : null);
+    }
+
+    public OnboardActivity updateActivity(UUID id, OnboardActivity input, UUID deckId, UUID cabinId) {
         OnboardActivity a = activity(id);
         if (a.getStatus() != OnboardActivityStatus.PLANNED) throw new IllegalStateException("Only planned activities can be edited");
         a.setActivityName(input.getActivityName()); a.setDescription(input.getDescription());
         a.setStartTime(input.getStartTime()); a.setEndTime(input.getEndTime()); a.setLocation(input.getLocation()); a.setCapacity(input.getCapacity());
-        a.setPrice(input.getPrice()); a.setCurrencyCode(input.getCurrencyCode()); validateActivity(a, id); return a;
+        a.setPrice(input.getPrice()); a.setCurrencyCode(input.getCurrencyCode());
+        resolveDeckAndCabin(a, deckId, cabinId);
+        validateActivity(a, id);
+        return a;
+    }
+
+    private void resolveDeckAndCabin(OnboardActivity a, UUID deckId, UUID cabinId) {
+        if (deckId != null) {
+            Deck deck = deckRepository.findById(deckId)
+                    .orElseThrow(() -> new EntityNotFoundException("Deck not found: " + deckId));
+            a.setDeck(deck);
+        } else {
+            a.setDeck(null);
+        }
+        if (cabinId != null) {
+            Cabin cabin = cabinRepository.findById(cabinId)
+                    .orElseThrow(() -> new EntityNotFoundException("Cabin not found: " + cabinId));
+            a.setCabin(cabin);
+            if (a.getDeck() == null && cabin.getDeck() != null) {
+                a.setDeck(cabin.getDeck());
+            }
+        } else {
+            a.setCabin(null);
+        }
     }
     public void deleteActivity(UUID id) {
         OnboardActivity a = activity(id);

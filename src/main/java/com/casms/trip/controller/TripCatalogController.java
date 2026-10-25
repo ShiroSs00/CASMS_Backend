@@ -7,15 +7,25 @@ import com.casms.activity.repository.ShoreExcursionRepository;
 import com.casms.common.response.ApiResponse;
 import com.casms.servicepackage.entity.Service;
 import com.casms.servicepackage.repository.ServiceRepository;
+import com.casms.ship.entity.Cabin;
+import com.casms.ship.entity.Deck;
+import com.casms.ship.entity.Port;
+import com.casms.ship.repository.CabinRepository;
+import com.casms.ship.repository.DeckRepository;
 import com.casms.ship.repository.DestinationRepository;
+import com.casms.ship.repository.PortRepository;
 import com.casms.trip.dto.response.PlanningSourceActivityResponse;
+import com.casms.trip.dto.response.PlanningSourceCabinResponse;
+import com.casms.trip.dto.response.PlanningSourceDeckResponse;
 import com.casms.trip.dto.response.PlanningSourceExcursionResponse;
+import com.casms.trip.dto.response.PlanningSourcePortResponse;
 import com.casms.trip.dto.response.PlanningSourceServiceResponse;
 import com.casms.trip.dto.response.TripCatalogResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Sort;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -37,7 +47,19 @@ public class TripCatalogController {
     private final ShoreExcursionRepository shoreExcursionRepository;
     private final ServiceRepository serviceRepository;
 
-    @Operation(summary = "Lấy danh mục lập kế hoạch hành trình", description = "Trả về operatingAreas từ server, tripTypes, fleetIntegrationStatus=DEFERRED_EXTERNAL và supported policies")
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    @lombok.Setter
+    private DeckRepository deckRepository;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    @lombok.Setter
+    private CabinRepository cabinRepository;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    @lombok.Setter
+    private PortRepository portRepository;
+
+    @Operation(summary = "Lấy danh mục lập kế hoạch hành trình", description = "Trả về operatingAreas từ server, tripTypes, fleetIntegrationStatus=DEFERRED_EXTERNAL, supported policies, domesticRegions và countries")
     @PreAuthorize("hasAuthority('TRIP_READ')")
     @GetMapping
     public ApiResponse<TripCatalogResponse> getCatalogs() {
@@ -45,6 +67,27 @@ public class TripCatalogController {
                 .map(d -> d.getDestinationName())
                 .distinct()
                 .collect(Collectors.toList());
+
+        List<TripCatalogResponse.RegionCatalogItem> domesticRegions = List.of(
+                new TripCatalogResponse.RegionCatalogItem("BAC_BO", "Miền Bắc (Bắc Bộ)", "Bao gồm các cảng Vịnh Hạ Long, Hải Phòng và phụ cận"),
+                new TripCatalogResponse.RegionCatalogItem("TRUNG_BO", "Miền Trung (Trung Bộ)", "Bao gồm các cảng Đà Nẵng, Nha Trang, Chân Mây Huế và phụ cận"),
+                new TripCatalogResponse.RegionCatalogItem("NAM_BO", "Miền Nam (Nam Bộ)", "Bao gồm các cảng Sài Gòn, Cái Mép - Phú Mỹ, Phú Quốc và phụ cận")
+        );
+
+        List<TripCatalogResponse.CountryCatalogItem> countries = List.of(
+                new TripCatalogResponse.CountryCatalogItem("VN", "Việt Nam"),
+                new TripCatalogResponse.CountryCatalogItem("SG", "Singapore"),
+                new TripCatalogResponse.CountryCatalogItem("TH", "Thái Lan"),
+                new TripCatalogResponse.CountryCatalogItem("MY", "Malaysia"),
+                new TripCatalogResponse.CountryCatalogItem("JP", "Nhật Bản")
+        );
+
+        List<TripCatalogResponse.DurationGroupCatalogItem> durationGroups = List.of(
+                new TripCatalogResponse.DurationGroupCatalogItem("SHORT", "Chuyến ngắn", 1, 2, 1),
+                new TripCatalogResponse.DurationGroupCatalogItem("MEDIUM", "Chuyến trung bình", 2, 3, 2),
+                new TripCatalogResponse.DurationGroupCatalogItem("LONG", "Chuyến dài ngày", 3, 5, 3),
+                new TripCatalogResponse.DurationGroupCatalogItem("EXTENDED", "Hải trình mở rộng", 5, 30, 7)
+        );
 
         TripCatalogResponse response = TripCatalogResponse.builder()
                 .operatingAreas(operatingAreas)
@@ -57,53 +100,118 @@ public class TripCatalogController {
                         "MAKER_CHECKER_SEPARATION",
                         "TIME_BASIS_PORT_OR_SHIP"
                 ))
+                .domesticRegions(domesticRegions)
+                .countries(countries)
+                .durationGroups(durationGroups)
                 .build();
 
         return ApiResponse.success(response);
     }
 
     @Operation(summary = "Nguồn hoạt động trên tàu (Onboard Activities) cho lập kế hoạch",
-               description = "Cung cấp danh sách mẫu hoạt động trên tàu được phép tái sử dụng cho lập kế hoạch lịch trình (yêu cầu TRIP_READ, không yêu cầu quyền vận hành ACTIVITY_READ)")
+               description = "Cung cấp danh sách mẫu hoạt động trên tàu được phép tái sử dụng cho lập kế hoạch lịch trình, hỗ trợ tìm kiếm theo từ khóa (yêu cầu TRIP_READ)")
     @PreAuthorize("hasAuthority('TRIP_READ')")
     @GetMapping("/sources/activities")
-    public ApiResponse<List<PlanningSourceActivityResponse>> getSourceActivities() {
+    public ApiResponse<List<PlanningSourceActivityResponse>> getSourceActivities(
+            @Parameter(description = "Từ khóa tìm kiếm theo tên hoặc mã hoạt động") @RequestParam(required = false) String keyword) {
         List<OnboardActivity> activities = onboardActivityRepository.findAll();
+        String kw = keyword != null ? keyword.trim().toLowerCase() : null;
+
         List<PlanningSourceActivityResponse> result = activities.stream()
                 .filter(a -> a.getStatus() != com.casms.activity.enums.OnboardActivityStatus.CANCELLED)
-                .map(a -> PlanningSourceActivityResponse.builder()
-                        .activityId(a.getOnboardActivityId())
-                        .sourceActivityId(a.getOnboardActivityId())
-                        .activityCode(a.getActivityCode())
-                        .activityName(a.getActivityName())
-                        .description(a.getDescription())
-                        .location(a.getLocation())
-                        .price(a.getPrice())
-                        .currencyCode(a.getCurrencyCode())
-                        .build())
+                .filter(a -> kw == null || (a.getActivityName() != null && a.getActivityName().toLowerCase().contains(kw))
+                        || (a.getActivityCode() != null && a.getActivityCode().toLowerCase().contains(kw)))
+                .map(a -> {
+                    var builder = PlanningSourceActivityResponse.builder()
+                            .activityId(a.getOnboardActivityId())
+                            .sourceActivityId(a.getOnboardActivityId())
+                            .activityCode(a.getActivityCode())
+                            .activityName(a.getActivityName())
+                            .description(a.getDescription())
+                            .location(a.getLocation())
+                            .price(a.getPrice())
+                            .currencyCode(a.getCurrencyCode());
+
+                    // Deck info — tầng nơi hoạt động diễn ra
+                    if (a.getDeck() != null) {
+                        builder.deckId(a.getDeck().getDeckId())
+                               .deckNumber(a.getDeck().getDeckNumber())
+                               .deckName(a.getDeck().getDeckName());
+                    }
+                    // Cabin info — phòng cụ thể
+                    if (a.getCabin() != null) {
+                        builder.cabinId(a.getCabin().getCabinId())
+                               .cabinNumber(a.getCabin().getCabinNumber());
+                    }
+
+                    return builder.build();
+                })
                 .collect(Collectors.toList());
         return ApiResponse.success(result);
     }
 
+    public ApiResponse<List<PlanningSourceActivityResponse>> getSourceActivities() {
+        return getSourceActivities(null);
+    }
+
     @Operation(summary = "Nguồn tham quan trên bờ (Shore Excursions) cho lập kế hoạch",
-               description = "Cung cấp danh sách mẫu tour tham quan trên bờ được phép tái sử dụng cho lập kế hoạch lịch trình, có thể lọc theo cảng (yêu cầu TRIP_READ)")
+               description = "Cung cấp danh sách mẫu tour tham quan trên bờ được phép tái sử dụng cho lập kế hoạch lịch trình, hỗ trợ lọc theo cảng và từ khóa (yêu cầu TRIP_READ)")
     @PreAuthorize("hasAuthority('TRIP_READ')")
     @GetMapping("/sources/excursions")
     public ApiResponse<List<PlanningSourceExcursionResponse>> getSourceExcursions(
-            @Parameter(description = "Lọc theo ID cảng ghé") @RequestParam(required = false) UUID portId) {
+            @Parameter(description = "Lọc theo ID cảng ghé") @RequestParam(required = false) UUID portId,
+            @Parameter(description = "Từ khóa tìm kiếm theo tên hoặc mã tour") @RequestParam(required = false) String keyword) {
         List<ShoreExcursion> excursions = shoreExcursionRepository.findAll();
+        String kw = keyword != null ? keyword.trim().toLowerCase() : null;
+
         List<PlanningSourceExcursionResponse> result = excursions.stream()
                 .filter(e -> e.getStatus() != com.casms.activity.enums.ShoreExcursionStatus.CANCELLED)
-                .filter(e -> portId == null || (e.getCruiseStop() != null && e.getCruiseStop().getPort() != null
-                        && portId.equals(e.getCruiseStop().getPort().getPortId())))
+                .filter(e -> {
+                    UUID pId = null;
+                    if (e.getPort() != null) {
+                        pId = e.getPort().getPortId();
+                    } else if (e.getCruiseStop() != null && e.getCruiseStop().getPort() != null) {
+                        pId = e.getCruiseStop().getPort().getPortId();
+                    }
+                    return portId == null || (pId != null && portId.equals(pId));
+                })
+                .filter(e -> kw == null || (e.getExcursionName() != null && e.getExcursionName().toLowerCase().contains(kw))
+                        || (e.getExcursionCode() != null && e.getExcursionCode().toLowerCase().contains(kw)))
                 .map(e -> {
                     UUID pId = null;
                     String pCode = null;
                     String pName = null;
-                    if (e.getCruiseStop() != null && e.getCruiseStop().getPort() != null) {
+                    if (e.getPort() != null) {
+                        pId = e.getPort().getPortId();
+                        pCode = e.getPort().getPortCode();
+                        pName = e.getPort().getPortName();
+                    } else if (e.getCruiseStop() != null && e.getCruiseStop().getPort() != null) {
                         pId = e.getCruiseStop().getPort().getPortId();
                         pCode = e.getCruiseStop().getPort().getPortCode();
                         pName = e.getCruiseStop().getPort().getPortName();
                     }
+
+                    // Destination info — điểm đến liên kết
+                    UUID destId = null;
+                    String destName = null;
+                    if (e.getPort() != null && e.getPort().getDestination() != null) {
+                        destId = e.getPort().getDestination().getDestinationId();
+                        destName = e.getPort().getDestination().getDestinationName();
+                    } else if (e.getCruiseStop() != null && e.getCruiseStop().getDestination() != null) {
+                        destId = e.getCruiseStop().getDestination().getDestinationId();
+                        destName = e.getCruiseStop().getDestination().getDestinationName();
+                    } else if (e.getCruiseStop() != null && e.getCruiseStop().getPort() != null
+                            && e.getCruiseStop().getPort().getDestination() != null) {
+                        destId = e.getCruiseStop().getPort().getDestination().getDestinationId();
+                        destName = e.getCruiseStop().getPort().getDestination().getDestinationName();
+                    }
+
+                    // Supplier info — nhà cung cấp tour
+                    String supplierName = null;
+                    if (e.getSupplier() != null) {
+                        supplierName = e.getSupplier().getSupplierName();
+                    }
+
                     return PlanningSourceExcursionResponse.builder()
                             .excursionId(e.getShoreExcursionId())
                             .sourceExcursionId(e.getShoreExcursionId())
@@ -114,6 +222,9 @@ public class TripCatalogController {
                             .portId(pId)
                             .portCode(pCode)
                             .portName(pName)
+                            .destinationId(destId)
+                            .destinationName(destName)
+                            .supplierName(supplierName)
                             .price(e.getPrice())
                             .currencyCode(e.getCurrencyCode())
                             .build();
@@ -122,13 +233,22 @@ public class TripCatalogController {
         return ApiResponse.success(result);
     }
 
+    public ApiResponse<List<PlanningSourceExcursionResponse>> getSourceExcursions() {
+        return getSourceExcursions(null, null);
+    }
+
     @Operation(summary = "Nguồn dịch vụ / khung phục vụ (Services) cho lập kế hoạch",
-               description = "Cung cấp danh sách dịch vụ chuẩn cho khung phục vụ (SERVING_WINDOW) (yêu cầu TRIP_READ)")
+               description = "Cung cấp danh sách dịch vụ chuẩn cho khung phục vụ (SERVING_WINDOW), hỗ trợ tìm kiếm (yêu cầu TRIP_READ)")
     @PreAuthorize("hasAuthority('TRIP_READ')")
     @GetMapping("/sources/services")
-    public ApiResponse<List<PlanningSourceServiceResponse>> getSourceServices() {
+    public ApiResponse<List<PlanningSourceServiceResponse>> getSourceServices(
+            @Parameter(description = "Từ khóa tìm kiếm theo tên hoặc mã dịch vụ") @RequestParam(required = false) String keyword) {
         List<Service> services = serviceRepository.findAll();
+        String kw = keyword != null ? keyword.trim().toLowerCase() : null;
+
         List<PlanningSourceServiceResponse> result = services.stream()
+                .filter(s -> kw == null || (s.getServiceName() != null && s.getServiceName().toLowerCase().contains(kw))
+                        || (s.getServiceCode() != null && s.getServiceCode().toLowerCase().contains(kw)))
                 .map(s -> PlanningSourceServiceResponse.builder()
                         .serviceId(s.getServiceId())
                         .serviceCode(s.getServiceCode())
@@ -138,5 +258,125 @@ public class TripCatalogController {
                         .build())
                 .collect(Collectors.toList());
         return ApiResponse.success(result);
+    }
+
+    public ApiResponse<List<PlanningSourceServiceResponse>> getSourceServices() {
+        return getSourceServices(null);
+    }
+
+    @Operation(summary = "Danh sách boong / tầng tàu (Decks) cho lập kế hoạch",
+               description = "Cung cấp danh sách các tầng trên tàu phục vụ chọn vị trí diễn ra hoạt động trên biển (yêu cầu TRIP_READ)")
+    @PreAuthorize("hasAuthority('TRIP_READ')")
+    @GetMapping("/sources/decks")
+    public ApiResponse<List<PlanningSourceDeckResponse>> getSourceDecks(
+            @Parameter(description = "Lọc theo ID tàu du lịch") @RequestParam(required = false) UUID shipId) {
+        if (deckRepository == null) {
+            return ApiResponse.success(List.of());
+        }
+        List<Deck> decks = shipId != null
+                ? deckRepository.findByShipShipIdOrderByDeckNumber(shipId)
+                : deckRepository.findAll(Sort.by(Sort.Direction.ASC, "deckNumber"));
+
+        List<PlanningSourceDeckResponse> result = decks.stream()
+                .map(d -> PlanningSourceDeckResponse.builder()
+                        .deckId(d.getDeckId())
+                        .deckNumber(d.getDeckNumber())
+                        .deckName(d.getDeckName())
+                        .shipId(d.getShip() != null ? d.getShip().getShipId() : null)
+                        .shipName(d.getShip() != null ? d.getShip().getShipName() : null)
+                        .build())
+                .collect(Collectors.toList());
+        return ApiResponse.success(result);
+    }
+
+    public ApiResponse<List<PlanningSourceDeckResponse>> getSourceDecks() {
+        return getSourceDecks(null);
+    }
+
+    @Operation(summary = "Danh sách phòng / cabin (Cabins) cho lập kế hoạch",
+               description = "Cung cấp danh sách phòng/khu vực cụ thể (spa, nhà hàng, phòng họp,...) phục vụ hướng dẫn hành khách tới đúng nơi diễn ra (yêu cầu TRIP_READ)")
+    @PreAuthorize("hasAuthority('TRIP_READ')")
+    @GetMapping("/sources/cabins")
+    public ApiResponse<List<PlanningSourceCabinResponse>> getSourceCabins(
+            @Parameter(description = "Lọc theo ID tầng/boong") @RequestParam(required = false) UUID deckId,
+            @Parameter(description = "Lọc theo ID tàu du lịch") @RequestParam(required = false) UUID shipId,
+            @Parameter(description = "Từ khóa tìm kiếm theo số phòng hoặc vị trí") @RequestParam(required = false) String keyword) {
+        if (cabinRepository == null) {
+            return ApiResponse.success(List.of());
+        }
+        List<Cabin> cabins;
+        if (deckId != null) {
+            cabins = cabinRepository.findByDeckDeckId(deckId);
+        } else if (shipId != null) {
+            cabins = cabinRepository.findByShipShipIdOrderByDeckDeckNumberAscCabinNumberAsc(shipId);
+        } else {
+            cabins = cabinRepository.findAll();
+        }
+
+        String kw = keyword != null ? keyword.trim().toLowerCase() : null;
+
+        List<PlanningSourceCabinResponse> result = cabins.stream()
+                .filter(c -> kw == null || (c.getCabinNumber() != null && c.getCabinNumber().toLowerCase().contains(kw))
+                        || (c.getLocationCode() != null && c.getLocationCode().toLowerCase().contains(kw)))
+                .map(c -> PlanningSourceCabinResponse.builder()
+                        .cabinId(c.getCabinId())
+                        .cabinNumber(c.getCabinNumber())
+                        .cabinType(c.getCabinType())
+                        .capacity(c.getCapacity())
+                        .deckId(c.getDeck() != null ? c.getDeck().getDeckId() : null)
+                        .deckNumber(c.getDeck() != null ? c.getDeck().getDeckNumber() : null)
+                        .deckName(c.getDeck() != null ? c.getDeck().getDeckName() : null)
+                        .locationCode(c.getLocationCode())
+                        .shipId(c.getShip() != null ? c.getShip().getShipId() : null)
+                        .build())
+                .collect(Collectors.toList());
+        return ApiResponse.success(result);
+    }
+
+    public ApiResponse<List<PlanningSourceCabinResponse>> getSourceCabins() {
+        return getSourceCabins(null, null, null);
+    }
+
+    @Operation(summary = "Danh sách cảng ghé (Ports) cho lập kế hoạch hành trình",
+               description = "Cung cấp danh mục cảng biển đầy đủ thông tin UN/LOCODE, tên cảng, quốc gia, múi giờ và điểm đến liên kết (yêu cầu TRIP_READ)")
+    @PreAuthorize("hasAuthority('TRIP_READ')")
+    @GetMapping("/sources/ports")
+    public ApiResponse<List<PlanningSourcePortResponse>> getSourcePorts(
+            @Parameter(description = "Lọc theo ID điểm đến / khu vực") @RequestParam(required = false) UUID destinationId,
+            @Parameter(description = "Từ khóa tìm kiếm theo tên hoặc mã cảng") @RequestParam(required = false) String keyword) {
+        if (portRepository == null) {
+            return ApiResponse.success(List.of());
+        }
+        List<Port> ports;
+        if (destinationId != null) {
+            ports = portRepository.findByDestinationDestinationIdOrderByPortNameAsc(destinationId);
+        } else {
+            ports = portRepository.findAll();
+        }
+
+        String kw = keyword != null ? keyword.trim().toLowerCase() : null;
+
+        List<PlanningSourcePortResponse> result = ports.stream()
+                .filter(p -> p.getStatus() == com.casms.ship.enums.PortStatus.ACTIVE)
+                .filter(p -> kw == null || (p.getPortName() != null && p.getPortName().toLowerCase().contains(kw))
+                        || (p.getPortCode() != null && p.getPortCode().toLowerCase().contains(kw)))
+                .map(p -> PlanningSourcePortResponse.builder()
+                        .portId(p.getPortId())
+                        .portCode(p.getPortCode())
+                        .portName(p.getPortName())
+                        .countryCode(p.getCountryCode())
+                        .timeZoneId(p.getTimeZoneId())
+                        .destinationId(p.getDestination() != null ? p.getDestination().getDestinationId() : null)
+                        .destinationName(p.getDestination() != null ? p.getDestination().getDestinationName() : null)
+                        .latitude(p.getLatitude())
+                        .longitude(p.getLongitude())
+                        .description(p.getDescription())
+                        .build())
+                .collect(Collectors.toList());
+        return ApiResponse.success(result);
+    }
+
+    public ApiResponse<List<PlanningSourcePortResponse>> getSourcePorts() {
+        return getSourcePorts(null, null);
     }
 }

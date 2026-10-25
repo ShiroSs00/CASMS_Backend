@@ -30,7 +30,9 @@ public class ActivityController {
             @Schema(description = "Mô tả hoạt động") @jakarta.validation.constraints.Size(max=1000) String description,
             @Schema(description = "Thời gian bắt đầu (ISO-8601)") @NotNull Instant startTime,
             @Schema(description = "Thời gian kết thúc (ISO-8601)") @NotNull Instant endTime,
-            @Schema(description = "Địa điểm tổ chức") @jakarta.validation.constraints.Size(max=250) String location,
+            @Schema(description = "Địa điểm tổ chức (text)") @jakarta.validation.constraints.Size(max=250) String location,
+            @Schema(description = "ID tầng (deck) nơi diễn ra — VD: tầng có spa, nhà hàng") UUID deckId,
+            @Schema(description = "ID phòng/cabin cụ thể nơi diễn ra — VD: phòng spa 201") UUID cabinId,
             @Schema(description = "Sức chứa tối đa", example = "30") @NotNull @Positive Integer capacity,
             @Schema(description = "Giá tham gia (mặc định 0.0)") @DecimalMin("0.0") BigDecimal price,
             @Schema(description = "Mã tiền tệ gồm 3 ký tự (mặc định USD)", example = "USD") @jakarta.validation.constraints.Size(min=3,max=3) String currencyCode,
@@ -42,8 +44,21 @@ public class ActivityController {
     public record RegistrationUpdateRequest(@Schema(description = "Số lượng chỗ đăng ký mới") @Positive Integer quantity,
             @Schema(description = "Ghi chú") @jakarta.validation.constraints.Size(max=500) String notes) {}
     public record ActivityView(UUID id, String code, String name, String description, Instant startTime, Instant endTime,
-            String location, Integer capacity, BigDecimal price, String currencyCode, String status, UUID cruiseId) {
-        static ActivityView of(OnboardActivity a) { return new ActivityView(a.getOnboardActivityId(), a.getActivityCode(), a.getActivityName(), a.getDescription(), a.getStartTime(), a.getEndTime(), a.getLocation(), a.getCapacity(), a.getPrice(), a.getCurrencyCode(), a.getStatus().name(), a.getCruise().getCruiseId()); }
+            String location,
+            UUID deckId, Integer deckNumber, String deckName,
+            UUID cabinId, String cabinNumber,
+            Integer capacity, BigDecimal price, String currencyCode, String status, UUID cruiseId) {
+        static ActivityView of(OnboardActivity a) {
+            return new ActivityView(
+                    a.getOnboardActivityId(), a.getActivityCode(), a.getActivityName(), a.getDescription(),
+                    a.getStartTime(), a.getEndTime(), a.getLocation(),
+                    a.getDeck() != null ? a.getDeck().getDeckId() : null,
+                    a.getDeck() != null ? a.getDeck().getDeckNumber() : null,
+                    a.getDeck() != null ? a.getDeck().getDeckName() : null,
+                    a.getCabin() != null ? a.getCabin().getCabinId() : null,
+                    a.getCabin() != null ? a.getCabin().getCabinNumber() : null,
+                    a.getCapacity(), a.getPrice(), a.getCurrencyCode(), a.getStatus().name(), a.getCruise().getCruiseId());
+        }
     }
     public record RegistrationView(UUID id, UUID passengerId, UUID bookingPassengerId, UUID activityId, UUID excursionId, Integer quantity, String status, String notes, Instant registeredAt) {
         static RegistrationView of(Registration r) { return new RegistrationView(r.getRegistrationId(), r.getPassenger().getPassengerId(), r.getBookingPassenger().getBookingPassengerId(), r.getOnboardActivity()==null?null:r.getOnboardActivity().getOnboardActivityId(), r.getShoreExcursion()==null?null:r.getShoreExcursion().getShoreExcursionId(), r.getQuantity(), r.getStatus().name(), r.getNotes(), r.getRegistrationTime()); }
@@ -91,7 +106,7 @@ public class ActivityController {
     public ApiResponse<ActivityView> create(@jakarta.validation.Valid @RequestBody ActivityRequest r) {
         OnboardActivity a = new OnboardActivity();
         apply(a, r);
-        return ApiResponse.success(ActivityView.of(service.createActivity(a, r.cruiseId())));
+        return ApiResponse.success(ActivityView.of(service.createActivity(a, r.cruiseId(), r.deckId(), r.cabinId())));
     }
 
     @Operation(summary = "Cập nhật hoạt động", description = "Cập nhật thông tin hoạt động theo ID")
@@ -100,7 +115,7 @@ public class ActivityController {
     public ApiResponse<ActivityView> update(@Parameter(description = "ID hoạt động", required = true) @PathVariable UUID id, @jakarta.validation.Valid @RequestBody ActivityRequest r) {
         OnboardActivity a = new OnboardActivity();
         apply(a, r);
-        return ApiResponse.success(ActivityView.of(service.updateActivity(id, a)));
+        return ApiResponse.success(ActivityView.of(service.updateActivity(id, a, r.deckId(), r.cabinId())));
     }
 
     @Operation(summary = "Xóa hoạt động", description = "Xóa hoạt động theo ID khi đáp ứng các điều kiện nghiệp vụ")
@@ -196,5 +211,10 @@ public class ActivityController {
     public ApiResponse<ParticipationView> attendance(@Parameter(description = "ID lượt tham gia", required = true) @PathVariable UUID id, @Parameter(description = "Hành động: check-in, checkout, complete hoặc no-show", required = true) @PathVariable String action) {
         return ApiResponse.success(ParticipationView.of(service.attendance(id, action)));
     }
-    private static void apply(OnboardActivity a, ActivityRequest r) { a.setActivityName(r.activityName()); a.setDescription(r.description()); a.setStartTime(r.startTime()); a.setEndTime(r.endTime()); a.setLocation(r.location()); a.setCapacity(r.capacity()); a.setPrice(r.price()); a.setCurrencyCode(r.currencyCode()); }
+    private static void apply(OnboardActivity a, ActivityRequest r) {
+        a.setActivityName(r.activityName()); a.setDescription(r.description());
+        a.setStartTime(r.startTime()); a.setEndTime(r.endTime()); a.setLocation(r.location());
+        a.setCapacity(r.capacity()); a.setPrice(r.price()); a.setCurrencyCode(r.currencyCode());
+        // deck/cabin sẽ được resolve trong service — ở đây chỉ ghi nhận ID request
+    }
 }

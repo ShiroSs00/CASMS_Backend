@@ -65,6 +65,14 @@ public class TripScheduleVersionService {
     @lombok.Setter
     private com.casms.activity.repository.ShoreExcursionRepository shoreExcursionRepository;
 
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    @lombok.Setter
+    private com.casms.ship.repository.DeckRepository deckRepository;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    @lombok.Setter
+    private com.casms.ship.repository.CabinRepository cabinRepository;
+
     @Transactional(readOnly = true)
     public TripScheduleVersionDetailResponse getVersionDetail(UUID tripId, Integer versionNumber) {
         TripScheduleVersion version = getVersion(tripId, versionNumber);
@@ -73,8 +81,18 @@ public class TripScheduleVersionService {
 
     @Transactional(readOnly = true)
     public TripScheduleVersionDetailResponse getLatestVersionDetail(UUID tripId) {
-        TripScheduleVersion version = versionRepository.findTopByTrip_TripIdOrderByVersionNumberDesc(tripId)
-                .orElseThrow(() -> new ResourceNotFoundException("TripScheduleVersion", tripId));
+        List<TripScheduleVersion> versions = versionRepository.findByTrip_TripIdOrderByVersionNumberAsc(tripId);
+        if (versions.isEmpty()) {
+            throw new ResourceNotFoundException("TripScheduleVersion", tripId);
+        }
+        // Prioritize active working version (DRAFT, IN_REVIEW), then PUBLISHED, then fallback to highest version
+        TripScheduleVersion version = versions.stream()
+                .filter(v -> v.getStatus() == TripScheduleVersionStatus.DRAFT || v.getStatus() == TripScheduleVersionStatus.IN_REVIEW)
+                .reduce((first, second) -> second)
+                .orElseGet(() -> versions.stream()
+                        .filter(v -> v.getStatus() == TripScheduleVersionStatus.PUBLISHED)
+                        .reduce((first, second) -> second)
+                        .orElse(versions.get(versions.size() - 1)));
         return mapToDetailResponse(version);
     }
 
@@ -254,18 +272,8 @@ public class TripScheduleVersionService {
         version.getStops().clear();
         version.getStops().addAll(updatedStops);
 
-        // Confirm route type (tripType) if undetermined and embarkation/disembarkation ports are specified
-        TripPlanStop embarkStop = updatedStops.stream().filter(s -> Boolean.TRUE.equals(s.getIsEmbarkation())).findFirst().orElse(null);
-        TripPlanStop disembarkStop = updatedStops.stream().filter(s -> Boolean.TRUE.equals(s.getIsDisembarkation())).findFirst().orElse(null);
-        if (embarkStop != null && disembarkStop != null && embarkStop.getPort() != null && disembarkStop.getPort() != null) {
-            if (trip.getTripType() == null) {
-                boolean samePort = Objects.equals(embarkStop.getPort().getPortId(), disembarkStop.getPort().getPortId());
-                trip.setTripType(samePort ? ItineraryType.ROUND_TRIP : ItineraryType.ONE_WAY);
-                if (tripRepository != null) {
-                    tripRepository.save(trip);
-                }
-            }
-        }
+        // Synchronize route type (tripType) based on embarkation/disembarkation ports
+        syncTripTypeFromStops(version);
 
         Map<String, TripPlanEntry> existingEntryMap = version.getEntries().stream()
                 .collect(Collectors.toMap(TripPlanEntry::getClientKey, e -> e));
@@ -322,6 +330,38 @@ public class TripScheduleVersionService {
             }
 
             entry.setLocationText(entryDto.getLocationText());
+
+            // Gán Deck và Cabin cho mục hoạt động / dịch vụ
+            if (entryDto.getDeckId() != null && deckRepository != null) {
+                entry.setDeck(deckRepository.findById(entryDto.getDeckId()).orElse(null));
+            } else {
+                entry.setDeck(null);
+            }
+
+            if (entryDto.getCabinId() != null && cabinRepository != null) {
+                var cabin = cabinRepository.findById(entryDto.getCabinId()).orElse(null);
+                entry.setCabin(cabin);
+                if (entry.getDeck() == null && cabin != null && cabin.getDeck() != null) {
+                    entry.setDeck(cabin.getDeck());
+                }
+            } else {
+                entry.setCabin(null);
+            }
+
+            // Kế thừa vị trí (Deck/Cabin) từ nguồn hoạt động nếu không chọn thủ công
+            if (entry.getDeck() == null && entry.getCabin() == null && entry.getSourceActivityId() != null && onboardActivityRepository != null) {
+                var srcActOpt = onboardActivityRepository.findById(entry.getSourceActivityId());
+                if (srcActOpt.isPresent()) {
+                    var srcAct = srcActOpt.get();
+                    if (srcAct.getDeck() != null) {
+                        entry.setDeck(srcAct.getDeck());
+                    }
+                    if (srcAct.getCabin() != null) {
+                        entry.setCabin(srcAct.getCabin());
+                    }
+                }
+            }
+
             entry.setMeetingPoint(entryDto.getMeetingPoint());
             entry.setNotes(entryDto.getNotes());
 
@@ -781,9 +821,13 @@ public class TripScheduleVersionService {
             creator = userRepository.findById(actorId).orElse(null);
         }
 
+        int maxVersionNumber = versionRepository.findByTrip_TripIdOrderByVersionNumberAsc(tripId).stream()
+                .mapToInt(TripScheduleVersion::getVersionNumber)
+                .max().orElse(latestPublished.getVersionNumber());
+
         TripScheduleVersion newVersion = new TripScheduleVersion();
         newVersion.setTrip(trip);
-        newVersion.setVersionNumber(latestPublished.getVersionNumber() + 1);
+        newVersion.setVersionNumber(maxVersionNumber + 1);
         newVersion.setStatus(TripScheduleVersionStatus.DRAFT);
         newVersion.setRevision(1L);
         newVersion.setCreator(creator);
@@ -853,6 +897,8 @@ public class TripScheduleVersionService {
             newEntry.setPlannedEndTime(oldEntry.getPlannedEndTime());
             newEntry.setTimeZoneId(oldEntry.getTimeZoneId());
             newEntry.setLocationText(oldEntry.getLocationText());
+            newEntry.setDeck(oldEntry.getDeck());
+            newEntry.setCabin(oldEntry.getCabin());
             newEntry.setMeetingPoint(oldEntry.getMeetingPoint());
             newEntry.setNotes(oldEntry.getNotes());
             clonedEntries.add(newEntry);
@@ -865,6 +911,34 @@ public class TripScheduleVersionService {
                 newVersion.getVersionNumber(), trip.getTripCode(), actorId);
 
         return mapToDetailResponse(newVersion);
+    }
+
+    /**
+     * Đồng bộ kiểu tuyến (tripType: ROUND_TRIP / ONE_WAY) dựa trên cảng đón và cảng trả thực tế.
+     * Tự động cập nhật kiểu tuyến khi đổi cảng đón/trả để người dùng không bị mắc kẹt lỗi TRIP_TYPE_MISMATCH.
+     */
+    public void syncTripTypeFromStops(TripScheduleVersion version) {
+        if (version == null || version.getTrip() == null || version.getStops() == null) {
+            return;
+        }
+        Trip trip = version.getTrip();
+        TripPlanStop embarkStop = version.getStops().stream()
+                .filter(s -> Boolean.TRUE.equals(s.getIsEmbarkation()))
+                .findFirst().orElse(null);
+        TripPlanStop disembarkStop = version.getStops().stream()
+                .filter(s -> Boolean.TRUE.equals(s.getIsDisembarkation()))
+                .findFirst().orElse(null);
+
+        if (embarkStop != null && disembarkStop != null && embarkStop.getPort() != null && disembarkStop.getPort() != null) {
+            boolean samePort = Objects.equals(embarkStop.getPort().getPortId(), disembarkStop.getPort().getPortId());
+            ItineraryType inferredType = samePort ? ItineraryType.ROUND_TRIP : ItineraryType.ONE_WAY;
+            if (trip.getTripType() != inferredType) {
+                trip.setTripType(inferredType);
+                if (tripRepository != null && trip.getTripId() != null) {
+                    tripRepository.save(trip);
+                }
+            }
+        }
     }
 
     public List<PlanViolation> validateVersionInternal(TripScheduleVersion version) {
@@ -1109,10 +1183,8 @@ public class TripScheduleVersionService {
 
         if (embarkStop != null && disembarkStop != null && embarkStop.getPort() != null && disembarkStop.getPort() != null) {
             boolean samePort = Objects.equals(embarkStop.getPort().getPortId(), disembarkStop.getPort().getPortId());
-            if (trip.getTripType() == null) {
-                // In-memory inference only, DO NOT call tripRepository.save(trip)
-                trip.setTripType(samePort ? ItineraryType.ROUND_TRIP : ItineraryType.ONE_WAY);
-            } else if (trip.getTripType() == ItineraryType.ROUND_TRIP && !samePort) {
+            ItineraryType expectedType = samePort ? ItineraryType.ROUND_TRIP : ItineraryType.ONE_WAY;
+            if (trip.getTripType() != null && trip.getTripType() != expectedType) {
                 violations.add(PlanViolation.builder()
                         .code("TRIP_TYPE_MISMATCH")
                         .severity("ERROR")
@@ -1120,41 +1192,73 @@ public class TripScheduleVersionService {
                         .field("tripType")
                         .fieldPath("trip.tripType")
                         .actionHint("MATCH_PORTS_OR_CHANGE_TYPE")
-                        .message("Tuyến được chọn là ROUND_TRIP (khứ hồi) nhưng cảng đón ("
+                        .message("Tuyến được lưu là " + trip.getTripType() + " nhưng cảng đón ("
                                 + embarkStop.getPort().getPortCode() + ") và cảng trả ("
-                                + disembarkStop.getPort().getPortCode() + ") khác nhau.")
-                        .build());
-            } else if (trip.getTripType() == ItineraryType.ONE_WAY && samePort) {
-                violations.add(PlanViolation.builder()
-                        .code("TRIP_TYPE_MISMATCH")
-                        .severity("ERROR")
-                        .entityType("TRIP")
-                        .field("tripType")
-                        .fieldPath("trip.tripType")
-                        .actionHint("MATCH_PORTS_OR_CHANGE_TYPE")
-                        .message("Tuyến được chọn là ONE_WAY (một chiều) nhưng cảng đón và cảng trả lại cùng một cảng ("
-                                + embarkStop.getPort().getPortCode() + ").")
+                                + disembarkStop.getPort().getPortCode() + ") tương ứng với kiểu tuyến " + expectedType + ".")
                         .build());
             }
         }
 
-        // Validate Planned Scope (BE-06B): Chuyến nội địa không được ghé cảng nước ngoài
+        // Validate Planned Scope (BE-06B): Chuyến nội địa không được ghé cảng nước ngoài và phải thuộc miền đã chọn
         if ("DOMESTIC".equalsIgnoreCase(trip.getPlannedScope())) {
+            List<String> registeredRegions = trip.getDomesticRegions();
             for (TripPlanStop stop : stops) {
-                if (stop.getPort() != null && stop.getPort().getCountryCode() != null
-                        && !"VN".equalsIgnoreCase(stop.getPort().getCountryCode().trim())) {
-                    violations.add(PlanViolation.builder()
-                            .code("PORT_OUTSIDE_PLANNED_SCOPE")
-                            .severity("ERROR")
-                            .entityType("STOP")
-                            .clientKey(stop.getClientKey())
-                            .dayNumber(stop.getArrivalDayNumber())
-                            .field("port")
-                            .fieldPath("stops[clientKey=" + stop.getClientKey() + "].port")
-                            .actionHint("REMOVE_OR_CHANGE_PORT")
-                            .message("Cảng '" + stop.getPort().getPortName() + "' (quốc gia: "
-                                    + stop.getPort().getCountryCode() + ") không thuộc phạm vi chuyến nội địa (DOMESTIC).")
-                            .build());
+                if (stop.getPort() != null) {
+                    if (stop.getPort().getCountryCode() != null && !"VN".equalsIgnoreCase(stop.getPort().getCountryCode().trim())) {
+                        violations.add(PlanViolation.builder()
+                                .code("PORT_OUTSIDE_PLANNED_SCOPE")
+                                .severity("ERROR")
+                                .entityType("STOP")
+                                .clientKey(stop.getClientKey())
+                                .dayNumber(stop.getArrivalDayNumber())
+                                .field("port")
+                                .fieldPath("stops[clientKey=" + stop.getClientKey() + "].port")
+                                .actionHint("REMOVE_OR_CHANGE_PORT")
+                                .message("Cảng '" + stop.getPort().getPortName() + "' (quốc gia: "
+                                        + stop.getPort().getCountryCode() + ") không thuộc phạm vi chuyến nội địa (DOMESTIC).")
+                                .build());
+                    } else if (registeredRegions != null && !registeredRegions.isEmpty()) {
+                        String region = resolveDomesticRegion(stop.getPort());
+                        if (region == null || !registeredRegions.contains(region)) {
+                            violations.add(PlanViolation.builder()
+                                    .code("PORT_OUTSIDE_DOMESTIC_REGION")
+                                    .severity("ERROR")
+                                    .entityType("STOP")
+                                    .clientKey(stop.getClientKey())
+                                    .dayNumber(stop.getArrivalDayNumber())
+                                    .field("port")
+                                    .fieldPath("stops[clientKey=" + stop.getClientKey() + "].port")
+                                    .actionHint("REMOVE_OR_CHANGE_PORT")
+                                    .message("Cảng '" + stop.getPort().getPortName() + "' (miền: "
+                                            + (region != null ? region : "Chưa xác định") + ") không thuộc các miền đã đăng ký cho Trip: "
+                                            + String.join(", ", registeredRegions))
+                                    .build());
+                        }
+                    }
+                }
+            }
+        } else if ("INTERNATIONAL".equalsIgnoreCase(trip.getPlannedScope())) {
+            List<String> registeredCountries = trip.getCountryCodes();
+            if (registeredCountries != null && !registeredCountries.isEmpty()) {
+                for (TripPlanStop stop : stops) {
+                    if (stop.getPort() != null && stop.getPort().getCountryCode() != null) {
+                        String country = stop.getPort().getCountryCode().trim().toUpperCase();
+                        if (!registeredCountries.contains(country)) {
+                            violations.add(PlanViolation.builder()
+                                    .code("PORT_OUTSIDE_COUNTRY_SCOPE")
+                                    .severity("ERROR")
+                                    .entityType("STOP")
+                                    .clientKey(stop.getClientKey())
+                                    .dayNumber(stop.getArrivalDayNumber())
+                                    .field("port")
+                                    .fieldPath("stops[clientKey=" + stop.getClientKey() + "].port")
+                                    .actionHint("REMOVE_OR_CHANGE_PORT")
+                                    .message("Cảng '" + stop.getPort().getPortName() + "' (quốc gia: "
+                                            + country + ") không thuộc danh sách quốc gia đăng ký: "
+                                            + String.join(", ", registeredCountries))
+                                    .build());
+                        }
+                    }
                 }
             }
         }
@@ -1263,24 +1367,46 @@ public class TripScheduleVersionService {
                 }
             }
 
-            // BE-13: Điểm tập trung bắt buộc khi kiểm tra/submit/publish
-            if (entry.getMeetingPoint() == null || entry.getMeetingPoint().trim().isEmpty()) {
-                violations.add(PlanViolation.builder()
-                        .code("MEETING_POINT_REQUIRED")
-                        .severity("ERROR")
-                        .entityType("ENTRY")
-                        .clientKey(entry.getClientKey())
-                        .dayNumber(entry.getStartDayNumber())
-                        .field("meetingPoint")
-                        .fieldPath("entries[clientKey=" + entry.getClientKey() + "].meetingPoint")
-                        .actionHint("SET_MEETING_POINT")
-                        .message("Hoạt động '" + entry.getTitle() + "' bắt buộc phải có điểm tập trung (meetingPoint).")
-                        .build());
+            // BE-13: Quy tắc điểm tập trung (meetingPoint):
+            // - Khung phục vụ (SERVING_WINDOW): KHÔNG bắt buộc meetingPoint.
+            // - Tham quan trên bờ (SHORE_EXCURSION): BẮT BUỘC meetingPoint.
+            // - Hoạt động trên tàu (ONBOARD_ACTIVITY): Cần meetingPoint hoặc locationText.
+            if (entry.getKind() == TripPlanEntryKind.SHORE_EXCURSION) {
+                if (entry.getMeetingPoint() == null || entry.getMeetingPoint().trim().isEmpty()) {
+                    violations.add(PlanViolation.builder()
+                            .code("MEETING_POINT_REQUIRED")
+                            .severity("ERROR")
+                            .entityType("ENTRY")
+                            .clientKey(entry.getClientKey())
+                            .dayNumber(entry.getStartDayNumber())
+                            .field("meetingPoint")
+                            .fieldPath("entries[clientKey=" + entry.getClientKey() + "].meetingPoint")
+                            .actionHint("SET_MEETING_POINT")
+                            .message("Hoạt động tham quan trên bờ '" + entry.getTitle() + "' bắt buộc phải có điểm tập trung (meetingPoint).")
+                            .build());
+                }
+            } else if (entry.getKind() == TripPlanEntryKind.ONBOARD_ACTIVITY) {
+                boolean hasMeeting = entry.getMeetingPoint() != null && !entry.getMeetingPoint().trim().isEmpty();
+                boolean hasLocation = entry.getLocationText() != null && !entry.getLocationText().trim().isEmpty();
+                if (!hasMeeting && !hasLocation) {
+                    violations.add(PlanViolation.builder()
+                            .code("MEETING_POINT_REQUIRED")
+                            .severity("ERROR")
+                            .entityType("ENTRY")
+                            .clientKey(entry.getClientKey())
+                            .dayNumber(entry.getStartDayNumber())
+                            .field("meetingPoint")
+                            .fieldPath("entries[clientKey=" + entry.getClientKey() + "].meetingPoint")
+                            .actionHint("SET_MEETING_POINT")
+                            .message("Hoạt động trên tàu '" + entry.getTitle() + "' cần có địa điểm tổ chức (location) hoặc điểm tập trung (meetingPoint).")
+                            .build());
+                }
             }
 
-            // BE-07: Kiểm tra tồn tại của hoạt động / tour nguồn (nếu có tham chiếu)
+            // BE-07: Kiểm tra tồn tại và tính hợp lệ của hoạt động / tour nguồn (nếu có tham chiếu)
             if (entry.getSourceActivityId() != null && onboardActivityRepository != null) {
-                if (!onboardActivityRepository.existsById(entry.getSourceActivityId())) {
+                var actOpt = onboardActivityRepository.findById(entry.getSourceActivityId());
+                if (actOpt.isEmpty()) {
                     violations.add(PlanViolation.builder()
                             .code("SOURCE_ACTIVITY_NOT_FOUND")
                             .severity("ERROR")
@@ -1292,11 +1418,24 @@ public class TripScheduleVersionService {
                             .actionHint("SELECT_VALID_SOURCE")
                             .message("Hoạt động nguồn (sourceActivityId: " + entry.getSourceActivityId() + ") không tồn tại trong danh mục.")
                             .build());
+                } else if (actOpt.get().getStatus() == com.casms.activity.enums.OnboardActivityStatus.CANCELLED) {
+                    violations.add(PlanViolation.builder()
+                            .code("SOURCE_ACTIVITY_INACTIVE")
+                            .severity("ERROR")
+                            .entityType("ENTRY")
+                            .clientKey(entry.getClientKey())
+                            .dayNumber(entry.getStartDayNumber())
+                            .field("sourceActivityId")
+                            .fieldPath("entries[clientKey=" + entry.getClientKey() + "].sourceActivityId")
+                            .actionHint("SELECT_VALID_SOURCE")
+                            .message("Hoạt động nguồn '" + actOpt.get().getActivityName() + "' đã bị hủy / ngừng hoạt động.")
+                            .build());
                 }
             }
 
             if (entry.getSourceExcursionId() != null && shoreExcursionRepository != null) {
-                if (!shoreExcursionRepository.existsById(entry.getSourceExcursionId())) {
+                var excOpt = shoreExcursionRepository.findById(entry.getSourceExcursionId());
+                if (excOpt.isEmpty()) {
                     violations.add(PlanViolation.builder()
                             .code("SOURCE_EXCURSION_NOT_FOUND")
                             .severity("ERROR")
@@ -1308,11 +1447,73 @@ public class TripScheduleVersionService {
                             .actionHint("SELECT_VALID_SOURCE")
                             .message("Tour tham quan nguồn (sourceExcursionId: " + entry.getSourceExcursionId() + ") không tồn tại trong danh mục.")
                             .build());
+                } else {
+                    var exc = excOpt.get();
+                    if (exc.getStatus() == com.casms.activity.enums.ShoreExcursionStatus.CANCELLED) {
+                        violations.add(PlanViolation.builder()
+                                .code("SOURCE_EXCURSION_INACTIVE")
+                                .severity("ERROR")
+                                .entityType("ENTRY")
+                                .clientKey(entry.getClientKey())
+                                .dayNumber(entry.getStartDayNumber())
+                                .field("sourceExcursionId")
+                                .fieldPath("entries[clientKey=" + entry.getClientKey() + "].sourceExcursionId")
+                                .actionHint("SELECT_VALID_SOURCE")
+                                .message("Tour tham quan nguồn '" + exc.getExcursionName() + "' đã bị hủy / ngừng hoạt động.")
+                                .build());
+                    }
+
+                    // Kiểm tra tour tham quan đúng cảng
+                    UUID excursionPortId = exc.getPort() != null ? exc.getPort().getPortId()
+                            : (exc.getCruiseStop() != null && exc.getCruiseStop().getPort() != null
+                            ? exc.getCruiseStop().getPort().getPortId() : null);
+                    if (excursionPortId != null && entry.getStop() != null && entry.getStop().getPort() != null) {
+                        UUID stopPortId = entry.getStop().getPort().getPortId();
+                        if (!excursionPortId.equals(stopPortId)) {
+                            String excursionPortName = exc.getPort() != null ? exc.getPort().getPortName()
+                                    : (exc.getCruiseStop() != null && exc.getCruiseStop().getPort() != null
+                                    ? exc.getCruiseStop().getPort().getPortName() : "Khác");
+                            violations.add(PlanViolation.builder()
+                                    .code("SHORE_EXCURSION_PORT_MISMATCH")
+                                    .severity("ERROR")
+                                    .entityType("ENTRY")
+                                    .clientKey(entry.getClientKey())
+                                    .dayNumber(entry.getStartDayNumber())
+                                    .field("sourceExcursionId")
+                                    .fieldPath("entries[clientKey=" + entry.getClientKey() + "].sourceExcursionId")
+                                    .actionHint("SELECT_VALID_SOURCE")
+                                    .message("Tour tham quan nguồn thuộc cảng '" + excursionPortName
+                                            + "' nhưng được gán vào điểm dừng tại cảng '"
+                                            + entry.getStop().getPort().getPortName() + "'.")
+                                    .build());
+                        }
+                    }
                 }
             }
         }
 
         return violations;
+    }
+
+    public static String resolveDomesticRegion(Port port) {
+        if (port == null) return null;
+        String code = port.getPortCode() != null ? port.getPortCode().trim().toUpperCase() : "";
+        if ("VNHLG".equals(code) || "VNHPH".equals(code)) {
+            return "BAC_BO";
+        }
+        if ("VNDAD".equals(code) || "VNNHA".equals(code) || "VNHUE".equals(code) || "VNCNA".equals(code)) {
+            return "TRUNG_BO";
+        }
+        if ("VNSGN".equals(code) || "VNVUT".equals(code) || "VNPQC".equals(code)) {
+            return "NAM_BO";
+        }
+        if (port.getDestination() != null && port.getDestination().getDestinationName() != null) {
+            String destName = port.getDestination().getDestinationName();
+            if (destName.contains("Bắc Bộ")) return "BAC_BO";
+            if (destName.contains("Miền Trung")) return "TRUNG_BO";
+            if (destName.contains("Nam Bộ")) return "NAM_BO";
+        }
+        return null;
     }
 
     private TripScheduleVersion getVersion(UUID tripId, Integer versionNumber) {
@@ -1453,6 +1654,17 @@ public class TripScheduleVersionService {
         res.setPlannedEndTime(entry.getPlannedEndTime());
         res.setTimeZoneId(entry.getTimeZoneId());
         res.setLocationText(entry.getLocationText());
+
+        if (entry.getDeck() != null) {
+            res.setDeckId(entry.getDeck().getDeckId());
+            res.setDeckNumber(entry.getDeck().getDeckNumber());
+            res.setDeckName(entry.getDeck().getDeckName());
+        }
+        if (entry.getCabin() != null) {
+            res.setCabinId(entry.getCabin().getCabinId());
+            res.setCabinNumber(entry.getCabin().getCabinNumber());
+        }
+
         res.setMeetingPoint(entry.getMeetingPoint());
         res.setNotes(entry.getNotes());
         return res;

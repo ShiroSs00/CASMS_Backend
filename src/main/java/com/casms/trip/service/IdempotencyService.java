@@ -22,6 +22,9 @@ public class IdempotencyService {
     private final IdempotencyReservationService reservationService;
     private final ObjectMapper objectMapper;
 
+    @lombok.Setter
+    private java.util.function.Function<UUID, Object> entityRecoveryFunction;
+
     public <T> T execute(String idempotencyKey, UUID actorId, String operation, Object payload, Supplier<T> action) {
         return execute(idempotencyKey, actorId, operation, payload, null, action);
     }
@@ -45,7 +48,7 @@ public class IdempotencyService {
         if (reservation.getStatus() == IdempotencyReservationService.ReservationStatus.CACHED) {
             log.info("Idempotent replay detected for key: {} in operation: {}. Returning cached response without re-executing.",
                     trimmedKey, operation);
-            return deserializeCached(reservation.getRecord().getResponsePayload(), responseType, operation, trimmedKey);
+            return deserializeCached(reservation.getRecord(), responseType, operation, trimmedKey);
         }
 
         // Concurrent in-progress request: poll for completed cached response
@@ -70,7 +73,7 @@ public class IdempotencyService {
                 }
                 if (polled.getStatus() == IdempotencyReservationService.ReservationStatus.CACHED) {
                     log.info("Concurrent request completed. Returning cached result for key: {}", trimmedKey);
-                    return deserializeCached(polled.getRecord().getResponsePayload(), responseType, operation, trimmedKey);
+                    return deserializeCached(polled.getRecord(), responseType, operation, trimmedKey);
                 }
             }
             throw new BusinessException(HttpStatus.CONFLICT, "IDEMPOTENCY_CONFLICT",
@@ -103,8 +106,22 @@ public class IdempotencyService {
         return result;
     }
 
-    private <T> T deserializeCached(String payload, Class<T> responseType, String operation, String key) {
+    @SuppressWarnings("unchecked")
+    private <T> T deserializeCached(com.casms.trip.entity.IdempotencyRecord record, Class<T> responseType, String operation, String key) {
+        String payload = record != null ? record.getResponsePayload() : null;
         if (payload == null || payload.isBlank()) {
+            // Attempt recovery using resultingId and entityRecoveryFunction
+            if (record != null && record.getResultingId() != null && entityRecoveryFunction != null) {
+                try {
+                    Object recovered = entityRecoveryFunction.apply(record.getResultingId());
+                    if (recovered != null) {
+                        log.info("Successfully recovered idempotency result for key {} from database resultingId: {}", key, record.getResultingId());
+                        return (T) recovered;
+                    }
+                } catch (Exception ex) {
+                    log.warn("Failed to recover entity via entityRecoveryFunction for resultingId {}: {}", record.getResultingId(), ex.getMessage());
+                }
+            }
             throw new BusinessException(HttpStatus.CONFLICT, "IDEMPOTENCY_CONFLICT",
                     "Dữ liệu phản hồi cached không tồn tại cho Idempotency-Key: " + key);
         }

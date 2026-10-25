@@ -75,6 +75,12 @@ public class TripPlanEntryDraftDto {
     @Schema(description = "Địa điểm cụ thể", example = "Nhà hát chính / Cảng tàu quốc tế Tuần Châu")
     private String locationText;
 
+    @Schema(description = "ID tầng / boong tàu nơi diễn ra hoạt động", example = "d1000000-0000-0000-0000-000000000001")
+    private UUID deckId;
+
+    @Schema(description = "ID phòng / cabin cụ thể (spa, nhà hàng, phòng họp,...) nơi diễn ra hoạt động", example = "c1000000-0000-0000-0000-000000000001")
+    private UUID cabinId;
+
     @Size(max = 255)
     @Schema(description = "Điểm tập trung", example = "Sảnh Lễ tân boong 3")
     private String meetingPoint;

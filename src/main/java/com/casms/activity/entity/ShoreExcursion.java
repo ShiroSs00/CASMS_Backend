@@ -4,6 +4,7 @@ import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 import com.casms.activity.enums.ShoreExcursionStatus;
 import com.casms.ship.entity.CruiseStop;
+import com.casms.ship.entity.Port;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
@@ -24,8 +25,13 @@ public class ShoreExcursion {
     private UUID shoreExcursionId;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "cruise_stop_id", nullable = false)
+    @JoinColumn(name = "cruise_stop_id")
     private CruiseStop cruiseStop;
+
+    /** Cảng biển nơi tour tham quan diễn ra (cho phép liên kết trực tiếp không cần chuyến khởi hành) */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "port_id")
+    private Port port;
 
     @Column(name = "excursion_code", nullable = false, length = 50)
     private String excursionCode;
