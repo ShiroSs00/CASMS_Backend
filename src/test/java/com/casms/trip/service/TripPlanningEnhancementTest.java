@@ -1349,6 +1349,7 @@ public class TripPlanningEnhancementTest {
         Cabin cabin202 = new Cabin();
         cabin202.setCabinId(UUID.randomUUID());
         cabin202.setCabinNumber("202");
+        cabin202.setRoomName("Phòng Massage Đá Nóng VIP");
         cabin202.setCabinType(com.casms.ship.enums.CabinType.SUITE);
         cabin202.setCapacity(15);
         cabin202.setDeck(deck2);
@@ -1382,6 +1383,8 @@ public class TripPlanningEnhancementTest {
         assertNotNull(cabinRes);
         assertEquals(1, cabinRes.getData().size());
         assertEquals("202", cabinRes.getData().get(0).getCabinNumber());
+        assertEquals("Phòng Massage Đá Nóng VIP", cabinRes.getData().get(0).getRoomName());
+        assertEquals("Phòng 202 - Phòng Massage Đá Nóng VIP", cabinRes.getData().get(0).getDisplayName());
         assertEquals(2, cabinRes.getData().get(0).getDeckNumber());
         assertEquals("MIDSHIP-PORT", cabinRes.getData().get(0).getLocationCode());
 
@@ -1391,10 +1394,20 @@ public class TripPlanningEnhancementTest {
         assertEquals(1, portRes.getData().size());
         assertEquals("VNSGN", portRes.getData().get(0).getPortCode());
         assertEquals("Saigon Hiep Phuoc Cruise Port", portRes.getData().get(0).getPortName());
+
+        // 4. Test getActivityCategories catalog
+        ApiResponse<List<ActivityCategoryResponse>> catRes = catalogController.getActivityCategories();
+        assertNotNull(catRes);
+        assertEquals(5, catRes.getData().size());
+        assertTrue(catRes.getData().stream().anyMatch(c -> c.getCode() == com.casms.activity.enums.OnboardActivityCategory.ENTERTAINMENT));
+        assertTrue(catRes.getData().stream().anyMatch(c -> c.getCode() == com.casms.activity.enums.OnboardActivityCategory.SPORTS_WELLNESS));
+        assertTrue(catRes.getData().stream().anyMatch(c -> c.getCode() == com.casms.activity.enums.OnboardActivityCategory.FAMILY_KIDS));
+        assertTrue(catRes.getData().stream().anyMatch(c -> c.getCode() == com.casms.activity.enums.OnboardActivityCategory.SPECIAL_EVENTS));
+        assertTrue(catRes.getData().stream().anyMatch(c -> c.getCode() == com.casms.activity.enums.OnboardActivityCategory.WORKSHOPS_CLASSES));
     }
 
     @Test
-    @DisplayName("Lưu nháp lịch trình: Lưu thành công Deck/Cabin và hỗ trợ kế thừa (copy-on-select) từ nguồn hoạt động")
+    @DisplayName("Lưu nháp lịch trình: Lưu thành công Deck/Cabin/Category và định dạng phân tách không gian FUNCTIONAL_ROOM")
     void testSaveDraft_SavesDeckAndCabinAndSupportsCopyOnSelect() {
         UUID tripId = UUID.randomUUID();
         Trip trip = new Trip();
@@ -1429,6 +1442,7 @@ public class TripPlanningEnhancementTest {
         Cabin cabin = new Cabin();
         cabin.setCabinId(cabinId);
         cabin.setCabinNumber("202");
+        cabin.setRoomName("Phòng Massage Đá Nóng VIP");
         cabin.setDeck(deck);
 
         when(versionRepository.findByTrip_TripIdAndVersionNumber(tripId, 1)).thenReturn(Optional.of(ver));
@@ -1436,11 +1450,12 @@ public class TripPlanningEnhancementTest {
         when(deckRepository.findById(deckId)).thenReturn(Optional.of(deck));
         when(cabinRepository.findById(cabinId)).thenReturn(Optional.of(cabin));
 
-        // Tạo entry DTO có deckId và cabinId rõ ràng
+        // Tạo entry DTO có deckId, cabinId và category rõ ràng
         com.casms.trip.dto.request.TripPlanEntryDraftDto entryDto = new com.casms.trip.dto.request.TripPlanEntryDraftDto();
         entryDto.setClientKey("entry-spa-202");
         entryDto.setDayNumber(1);
         entryDto.setKind(TripPlanEntryKind.ONBOARD_ACTIVITY);
+        entryDto.setCategory(com.casms.activity.enums.OnboardActivityCategory.SPORTS_WELLNESS);
         entryDto.setTitle("Massage đá nóng Lotus Spa");
         entryDto.setStartDayNumber(1);
         entryDto.setPlannedStartTime(LocalTime.of(9, 0));
@@ -1470,5 +1485,87 @@ public class TripPlanningEnhancementTest {
         assertEquals("Lotus Wellness & Spa Deck", savedEntry.getDeckName());
         assertEquals(cabinId, savedEntry.getCabinId());
         assertEquals("202", savedEntry.getCabinNumber());
+        assertEquals("Phòng Massage Đá Nóng VIP", savedEntry.getRoomName());
+        assertEquals("FUNCTIONAL_ROOM", savedEntry.getLocationType());
+        assertEquals(com.casms.activity.enums.OnboardActivityCategory.SPORTS_WELLNESS, savedEntry.getCategory());
+        assertEquals("Thể thao & Sức khỏe", savedEntry.getCategoryName());
+        assertTrue(savedEntry.getDisplayLocation().contains("Phòng 202"));
+    }
+
+    @Test
+    @DisplayName("Kế thừa tự động: Tự động copy category và location từ OnboardActivity nguồn khi lập lịch")
+    void testCopyOnSelect_InheritsCategoryAndLocationFromSource() {
+        UUID tripId = UUID.randomUUID();
+        Trip trip = new Trip();
+        trip.setTripId(tripId);
+        trip.setStatus(TripStatus.READY);
+        trip.setDurationDays(1);
+
+        UUID versionId = UUID.randomUUID();
+        TripScheduleVersion ver = new TripScheduleVersion();
+        ver.setVersionId(versionId);
+        ver.setVersionNumber(1);
+        ver.setTrip(trip);
+        ver.setStatus(TripScheduleVersionStatus.DRAFT);
+        ver.setRevision(1L);
+
+        TripPlanDay day1 = new TripPlanDay();
+        day1.setDayId(UUID.randomUUID());
+        day1.setDayNumber(1);
+        day1.setDayType(ItineraryDayType.SEA_DAY);
+        ver.setDays(new ArrayList<>(List.of(day1)));
+        ver.setStops(new ArrayList<>());
+        ver.setEntries(new ArrayList<>());
+
+        UUID srcActId = UUID.randomUUID();
+        Deck deck10 = new Deck();
+        deck10.setDeckId(UUID.randomUUID());
+        deck10.setDeckNumber(10);
+        deck10.setDeckName("Sun Deck");
+
+        OnboardActivity srcAct = new OnboardActivity();
+        srcAct.setOnboardActivityId(srcActId);
+        srcAct.setActivityName("Lớp Yoga & Thiền Đón Bình Minh");
+        srcAct.setCategory(com.casms.activity.enums.OnboardActivityCategory.SPORTS_WELLNESS);
+        srcAct.setDeck(deck10);
+        srcAct.setLocation("Boong ngắm cảnh phía mũi");
+
+        when(versionRepository.findByTrip_TripIdAndVersionNumber(tripId, 1)).thenReturn(Optional.of(ver));
+        when(versionRepository.save(any(TripScheduleVersion.class))).thenAnswer(i -> i.getArgument(0));
+        when(onboardActivityRepository.findById(srcActId)).thenReturn(Optional.of(srcAct));
+
+        // DTO không truyền deckId, cabinId hay category
+        com.casms.trip.dto.request.TripPlanEntryDraftDto entryDto = new com.casms.trip.dto.request.TripPlanEntryDraftDto();
+        entryDto.setClientKey("entry-yoga-inherited");
+        entryDto.setDayNumber(1);
+        entryDto.setKind(TripPlanEntryKind.ONBOARD_ACTIVITY);
+        entryDto.setSourceActivityId(srcActId);
+        entryDto.setTitle("Lớp Yoga & Thiền Đón Bình Minh");
+        entryDto.setStartDayNumber(1);
+        entryDto.setPlannedStartTime(LocalTime.of(6, 0));
+        entryDto.setEndDayNumber(1);
+        entryDto.setPlannedEndTime(LocalTime.of(7, 15));
+
+        com.casms.trip.dto.request.ScheduleDraftSaveRequest saveReq =
+                new com.casms.trip.dto.request.ScheduleDraftSaveRequest();
+        saveReq.setExpectedRevision(1L);
+
+        com.casms.trip.dto.request.TripPlanDayDraftDto dayDto = new com.casms.trip.dto.request.TripPlanDayDraftDto();
+        dayDto.setDayNumber(1);
+        dayDto.setDayType(ItineraryDayType.SEA_DAY);
+        saveReq.setDays(List.of(dayDto));
+        saveReq.setStops(new ArrayList<>());
+        saveReq.setEntries(List.of(entryDto));
+
+        TripScheduleVersionDetailResponse res = versionService.saveDraft(tripId, 1, saveReq, actorId);
+
+        assertNotNull(res);
+        TripPlanEntryResponse savedEntry = res.getEntries().get(0);
+        assertEquals(deck10.getDeckId(), savedEntry.getDeckId());
+        assertEquals(10, savedEntry.getDeckNumber());
+        assertEquals("VENUE_OPEN_AREA", savedEntry.getLocationType());
+        assertEquals(com.casms.activity.enums.OnboardActivityCategory.SPORTS_WELLNESS, savedEntry.getCategory());
+        assertEquals("Thể thao & Sức khỏe", savedEntry.getCategoryName());
+        assertEquals("🧘", savedEntry.getCategoryIcon());
     }
 }

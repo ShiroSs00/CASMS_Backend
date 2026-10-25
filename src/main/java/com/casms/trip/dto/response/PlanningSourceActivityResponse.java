@@ -28,8 +28,20 @@ public class PlanningSourceActivityResponse {
     @Schema(description = "Tên hoạt động")
     private String activityName;
 
+    @Schema(description = "Mã phân loại danh mục hoạt động", example = "SPORTS_WELLNESS")
+    private com.casms.activity.enums.OnboardActivityCategory category;
+
+    @Schema(description = "Tên hiển thị danh mục tiếng Việt", example = "Thể thao & Sức khỏe")
+    private String categoryName;
+
+    @Schema(description = "Icon đại diện cho danh mục", example = "🧘")
+    private String categoryIcon;
+
     @Schema(description = "Mô tả hoạt động")
     private String description;
+
+    @Schema(description = "Phân loại không gian tổ chức (FUNCTIONAL_ROOM: phòng có số, VENUE_OPEN_AREA: sảnh/boong mở)", example = "FUNCTIONAL_ROOM")
+    private String locationType;
 
     @Schema(description = "Vị trí / Địa điểm tổ chức")
     private String location;
@@ -46,8 +58,14 @@ public class PlanningSourceActivityResponse {
     @Schema(description = "ID phòng/cabin cụ thể (nếu có)")
     private UUID cabinId;
 
-    @Schema(description = "Số phòng/cabin", example = "201")
+    @Schema(description = "Số phòng/cabin", example = "202")
     private String cabinNumber;
+
+    @Schema(description = "Tên phòng / tên công năng chuyên biệt", example = "Phòng Massage Đá Nóng VIP")
+    private String roomName;
+
+    @Schema(description = "Địa điểm hiển thị trực quan tổng hợp cho khách", example = "Tầng 2 (Lotus Wellness & Spa Deck) - Phòng 202 (Phòng Massage Đá Nóng VIP)")
+    private String displayLocation;
 
     @Schema(description = "Giá tham khảo")
     private BigDecimal price;

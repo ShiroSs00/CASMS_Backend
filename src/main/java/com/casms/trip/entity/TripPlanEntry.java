@@ -38,6 +38,11 @@ public class TripPlanEntry {
     @Column(name = "kind", nullable = false, length = 50)
     private TripPlanEntryKind kind;
 
+    /** Phân loại danh mục hoạt động trên tàu (Giải trí, Thể thao, Gia đình, Sự kiện, Lớp học) */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "category", length = 50)
+    private com.casms.activity.enums.OnboardActivityCategory category;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "stop_id")
     private TripPlanStop stop;
