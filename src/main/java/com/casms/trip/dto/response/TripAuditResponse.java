@@ -22,6 +22,9 @@ public class TripAuditResponse {
     @Schema(description = "ID người thực hiện thao tác")
     private UUID actorUserId;
 
+    @Schema(description = "Tên tài khoản người thực hiện thao tác", example = "planner_admin")
+    private String actorName;
+
     @Schema(description = "Tên hành động thực hiện (SAVE_DRAFT, SUBMIT, RETURN, PUBLISH, CLONE)")
     private String action;
 

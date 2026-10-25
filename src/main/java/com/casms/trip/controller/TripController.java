@@ -15,7 +15,9 @@ import com.casms.trip.dto.response.TripScheduleVersionDetailResponse;
 import com.casms.trip.dto.response.TripScheduleVersionSummaryResponse;
 import com.casms.trip.dto.response.TripSummaryResponse;
 import com.casms.trip.enums.TripStatus;
+import com.casms.trip.dto.response.TripReviewQueueItemResponse;
 import com.casms.trip.service.IdempotencyService;
+import com.casms.trip.service.TripScheduleVersionService;
 import com.casms.trip.service.TripService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -23,6 +25,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -39,7 +42,15 @@ import java.util.UUID;
 public class TripController {
 
     private final TripService tripService;
+    private final TripScheduleVersionService versionService;
     private final IdempotencyService idempotencyService;
+
+    @Operation(summary = "Hàng đợi duyệt lịch trình (Review Queue)", description = "Lấy danh sách các phiên bản lịch trình đang ở trạng thái IN_REVIEW chờ duyệt, hỗ trợ phân trang và sắp xếp.")
+    @PreAuthorize("hasAuthority('TRIP_PLAN_REVIEW')")
+    @GetMapping("/review-queue")
+    public ApiResponse<Page<TripReviewQueueItemResponse>> getReviewQueue(Pageable pageable) {
+        return ApiResponse.success(versionService.getReviewQueue(pageable));
+    }
 
     @Operation(summary = "Tạo mới Trip", description = "Khởi tạo khung Trip với mã TR-xxxx, tự động tạo Version 1 và tiền sinh N ngày tương đối (1..N). Yêu cầu Idempotency-Key header.")
     @PreAuthorize("hasAuthority('TRIP_CREATE')")
@@ -158,13 +169,42 @@ public class TripController {
         return ApiResponse.success("Cloned Trip successfully", response);
     }
 
-    @Operation(summary = "Lưu trữ Trip", description = "Chuyển trạng thái Trip sang ARCHIVED")
+    @Operation(summary = "Lưu trữ Trip", description = "Chuyển trạng thái Trip sang ARCHIVED kèm kiểm tra expectedRevision và chặn nếu có bản IN_REVIEW")
     @PreAuthorize("hasAuthority('TRIP_DELETE')")
     @PostMapping("/{tripId}/archive")
     public ApiResponse<TripDetailResponse> archiveTrip(
             @Parameter(description = "ID của Trip", required = true) @PathVariable UUID tripId,
+            @RequestBody(required = false) com.casms.trip.dto.request.TripArchiveRequest request,
             @AuthenticationPrincipal CasmsPrincipal principal) {
         UUID actorId = principal != null ? principal.getUserId() : null;
-        return ApiResponse.success("Archived Trip successfully", tripService.archiveTrip(tripId, actorId));
+        return ApiResponse.success("Archived Trip successfully", tripService.archiveTrip(tripId, request, actorId));
+    }
+
+    @Operation(summary = "Hủy bản nháp lịch trình dở dang (Cancel Draft)", description = "Hủy bỏ bản nháp dở dang theo tripId và versionNumber, giải phóng trạng thái chưa hoàn tất của Trip.")
+    @PreAuthorize("hasAuthority('TRIP_PLAN_WRITE')")
+    @PostMapping("/{tripId}/versions/{versionNumber}/cancel")
+    public ApiResponse<TripScheduleVersionDetailResponse> cancelDraft(
+            @Parameter(description = "ID của Trip", required = true) @PathVariable UUID tripId,
+            @Parameter(description = "Số thứ tự phiên bản", required = true) @PathVariable Integer versionNumber,
+            @RequestBody(required = false) com.casms.trip.dto.request.VersionCancelRequest request,
+            @AuthenticationPrincipal CasmsPrincipal principal) {
+        UUID actorId = principal != null ? principal.getUserId() : null;
+        return ApiResponse.success("Cancelled version draft successfully",
+                versionService.cancelDraft(tripId, versionNumber, request, actorId));
+    }
+
+    @Operation(summary = "Lịch sử kiểm toán Trip", description = "Tra cứu nhật ký audit events của Trip (hỗ trợ phân trang tùy chọn khi truyền page, size); không trả credentials hoặc PII không cần thiết.")
+    @PreAuthorize("hasAuthority('TRIP_READ')")
+    @GetMapping("/{tripId}/history")
+    public ApiResponse<?> getTripHistory(
+            @Parameter(description = "ID của Trip", required = true) @PathVariable UUID tripId,
+            @RequestParam(required = false) Integer page,
+            @RequestParam(required = false) Integer size) {
+        if (page != null || size != null) {
+            int p = page != null ? page : 0;
+            int s = size != null ? size : 20;
+            return ApiResponse.success(tripService.getTripHistory(tripId, PageRequest.of(p, s)));
+        }
+        return ApiResponse.success(tripService.getTripHistory(tripId));
     }
 }

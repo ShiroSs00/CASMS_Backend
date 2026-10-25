@@ -10,6 +10,7 @@ com\casms\common\service\BusinessCodeGeneratorPostgresIntegrationTest.class
 com\casms\activity\service\SupplierServiceTest.class
 com\casms\trip\service\TripScheduleVersionServiceTest.class
 com\casms\common\controller\BusinessCodeRuleControllerTest.class
+com\casms\trip\service\TripPlanningPostgresIntegrationTest.class
 com\casms\ship\service\CabinModelFieldsImmutableTest.class
 com\casms\ship\service\OperationalRegulationServiceTest.class
 com\casms\identity\service\RolePermissionInitializerTest.class

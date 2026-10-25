@@ -31,6 +31,8 @@ public class TripSummaryResponse {
     private Long revision;
     private Integer latestVersionNumber;
     private TripScheduleVersionStatus latestVersionStatus;
+    private UUID createdByUserId;
+    private String createdByUserName;
     private Instant createdAt;
     private Instant updatedAt;
 }

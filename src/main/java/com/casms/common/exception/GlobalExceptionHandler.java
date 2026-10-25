@@ -14,6 +14,9 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.server.ResponseStatusException;
+import org.springframework.dao.OptimisticLockingFailureException;
+import org.springframework.dao.DataIntegrityViolationException;
+import jakarta.persistence.OptimisticLockException;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -139,6 +142,35 @@ public class GlobalExceptionHandler {
         log.warn("Method argument type mismatch: {}", msg);
         return ResponseEntity.badRequest()
                 .body(ApiResponse.error(msg, "INVALID_PARAMETER"));
+    }
+
+    @ExceptionHandler({OptimisticLockingFailureException.class, OptimisticLockException.class})
+    public ResponseEntity<ApiResponse<Void>> handleOptimisticLocking(Exception ex) {
+        log.warn("Optimistic lock conflict detected: {}", ex.getMessage());
+        Map<String, Object> details = new HashMap<>();
+        details.put("legacyCode", "OPTIMISTIC_LOCK_CONFLICT");
+        details.put("reason", "Dữ liệu đã bị thay đổi bởi thao tác khác. Vui lòng tải lại trang để lấy revision mới nhất.");
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ApiResponse.error("Dữ liệu đã bị thay đổi bởi thao tác khác (xung đột phiên bản). Vui lòng làm mới và thử lại.",
+                        "STALE_REVISION", details, null));
+    }
+
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<ApiResponse<Void>> handleDataIntegrityViolation(DataIntegrityViolationException ex) {
+        log.warn("Data integrity violation: {}", ex.getMessage());
+        String msg = ex.getMessage() != null ? ex.getMessage() : "Dữ liệu xung đột toàn vẹn dữ liệu";
+        String lower = msg.toLowerCase();
+        if (lower.contains("idempotency") || lower.contains("uq_idempotency")) {
+            return ResponseEntity.status(HttpStatus.CONFLICT)
+                    .body(ApiResponse.error("Yêu cầu trùng lặp với cùng Idempotency-Key đang được xử lý hoặc đã hoàn tất.",
+                            "IDEMPOTENCY_CONFLICT"));
+        }
+        if (lower.contains("unique") || lower.contains("duplicate") || lower.contains("uq_")) {
+            return ResponseEntity.status(HttpStatus.CONFLICT)
+                    .body(ApiResponse.error("Dữ liệu trùng lặp trong hệ thống.", "DUPLICATE_RESOURCE"));
+        }
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ApiResponse.error("Xung đột ràng buộc dữ liệu: " + msg, "DATA_INTEGRITY_VIOLATION"));
     }
 
     @ExceptionHandler(Exception.class)

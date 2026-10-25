@@ -10,11 +10,13 @@ import com.casms.trip.controller.TripCatalogController;
 import com.casms.trip.controller.TripController;
 import com.casms.trip.controller.TripScheduleVersionController;
 import com.casms.trip.dto.request.ScheduleDraftSaveRequest;
+import com.casms.trip.dto.request.TripArchiveRequest;
 import com.casms.trip.dto.request.TripCreateRequest;
 import com.casms.trip.dto.request.TripDraftPatchRequest;
 import com.casms.trip.dto.request.TripPlanDayDraftDto;
 import com.casms.trip.dto.request.VersionReturnRequest;
 import com.casms.trip.dto.response.*;
+import com.casms.trip.enums.TripDurationGroup;
 import com.casms.trip.enums.TripScheduleVersionStatus;
 import com.casms.trip.enums.TripStatus;
 import com.casms.trip.service.IdempotencyService;
@@ -29,7 +31,9 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.core.MethodParameter;
+import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableHandlerMethodArgumentResolver;
 import org.springframework.http.HttpStatus;
@@ -481,5 +485,133 @@ public class TripPlanningContractTest {
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.tripCode").value("TR-1002"))
                 .andExpect(jsonPath("$.data.clonedDraftVersionId").value(newVersionId.toString()));
+    }
+
+    // 16. GET /trip-schedule-versions/review-queue
+    @Test
+    @DisplayName("GET /trip-schedule-versions/review-queue returns 200 with review queue items")
+    void testGetReviewQueueContract() throws Exception {
+        TripReviewQueueItemResponse item = TripReviewQueueItemResponse.builder()
+                .versionId(versionId)
+                .versionNumber(1)
+                .status(TripScheduleVersionStatus.IN_REVIEW)
+                .revision(2L)
+                .submittedRevision(2L)
+                .submittedAt(Instant.now())
+                .submitterName("planner_user")
+                .tripCode("TR-2001")
+                .tripName("Hành trình Vịnh Hạ Long")
+                .durationGroup(TripDurationGroup.SHORT)
+                .durationDays(2)
+                .durationNights(1)
+                .build();
+
+        Page<TripReviewQueueItemResponse> page = new PageImpl<>(List.of(item), PageRequest.of(0, 20), 1);
+        when(versionService.getReviewQueue(any())).thenReturn(page);
+
+        mockMvcVersion.perform(get("/trip-schedule-versions/review-queue"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.content[0].versionId").value(versionId.toString()))
+                .andExpect(jsonPath("$.data.content[0].status").value("IN_REVIEW"))
+                .andExpect(jsonPath("$.data.content[0].submitterName").value("planner_user"))
+                .andExpect(jsonPath("$.data.content[0].tripCode").value("TR-2001"));
+    }
+
+    // 17. POST /trips/{tripId}/archive
+    @Test
+    @DisplayName("POST /trips/{tripId}/archive with TripArchiveRequest returns 200 with ARCHIVED status")
+    void testArchiveTripContract() throws Exception {
+        TripArchiveRequest req = new TripArchiveRequest();
+        req.setExpectedRevision(1L);
+        req.setReason("Lưu trữ theo kế hoạch");
+
+        TripDetailResponse res = new TripDetailResponse();
+        res.setTripId(tripId);
+        res.setTripCode("TR-1001");
+        res.setStatus(TripStatus.ARCHIVED);
+        res.setRevision(2L);
+
+        when(tripService.archiveTrip(eq(tripId), any(TripArchiveRequest.class), any()))
+                .thenReturn(res);
+
+        mockMvcTrip.perform(post("/trips/{tripId}/archive", tripId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.status").value("ARCHIVED"))
+                .andExpect(jsonPath("$.data.revision").value(2));
+    }
+
+    // 18. POST /trip-schedule-versions/{versionId}/cancel
+    @Test
+    @DisplayName("POST /trip-schedule-versions/{versionId}/cancel returns 200 with CANCELLED status")
+    void testCancelDraftContract() throws Exception {
+        com.casms.trip.dto.request.VersionCancelRequest req = new com.casms.trip.dto.request.VersionCancelRequest();
+        req.setExpectedRevision(1L);
+        req.setReason("Hủy bản nháp theo yêu cầu người lập");
+
+        TripScheduleVersionDetailResponse res = new TripScheduleVersionDetailResponse();
+        res.setVersionId(versionId);
+        res.setStatus(TripScheduleVersionStatus.CANCELLED);
+        res.setRejectionReason(req.getReason());
+
+        when(versionService.cancelDraftById(eq(versionId), any(), any())).thenReturn(res);
+
+        mockMvcVersion.perform(post("/trip-schedule-versions/{versionId}/cancel", versionId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.status").value("CANCELLED"))
+                .andExpect(jsonPath("$.data.rejectionReason").value(req.getReason()));
+    }
+
+    // 19. POST /trip-schedule-versions/{versionId}/withdraw
+    @Test
+    @DisplayName("POST /trip-schedule-versions/{versionId}/withdraw returns 200 with DRAFT status")
+    void testWithdrawContract() throws Exception {
+        com.casms.trip.dto.request.VersionWithdrawRequest req = new com.casms.trip.dto.request.VersionWithdrawRequest();
+        req.setExpectedRevision(2L);
+        req.setReason("Thu hồi để điều chỉnh giờ");
+
+        TripScheduleVersionDetailResponse res = new TripScheduleVersionDetailResponse();
+        res.setVersionId(versionId);
+        res.setStatus(TripScheduleVersionStatus.DRAFT);
+
+        when(versionService.withdrawById(eq(versionId), any(), any())).thenReturn(res);
+
+        mockMvcVersion.perform(post("/trip-schedule-versions/{versionId}/withdraw", versionId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.status").value("DRAFT"));
+    }
+
+    // 20. GET /trips/{tripId}/history
+    @Test
+    @DisplayName("GET /trips/{tripId}/history returns 200 with Trip audit events and actor names")
+    void testTripHistoryContract() throws Exception {
+        TripAuditResponse audit = TripAuditResponse.builder()
+                .auditId(UUID.randomUUID())
+                .action("PATCH_DRAFT")
+                .entityType("Trip")
+                .entityId(tripId)
+                .actorUserId(UUID.randomUUID())
+                .actorName("planner_user")
+                .result("SUCCESS")
+                .detail("Patched Trip TR-1001")
+                .occurredAt(Instant.now())
+                .build();
+
+        when(tripService.getTripHistory(tripId)).thenReturn(List.of(audit));
+
+        mockMvcTrip.perform(get("/trips/{tripId}/history", tripId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data[0].action").value("PATCH_DRAFT"))
+                .andExpect(jsonPath("$.data[0].actorName").value("planner_user"));
     }
 }

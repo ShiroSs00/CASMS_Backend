@@ -49,6 +49,9 @@ public class TripScheduleVersion {
     @Column(name = "submitted_revision")
     private Long submittedRevision;
 
+    @Column(name = "submitted_at")
+    private Instant submittedAt;
+
     @Column(name = "content_hash", length = 64)
     private String contentHash;
 

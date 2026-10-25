@@ -69,6 +69,7 @@ public class TripCatalogController {
     public ApiResponse<List<PlanningSourceActivityResponse>> getSourceActivities() {
         List<OnboardActivity> activities = onboardActivityRepository.findAll();
         List<PlanningSourceActivityResponse> result = activities.stream()
+                .filter(a -> a.getStatus() != com.casms.activity.enums.OnboardActivityStatus.CANCELLED)
                 .map(a -> PlanningSourceActivityResponse.builder()
                         .activityId(a.getOnboardActivityId())
                         .sourceActivityId(a.getOnboardActivityId())
@@ -91,6 +92,7 @@ public class TripCatalogController {
             @Parameter(description = "Lọc theo ID cảng ghé") @RequestParam(required = false) UUID portId) {
         List<ShoreExcursion> excursions = shoreExcursionRepository.findAll();
         List<PlanningSourceExcursionResponse> result = excursions.stream()
+                .filter(e -> e.getStatus() != com.casms.activity.enums.ShoreExcursionStatus.CANCELLED)
                 .filter(e -> portId == null || (e.getCruiseStop() != null && e.getCruiseStop().getPort() != null
                         && portId.equals(e.getCruiseStop().getPort().getPortId())))
                 .map(e -> {

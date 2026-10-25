@@ -25,6 +25,10 @@ import com.casms.trip.enums.TripStatus;
 import com.casms.trip.repository.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -52,6 +56,14 @@ public class TripScheduleVersionService {
     private final UserRepository userRepository;
     private final AuditRepository auditRepository;
     private final AuditService auditService;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    @lombok.Setter
+    private com.casms.activity.repository.OnboardActivityRepository onboardActivityRepository;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    @lombok.Setter
+    private com.casms.activity.repository.ShoreExcursionRepository shoreExcursionRepository;
 
     @Transactional(readOnly = true)
     public TripScheduleVersionDetailResponse getVersionDetail(UUID tripId, Integer versionNumber) {
@@ -267,9 +279,10 @@ public class TripScheduleVersionService {
                 entry.setClientKey(entryDto.getClientKey());
             }
 
-            TripPlanDay day = dayMap.get(entryDto.getDayNumber());
+            Integer primaryDayNumber = entryDto.getStartDayNumber() != null ? entryDto.getStartDayNumber() : entryDto.getDayNumber();
+            TripPlanDay day = dayMap.get(primaryDayNumber);
             if (day == null) {
-                throw new BusinessException(HttpStatus.BAD_REQUEST, "INVALID_DAY_REFERENCE", "Không tìm thấy ngày: " + entryDto.getDayNumber());
+                throw new BusinessException(HttpStatus.BAD_REQUEST, "INVALID_DAY_REFERENCE", "Không tìm thấy ngày: " + primaryDayNumber);
             }
             entry.setDay(day);
             entry.setKind(entryDto.getKind());
@@ -318,11 +331,12 @@ public class TripScheduleVersionService {
         version.getEntries().clear();
         version.getEntries().addAll(updatedEntries);
 
-        // Increment revision and calculate content hash
-        version.setRevision(version.getRevision() + 1);
+        // Calculate content hash
         version.setContentHash(computeContentHash(version));
+        version.setUpdatedAt(Instant.now());
 
         version = versionRepository.save(version);
+        versionRepository.flush();
         log.info("Saved draft aggregate for Trip {} Version {} with new revision {}",
                 trip.getTripCode(), version.getVersionNumber(), version.getRevision());
 
@@ -397,9 +411,11 @@ public class TripScheduleVersionService {
         version.setStatus(TripScheduleVersionStatus.IN_REVIEW);
         version.setSubmitter(submitter);
         version.setSubmittedRevision(version.getRevision());
+        version.setSubmittedAt(Instant.now());
         version.setRejectionReason(null);
 
         version = versionRepository.save(version);
+        versionRepository.flush();
         log.info("Submitted Trip {} Version {} for review by user {}",
                 version.getTrip().getTripCode(), version.getVersionNumber(), actorId);
 
@@ -448,15 +464,113 @@ public class TripScheduleVersionService {
         version.setStatus(TripScheduleVersionStatus.DRAFT);
         version.setRejectionReason(request.getRejectionReason().trim());
         version.setSubmittedRevision(null);
-        version.setRevision(version.getRevision() + 1);
+        version.setUpdatedAt(Instant.now());
 
         version = versionRepository.save(version);
+        versionRepository.flush();
         log.info("Returned Trip {} Version {} to DRAFT with reason: {}",
                 version.getTrip().getTripCode(), version.getVersionNumber(), request.getRejectionReason());
 
         if (auditService != null) {
             auditService.record(actorId, "RETURN", "TripScheduleVersion", version.getVersionId(),
                     "SUCCESS", "Returned to draft: " + request.getRejectionReason());
+        }
+
+        return mapToDetailResponse(version);
+    }
+
+    @Transactional
+    public TripScheduleVersionDetailResponse cancelDraft(UUID tripId, Integer versionNumber, VersionCancelRequest request, UUID actorId) {
+        TripScheduleVersion version = getVersion(tripId, versionNumber);
+        return executeCancelDraft(version, request, actorId);
+    }
+
+    @Transactional
+    public TripScheduleVersionDetailResponse cancelDraftById(UUID versionId, VersionCancelRequest request, UUID actorId) {
+        TripScheduleVersion version = versionRepository.findById(versionId)
+                .orElseThrow(() -> new ResourceNotFoundException("TripScheduleVersion", versionId));
+        return executeCancelDraft(version, request, actorId);
+    }
+
+    private TripScheduleVersionDetailResponse executeCancelDraft(TripScheduleVersion version, VersionCancelRequest request, UUID actorId) {
+        if (version.getTrip().getStatus() == TripStatus.ARCHIVED) {
+            throw new BusinessException(HttpStatus.CONFLICT, "TRIP_ARCHIVED",
+                    "Không thể hủy phiên bản của Trip đã được lưu trữ (ARCHIVED)");
+        }
+
+        if (version.getStatus() != TripScheduleVersionStatus.DRAFT) {
+            throw new BusinessException(HttpStatus.CONFLICT, "INVALID_STATUS",
+                    "Chỉ có thể hủy phiên bản ở trạng thái DRAFT.");
+        }
+
+        if (request != null && request.getExpectedRevision() != null && !request.getExpectedRevision().equals(version.getRevision())) {
+            throw new BusinessException(HttpStatus.CONFLICT, "STALE_REVISION",
+                    "Revision của phiên bản không khớp (expected: " + request.getExpectedRevision() + ", current: " + version.getRevision() + ")");
+        }
+
+        version.setStatus(TripScheduleVersionStatus.CANCELLED);
+        if (request != null && request.getReason() != null && !request.getReason().isBlank()) {
+            version.setRejectionReason(request.getReason().trim());
+        }
+
+        version = versionRepository.save(version);
+        versionRepository.flush();
+        log.info("Cancelled draft Trip {} Version {} by user {}",
+                version.getTrip().getTripCode(), version.getVersionNumber(), actorId);
+
+        if (auditService != null) {
+            String detail = request != null && request.getReason() != null ? request.getReason() : "Cancelled draft version";
+            auditService.record(actorId, "CANCEL_DRAFT", "TripScheduleVersion", version.getVersionId(),
+                    "SUCCESS", detail);
+        }
+
+        return mapToDetailResponse(version);
+    }
+
+    @Transactional
+    public TripScheduleVersionDetailResponse withdraw(UUID tripId, Integer versionNumber, VersionWithdrawRequest request, UUID actorId) {
+        TripScheduleVersion version = getVersion(tripId, versionNumber);
+        return executeWithdraw(version, request, actorId);
+    }
+
+    @Transactional
+    public TripScheduleVersionDetailResponse withdrawById(UUID versionId, VersionWithdrawRequest request, UUID actorId) {
+        TripScheduleVersion version = versionRepository.findById(versionId)
+                .orElseThrow(() -> new ResourceNotFoundException("TripScheduleVersion", versionId));
+        return executeWithdraw(version, request, actorId);
+    }
+
+    private TripScheduleVersionDetailResponse executeWithdraw(TripScheduleVersion version, VersionWithdrawRequest request, UUID actorId) {
+        if (version.getTrip().getStatus() == TripStatus.ARCHIVED) {
+            throw new BusinessException(HttpStatus.CONFLICT, "TRIP_ARCHIVED",
+                    "Không thể thu hồi phiên bản của Trip đã được lưu trữ (ARCHIVED)");
+        }
+
+        if (version.getStatus() != TripScheduleVersionStatus.IN_REVIEW) {
+            throw new BusinessException(HttpStatus.CONFLICT, "INVALID_STATUS",
+                    "Chỉ có thể thu hồi phiên bản đang ở trạng thái IN_REVIEW.");
+        }
+
+        if (request != null && request.getExpectedRevision() != null && !request.getExpectedRevision().equals(version.getRevision())) {
+            throw new BusinessException(HttpStatus.CONFLICT, "STALE_REVISION",
+                    "Revision của phiên bản không khớp (expected: " + request.getExpectedRevision() + ", current: " + version.getRevision() + ")");
+        }
+
+        version.setStatus(TripScheduleVersionStatus.DRAFT);
+        version.setSubmittedRevision(null);
+        version.setSubmittedAt(null);
+        version.setUpdatedAt(Instant.now());
+
+        version = versionRepository.save(version);
+        versionRepository.flush();
+        log.info("Withdrawn Trip {} Version {} from IN_REVIEW to DRAFT by actor {}",
+                version.getTrip().getTripCode(), version.getVersionNumber(), actorId);
+
+        if (auditService != null) {
+            String detail = "Withdrawn from review" + (request != null && request.getReason() != null && !request.getReason().isBlank()
+                    ? ": " + request.getReason().trim() : "");
+            auditService.record(actorId, "WITHDRAW", "TripScheduleVersion", version.getVersionId(),
+                    "SUCCESS", detail);
         }
 
         return mapToDetailResponse(version);
@@ -526,7 +640,10 @@ public class TripScheduleVersionService {
         version.getTrip().setStatus(TripStatus.READY);
         version.getTrip().setStructuralLockedAt(Instant.now());
 
+        tripRepository.save(version.getTrip());
+        tripRepository.flush();
         version = versionRepository.save(version);
+        versionRepository.flush();
         log.info("Published Trip {} Version {} successfully by approver {}",
                 version.getTrip().getTripCode(), version.getVersionNumber(), actorId);
 
@@ -547,16 +664,85 @@ public class TripScheduleVersionService {
                 ? auditRepository.findByEntityIdOrderByOccurredAtDesc(version.getVersionId())
                 : List.of();
 
-        return logs.stream().map(log -> TripAuditResponse.builder()
+        return logs.stream().map(this::mapToAuditResponse).collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public Page<TripAuditResponse> getVersionHistory(UUID versionId, Pageable pageable) {
+        TripScheduleVersion version = versionRepository.findById(versionId)
+                .orElseThrow(() -> new ResourceNotFoundException("TripScheduleVersion", versionId));
+
+        if (auditRepository == null) {
+            return Page.empty(pageable);
+        }
+
+        if (pageable == null) {
+            pageable = PageRequest.of(0, 20);
+        }
+        if (pageable.getSort().isUnsorted()) {
+            pageable = PageRequest.of(pageable.getPageNumber(), pageable.getPageSize(),
+                    Sort.by(Sort.Direction.DESC, "occurredAt"));
+        }
+
+        Page<AuditLog> logs = auditRepository.findByEntityIdOrderByOccurredAtDesc(version.getVersionId(), pageable);
+        return logs.map(this::mapToAuditResponse);
+    }
+
+    @Transactional(readOnly = true)
+    public Page<TripReviewQueueItemResponse> getReviewQueue(Pageable pageable) {
+        if (pageable == null) {
+            pageable = PageRequest.of(0, 20);
+        }
+        if (pageable.getSort().isUnsorted()) {
+            pageable = PageRequest.of(pageable.getPageNumber(), pageable.getPageSize(),
+                    Sort.by(Sort.Order.desc("submittedAt").nullsLast(), Sort.Order.asc("versionId")));
+        }
+
+        Page<TripScheduleVersion> versions = versionRepository.findReviewQueue(
+                TripScheduleVersionStatus.IN_REVIEW, TripStatus.ARCHIVED, pageable);
+
+        return versions.map(v -> TripReviewQueueItemResponse.builder()
+                .versionId(v.getVersionId())
+                .versionNumber(v.getVersionNumber())
+                .status(v.getStatus())
+                .revision(v.getRevision())
+                .submittedRevision(v.getSubmittedRevision())
+                .submittedAt(v.getSubmittedAt())
+                .submitterId(v.getSubmitter() != null ? v.getSubmitter().getUserId() : null)
+                .submitterName(v.getSubmitter() != null ? v.getSubmitter().getUsername() : null)
+                .creatorId(v.getCreator() != null ? v.getCreator().getUserId() : null)
+                .creatorName(v.getCreator() != null ? v.getCreator().getUsername() : null)
+                .tripId(v.getTrip().getTripId())
+                .tripCode(v.getTrip().getTripCode())
+                .tripName(v.getTrip().getName())
+                .durationGroup(v.getTrip().getDurationGroup())
+                .durationDays(v.getTrip().getDurationDays())
+                .durationNights(v.getTrip().getDurationNights())
+                .tripType(v.getTrip().getTripType())
+                .plannedScope(v.getTrip().getPlannedScope())
+                .createdAt(v.getCreatedAt())
+                .updatedAt(v.getUpdatedAt())
+                .build());
+    }
+
+    private TripAuditResponse mapToAuditResponse(AuditLog log) {
+        String actorName = null;
+        if (log.getActorUserId() != null) {
+            actorName = userRepository.findById(log.getActorUserId())
+                    .map(User::getUsername)
+                    .orElse(null);
+        }
+        return TripAuditResponse.builder()
                 .auditId(log.getAuditId())
                 .actorUserId(log.getActorUserId())
+                .actorName(actorName)
                 .action(log.getAction())
                 .entityType(log.getEntityType())
                 .entityId(log.getEntityId())
                 .result(log.getResult())
                 .detail(log.getDetail())
                 .occurredAt(log.getOccurredAt())
-                .build()).collect(Collectors.toList());
+                .build();
     }
 
     @Transactional
@@ -924,10 +1110,8 @@ public class TripScheduleVersionService {
         if (embarkStop != null && disembarkStop != null && embarkStop.getPort() != null && disembarkStop.getPort() != null) {
             boolean samePort = Objects.equals(embarkStop.getPort().getPortId(), disembarkStop.getPort().getPortId());
             if (trip.getTripType() == null) {
+                // In-memory inference only, DO NOT call tripRepository.save(trip)
                 trip.setTripType(samePort ? ItineraryType.ROUND_TRIP : ItineraryType.ONE_WAY);
-                if (tripRepository != null) {
-                    tripRepository.save(trip);
-                }
             } else if (trip.getTripType() == ItineraryType.ROUND_TRIP && !samePort) {
                 violations.add(PlanViolation.builder()
                         .code("TRIP_TYPE_MISMATCH")
@@ -951,6 +1135,27 @@ public class TripScheduleVersionService {
                         .message("Tuyến được chọn là ONE_WAY (một chiều) nhưng cảng đón và cảng trả lại cùng một cảng ("
                                 + embarkStop.getPort().getPortCode() + ").")
                         .build());
+            }
+        }
+
+        // Validate Planned Scope (BE-06B): Chuyến nội địa không được ghé cảng nước ngoài
+        if ("DOMESTIC".equalsIgnoreCase(trip.getPlannedScope())) {
+            for (TripPlanStop stop : stops) {
+                if (stop.getPort() != null && stop.getPort().getCountryCode() != null
+                        && !"VN".equalsIgnoreCase(stop.getPort().getCountryCode().trim())) {
+                    violations.add(PlanViolation.builder()
+                            .code("PORT_OUTSIDE_PLANNED_SCOPE")
+                            .severity("ERROR")
+                            .entityType("STOP")
+                            .clientKey(stop.getClientKey())
+                            .dayNumber(stop.getArrivalDayNumber())
+                            .field("port")
+                            .fieldPath("stops[clientKey=" + stop.getClientKey() + "].port")
+                            .actionHint("REMOVE_OR_CHANGE_PORT")
+                            .message("Cảng '" + stop.getPort().getPortName() + "' (quốc gia: "
+                                    + stop.getPort().getCountryCode() + ") không thuộc phạm vi chuyến nội địa (DOMESTIC).")
+                            .build());
+                }
             }
         }
 
@@ -1023,6 +1228,22 @@ public class TripScheduleVersionService {
                                 .message("Hoạt động trên bờ '" + entry.getTitle() + "' phải kết thúc trước giờ tất cả lên tàu / rời cảng.")
                                 .build());
                     }
+
+                    if (entry.getStartDayNumber().equals(entry.getEndDayNumber())
+                            && entry.getPlannedStartTime() != null && entry.getPlannedEndTime() != null
+                            && !entry.getPlannedEndTime().isAfter(entry.getPlannedStartTime())) {
+                        violations.add(PlanViolation.builder()
+                                .code("INVALID_EXCURSION_TIME")
+                                .severity("ERROR")
+                                .entityType("ENTRY")
+                                .clientKey(entry.getClientKey())
+                                .dayNumber(entry.getStartDayNumber())
+                                .field("plannedEndTime")
+                                .fieldPath("entries[clientKey=" + entry.getClientKey() + "].plannedEndTime")
+                                .actionHint("EDIT_FIELD")
+                                .message("Hoạt động tham quan trên bờ '" + entry.getTitle() + "' có thời gian kết thúc không sau thời gian bắt đầu.")
+                                .build());
+                    }
                 }
             } else {
                 if (entry.getStartDayNumber() > entry.getEndDayNumber() || (entry.getStartDayNumber().equals(entry.getEndDayNumber())
@@ -1038,6 +1259,54 @@ public class TripScheduleVersionService {
                             .fieldPath("entries[clientKey=" + entry.getClientKey() + "].plannedEndTime")
                             .actionHint("EDIT_FIELD")
                             .message("Hoạt động '" + entry.getTitle() + "' có thời gian kết thúc không sau thời gian bắt đầu.")
+                            .build());
+                }
+            }
+
+            // BE-13: Điểm tập trung bắt buộc khi kiểm tra/submit/publish
+            if (entry.getMeetingPoint() == null || entry.getMeetingPoint().trim().isEmpty()) {
+                violations.add(PlanViolation.builder()
+                        .code("MEETING_POINT_REQUIRED")
+                        .severity("ERROR")
+                        .entityType("ENTRY")
+                        .clientKey(entry.getClientKey())
+                        .dayNumber(entry.getStartDayNumber())
+                        .field("meetingPoint")
+                        .fieldPath("entries[clientKey=" + entry.getClientKey() + "].meetingPoint")
+                        .actionHint("SET_MEETING_POINT")
+                        .message("Hoạt động '" + entry.getTitle() + "' bắt buộc phải có điểm tập trung (meetingPoint).")
+                        .build());
+            }
+
+            // BE-07: Kiểm tra tồn tại của hoạt động / tour nguồn (nếu có tham chiếu)
+            if (entry.getSourceActivityId() != null && onboardActivityRepository != null) {
+                if (!onboardActivityRepository.existsById(entry.getSourceActivityId())) {
+                    violations.add(PlanViolation.builder()
+                            .code("SOURCE_ACTIVITY_NOT_FOUND")
+                            .severity("ERROR")
+                            .entityType("ENTRY")
+                            .clientKey(entry.getClientKey())
+                            .dayNumber(entry.getStartDayNumber())
+                            .field("sourceActivityId")
+                            .fieldPath("entries[clientKey=" + entry.getClientKey() + "].sourceActivityId")
+                            .actionHint("SELECT_VALID_SOURCE")
+                            .message("Hoạt động nguồn (sourceActivityId: " + entry.getSourceActivityId() + ") không tồn tại trong danh mục.")
+                            .build());
+                }
+            }
+
+            if (entry.getSourceExcursionId() != null && shoreExcursionRepository != null) {
+                if (!shoreExcursionRepository.existsById(entry.getSourceExcursionId())) {
+                    violations.add(PlanViolation.builder()
+                            .code("SOURCE_EXCURSION_NOT_FOUND")
+                            .severity("ERROR")
+                            .entityType("ENTRY")
+                            .clientKey(entry.getClientKey())
+                            .dayNumber(entry.getStartDayNumber())
+                            .field("sourceExcursionId")
+                            .fieldPath("entries[clientKey=" + entry.getClientKey() + "].sourceExcursionId")
+                            .actionHint("SELECT_VALID_SOURCE")
+                            .message("Tour tham quan nguồn (sourceExcursionId: " + entry.getSourceExcursionId() + ") không tồn tại trong danh mục.")
                             .build());
                 }
             }
@@ -1062,13 +1331,17 @@ public class TripScheduleVersionService {
         res.setContentHash(version.getContentHash());
         if (version.getCreator() != null) {
             res.setCreatorId(version.getCreator().getUserId());
+            res.setCreatorName(version.getCreator().getUsername());
         }
         if (version.getSubmitter() != null) {
             res.setSubmitterId(version.getSubmitter().getUserId());
+            res.setSubmitterName(version.getSubmitter().getUsername());
         }
         res.setSubmittedRevision(version.getSubmittedRevision());
+        res.setSubmittedAt(version.getSubmittedAt());
         if (version.getPublishedBy() != null) {
             res.setPublishedBy(version.getPublishedBy().getUserId());
+            res.setPublishedByName(version.getPublishedBy().getUsername());
         }
         res.setPublishedAt(version.getPublishedAt());
         res.setRejectionReason(version.getRejectionReason());
@@ -1147,12 +1420,31 @@ public class TripScheduleVersionService {
             res.setStopClientKey(entry.getStop().getClientKey());
         }
         res.setSourceActivityId(entry.getSourceActivityId());
+        if (entry.getSourceActivityId() != null && onboardActivityRepository != null) {
+            onboardActivityRepository.findById(entry.getSourceActivityId())
+                    .ifPresent(act -> res.setSourceActivityTitle(act.getActivityName()));
+        }
+
         res.setSourceExcursionId(entry.getSourceExcursionId());
+        if (entry.getSourceExcursionId() != null && shoreExcursionRepository != null) {
+            shoreExcursionRepository.findById(entry.getSourceExcursionId())
+                    .ifPresent(exc -> {
+                        res.setSourceExcursionTitle(exc.getExcursionName());
+                        if (exc.getSupplier() != null) {
+                            res.setSupplierId(exc.getSupplier().getSupplierId());
+                            res.setSupplierName(exc.getSupplier().getSupplierName());
+                        }
+                    });
+        }
+
         res.setServiceId(entry.getServiceId());
         res.setSeriesClientKey(entry.getSeriesClientKey());
         if (entry.getDestination() != null) {
             res.setDestinationId(entry.getDestination().getDestinationId());
             res.setDestinationName(entry.getDestination().getDestinationName());
+        } else if (entry.getStop() != null && entry.getStop().getPort() != null && entry.getStop().getPort().getDestination() != null) {
+            res.setDestinationId(entry.getStop().getPort().getDestination().getDestinationId());
+            res.setDestinationName(entry.getStop().getPort().getDestination().getDestinationName());
         }
         res.setTitle(entry.getTitle());
         res.setStartDayNumber(entry.getStartDayNumber());

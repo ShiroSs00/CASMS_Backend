@@ -209,7 +209,11 @@ class TripScheduleVersionServiceTest {
     void testSaveDraftSuccessWithStopsAndEntries() {
         when(versionRepository.findByTrip_TripIdAndVersionNumber(tripId, 1)).thenReturn(Optional.of(version));
         when(portRepository.findById(samplePort.getPortId())).thenReturn(Optional.of(samplePort));
-        when(versionRepository.save(any(TripScheduleVersion.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(versionRepository.save(any(TripScheduleVersion.class))).thenAnswer(inv -> {
+            TripScheduleVersion v = inv.getArgument(0);
+            v.setRevision((v.getRevision() != null ? v.getRevision() : 0L) + 1);
+            return v;
+        });
 
         ScheduleDraftSaveRequest request = new ScheduleDraftSaveRequest();
         request.setExpectedRevision(1L);
@@ -342,6 +346,7 @@ class TripScheduleVersionServiceTest {
         shore.setPlannedStartTime(LocalTime.of(9, 0));
         shore.setEndDayNumber(1);
         shore.setPlannedEndTime(LocalTime.of(17, 45)); // Exceeds 17:30 allAboardTime!
+        shore.setMeetingPoint("Cổng cảng số 1");
         version.getEntries().add(shore);
 
         BusinessException ex = assertThrows(BusinessException.class,

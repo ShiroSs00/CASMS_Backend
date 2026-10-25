@@ -21,9 +21,13 @@ public class TripScheduleVersionDetailResponse {
     private Long revision;
     private String contentHash;
     private UUID creatorId;
+    private String creatorName;
     private UUID submitterId;
+    private String submitterName;
     private Long submittedRevision;
+    private Instant submittedAt;
     private UUID publishedBy;
+    private String publishedByName;
     private Instant publishedAt;
     private String rejectionReason;
     private UUID sourceVersionId;

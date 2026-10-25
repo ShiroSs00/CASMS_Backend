@@ -45,5 +45,6 @@ D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\ship\service\ShipRegu
 D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\ship\service\ShipServiceTest.java
 D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\trip\contract\TripPlanningContractTest.java
 D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\trip\service\TripPlanningEnhancementTest.java
+D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\trip\service\TripPlanningPostgresIntegrationTest.java
 D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\trip\service\TripScheduleVersionServiceTest.java
 D:\FPT-University\Semester 9\CASMS\src\test\java\com\casms\trip\service\TripServiceTest.java

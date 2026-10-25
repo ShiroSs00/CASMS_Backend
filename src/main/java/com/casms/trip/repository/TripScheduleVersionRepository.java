@@ -24,4 +24,11 @@ public interface TripScheduleVersionRepository extends JpaRepository<TripSchedul
     boolean existsByTrip_TripIdAndStatus(UUID tripId, TripScheduleVersionStatus status);
 
     Optional<TripScheduleVersion> findByTrip_TripIdAndStatus(UUID tripId, TripScheduleVersionStatus status);
+
+    @org.springframework.data.jpa.repository.Query("SELECT v FROM TripScheduleVersion v WHERE v.status = :status AND v.trip.status != :excludeTripStatus")
+    org.springframework.data.domain.Page<TripScheduleVersion> findReviewQueue(
+            @org.springframework.data.repository.query.Param("status") TripScheduleVersionStatus status,
+            @org.springframework.data.repository.query.Param("excludeTripStatus") com.casms.trip.enums.TripStatus excludeTripStatus,
+            org.springframework.data.domain.Pageable pageable);
 }
+

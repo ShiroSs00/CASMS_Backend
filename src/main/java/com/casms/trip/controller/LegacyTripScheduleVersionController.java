@@ -5,6 +5,7 @@ import com.casms.common.response.ApiResponse;
 import com.casms.security.principal.CasmsPrincipal;
 import com.casms.trip.dto.request.ScheduleDraftSaveRequest;
 import com.casms.trip.dto.request.VersionReturnRequest;
+import com.casms.trip.dto.request.VersionWithdrawRequest;
 import com.casms.trip.dto.response.TripScheduleVersionDetailResponse;
 import com.casms.trip.service.TripScheduleVersionService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -94,6 +95,19 @@ public class LegacyTripScheduleVersionController {
         }
         return ApiResponse.success("Published version successfully",
                 versionService.publishVersion(tripId, versionNumber, principal.getUserId()));
+    }
+
+    @Operation(summary = "Thu hồi phiên bản đang chờ duyệt (Withdraw from Review)", description = "Thu hồi phiên bản từ IN_REVIEW về DRAFT.")
+    @PreAuthorize("hasAuthority('TRIP_PLAN_SUBMIT') or hasAuthority('TRIP_PLAN_WRITE')")
+    @PostMapping("/{versionNumber}/withdraw")
+    public ApiResponse<TripScheduleVersionDetailResponse> withdraw(
+            @Parameter(description = "ID của Trip", required = true) @PathVariable UUID tripId,
+            @Parameter(description = "Số thứ tự phiên bản", required = true) @PathVariable Integer versionNumber,
+            @RequestBody(required = false) VersionWithdrawRequest request,
+            @AuthenticationPrincipal CasmsPrincipal principal) {
+        UUID actorId = principal != null ? principal.getUserId() : null;
+        return ApiResponse.success("Withdrawn version from review successfully",
+                versionService.withdraw(tripId, versionNumber, request, actorId));
     }
 
     @Operation(summary = "Tạo bản nháp phiên bản tiếp theo", description = "Nhân bản từ phiên bản đã xuất bản gần nhất sang bản nháp mới với versionNumber + 1")

@@ -152,7 +152,7 @@ class TripServiceTest {
     }
 
     @Test
-    void testUpdateTripAllowsModifyingDurationWhenOnlyDraft() {
+    void testUpdateTripRejectsModifyingDurationDaysDirectly() {
         UUID tripId = UUID.randomUUID();
         Trip trip = new Trip();
         trip.setTripId(tripId);
@@ -160,33 +160,22 @@ class TripServiceTest {
         trip.setDurationDays(3);
         trip.setDurationNights(2);
 
-        TripScheduleVersion draftVersion = new TripScheduleVersion();
-        draftVersion.setVersionNumber(1);
-        draftVersion.setStatus(TripScheduleVersionStatus.DRAFT);
-        draftVersion.setRevision(1L);
-
-        List<TripPlanDay> days = new ArrayList<>();
-        for (int i = 1; i <= 3; i++) {
-            TripPlanDay day = new TripPlanDay();
-            day.setDayNumber(i);
-            days.add(day);
-        }
-        draftVersion.setDays(days);
-
         when(tripRepository.findById(tripId)).thenReturn(Optional.of(trip));
-        when(versionRepository.findByTrip_TripIdOrderByVersionNumberAsc(tripId))
-                .thenReturn(List.of(draftVersion));
         when(tripRepository.save(any(Trip.class))).thenAnswer(inv -> inv.getArgument(0));
 
         TripUpdateRequest updateRequest = new TripUpdateRequest();
         updateRequest.setDurationDays(5);
-        updateRequest.setDurationNights(4);
 
+        // BE-09: PUT/PATCH changing durationDays must be rejected
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> tripService.updateTrip(tripId, updateRequest, actorId));
+        assertEquals("INVALID_DAY_COUNT", ex.getCode());
+
+        // Resubmitting same durationDays succeeds without modifying day structure
+        updateRequest.setDurationDays(3);
+        updateRequest.setName("Updated Trip Name");
         TripDetailResponse res = tripService.updateTrip(tripId, updateRequest, actorId);
-
-        assertEquals(5, res.getDurationDays());
-        assertEquals(4, res.getDurationNights());
-        assertEquals(5, draftVersion.getDays().size());
-        verify(versionRepository).save(draftVersion);
+        assertEquals(3, res.getDurationDays());
+        assertEquals("Updated Trip Name", res.getName());
     }
 }

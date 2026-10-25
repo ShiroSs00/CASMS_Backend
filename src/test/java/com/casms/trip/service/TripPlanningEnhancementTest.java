@@ -83,6 +83,9 @@ public class TripPlanningEnhancementTest {
     @Mock
     private IdempotencyRecordRepository idempotencyRepository;
 
+    @Mock
+    private com.casms.audit.AuditRepository auditRepository;
+
     private TripService tripService;
     private TripScheduleVersionService versionService;
     private IdempotencyService idempotencyService;
@@ -94,13 +97,15 @@ public class TripPlanningEnhancementTest {
     @BeforeEach
     void setUp() {
         tripService = new TripService(tripRepository, versionRepository, dayRepository,
-                userRepository, businessCodeGenerator, auditService);
+                userRepository, businessCodeGenerator, auditService, auditRepository);
 
         versionService = new TripScheduleVersionService(tripRepository, versionRepository,
                 dayRepository, stopRepository, entryRepository, mock(com.casms.ship.repository.PortRepository.class),
-                destinationRepository, userRepository, mock(com.casms.audit.AuditRepository.class), auditService);
+                destinationRepository, userRepository, auditRepository, auditService);
+        versionService.setOnboardActivityRepository(onboardActivityRepository);
+        versionService.setShoreExcursionRepository(shoreExcursionRepository);
 
-        idempotencyService = new IdempotencyService(idempotencyRepository, new ObjectMapper());
+        idempotencyService = new IdempotencyService(new IdempotencyReservationService(idempotencyRepository), new ObjectMapper());
 
         catalogController = new TripCatalogController(destinationRepository,
                 onboardActivityRepository, shoreExcursionRepository, serviceRepository);
@@ -217,8 +222,16 @@ public class TripPlanningEnhancementTest {
         when(tripRepository.findById(tripId)).thenReturn(Optional.of(trip));
         when(versionRepository.findById(versionId)).thenReturn(Optional.of(version));
         when(versionRepository.findByTrip_TripIdOrderByVersionNumberAsc(tripId)).thenReturn(List.of(version));
-        when(tripRepository.save(any(Trip.class))).thenAnswer(inv -> inv.getArgument(0));
-        when(versionRepository.save(any(TripScheduleVersion.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(tripRepository.save(any(Trip.class))).thenAnswer(inv -> {
+            Trip t = inv.getArgument(0);
+            t.setRevision((t.getRevision() != null ? t.getRevision() : 0L) + 1);
+            return t;
+        });
+        when(versionRepository.save(any(TripScheduleVersion.class))).thenAnswer(inv -> {
+            TripScheduleVersion v = inv.getArgument(0);
+            v.setRevision((v.getRevision() != null ? v.getRevision() : 0L) + 1);
+            return v;
+        });
 
         TripDayManageRequest req = new TripDayManageRequest();
         req.setAction(TripDayManageAction.ADD);
@@ -703,5 +716,323 @@ public class TripPlanningEnhancementTest {
         assertNotNull(mismatch, "Phải phát hiện vi phạm TRIP_TYPE_MISMATCH");
         assertEquals("trip.tripType", mismatch.getFieldPath());
         assertEquals("MATCH_PORTS_OR_CHANGE_TYPE", mismatch.getActionHint());
+    }
+
+    @Test
+    @DisplayName("BE-05: Validation không được ghi dữ liệu vào database (read-only)")
+    void testBE05_ValidationDoesNotWriteData() {
+        Trip trip = new Trip();
+        trip.setDurationDays(2);
+        trip.setTripType(null); // Chưa xác định
+
+        Port portA = new Port();
+        portA.setPortId(UUID.randomUUID());
+        portA.setPortCode("VNHAP");
+
+        TripPlanStop s1 = new TripPlanStop();
+        s1.setClientKey("s1");
+        s1.setPort(portA);
+        s1.setArrivalDayNumber(1);
+        s1.setDepartureDayNumber(1);
+        s1.setIsEmbarkation(true);
+
+        TripPlanStop s2 = new TripPlanStop();
+        s2.setClientKey("s2");
+        s2.setPort(portA);
+        s2.setArrivalDayNumber(2);
+        s2.setDepartureDayNumber(2);
+        s2.setIsDisembarkation(true);
+
+        TripScheduleVersion ver = new TripScheduleVersion();
+        ver.setTrip(trip);
+        ver.setDays(List.of(new TripPlanDay(), new TripPlanDay()));
+        ver.setStops(List.of(s1, s2));
+        ver.setEntries(new ArrayList<>());
+
+        versionService.validateVersionInternal(ver);
+
+        verify(tripRepository, never()).save(any(Trip.class));
+    }
+
+    @Test
+    @DisplayName("BE-08: Shore excursion cùng ngày có end <= start vi phạm INVALID_EXCURSION_TIME")
+    void testBE08_ShoreExcursionSameDayEndBeforeStartViolation() {
+        Trip trip = new Trip();
+        trip.setDurationDays(2);
+
+        TripPlanStop stop = new TripPlanStop();
+        stop.setClientKey("stop-1");
+        stop.setArrivalDayNumber(1);
+        stop.setDepartureDayNumber(1);
+        stop.setPlannedArrivalTime(LocalTime.of(8, 0));
+        stop.setPlannedDepartureTime(LocalTime.of(20, 0));
+        stop.setAllAboardTime(LocalTime.of(19, 0));
+
+        TripPlanEntry excursion = new TripPlanEntry();
+        excursion.setClientKey("entry-excursion-err");
+        excursion.setTitle("Tour xe bus đảo");
+        excursion.setKind(TripPlanEntryKind.SHORE_EXCURSION);
+        excursion.setStop(stop);
+        excursion.setStartDayNumber(1);
+        excursion.setPlannedStartTime(LocalTime.of(14, 0));
+        excursion.setEndDayNumber(1);
+        excursion.setPlannedEndTime(LocalTime.of(13, 0)); // end <= start!
+        excursion.setMeetingPoint("Cổng số 2");
+
+        TripScheduleVersion ver = new TripScheduleVersion();
+        ver.setTrip(trip);
+        ver.setDays(List.of(new TripPlanDay(), new TripPlanDay()));
+        ver.setStops(List.of(stop));
+        ver.setEntries(List.of(excursion));
+
+        List<PlanViolation> violations = versionService.validateVersionInternal(ver);
+
+        boolean hasTimingViolation = violations.stream()
+                .anyMatch(v -> "INVALID_EXCURSION_TIME".equals(v.getCode()));
+        assertTrue(hasTimingViolation, "Phải phát hiện vi phạm INVALID_EXCURSION_TIME khi end <= start");
+    }
+
+    @Test
+    @DisplayName("BE-13: Hoạt động thiếu meetingPoint vi phạm MEETING_POINT_REQUIRED")
+    void testBE13_MeetingPointRequiredViolation() {
+        Trip trip = new Trip();
+        trip.setDurationDays(2);
+
+        TripPlanEntry entry = new TripPlanEntry();
+        entry.setClientKey("entry-no-meeting-point");
+        entry.setTitle("Lớp Yoga sáng");
+        entry.setKind(TripPlanEntryKind.ONBOARD_ACTIVITY);
+        entry.setStartDayNumber(1);
+        entry.setPlannedStartTime(LocalTime.of(6, 0));
+        entry.setEndDayNumber(1);
+        entry.setPlannedEndTime(LocalTime.of(7, 0));
+        entry.setMeetingPoint("   "); // Blank whitespace
+
+        TripScheduleVersion ver = new TripScheduleVersion();
+        ver.setTrip(trip);
+        ver.setDays(List.of(new TripPlanDay(), new TripPlanDay()));
+        ver.setStops(new ArrayList<>());
+        ver.setEntries(List.of(entry));
+
+        List<PlanViolation> violations = versionService.validateVersionInternal(ver);
+
+        PlanViolation meetingPointViolation = violations.stream()
+                .filter(v -> "MEETING_POINT_REQUIRED".equals(v.getCode()))
+                .findFirst()
+                .orElse(null);
+
+        assertNotNull(meetingPointViolation, "Phải có vi phạm MEETING_POINT_REQUIRED");
+        assertEquals("ERROR", meetingPointViolation.getSeverity());
+        assertEquals("meetingPoint", meetingPointViolation.getField());
+        assertEquals("SET_MEETING_POINT", meetingPointViolation.getActionHint());
+    }
+
+    @Test
+    @DisplayName("BE-14: Hủy bản nháp dở dang (cancelDraft) thành công và ghi nhận lý do")
+    void testBE14_CancelDraftSuccess() {
+        UUID vId = UUID.randomUUID();
+        Trip trip = new Trip();
+        trip.setTripId(UUID.randomUUID());
+        trip.setStatus(TripStatus.DRAFT);
+
+        TripScheduleVersion ver = new TripScheduleVersion();
+        ver.setVersionId(vId);
+        ver.setVersionNumber(2);
+        ver.setTrip(trip);
+        ver.setStatus(TripScheduleVersionStatus.DRAFT);
+        ver.setRevision(1L);
+
+        when(versionRepository.findById(vId)).thenReturn(Optional.of(ver));
+        when(versionRepository.save(any(TripScheduleVersion.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        com.casms.trip.dto.request.VersionCancelRequest req = new com.casms.trip.dto.request.VersionCancelRequest();
+        req.setExpectedRevision(1L);
+        req.setReason("Hủy phương án này để làm lại từ đầu");
+
+        TripScheduleVersionDetailResponse res = versionService.cancelDraftById(vId, req, actorId);
+
+        assertEquals(TripScheduleVersionStatus.CANCELLED, res.getStatus());
+        assertEquals("Hủy phương án này để làm lại từ đầu", res.getRejectionReason());
+        verify(auditService).record(eq(actorId), eq("CANCEL_DRAFT"), eq("TripScheduleVersion"), eq(vId), eq("SUCCESS"), anyString());
+    }
+
+    @Test
+    @DisplayName("BE-14: Hủy phiên bản khi không ở DRAFT ném INVALID_STATUS")
+    void testBE14_CancelNonDraftFails() {
+        UUID vId = UUID.randomUUID();
+        Trip trip = new Trip();
+        trip.setStatus(TripStatus.DRAFT);
+
+        TripScheduleVersion ver = new TripScheduleVersion();
+        ver.setVersionId(vId);
+        ver.setTrip(trip);
+        ver.setStatus(TripScheduleVersionStatus.IN_REVIEW);
+
+        when(versionRepository.findById(vId)).thenReturn(Optional.of(ver));
+
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> versionService.cancelDraftById(vId, new com.casms.trip.dto.request.VersionCancelRequest(), actorId));
+        assertEquals("INVALID_STATUS", ex.getCode());
+    }
+
+    @Test
+    @DisplayName("BE-06B: Chuyến nội địa (DOMESTIC) ghé cảng quốc tế vi phạm PORT_OUTSIDE_PLANNED_SCOPE")
+    void testBE06B_DomesticTripRejectsForeignPort() {
+        Trip trip = new Trip();
+        trip.setDurationDays(2);
+        trip.setPlannedScope("DOMESTIC");
+
+        Port portForeign = new Port();
+        portForeign.setPortName("Bangkok Port");
+        portForeign.setCountryCode("TH"); // Thái Lan
+
+        TripPlanStop stop = new TripPlanStop();
+        stop.setClientKey("stop-th");
+        stop.setPort(portForeign);
+        stop.setArrivalDayNumber(1);
+        stop.setDepartureDayNumber(1);
+
+        TripScheduleVersion ver = new TripScheduleVersion();
+        ver.setTrip(trip);
+        ver.setDays(List.of(new TripPlanDay(), new TripPlanDay()));
+        ver.setStops(List.of(stop));
+        ver.setEntries(new ArrayList<>());
+
+        List<PlanViolation> violations = versionService.validateVersionInternal(ver);
+
+        PlanViolation scopeViolation = violations.stream()
+                .filter(v -> "PORT_OUTSIDE_PLANNED_SCOPE".equals(v.getCode()))
+                .findFirst()
+                .orElse(null);
+
+        assertNotNull(scopeViolation, "Phải có vi phạm PORT_OUTSIDE_PLANNED_SCOPE khi chuyến nội địa ghé cảng nước ngoài");
+        assertEquals("ERROR", scopeViolation.getSeverity());
+        assertEquals("REMOVE_OR_CHANGE_PORT", scopeViolation.getActionHint());
+    }
+
+    @Test
+    @DisplayName("BE-07: Tham chiếu hoạt động nguồn không tồn tại vi phạm SOURCE_ACTIVITY_NOT_FOUND")
+    void testBE07_SourceActivityNotFoundViolation() {
+        Trip trip = new Trip();
+        trip.setDurationDays(2);
+
+        UUID nonExistentId = UUID.randomUUID();
+        when(onboardActivityRepository.existsById(nonExistentId)).thenReturn(false);
+
+        TripPlanEntry entry = new TripPlanEntry();
+        entry.setClientKey("entry-act-src");
+        entry.setTitle("Tham gia show ảo thuật");
+        entry.setKind(TripPlanEntryKind.ONBOARD_ACTIVITY);
+        entry.setSourceActivityId(nonExistentId);
+        entry.setStartDayNumber(1);
+        entry.setPlannedStartTime(LocalTime.of(19, 0));
+        entry.setEndDayNumber(1);
+        entry.setPlannedEndTime(LocalTime.of(20, 0));
+        entry.setMeetingPoint("Nhà hát tầng 5");
+
+        TripScheduleVersion ver = new TripScheduleVersion();
+        ver.setTrip(trip);
+        ver.setDays(List.of(new TripPlanDay(), new TripPlanDay()));
+        ver.setStops(new ArrayList<>());
+        ver.setEntries(List.of(entry));
+
+        List<PlanViolation> violations = versionService.validateVersionInternal(ver);
+
+        PlanViolation srcViolation = violations.stream()
+                .filter(v -> "SOURCE_ACTIVITY_NOT_FOUND".equals(v.getCode()))
+                .findFirst()
+                .orElse(null);
+
+        assertNotNull(srcViolation, "Phải báo lỗi khi sourceActivityId không tồn tại");
+        assertEquals("ERROR", srcViolation.getSeverity());
+        assertEquals("SELECT_VALID_SOURCE", srcViolation.getActionHint());
+    }
+
+    @Test
+    @DisplayName("BE-14/BE-DEC-03: Thu hồi phiên bản IN_REVIEW về DRAFT thành công")
+    void testBE14_WithdrawVersionSuccessfully() {
+        UUID tripId = UUID.randomUUID();
+        Trip trip = new Trip();
+        trip.setTripId(tripId);
+        trip.setTripCode("TR-2026");
+        trip.setStatus(TripStatus.DRAFT);
+        trip.setDurationDays(2);
+
+        UUID versionId = UUID.randomUUID();
+        TripScheduleVersion ver = new TripScheduleVersion();
+        ver.setVersionId(versionId);
+        ver.setVersionNumber(1);
+        ver.setTrip(trip);
+        ver.setStatus(TripScheduleVersionStatus.IN_REVIEW);
+        ver.setRevision(3L);
+        ver.setSubmittedRevision(3L);
+        ver.setSubmittedAt(Instant.now());
+        ver.setDays(new ArrayList<>());
+        ver.setStops(new ArrayList<>());
+        ver.setEntries(new ArrayList<>());
+
+        when(versionRepository.findById(versionId)).thenReturn(Optional.of(ver));
+        when(versionRepository.save(any(TripScheduleVersion.class))).thenAnswer(i -> i.getArgument(0));
+
+        com.casms.trip.dto.request.VersionWithdrawRequest req = new com.casms.trip.dto.request.VersionWithdrawRequest();
+        req.setExpectedRevision(3L);
+        req.setReason("Cần chỉnh sửa lại giờ tham quan");
+
+        TripScheduleVersionDetailResponse res = versionService.withdrawById(versionId, req, actorId);
+
+        assertNotNull(res);
+        assertEquals(TripScheduleVersionStatus.DRAFT, res.getStatus());
+        assertEquals(ver.getVersionId(), res.getVersionId());
+        verify(versionRepository).save(argThat(v -> v.getStatus() == TripScheduleVersionStatus.DRAFT && v.getSubmittedRevision() == null));
+        verify(auditService).record(eq(actorId), eq("WITHDRAW"), eq("TripScheduleVersion"), eq(versionId), eq("SUCCESS"), contains("Cần chỉnh sửa lại giờ tham quan"));
+    }
+
+    @Test
+    @DisplayName("BE-14: Thu hồi thất bại khi phiên bản không ở trạng thái IN_REVIEW")
+    void testBE14_WithdrawVersionFailsWhenNotReview() {
+        UUID versionId = UUID.randomUUID();
+        TripScheduleVersion ver = new TripScheduleVersion();
+        ver.setVersionId(versionId);
+        ver.setTrip(new Trip());
+        ver.setStatus(TripScheduleVersionStatus.DRAFT); // already draft
+
+        when(versionRepository.findById(versionId)).thenReturn(Optional.of(ver));
+
+        BusinessException ex = assertThrows(BusinessException.class, () ->
+                versionService.withdrawById(versionId, null, actorId));
+
+        assertEquals("INVALID_STATUS", ex.getCode());
+    }
+
+    @Test
+    @DisplayName("BE-12/16: Tra cứu lịch sử Trip có thông tin người thực hiện mà không cần quyền USER_READ")
+    void testBE12_TripHistoryQuery() {
+        UUID tripId = UUID.randomUUID();
+        Trip trip = new Trip();
+        trip.setTripId(tripId);
+        trip.setTripCode("TR-AUDIT-1");
+
+        when(tripRepository.findById(tripId)).thenReturn(Optional.of(trip));
+
+        com.casms.audit.AuditLog logEntry = new com.casms.audit.AuditLog();
+        logEntry.setAuditId(UUID.randomUUID());
+        logEntry.setActorUserId(actorId);
+        logEntry.setAction("PATCH_DRAFT");
+        logEntry.setEntityType("Trip");
+        logEntry.setEntityId(tripId);
+        logEntry.setResult("SUCCESS");
+        logEntry.setDetail("Patched Trip TR-AUDIT-1");
+        logEntry.setOccurredAt(Instant.now());
+
+        when(auditRepository.findByEntityIdOrderByOccurredAtDesc(tripId)).thenReturn(List.of(logEntry));
+        when(userRepository.findById(actorId)).thenReturn(Optional.of(actor));
+
+        List<TripAuditResponse> history = tripService.getTripHistory(tripId);
+
+        assertNotNull(history);
+        assertEquals(1, history.size());
+        assertEquals("PATCH_DRAFT", history.get(0).getAction());
+        assertEquals("planner@casms.com", history.get(0).getActorName());
+        assertEquals(actorId, history.get(0).getActorUserId());
     }
 }
