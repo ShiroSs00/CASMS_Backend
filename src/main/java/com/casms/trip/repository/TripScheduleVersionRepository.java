@@ -30,5 +30,16 @@ public interface TripScheduleVersionRepository extends JpaRepository<TripSchedul
             @org.springframework.data.repository.query.Param("status") TripScheduleVersionStatus status,
             @org.springframework.data.repository.query.Param("excludeTripStatus") com.casms.trip.enums.TripStatus excludeTripStatus,
             org.springframework.data.domain.Pageable pageable);
+
+    @org.springframework.data.jpa.repository.Query("SELECT v FROM TripScheduleVersion v " +
+            "WHERE v.status = 'PUBLISHED' " +
+            "AND v.trip.status != 'ARCHIVED' " +
+            "AND (:tripId IS NULL OR v.trip.tripId = :tripId) " +
+            "AND (:keyword = '' OR LOWER(v.trip.name) LIKE :keyword OR LOWER(v.trip.tripCode) LIKE :keyword) " +
+            "ORDER BY v.trip.tripCode ASC, v.versionNumber DESC")
+    org.springframework.data.domain.Page<TripScheduleVersion> findEligibleSourceVersions(
+            @org.springframework.data.repository.query.Param("tripId") UUID tripId,
+            @org.springframework.data.repository.query.Param("keyword") String keyword,
+            org.springframework.data.domain.Pageable pageable);
 }
 

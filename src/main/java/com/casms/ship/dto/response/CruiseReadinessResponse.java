@@ -35,6 +35,27 @@ public class CruiseReadinessResponse {
     @Schema(description = "Đã có hải trình (Itinerary) được liên kết", example = "true")
     private boolean itineraryConfigured;
 
+    @Schema(description = "Đã phân công nhân sự vận hành cho chuyến đi hay chưa", example = "true")
+    private boolean staffAssigned;
+
+    @Schema(description = "Đã phân công Thuyền trưởng (CAPTAIN) hợp lệ cho chuyến đi hay chưa", example = "true")
+    private boolean captainAssigned;
+
+    @Schema(description = "Danh sách xung đột lịch trình nhân sự (nếu có)")
+    private List<String> staffConflicts;
+
+    @Schema(description = "Các quy định vận hành áp dụng có tuân thủ và không có xung đột hay không", example = "true")
+    private boolean regulationsCompliant;
+
+    @Schema(description = "Danh sách xung đột hoặc vi phạm quy định (nếu có)")
+    private List<String> regulationConflicts;
+
+    @Schema(description = "Danh sách các điều kiện chặn (blockers) ngăn cản phát hành")
+    private List<String> blockers;
+
+    @Schema(description = "Danh sách cảnh báo cần lưu ý")
+    private List<String> warnings;
+
     @Schema(description = "Danh sách các thông báo hoặc điểm chưa hoàn tất")
     private List<String> issues;
 

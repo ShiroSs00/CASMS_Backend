@@ -20,6 +20,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -48,6 +49,26 @@ class CruiseServiceTest {
     private BookingPassengerRepository bookingPassengerRepository;
     @Mock
     private BusinessCodeGenerator businessCodeGenerator;
+    @Mock
+    private com.casms.trip.repository.TripScheduleVersionRepository tripScheduleVersionRepository;
+    @Mock
+    private ScheduleMaterializationService scheduleMaterializationService;
+    @Mock
+    private CruiseStaffRepository cruiseStaffRepository;
+    @Mock
+    private CruiseRegulationService cruiseRegulationService;
+    @Mock
+    private com.casms.activity.repository.OnboardActivityRepository onboardActivityRepository;
+    @Mock
+    private CruiseTourPackageRepository cruiseTourPackageRepository;
+    @Mock
+    private CruiseStopRepository cruiseStopRepository;
+    @Mock
+    private com.casms.activity.repository.ShoreExcursionRepository shoreExcursionRepository;
+    @Mock
+    private CruiseRegulationRepository cruiseRegulationRepository;
+    @Mock
+    private CruiseImpactTaskRepository cruiseImpactTaskRepository;
 
     @InjectMocks
     private CruiseService cruiseService;
@@ -135,8 +156,10 @@ class CruiseServiceTest {
     @Test
     @DisplayName("Gán tàu cho cruise thành công khi tàu ACTIVE và không trùng lịch")
     void assignShip_success() {
-        when(cruiseRepository.findById(cruiseId)).thenReturn(Optional.of(testCruise));
-        when(shipRepository.findById(shipId)).thenReturn(Optional.of(testShip));
+        when(cruiseRepository.findByIdForUpdate(cruiseId)).thenReturn(Optional.of(testCruise));
+        when(shipRepository.findByIdForUpdate(shipId)).thenReturn(Optional.of(testShip));
+        when(deckRepository.countByShipShipId(shipId)).thenReturn(5L);
+        when(cabinRepository.countByShipShipId(shipId)).thenReturn(50L);
         when(cruiseRepository.existsOverlappingCruisesExcluding(eq(shipId), eq(cruiseId), any(), any())).thenReturn(false);
         when(cruiseRepository.save(any(Cruise.class))).thenAnswer(i -> i.getArgument(0));
 
@@ -151,8 +174,8 @@ class CruiseServiceTest {
     @DisplayName("Gán tàu thất bại khi tàu không ở trạng thái ACTIVE")
     void assignShip_shipNotActive_throwsException() {
         testShip.setStatus(ShipStatus.MAINTENANCE);
-        when(cruiseRepository.findById(cruiseId)).thenReturn(Optional.of(testCruise));
-        when(shipRepository.findById(shipId)).thenReturn(Optional.of(testShip));
+        when(cruiseRepository.findByIdForUpdate(cruiseId)).thenReturn(Optional.of(testCruise));
+        when(shipRepository.findByIdForUpdate(shipId)).thenReturn(Optional.of(testShip));
 
         BusinessException ex = assertThrows(BusinessException.class, () -> cruiseService.assignShip(cruiseId, shipId));
         assertEquals("SHIP_NOT_ACTIVE", ex.getCode());
@@ -181,10 +204,21 @@ class CruiseServiceTest {
         itinerary.setItineraryId(UUID.randomUUID());
         itinerary.setStatus(ItineraryStatus.APPROVED);
 
+        com.casms.identity.entity.User captainUser = new com.casms.identity.entity.User();
+        captainUser.setUserId(UUID.randomUUID());
+        captainUser.setUsername("captain_jack");
+
+        com.casms.ship.entity.CruiseStaff captain = new com.casms.ship.entity.CruiseStaff();
+        captain.setUser(captainUser);
+        captain.setRoleInCruise("CAPTAIN");
+        captain.setStatus("ACTIVE");
+
         when(cruiseRepository.findById(cruiseId)).thenReturn(Optional.of(testCruise));
         when(deckRepository.countByShipShipId(shipId)).thenReturn(5L);
         when(cabinRepository.countByShipShipId(shipId)).thenReturn(50L);
         when(itineraryRepository.findByCruiseCruiseId(cruiseId)).thenReturn(Optional.of(itinerary));
+        when(cruiseStaffRepository.findByCruise_CruiseId(cruiseId)).thenReturn(List.of(captain));
+        when(cruiseStaffRepository.findConflictingAssignments(any(), any(), any(), any())).thenReturn(List.of());
         when(cruiseRepository.save(any(Cruise.class))).thenAnswer(i -> i.getArgument(0));
 
         CruiseResponse response = cruiseService.publish(cruiseId);

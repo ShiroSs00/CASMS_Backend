@@ -51,6 +51,10 @@ public class TripService {
     private final AuditService auditService;
     private AuditRepository auditRepository;
 
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    @lombok.Setter
+    private com.casms.activity.repository.ShoreExcursionRepository shoreExcursionRepository;
+
     public TripService(TripRepository tripRepository,
                        TripScheduleVersionRepository versionRepository,
                        TripPlanDayRepository dayRepository,
@@ -268,6 +272,29 @@ public class TripService {
                                     }
                                 }
                             }
+                        }
+                    }
+                }
+                if (v.getEntries() != null && shoreExcursionRepository != null) {
+                    for (TripPlanEntry entry : v.getEntries()) {
+                        if (entry.getSourceExcursionId() != null) {
+                            shoreExcursionRepository.findById(entry.getSourceExcursionId()).ifPresent(exc -> {
+                                if (exc.getPort() != null && exc.getPort().getCountryCode() != null) {
+                                    String excCountry = exc.getPort().getCountryCode().trim().toUpperCase();
+                                    if ("DOMESTIC".equalsIgnoreCase(targetScope)) {
+                                        if (!"VN".equalsIgnoreCase(excCountry)) {
+                                            invalidPortViolations.add("Tour bờ '" + exc.getExcursionName() + "' tại cảng '" + exc.getPort().getPortName() + "' (" + excCountry + ", bản " + v.getVersionNumber() + ")");
+                                        }
+                                    } else if ("INTERNATIONAL".equalsIgnoreCase(targetScope)) {
+                                        if (targetCountries != null && !targetCountries.isEmpty()) {
+                                            List<String> upperAllowed = targetCountries.stream().map(c -> c.trim().toUpperCase()).toList();
+                                            if (!upperAllowed.contains(excCountry)) {
+                                                invalidPortViolations.add("Tour bờ '" + exc.getExcursionName() + "' tại cảng '" + exc.getPort().getPortName() + "' (" + excCountry + ", bản " + v.getVersionNumber() + ")");
+                                            }
+                                        }
+                                    }
+                                }
+                            });
                         }
                     }
                 }

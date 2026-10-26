@@ -19,6 +19,7 @@ public interface ShoreExcursionRepository
 
     boolean existsBySupplier_SupplierId(UUID supplierId);
     boolean existsByExcursionCode(String excursionCode);
+    java.util.Optional<ShoreExcursion> findByExcursionCode(String excursionCode);
 
     boolean existsByExcursionCodeIgnoreCaseAndCruiseStop_CruiseStopId(
             String excursionCode,
@@ -39,6 +40,9 @@ public interface ShoreExcursionRepository
 
     List<ShoreExcursion> findByStatus(ShoreExcursionStatus status);
 
+    @Query("SELECT COUNT(se) FROM ShoreExcursion se WHERE se.cruiseStop.itinerary.cruise.cruiseId = :cruiseId")
+    long countByCruiseId(@Param("cruiseId") UUID cruiseId);
+
     @Query("""
         SELECT COUNT(se)
         FROM ShoreExcursion se
@@ -55,4 +59,8 @@ public interface ShoreExcursionRepository
             @Param("statuses") List<ShoreExcursionStatus> statuses,
             @Param("excludeId") UUID excludeId
     );
+
+    @org.springframework.data.jpa.repository.Modifying
+    @Query("DELETE FROM ShoreExcursion se WHERE se.cruiseStop.itinerary.cruise.cruiseId = :cruiseId")
+    void deleteByCruiseId(@Param("cruiseId") UUID cruiseId);
 }

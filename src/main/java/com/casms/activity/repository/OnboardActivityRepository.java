@@ -19,4 +19,9 @@ public interface OnboardActivityRepository extends JpaRepository<OnboardActivity
     Optional<OnboardActivity> lockActivity(@org.springframework.data.repository.query.Param("id") UUID id);
     @org.springframework.data.jpa.repository.Query("select count(a) from OnboardActivity a where a.cruise.cruiseId=:cruiseId and lower(a.location)=lower(:location) and a.startTime < :endTime and a.endTime > :startTime and a.status in :statuses and (:excludeId is null or a.onboardActivityId<>:excludeId)")
     long countScheduleConflicts(@org.springframework.data.repository.query.Param("cruiseId") UUID cruiseId,@org.springframework.data.repository.query.Param("location") String location,@org.springframework.data.repository.query.Param("startTime") Instant startTime,@org.springframework.data.repository.query.Param("endTime") Instant endTime,@org.springframework.data.repository.query.Param("statuses") Collection<OnboardActivityStatus> statuses,@org.springframework.data.repository.query.Param("excludeId") UUID excludeId);
+
+    long countByCruise_CruiseId(UUID cruiseId);
+    long countByCruise_CruiseIdAndDeckIsNotNull(UUID cruiseId);
+    java.util.List<OnboardActivity> findByCruise_CruiseId(UUID cruiseId);
+    void deleteByCruise_CruiseId(UUID cruiseId);
 }

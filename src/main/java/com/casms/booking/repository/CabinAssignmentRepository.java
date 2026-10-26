@@ -19,15 +19,25 @@ public interface CabinAssignmentRepository extends JpaRepository<CabinAssignment
            "WHERE ca.cabin.cabinId = :cabinId " +
            "AND ca.validTo IS NULL " +
            "AND ca.bookingPassenger.booking.cruise.cruiseId = :cruiseId " +
-           "AND ca.bookingPassenger.booking.bookingStatus != 'Cancelled' " +
-           "AND ca.bookingPassenger.participationStatus = 'Active'")
+           "AND ca.bookingPassenger.booking.bookingStatus != com.casms.booking.enums.BookingStatus.Cancelled " +
+           "AND ca.bookingPassenger.participationStatus = com.casms.booking.enums.BookingPassengerParticipationStatus.Active")
     long countActiveAssignmentsByCabinAndCruise(@Param("cabinId") UUID cabinId, @Param("cruiseId") UUID cruiseId);
 
+    @Query("SELECT COUNT(ca) FROM CabinAssignment ca " +
+           "WHERE ca.cabin.cabinType = :cabinType " +
+           "AND ca.validTo IS NULL " +
+           "AND ca.bookingPassenger.booking.cruise.cruiseId = :cruiseId " +
+           "AND ca.bookingPassenger.booking.bookingStatus != com.casms.booking.enums.BookingStatus.Cancelled " +
+           "AND ca.bookingPassenger.participationStatus = com.casms.booking.enums.BookingPassengerParticipationStatus.Active")
+    long countActiveAssignmentsByCabinTypeAndCruise(@Param("cabinType") com.casms.ship.enums.CabinType cabinType, @Param("cruiseId") UUID cruiseId);
+
     @Query("SELECT ca FROM CabinAssignment ca " +
+           "LEFT JOIN FETCH ca.cabin c " +
+           "LEFT JOIN FETCH c.deck d " +
            "WHERE ca.bookingPassenger.booking.cruise.cruiseId = :cruiseId " +
            "AND ca.validTo IS NULL " +
-           "AND ca.bookingPassenger.booking.bookingStatus != 'Cancelled' " +
-           "AND ca.bookingPassenger.participationStatus = 'Active'")
+           "AND ca.bookingPassenger.booking.bookingStatus != com.casms.booking.enums.BookingStatus.Cancelled " +
+           "AND ca.bookingPassenger.participationStatus = com.casms.booking.enums.BookingPassengerParticipationStatus.Active")
     List<CabinAssignment> findActiveAssignmentsByCruiseId(@Param("cruiseId") UUID cruiseId);
 
     Optional<CabinAssignment> findByBookingPassengerBookingPassengerIdAndValidToIsNull(UUID bookingPassengerId);

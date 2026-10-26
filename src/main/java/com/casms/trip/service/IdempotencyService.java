@@ -97,6 +97,8 @@ public class IdempotencyService {
             UUID resultingId = null;
             if (result instanceof TripDetailResponse detail) {
                 resultingId = detail.getTripId();
+            } else if (result instanceof com.casms.ship.dto.response.CruiseResponse cruiseRes) {
+                resultingId = cruiseRes.getCruiseId();
             }
             reservationService.completeKey(reservationId, json, resultingId);
         } catch (Exception e) {
@@ -143,6 +145,8 @@ public class IdempotencyService {
     private <T> Class<T> inferResponseType(String operation) {
         if ("CREATE_TRIP".equals(operation) || "CLONE_TRIP".equals(operation)) {
             return (Class<T>) TripDetailResponse.class;
+        } else if ("CREATE_CRUISE".equals(operation)) {
+            return (Class<T>) com.casms.ship.dto.response.CruiseResponse.class;
         }
         return null;
     }

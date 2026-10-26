@@ -34,13 +34,16 @@ class CruiseControllerTest {
     @Mock private CruiseStaffService staffService;
     @Mock private CruisePackageService packageService;
     @Mock private IdempotencyService idempotencyService;
+    @Mock private com.casms.ship.service.ScheduleMaterializationService scheduleMaterializationService;
+    @Mock private com.casms.ship.service.OperationalProgramMappingService operationalProgramMappingService;
+    @Mock private com.casms.ship.service.CruiseImpactAssessmentService cruiseImpactAssessmentService;
     @Mock private CasmsPrincipal principal;
 
     private CruiseController controller;
 
     @BeforeEach
     void setUp() {
-        controller = new CruiseController(cruiseService, staffService, packageService, idempotencyService);
+        controller = new CruiseController(cruiseService, staffService, packageService, idempotencyService, scheduleMaterializationService, operationalProgramMappingService, cruiseImpactAssessmentService);
     }
 
     @Test

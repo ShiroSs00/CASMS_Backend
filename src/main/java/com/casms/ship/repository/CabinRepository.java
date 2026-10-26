@@ -25,6 +25,11 @@ public interface CabinRepository extends JpaRepository<Cabin, UUID> {
     Page<Cabin> findByDeckDeckId(UUID deckId, Pageable pageable);
     long countByShipShipId(UUID shipId);
     long countByShipShipIdAndStatus(UUID shipId, CabinStatus status);
+    long countByShipShipIdAndCabinType(UUID shipId, CabinType cabinType);
+    long countByShipShipIdAndCabinTypeAndStatus(UUID shipId, CabinType cabinType, CabinStatus status);
+
+    @Query("SELECT COALESCE(SUM(c.capacity), 0) FROM Cabin c WHERE c.ship.shipId = :shipId AND c.cabinType = :cabinType")
+    Long sumCapacityByShipIdAndCabinType(@Param("shipId") UUID shipId, @Param("cabinType") CabinType cabinType);
 
     @Query("SELECT COALESCE(SUM(c.capacity), 0) FROM Cabin c WHERE c.ship.shipId = :shipId")
     Long sumCapacityByShipId(@Param("shipId") UUID shipId);

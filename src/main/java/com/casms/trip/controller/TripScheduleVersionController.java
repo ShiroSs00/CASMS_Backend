@@ -13,6 +13,7 @@ import com.casms.trip.dto.response.TripAuditResponse;
 import com.casms.trip.dto.response.TripDayManageResponse;
 import com.casms.trip.dto.response.TripScheduleVersionDetailResponse;
 import com.casms.trip.dto.response.ValidationReport;
+import com.casms.trip.dto.response.EligibleTripSourceResponse;
 import com.casms.trip.service.TripScheduleVersionService;
 import com.casms.trip.service.TripService;
 import com.casms.trip.dto.response.TripReviewQueueItemResponse;
@@ -166,5 +167,16 @@ public class TripScheduleVersionController {
         TripScheduleVersionDetailResponse detail = versionService.getVersionDetailById(versionId);
         return ApiResponse.success("Managed days successfully",
                 tripService.manageDays(detail.getTripId(), versionId, request, actorId));
+    }
+
+    @Operation(summary = "Truy vấn phiên bản mẫu Trip đủ điều kiện sử dụng (C01)",
+               description = "Tìm kiếm các phiên bản TripScheduleVersion đã xuất bản (PUBLISHED) và Trip còn hiệu lực (không ARCHIVED) để tạo chuyến khởi hành Cruise Draft.")
+    @PreAuthorize("hasAuthority('CRUISE_CREATE') or hasAuthority('TRIP_READ')")
+    @GetMapping("/eligible-sources")
+    public ApiResponse<Page<EligibleTripSourceResponse>> getEligibleSources(
+            @Parameter(description = "Lọc theo ID Trip mẫu") @RequestParam(required = false) UUID tripId,
+            @Parameter(description = "Từ khóa tìm kiếm theo tên hoặc mã Trip") @RequestParam(required = false) String keyword,
+            Pageable pageable) {
+        return ApiResponse.success(versionService.getEligibleSources(tripId, keyword, pageable));
     }
 }

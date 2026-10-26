@@ -37,4 +37,6 @@ public interface CruiseStopRepository extends JpaRepository<CruiseStop, UUID> {
     List<CruiseStop> findActiveStopsAtTime(@Param("now") Instant now);
 
     long countByItineraryItineraryId(UUID itineraryId);
+
+    void deleteByItineraryItineraryId(UUID itineraryId);
 }

@@ -53,7 +53,8 @@ public class CruiseStopService {
     public CruiseStopResponse add(CruiseStopCreateRequest request) {
         log.info("Adding new cruise stop to itinerary: {}", request.getItineraryId());
 
-        Itinerary itinerary = itineraryRepository.findById(request.getItineraryId())
+        Itinerary itinerary = itineraryRepository.findByIdForUpdate(request.getItineraryId())
+                .or(() -> itineraryRepository.findById(request.getItineraryId()))
                 .orElseThrow(() -> new ResourceNotFoundException("Itinerary", request.getItineraryId()));
 
         if (itinerary.getStatus() != ItineraryStatus.DRAFT) {
@@ -100,7 +101,7 @@ public class CruiseStopService {
             request.setArrivalMethod(CruiseStopArrivalMethod.BERTH);
         }
         if (request.getAllAboardTime() == null && request.getPlannedDeparture() != null) {
-            request.setAllAboardTime(request.getPlannedDeparture().minus(30, java.time.temporal.ChronoUnit.MINUTES));
+            request.setAllAboardTime(request.getPlannedDeparture());
         }
 
         if (request.getPlannedDeparture().isBefore(request.getPlannedArrival()) || 
@@ -178,8 +179,12 @@ public class CruiseStopService {
     @Transactional
     public CruiseStopResponse update(UUID cruiseStopId, CruiseStopUpdateRequest request) {
         CruiseStop stop = getStopById(cruiseStopId);
+        UUID itineraryId = stop.getItinerary().getItineraryId();
 
-        Itinerary itinerary = stop.getItinerary();
+        Itinerary itinerary = itineraryRepository.findByIdForUpdate(itineraryId)
+                .or(() -> itineraryRepository.findById(itineraryId))
+                .orElse(stop.getItinerary());
+
         if (itinerary.getStatus() != ItineraryStatus.DRAFT) {
             throw new BusinessException("ITINERARY_NOT_EDITABLE", "Cannot update stops in itinerary with status: " + itinerary.getStatus() + ". Only DRAFT itineraries can be modified.");
         }
@@ -240,22 +245,7 @@ public class CruiseStopService {
 
         // BE-12.3: Validate shore excursions under this stop to ensure shortening stop window does not violate excursion return time (E41)
         Instant effectiveAllAboard = request.getAllAboardTime() != null ? request.getAllAboardTime() : stop.getAllAboardTime();
-        Instant deadline = effectiveAllAboard != null ? effectiveAllAboard : departure;
-        if (shoreExcursionRepository != null) {
-            List<com.casms.activity.entity.ShoreExcursion> excursions = shoreExcursionRepository.findByCruiseStop_CruiseStopId(stop.getCruiseStopId());
-            for (com.casms.activity.entity.ShoreExcursion exc : excursions) {
-                if (exc.getStartTime() != null && exc.getStartTime().isBefore(arrival)) {
-                    throw new BusinessException("EXCURSION_OUTSIDE_PORT_WINDOW",
-                            "Không thể điều chỉnh giờ cảng vì tour bờ '" + exc.getExcursionName() + "' bắt đầu ("
-                                    + exc.getStartTime() + ") trước khi tàu cập cảng (" + arrival + ").");
-                }
-                if (exc.getPlannedReturnTime() != null && deadline != null && exc.getPlannedReturnTime().isAfter(deadline)) {
-                    throw new BusinessException("EXCURSION_OUTSIDE_PORT_WINDOW",
-                            "Không thể điều chỉnh giờ cảng vì tour bờ '" + exc.getExcursionName() + "' kết thúc ("
-                                    + exc.getPlannedReturnTime() + ") sau hạn lên tàu / rời cảng (" + deadline + ").");
-                }
-            }
-        }
+        validateExcursionsUnderStop(stop, arrival, departure, effectiveAllAboard);
 
         if (request.getPlannedArrival() != null) {
             stop.setPlannedArrival(request.getPlannedArrival());
@@ -299,8 +289,12 @@ public class CruiseStopService {
     @Transactional
     public CruiseStopResponse reorder(UUID cruiseStopId, Integer newStopOrder) {
         CruiseStop stop = getStopById(cruiseStopId);
+        UUID itineraryId = stop.getItinerary().getItineraryId();
 
-        Itinerary itinerary = stop.getItinerary();
+        Itinerary itinerary = itineraryRepository.findByIdForUpdate(itineraryId)
+                .or(() -> itineraryRepository.findById(itineraryId))
+                .orElse(stop.getItinerary());
+
         if (itinerary.getStatus() != ItineraryStatus.DRAFT) {
             throw new BusinessException("ITINERARY_NOT_EDITABLE", "Cannot reorder stops in itinerary with status: " + itinerary.getStatus() + ". Only DRAFT itineraries can be modified.");
         }
@@ -324,9 +318,25 @@ public class CruiseStopService {
     @Transactional
     public CruiseStopResponse setAllAboardTime(UUID cruiseStopId, Instant allAboardTime) {
         CruiseStop stop = getStopById(cruiseStopId);
-        if (stop.getItinerary().getStatus() != ItineraryStatus.DRAFT) {
-            throw new BusinessException("ITINERARY_NOT_EDITABLE", "Cannot modify stop in itinerary with status: " + stop.getItinerary().getStatus());
+        UUID itineraryId = stop.getItinerary().getItineraryId();
+        Itinerary itinerary = itineraryRepository.findByIdForUpdate(itineraryId)
+                .or(() -> itineraryRepository.findById(itineraryId))
+                .orElse(stop.getItinerary());
+
+        if (itinerary.getStatus() != ItineraryStatus.DRAFT) {
+            throw new BusinessException("ITINERARY_NOT_EDITABLE", "Cannot modify stop in itinerary with status: " + itinerary.getStatus());
         }
+
+        if (allAboardTime != null) {
+            if (stop.getPlannedArrival() != null && allAboardTime.isBefore(stop.getPlannedArrival())) {
+                throw new BusinessException("INVALID_TIME_RANGE", "All aboard time cannot be earlier than planned arrival");
+            }
+            if (stop.getPlannedDeparture() != null && allAboardTime.isAfter(stop.getPlannedDeparture())) {
+                throw new BusinessException("INVALID_TIME_RANGE", "All aboard time cannot be later than planned departure");
+            }
+            validateExcursionsUnderStop(stop, stop.getPlannedArrival(), stop.getPlannedDeparture(), allAboardTime);
+        }
+
         stop.setAllAboardTime(allAboardTime);
         stop = cruiseStopRepository.save(stop);
         return mapToResponse(stop);
@@ -385,10 +395,26 @@ public class CruiseStopService {
     @Transactional
     public CruiseStopResponse setPlannedArrival(UUID cruiseStopId, Instant plannedArrival) {
         CruiseStop stop = getStopById(cruiseStopId);
+        UUID itineraryId = stop.getItinerary().getItineraryId();
+        Itinerary itinerary = itineraryRepository.findByIdForUpdate(itineraryId)
+                .or(() -> itineraryRepository.findById(itineraryId))
+                .orElse(stop.getItinerary());
+
+        if (itinerary.getStatus() != ItineraryStatus.DRAFT) {
+            throw new BusinessException("ITINERARY_NOT_EDITABLE", "Cannot modify stop in itinerary with status: " + itinerary.getStatus());
+        }
         
         if (!plannedArrival.isBefore(stop.getPlannedDeparture())) {
             throw new BusinessException("INVALID_TIME_RANGE", "Planned arrival must be before planned departure");
         }
+
+        List<CruiseStop> existingStops = cruiseStopRepository.findByItineraryItineraryIdOrderByStopOrderAsc(itinerary.getItineraryId());
+        validateCruiseStopInvariants(stop.getCruiseStopId(), stop.getStopOrder(),
+                stop.getPort() != null ? stop.getPort().getPortId() : null,
+                stop.getPort() != null ? stop.getPort().getPortName() : "Unknown",
+                plannedArrival, stop.getPlannedDeparture(), existingStops);
+
+        validateExcursionsUnderStop(stop, plannedArrival, stop.getPlannedDeparture(), stop.getAllAboardTime());
         
         stop.setPlannedArrival(plannedArrival);
         stop = cruiseStopRepository.save(stop);
@@ -398,10 +424,26 @@ public class CruiseStopService {
     @Transactional
     public CruiseStopResponse setPlannedDeparture(UUID cruiseStopId, Instant plannedDeparture) {
         CruiseStop stop = getStopById(cruiseStopId);
+        UUID itineraryId = stop.getItinerary().getItineraryId();
+        Itinerary itinerary = itineraryRepository.findByIdForUpdate(itineraryId)
+                .or(() -> itineraryRepository.findById(itineraryId))
+                .orElse(stop.getItinerary());
+
+        if (itinerary.getStatus() != ItineraryStatus.DRAFT) {
+            throw new BusinessException("ITINERARY_NOT_EDITABLE", "Cannot modify stop in itinerary with status: " + itinerary.getStatus());
+        }
         
         if (!plannedDeparture.isAfter(stop.getPlannedArrival())) {
             throw new BusinessException("INVALID_TIME_RANGE", "Planned departure must be after planned arrival");
         }
+
+        List<CruiseStop> existingStops = cruiseStopRepository.findByItineraryItineraryIdOrderByStopOrderAsc(itinerary.getItineraryId());
+        validateCruiseStopInvariants(stop.getCruiseStopId(), stop.getStopOrder(),
+                stop.getPort() != null ? stop.getPort().getPortId() : null,
+                stop.getPort() != null ? stop.getPort().getPortName() : "Unknown",
+                stop.getPlannedArrival(), plannedDeparture, existingStops);
+
+        validateExcursionsUnderStop(stop, stop.getPlannedArrival(), plannedDeparture, stop.getAllAboardTime());
         
         stop.setPlannedDeparture(plannedDeparture);
         stop = cruiseStopRepository.save(stop);
@@ -434,26 +476,36 @@ public class CruiseStopService {
                 .orElseThrow(() -> new ResourceNotFoundException("CruiseStop", cruiseStopId));
     }
 
+    private void validateExcursionsUnderStop(CruiseStop stop, Instant arrival, Instant departure, Instant allAboard) {
+        if (shoreExcursionRepository == null || stop == null || stop.getCruiseStopId() == null) {
+            return;
+        }
+        Instant effectiveDeadline = allAboard != null ? allAboard : departure;
+        List<com.casms.activity.entity.ShoreExcursion> excursions = shoreExcursionRepository.findByCruiseStop_CruiseStopId(stop.getCruiseStopId());
+        for (com.casms.activity.entity.ShoreExcursion exc : excursions) {
+            if (exc.getStartTime() != null && arrival != null && exc.getStartTime().isBefore(arrival)) {
+                throw new BusinessException("EXCURSION_OUTSIDE_PORT_WINDOW",
+                        String.format("Không thể điều chỉnh giờ cảng vì tour bờ '%s' (mã: %s) bắt đầu (%s) trước khi tàu cập cảng (%s).",
+                                exc.getExcursionName(), exc.getExcursionCode(), exc.getStartTime(), arrival));
+            }
+            if (exc.getPlannedReturnTime() != null && effectiveDeadline != null && exc.getPlannedReturnTime().isAfter(effectiveDeadline)) {
+                throw new BusinessException("EXCURSION_OUTSIDE_PORT_WINDOW",
+                        String.format("Không thể điều chỉnh giờ cảng vì tour bờ '%s' (mã: %s) kết thúc (%s) sau hạn lên tàu / rời cảng (%s).",
+                                exc.getExcursionName(), exc.getExcursionCode(), exc.getPlannedReturnTime(), effectiveDeadline));
+            }
+        }
+    }
+
     /**
      * GAP-1 / BE-11.2: Validates that the given port's country code is within the allowed
-     * country scope of the Cruise that owns this Itinerary (derived from sourceTrip.countryCodes).
-     * If no scope is configured the check is skipped (allows free-form cruises without a Trip source).
+     * country scope of the Cruise that owns this Itinerary (derived from sourceTrip via CountryScopeValidator).
      */
     private void validatePortCountryScope(Port port, Itinerary itinerary) {
         if (itinerary == null || itinerary.getCruise() == null) return;
         com.casms.ship.entity.Cruise cruise = itinerary.getCruise();
         if (cruise.getSourceTrip() == null) return; // no scope constraint
 
-        java.util.List<String> allowed = cruise.getSourceTrip().getCountryCodes();
-        if (allowed == null || allowed.isEmpty()) return;
-
-        String portCountry = port.getCountryCode();
-        if (portCountry == null || !allowed.contains(portCountry.trim().toUpperCase())) {
-            throw new BusinessException("PORT_COUNTRY_SCOPE_VIOLATION",
-                    String.format("Cảng '%s' (mã quốc gia: %s) không thuộc phạm vi quốc gia cho phép của chuyến đi này: %s. " +
-                                    "Vui lòng chọn cảng thuộc đúng quốc gia hoặc cập nhật phạm vi của Trip nguồn.",
-                            port.getPortCode(), portCountry, allowed));
-        }
+        com.casms.trip.service.CountryScopeValidator.validatePort(port, cruise.getSourceTrip(), "Cảng ghé");
     }
 
     private CruiseStopResponse mapToResponse(CruiseStop stop) {

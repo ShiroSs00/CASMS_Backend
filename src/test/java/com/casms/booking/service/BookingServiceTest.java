@@ -83,6 +83,8 @@ class BookingServiceTest {
     @Mock private RefundRepository refundRepository;
     @Mock private NotificationRepository notificationRepository;
     @Mock private BusinessCodeGenerator businessCodeGenerator;
+    @Mock private com.casms.ship.repository.CruiseTourPackageRepository cruiseTourPackageRepository;
+    @Mock private com.casms.ship.repository.ItineraryRepository itineraryRepository;
 
     @InjectMocks
     private BookingService bookingService;
