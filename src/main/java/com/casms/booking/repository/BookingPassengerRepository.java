@@ -30,15 +30,26 @@ public interface BookingPassengerRepository extends JpaRepository<BookingPasseng
     java.util.Optional<BookingPassenger> lockById(@org.springframework.data.repository.query.Param("id") UUID id);
 
     @Query("SELECT COUNT(bp) FROM BookingPassenger bp WHERE bp.booking.cruise.cruiseId = :cruiseId " +
-           "AND bp.participationStatus = 'Active' AND bp.booking.bookingStatus != 'Cancelled'")
+           "AND bp.participationStatus = com.casms.booking.enums.BookingPassengerParticipationStatus.Active " +
+           "AND bp.booking.bookingStatus != com.casms.booking.enums.BookingStatus.Cancelled")
     long countActivePassengersByCruiseId(@Param("cruiseId") UUID cruiseId);
+
+    @Query("SELECT COUNT(bp) FROM BookingPassenger bp WHERE bp.booking.cruise.cruiseId = :cruiseId " +
+           "AND bp.participationStatus = com.casms.booking.enums.BookingPassengerParticipationStatus.Active " +
+           "AND bp.booking.bookingStatus = com.casms.booking.enums.BookingStatus.Draft")
+    long countHeldPassengersByCruiseId(@Param("cruiseId") UUID cruiseId);
+
+    @Query("SELECT COUNT(bp) FROM BookingPassenger bp WHERE bp.booking.cruise.cruiseId = :cruiseId " +
+           "AND bp.participationStatus = com.casms.booking.enums.BookingPassengerParticipationStatus.Active " +
+           "AND bp.booking.bookingStatus = com.casms.booking.enums.BookingStatus.Confirmed")
+    long countConfirmedPassengersByCruiseId(@Param("cruiseId") UUID cruiseId);
 
     @Query("SELECT bp FROM BookingPassenger bp " +
            "JOIN FETCH bp.passenger p " +
            "JOIN FETCH bp.booking b " +
            "WHERE b.cruise.cruiseId = :cruiseId " +
-           "AND bp.participationStatus = 'Active' " +
-           "AND b.bookingStatus != 'Cancelled'")
+           "AND bp.participationStatus = com.casms.booking.enums.BookingPassengerParticipationStatus.Active " +
+           "AND b.bookingStatus != com.casms.booking.enums.BookingStatus.Cancelled")
     java.util.List<BookingPassenger> findActivePassengersByCruiseId(@Param("cruiseId") UUID cruiseId);
 
     java.util.List<BookingPassenger> findByBookingBookingId(UUID bookingId);

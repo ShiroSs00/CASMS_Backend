@@ -66,6 +66,9 @@ public class CruiseResponse {
     @Schema(description = "Số phiên bản nguồn", example = "2")
     private Integer sourceVersionNumber;
 
+    @Schema(description = "Số revision của Cruise phục vụ optimistic concurrency control", example = "1")
+    private Long revision;
+
     @Schema(description = "Thời điểm tạo")
     private Instant createdAt;
 

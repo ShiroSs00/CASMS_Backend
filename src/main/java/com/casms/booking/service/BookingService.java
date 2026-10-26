@@ -56,9 +56,12 @@ import com.casms.ship.entity.ShipModelObject;
 import com.casms.ship.enums.CabinStatus;
 import com.casms.ship.enums.CabinType;
 import com.casms.ship.enums.CruiseStatus;
+import com.casms.ship.enums.ItineraryStatus;
 import com.casms.ship.enums.ShipModelStatus;
 import com.casms.ship.repository.CabinRepository;
 import com.casms.ship.repository.CruiseRepository;
+import com.casms.ship.repository.CruiseTourPackageRepository;
+import com.casms.ship.repository.ItineraryRepository;
 import com.casms.ship.repository.ShipModelObjectRepository;
 import com.casms.ship.repository.ShipModelRepository;
 import lombok.RequiredArgsConstructor;
@@ -100,6 +103,8 @@ public class BookingService {
     private final RefundRepository refundRepository;
     private final NotificationRepository notificationRepository;
     private final BusinessCodeGenerator businessCodeGenerator;
+    private final CruiseTourPackageRepository cruiseTourPackageRepository;
+    private final ItineraryRepository itineraryRepository;
 
     /**
      * Tra cứu danh sách các phòng còn trống trên tàu của chuyến đi để khách hàng tự chọn.
@@ -232,6 +237,12 @@ public class BookingService {
         if (cruise.getStatus() != CruiseStatus.PUBLISHED) {
             throw new BusinessException("INVALID_CRUISE_STATUS", "Bookings can only be created for PUBLISHED cruises (Current: " + cruise.getStatus() + ")");
         }
+        // BE-08B: Gating - Check if sale has been suspended on itinerary
+        itineraryRepository.findByCruiseCruiseId(cruise.getCruiseId()).ifPresent(itinerary -> {
+            if (itinerary.getStatus() == ItineraryStatus.SUSPENDED) {
+                throw new BusinessException("SALE_SUSPENDED", "Chuyến đi đang tạm dừng mở bán, không thể tiếp nhận đặt chỗ mới");
+            }
+        });
         if (cruise.getDepartureDatetime().isBefore(Instant.now())) {
             throw new BusinessException("CRUISE_ALREADY_DEPARTED", "Cannot book a cruise that has already departed");
         }
@@ -303,8 +314,15 @@ public class BookingService {
                 if (pkg.getStatus() != TourPackageStatus.ACTIVE) {
                     throw new BusinessException("PACKAGE_NOT_ACTIVE", "Tour package is not currently ACTIVE: " + pkg.getPackageName());
                 }
+                // BE-07 / BE-08B: Product gate - Package must be assigned to this Cruise and active for sale
+                boolean assignedToCruise = cruiseTourPackageRepository
+                        .existsByCruise_CruiseIdAndTourPackage_TourPackageIdAndActiveTrue(cruise.getCruiseId(), pkg.getTourPackageId());
+                if (!assignedToCruise) {
+                    throw new BusinessException("PACKAGE_NOT_AVAILABLE_FOR_CRUISE",
+                            "Gói dịch vụ " + pkg.getPackageName() + " chưa được mở bán cho chuyến đi này");
+                }
                 validatedPackages.put(pReq.getTourPackageId(), pkg);
-                totalPackageAmount = totalPackageAmount.add(pkg.getPrice());
+                totalPackageAmount = totalPackageAmount.add(pkg.getPrice() != null ? pkg.getPrice() : BigDecimal.ZERO);
             }
         }
 

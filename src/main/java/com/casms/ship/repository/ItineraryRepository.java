@@ -14,6 +14,10 @@ public interface ItineraryRepository extends JpaRepository<Itinerary, UUID> {
     Optional<Itinerary> findByCruiseCruiseId(UUID cruiseId);
     boolean existsByCruiseCruiseId(UUID cruiseId);
 
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @org.springframework.data.jpa.repository.Query("select i from Itinerary i where i.itineraryId = :itineraryId")
+    Optional<Itinerary> findByIdForUpdate(@org.springframework.data.repository.query.Param("itineraryId") UUID itineraryId);
+
     @EntityGraph(attributePaths = "cruise")
     java.util.List<Itinerary> findByCruiseCruiseIdInAndStatusIn(
             java.util.Collection<UUID> cruiseIds,

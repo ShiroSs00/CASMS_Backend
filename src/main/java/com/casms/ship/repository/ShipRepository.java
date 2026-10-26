@@ -21,5 +21,9 @@ public interface ShipRepository extends JpaRepository<Ship, UUID> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select s from Ship s where s.manifestModelId = :manifestModelId")
     Optional<Ship> lockByManifestModelId(@Param("manifestModelId") String manifestModelId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT s FROM Ship s WHERE s.shipId = :shipId")
+    Optional<Ship> findByIdForUpdate(@Param("shipId") UUID shipId);
 }
 

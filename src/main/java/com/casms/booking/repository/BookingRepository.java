@@ -18,6 +18,8 @@ import java.util.UUID;
 @Repository
 public interface BookingRepository extends JpaRepository<Booking, UUID>, JpaSpecificationExecutor<Booking> {
     boolean existsByCruiseCruiseId(UUID cruiseId);
+    long countByCruiseCruiseId(UUID cruiseId);
+    long countByCruiseCruiseIdAndBookingStatus(UUID cruiseId, BookingStatus status);
     boolean existsByBookingReference(String bookingReference);
     Optional<Booking> findByBookingReference(String bookingReference);
 

@@ -197,7 +197,7 @@ public class TripScheduleVersionService {
                 }
 
                 // BE-11.2: Validate port country against Trip scope
-                if ("DOMESTIC".equalsIgnoreCase(trip.getPlannedScope())) {
+                if (CountryScopeValidator.isDomestic(trip)) {
                     if (port.getCountryCode() != null && !"VN".equalsIgnoreCase(port.getCountryCode().trim())) {
                         throw new BusinessException(HttpStatus.BAD_REQUEST, "PORT_OUTSIDE_COUNTRY_SCOPE",
                                 "Cảng '" + port.getPortName() + "' (mã: " + port.getPortCode() + ", quốc gia: "
@@ -211,17 +211,19 @@ public class TripScheduleVersionService {
                                             + ") không thuộc các miền đã đăng ký: " + String.join(", ", trip.getDomesticRegions()));
                         }
                     }
-                } else if ("INTERNATIONAL".equalsIgnoreCase(trip.getPlannedScope())) {
+                } else if (CountryScopeValidator.isInternational(trip)) {
                     List<String> registeredCountries = trip.getCountryCodes();
-                    if (registeredCountries != null && !registeredCountries.isEmpty()) {
-                        String country = port.getCountryCode() != null ? port.getCountryCode().trim().toUpperCase() : "";
-                        List<String> upperReg = registeredCountries.stream().map(c -> c.trim().toUpperCase()).toList();
-                        if (!upperReg.contains(country)) {
-                            throw new BusinessException(HttpStatus.BAD_REQUEST, "PORT_OUTSIDE_COUNTRY_SCOPE",
-                                    "Cảng '" + port.getPortName() + "' (mã: " + port.getPortCode() + ", quốc gia: "
-                                            + country + ") không thuộc danh sách quốc gia đăng ký của Trip: "
-                                            + String.join(", ", upperReg));
-                        }
+                    if (registeredCountries == null || registeredCountries.isEmpty()) {
+                        throw new BusinessException(HttpStatus.BAD_REQUEST, "SCOPE_COUNTRY_REQUIRED",
+                                "Chuyến đi quốc tế " + trip.getTripCode() + " chưa được cấu hình danh sách quốc gia (countryCodes).");
+                    }
+                    String country = port.getCountryCode() != null ? port.getCountryCode().trim().toUpperCase() : "";
+                    List<String> upperReg = registeredCountries.stream().map(c -> c.trim().toUpperCase()).toList();
+                    if (!upperReg.contains(country)) {
+                        throw new BusinessException(HttpStatus.BAD_REQUEST, "PORT_OUTSIDE_COUNTRY_SCOPE",
+                                "Cảng '" + port.getPortName() + "' (mã: " + port.getPortCode() + ", quốc gia: "
+                                        + country + ") không thuộc danh sách quốc gia đăng ký của Trip: "
+                                        + String.join(", ", upperReg));
                     }
                 }
 
@@ -1405,7 +1407,7 @@ public class TripScheduleVersionService {
         }
 
         // Validate Planned Scope (BE-06B): Chuyến nội địa không được ghé cảng nước ngoài và phải thuộc miền đã chọn
-        if ("DOMESTIC".equalsIgnoreCase(trip.getPlannedScope())) {
+        if (CountryScopeValidator.isDomestic(trip)) {
             List<String> registeredRegions = trip.getDomesticRegions();
             for (TripPlanStop stop : stops) {
                 if (stop.getPort() != null) {
@@ -1442,7 +1444,7 @@ public class TripScheduleVersionService {
                     }
                 }
             }
-        } else if ("INTERNATIONAL".equalsIgnoreCase(trip.getPlannedScope())) {
+        } else if (CountryScopeValidator.isInternational(trip)) {
             List<String> registeredCountries = trip.getCountryCodes();
             if (registeredCountries != null && !registeredCountries.isEmpty()) {
                 for (TripPlanStop stop : stops) {
@@ -1930,5 +1932,49 @@ public class TripScheduleVersionService {
             return base + (time.toSecondOfDay() / 60);
         }
         return isEnd ? base + 1440L : base;
+    }
+
+    @Transactional(readOnly = true)
+    public Page<EligibleTripSourceResponse> getEligibleSources(UUID tripId, String keyword, Pageable pageable) {
+        String kw = (keyword != null && !keyword.isBlank()) ? "%" + keyword.trim().toLowerCase() + "%" : "";
+        Page<TripScheduleVersion> page = versionRepository.findEligibleSourceVersions(tripId, kw, pageable);
+        return page.map(this::mapToEligibleSourceResponse);
+    }
+
+    private EligibleTripSourceResponse mapToEligibleSourceResponse(TripScheduleVersion v) {
+        Trip trip = v.getTrip();
+        List<TripPlanStop> stops = v.getStops() != null ? new ArrayList<>(v.getStops()) : new ArrayList<>();
+        stops.sort(Comparator.comparing(TripPlanStop::getStopOrder, Comparator.nullsLast(Comparator.naturalOrder())));
+
+        TripPlanStop firstStop = stops.isEmpty() ? null : stops.get(0);
+        TripPlanStop lastStop = stops.isEmpty() ? null : stops.get(stops.size() - 1);
+
+        List<String> stopSummaries = stops.stream()
+                .filter(s -> s.getPort() != null)
+                .map(s -> String.format("%s (%s)", s.getPort().getPortName(), s.getPort().getPortCode()))
+                .toList();
+
+        return EligibleTripSourceResponse.builder()
+                .versionId(v.getVersionId())
+                .versionNumber(v.getVersionNumber())
+                .revision(v.getRevision())
+                .publishedAt(v.getPublishedAt())
+                .tripId(trip != null ? trip.getTripId() : null)
+                .tripCode(trip != null ? trip.getTripCode() : null)
+                .tripName(trip != null ? trip.getName() : null)
+                .durationDays(trip != null ? trip.getDurationDays() : null)
+                .durationNights(trip != null ? trip.getDurationNights() : null)
+                .plannedScope(trip != null ? trip.getPlannedScope() : null)
+                .countryCodes(CountryScopeValidator.resolveAllowedCountries(trip))
+                .domesticRegions(trip != null ? trip.getDomesticRegions() : Collections.emptyList())
+                .departurePortId(firstStop != null && firstStop.getPort() != null ? firstStop.getPort().getPortId() : null)
+                .departurePortName(firstStop != null && firstStop.getPort() != null ? firstStop.getPort().getPortName() : null)
+                .departurePortCode(firstStop != null && firstStop.getPort() != null ? firstStop.getPort().getPortCode() : null)
+                .returnPortId(lastStop != null && lastStop.getPort() != null ? lastStop.getPort().getPortId() : null)
+                .returnPortName(lastStop != null && lastStop.getPort() != null ? lastStop.getPort().getPortName() : null)
+                .returnPortCode(lastStop != null && lastStop.getPort() != null ? lastStop.getPort().getPortCode() : null)
+                .totalStops(stops.size())
+                .stopsSummary(stopSummaries)
+                .build();
     }
 }

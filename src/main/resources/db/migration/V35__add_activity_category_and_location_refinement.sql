@@ -20,11 +20,11 @@ UPDATE "Cabin" SET room_name = 'Phòng Trà Chiều & Thư Viện Hoàng Gia' WH
 UPDATE "Cabin" SET room_name = 'Sân Khấu Moonlight Jazz & Wine Club' WHERE cabin_number = '801';
 UPDATE "Cabin" SET room_name = 'Quầy Bar & Bể Bơi Panorama DJ' WHERE cabin_number = '1001';
 
--- 3. Phân loại 4 nhóm danh mục cho các hoạt động mẫu hiện hữu
+-- 3. Phân loại 5 nhóm danh mục cho các hoạt động mẫu hiện hữu
 UPDATE "OnboardActivity" SET category = 'SPORTS_WELLNESS' WHERE activity_code = 'AC-YOGA-01';
 UPDATE "OnboardActivity" SET category = 'ENTERTAINMENT' WHERE activity_code = 'AC-MAGIC-01';
-UPDATE "OnboardActivity" SET category = 'ENTERTAINMENT' WHERE activity_code = 'AC-TEA-01';
-UPDATE "OnboardActivity" SET category = 'ENTERTAINMENT' WHERE activity_code = 'AC-COOK-01';
+UPDATE "OnboardActivity" SET category = 'WORKSHOPS_CLASSES' WHERE activity_code = 'AC-TEA-01';
+UPDATE "OnboardActivity" SET category = 'WORKSHOPS_CLASSES' WHERE activity_code = 'AC-COOK-01';
 UPDATE "OnboardActivity" SET category = 'ENTERTAINMENT' WHERE activity_code = 'AC-JAZZ-01';
 UPDATE "OnboardActivity" SET category = 'SPORTS_WELLNESS' WHERE activity_code = 'AC-SPA-01';
 UPDATE "OnboardActivity" SET category = 'FAMILY_KIDS' WHERE activity_code = 'AC-VR-01';

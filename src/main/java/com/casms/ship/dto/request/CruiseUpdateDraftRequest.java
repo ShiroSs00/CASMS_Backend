@@ -11,6 +11,9 @@ import java.util.UUID;
 @Schema(description = "Yêu cầu cập nhật bản nháp chuyến đi (chỉ áp dụng khi chuyến ở trạng thái DRAFT)")
 public class CruiseUpdateDraftRequest {
 
+    @Schema(description = "Revision kỳ vọng của chuyến đi để bảo vệ chống ghi đè đồng thời (Optimistic lock)", example = "1")
+    private Long expectedRevision;
+
     @Schema(description = "Tên chuyến đi mới", example = "Hải trình khám phá Vịnh Hạ Long - Cát Bà 3N2Đ")
     private String cruiseName;
 

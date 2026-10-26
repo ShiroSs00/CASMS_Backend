@@ -31,7 +31,9 @@
     flyway:
       enabled: true
       baseline-on-migrate: true
-      validate-on-migrate: false
+      # Applied migrations are immutable: edits must fail validation. Reviewed historical edits are
+      # reconciled by com.casms.config.flyway.LegacyChecksumRealigner before migrate.
+      validate-on-migrate: true
 
     jackson:
       default-property-inclusion: non_null

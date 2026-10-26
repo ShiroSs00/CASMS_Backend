@@ -23,6 +23,7 @@ import com.casms.trip.dto.response.PlanningSourceExcursionResponse;
 import com.casms.trip.dto.response.PlanningSourcePortResponse;
 import com.casms.trip.dto.response.PlanningSourceServiceResponse;
 import com.casms.trip.dto.response.TripCatalogResponse;
+import com.casms.trip.service.CountryScopeValidator;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -438,9 +439,9 @@ public class TripCatalogController {
             com.casms.trip.entity.Trip trip = tripRepository.findById(tripId)
                     .orElseThrow(() -> new com.casms.common.exception.ResourceNotFoundException("Trip", tripId));
 
-            if ("DOMESTIC".equalsIgnoreCase(trip.getPlannedScope())) {
+            if (CountryScopeValidator.isDomestic(trip)) {
                 allowedCountryCodes = List.of("VN");
-            } else if ("INTERNATIONAL".equalsIgnoreCase(trip.getPlannedScope())) {
+            } else if (CountryScopeValidator.isInternational(trip)) {
                 List<String> tripCountries = trip.getCountryCodes();
                 if (tripCountries == null || tripCountries.isEmpty()) {
                     throw new com.casms.common.exception.BusinessException(org.springframework.http.HttpStatus.BAD_REQUEST, "SCOPE_COUNTRY_REQUIRED",
