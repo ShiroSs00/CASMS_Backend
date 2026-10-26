@@ -142,7 +142,9 @@ public class BleRuntimeService {
             var bp = identity.getBookingPassenger();
             String name = bp.getPassenger() == null ? "Hành khách" : bp.getPassenger().getFullName();
             passengers.add(new PassengerTrackingResponse.Passenger(identity.getPassengerBleIdentityId(), bp.getBookingPassengerId(), name,
-                    identity.getDeviceName(), best == null ? "NO_RECENT_SIGNAL" : best.proximity().status(), best == null ? null : best.receiver(), best == null ? null : best.proximity()));
+                    identity.getBleIdentifier(), identity.getDeviceName(),
+                    best == null ? "NO_RECENT_SIGNAL" : best.proximity().status(),
+                    best == null ? null : best.receiver(), best == null ? null : best.proximity()));
         }
         return new PassengerTrackingResponse(shipId, cruiseId, now, "RANGE_ONLY_NO_DIRECTION", List.copyOf(passengers));
     }

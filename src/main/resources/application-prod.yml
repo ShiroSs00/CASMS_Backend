@@ -1,15 +1,23 @@
 spring:
   datasource:
-    url: ${DB_URL:jdbc:postgresql://localhost:5432/casms?stringtype=unspecified}
-    username: ${DB_USERNAME:postgres}
-    password: ${DB_PASSWORD:12345}
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
 
   jpa:
     show-sql: false
     hibernate:
       ddl-auto: validate
 
+  flyway:
+    locations:
+      - classpath:db/migration
+      - classpath:db/prod-migration
+
 logging:
   level:
     root: WARN
     com.casms: INFO
+
+jwt:
+  secret: ${JWT_SECRET}

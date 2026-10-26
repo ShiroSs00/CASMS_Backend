@@ -8,6 +8,6 @@ import java.util.UUID;
 public record PassengerTrackingResponse(UUID shipId, UUID cruiseId, Instant generatedAt,
         String positionKind, List<Passenger> passengers) {
     public record Passenger(UUID identityId, UUID bookingPassengerId, String fullName,
-            String tagName, String status, BleAnchorResponse receiver,
+            String tagId, String tagName, String status, BleAnchorResponse receiver,
             BleTrackingResponse.Proximity proximity) { }
 }

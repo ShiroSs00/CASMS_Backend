@@ -35,7 +35,7 @@ class PassengerTrackingOverviewTest {
         when(records.findByShipShipIdAndRecordedAtBetweenOrderByRecordedAtAsc(eq(cruise.getShip().getShipId()),any(),any())).thenReturn(List.of(reading(far,-80,Instant.now().minusSeconds(1)),reading(near,-60,Instant.now().minusSeconds(1))));
         var result=service.passengerOverview(cruise.getCruiseId());
         assertEquals(cruise.getShip().getShipId(),result.shipId());assertEquals("RANGE_ONLY_NO_DIRECTION",result.positionKind());
-        var passenger=result.passengers().getFirst();assertEquals("Unit Passenger",passenger.fullName());assertEquals("LIVE",passenger.status());assertEquals(near.getLocationDeviceId(),passenger.receiver().anchorId());assertTrue(passenger.proximity().distanceMeters()>0);
+        var passenger=result.passengers().getFirst();assertEquals("Unit Passenger",passenger.fullName());assertEquals("UNIT-TAG",passenger.tagId());assertEquals("LIVE",passenger.status());assertEquals(near.getLocationDeviceId(),passenger.receiver().anchorId());assertTrue(passenger.proximity().distanceMeters()>0);
         verify(records,times(1)).findByShipShipIdAndRecordedAtBetweenOrderByRecordedAtAsc(any(),any(),any());
         verify(records,never()).findTop7ByDeviceLocationDeviceIdAndBleIdentifierOrderByRecordedAtDesc(any(),any());
         assertFalse(Arrays.stream(passenger.getClass().getRecordComponents()).anyMatch(c->Set.of("position","identificationNumber","bleIdentifier","phone","email").contains(c.getName())));
