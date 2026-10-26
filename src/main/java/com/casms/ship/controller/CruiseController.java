@@ -1,5 +1,6 @@
 package com.casms.ship.controller;
 
+import com.casms.common.exception.BusinessException;
 import com.casms.common.response.ApiResponse;
 import com.casms.ship.dto.request.CruiseCancelRequest;
 import com.casms.ship.dto.request.CruiseCreateRequest;
@@ -18,6 +19,7 @@ import com.casms.ship.service.CruisePackageService;
 import com.casms.ship.service.CruiseService;
 import com.casms.ship.service.CruiseStaffService;
 import com.casms.security.principal.CasmsPrincipal;
+import com.casms.trip.service.IdempotencyService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -42,13 +44,26 @@ public class CruiseController {
     private final CruiseService service;
     private final CruiseStaffService staffService;
     private final CruisePackageService packageService;
+    private final IdempotencyService idempotencyService;
 
-    @Operation(summary = "Tạo chuyến đi mới", description = "Khởi tạo bản ghi chuyến đi (mặc định ở trạng thái DRAFT). Có thể gán tàu ngay hoặc gán sau.")
+    @Operation(summary = "Tạo chuyến đi mới", description = "Khởi tạo bản ghi chuyến đi (mặc định ở trạng thái DRAFT). Có thể gán tàu ngay hoặc gán sau. Yêu cầu Idempotency-Key header.")
     @PreAuthorize("hasAuthority('CRUISE_CREATE')")
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    public ApiResponse<CruiseResponse> create(@RequestBody @Valid CruiseCreateRequest request) {
-        return ApiResponse.success(service.create(request));
+    public ApiResponse<CruiseResponse> create(
+            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
+            @RequestBody @Valid CruiseCreateRequest request,
+            @AuthenticationPrincipal CasmsPrincipal principal) {
+        if (idempotencyKey == null || idempotencyKey.isBlank()) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "INVALID_INPUT",
+                    "Header 'Idempotency-Key' là bắt buộc khi tạo Cruise");
+        }
+
+        UUID actorId = principal != null ? principal.getUserId() : null;
+        CruiseResponse response = idempotencyService.execute(
+                idempotencyKey, actorId, "CREATE_CRUISE", request, CruiseResponse.class,
+                () -> service.create(request));
+        return ApiResponse.success("Created Cruise successfully", response);
     }
 
     @Operation(summary = "Danh sách chuyến đi", description = "Lấy danh sách các chuyến đi (hỗ trợ phân trang và lọc theo trạng thái, tàu, loại chuyến)")

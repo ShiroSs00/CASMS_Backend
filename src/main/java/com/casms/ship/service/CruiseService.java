@@ -20,6 +20,9 @@ import com.casms.ship.enums.CruiseStatus;
 import com.casms.ship.enums.PortStatus;
 import com.casms.ship.enums.ShipStatus;
 import com.casms.ship.repository.*;
+import com.casms.trip.entity.TripScheduleVersion;
+import com.casms.trip.enums.TripScheduleVersionStatus;
+import com.casms.trip.repository.TripScheduleVersionRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -49,6 +52,7 @@ public class CruiseService {
     private final CabinAssignmentRepository cabinAssignmentRepository;
     private final CruiseCheckinRepository checkinRepository;
     private final BusinessCodeGenerator businessCodeGenerator;
+    private final TripScheduleVersionRepository tripScheduleVersionRepository;
 
     @Transactional
     public CruiseResponse create(CruiseCreateRequest request) {
@@ -67,9 +71,15 @@ public class CruiseService {
 
         Port departurePort = portRepository.findById(request.getDeparturePortId())
                 .orElseThrow(() -> new ResourceNotFoundException("Departure Port", request.getDeparturePortId()));
+        if (departurePort.getStatus() != PortStatus.ACTIVE) {
+            throw new BusinessException("PORT_NOT_ACTIVE", "Departure port must be in ACTIVE status");
+        }
 
         Port returnPort = portRepository.findById(request.getReturnPortId())
                 .orElseThrow(() -> new ResourceNotFoundException("Return Port", request.getReturnPortId()));
+        if (returnPort.getStatus() != PortStatus.ACTIVE) {
+            throw new BusinessException("PORT_NOT_ACTIVE", "Return port must be in ACTIVE status");
+        }
 
         Ship ship = null;
         if (request.getShipId() != null) {
@@ -85,6 +95,34 @@ public class CruiseService {
             }
         }
 
+        // D01 / C15: Link cruise to an existing published TripScheduleVersion (optional)
+        TripScheduleVersion sourceVersion = null;
+        if (request.getSourceVersionId() != null) {
+            sourceVersion = tripScheduleVersionRepository.findById(request.getSourceVersionId())
+                    .orElseThrow(() -> new ResourceNotFoundException("TripScheduleVersion", request.getSourceVersionId()));
+            if (sourceVersion.getStatus() != TripScheduleVersionStatus.PUBLISHED) {
+                throw new BusinessException("VERSION_NOT_PUBLISHED",
+                        "Source TripScheduleVersion must be in PUBLISHED status (current: " + sourceVersion.getStatus() + ")");
+            }
+        }
+
+        // GAP-2 / BE-11.2: Validate departure + return port country scope when sourceVersion is present
+        if (sourceVersion != null && sourceVersion.getTrip() != null) {
+            java.util.List<String> allowedCountries = sourceVersion.getTrip().getCountryCodes();
+            if (allowedCountries != null && !allowedCountries.isEmpty()) {
+                String depCountry = departurePort.getCountryCode();
+                String retCountry = returnPort.getCountryCode();
+                if (depCountry == null || !allowedCountries.contains(depCountry.toUpperCase())) {
+                    throw new BusinessException("PORT_COUNTRY_SCOPE_VIOLATION",
+                            "Cảng khởi hành '" + departurePort.getPortCode() + "' (quốc gia: " + depCountry + ") không thuộc phạm vi quốc gia của Trip nguồn: " + allowedCountries);
+                }
+                if (retCountry == null || !allowedCountries.contains(retCountry.toUpperCase())) {
+                    throw new BusinessException("PORT_COUNTRY_SCOPE_VIOLATION",
+                            "Cảng về '" + returnPort.getPortCode() + "' (quốc gia: " + retCountry + ") không thuộc phạm vi quốc gia của Trip nguồn: " + allowedCountries);
+                }
+            }
+        }
+
         Cruise cruise = new Cruise();
         cruise.setCruiseCode(cruiseCode);
         cruise.setCruiseName(request.getCruiseName());
@@ -95,13 +133,22 @@ public class CruiseService {
         cruise.setDeparturePort(departurePort);
         cruise.setReturnPort(returnPort);
         cruise.setStatus(CruiseStatus.DRAFT);
+        if (sourceVersion != null) {
+            cruise.setSourceVersion(sourceVersion);
+            cruise.setSourceTrip(sourceVersion.getTrip());
+            log.info("Cruise {} linked to Trip {} version {}",
+                    cruiseCode,
+                    sourceVersion.getTrip().getTripCode(),
+                    sourceVersion.getVersionNumber());
+        }
 
         cruise = cruiseRepository.save(cruise);
         return mapToResponse(cruise);
     }
 
     @Transactional(readOnly = true)
-    public Page<CruiseResponse> list(CruiseStatus status, UUID shipId, CruiseCruiseType cruiseType, Pageable pageable) {
+    public Page<CruiseResponse> list(CruiseStatus status, UUID shipId, CruiseCruiseType cruiseType,
+                                      UUID sourceTripId, UUID sourceVersionId, Pageable pageable) {
         org.springframework.data.jpa.domain.Specification<Cruise> spec = (root, query, cb) -> {
             List<jakarta.persistence.criteria.Predicate> predicates = new ArrayList<>();
             if (status != null) {
@@ -113,9 +160,22 @@ public class CruiseService {
             if (cruiseType != null) {
                 predicates.add(cb.equal(root.get("cruiseType"), cruiseType));
             }
+            // GAP-3 / C15: filter by sourceTrip and/or sourceVersion
+            if (sourceTripId != null) {
+                predicates.add(cb.equal(root.get("sourceTrip").get("tripId"), sourceTripId));
+            }
+            if (sourceVersionId != null) {
+                predicates.add(cb.equal(root.get("sourceVersion").get("versionId"), sourceVersionId));
+            }
             return cb.and(predicates.toArray(new jakarta.persistence.criteria.Predicate[0]));
         };
         return cruiseRepository.findAll(spec, pageable).map(this::mapToResponse);
+    }
+
+    // Overload for backward compat (no sourceTrip/Version filter)
+    @Transactional(readOnly = true)
+    public Page<CruiseResponse> list(CruiseStatus status, UUID shipId, CruiseCruiseType cruiseType, Pageable pageable) {
+        return list(status, shipId, cruiseType, null, null, pageable);
     }
 
     @Transactional(readOnly = true)
@@ -126,7 +186,9 @@ public class CruiseService {
 
     @Transactional
     public CruiseResponse updateDraft(UUID cruiseId, CruiseUpdateDraftRequest request) {
-        Cruise cruise = getCruiseById(cruiseId);
+        // GAP-5 / D09: pessimistic lock to protect against concurrent edits
+        Cruise cruise = cruiseRepository.findByIdForUpdate(cruiseId)
+                .orElseThrow(() -> new ResourceNotFoundException("Cruise", cruiseId));
 
         if (cruise.getStatus() != CruiseStatus.DRAFT) {
             throw new BusinessException("CRUISE_NOT_DRAFT", "Only draft cruises can be modified directly");
@@ -153,12 +215,18 @@ public class CruiseService {
         if (request.getDeparturePortId() != null) {
             Port departurePort = portRepository.findById(request.getDeparturePortId())
                     .orElseThrow(() -> new ResourceNotFoundException("Departure Port", request.getDeparturePortId()));
+            if (departurePort.getStatus() != PortStatus.ACTIVE) {
+                throw new BusinessException("PORT_NOT_ACTIVE", "Departure port must be in ACTIVE status");
+            }
             cruise.setDeparturePort(departurePort);
         }
 
         if (request.getReturnPortId() != null) {
             Port returnPort = portRepository.findById(request.getReturnPortId())
                     .orElseThrow(() -> new ResourceNotFoundException("Return Port", request.getReturnPortId()));
+            if (returnPort.getStatus() != PortStatus.ACTIVE) {
+                throw new BusinessException("PORT_NOT_ACTIVE", "Return port must be in ACTIVE status");
+            }
             cruise.setReturnPort(returnPort);
         }
 
@@ -373,6 +441,9 @@ public class CruiseService {
         response.setPortsActive(portsActive);
         response.setItineraryConfigured(itineraryApproved);
         response.setIssues(issues);
+        // GAP-4 / BE-08: fingerprint - evaluatedAt + cruiseRevision for staleness detection
+        response.setEvaluatedAt(Instant.now());
+        response.setCruiseRevision(cruise.getRevision());
 
         return response;
     }
@@ -515,6 +586,15 @@ public class CruiseService {
             res.setReturnPortName(cruise.getReturnPort().getPortName());
         }
         res.setStatus(cruise.getStatus());
+        // D01 / C15: Source trip/version traceability
+        if (cruise.getSourceTrip() != null) {
+            res.setSourceTripId(cruise.getSourceTrip().getTripId());
+            res.setSourceTripCode(cruise.getSourceTrip().getTripCode());
+        }
+        if (cruise.getSourceVersion() != null) {
+            res.setSourceVersionId(cruise.getSourceVersion().getVersionId());
+            res.setSourceVersionNumber(cruise.getSourceVersion().getVersionNumber());
+        }
         res.setCreatedAt(cruise.getCreatedAt());
         res.setUpdatedAt(cruise.getUpdatedAt());
         return res;

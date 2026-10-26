@@ -57,18 +57,32 @@ PortController {
         return ApiResponse.success(service.create(request));
     }
 
-    @Operation(summary = "Danh sách cảng", description = "Lấy danh sách cảng (hỗ trợ phân trang)")
+    @Operation(summary = "Danh sách cảng", description = "Lấy danh sách cảng (hỗ trợ phân trang, lọc theo quốc gia và tìm kiếm)")
     @PreAuthorize("hasAuthority('PORT_READ')")
     @GetMapping
-    public ApiResponse<Page<PortResponse>> list(Pageable pageable) {
-        return ApiResponse.success(service.list(pageable));
+    public ApiResponse<Page<PortResponse>> list(
+            @Parameter(description = "Mã quốc gia ISO-2 (ví dụ: VN, TH)") @RequestParam(required = false) String countryCode,
+            @Parameter(description = "Danh sách mã quốc gia ISO-2") @RequestParam(required = false) List<String> countryCodes,
+            @Parameter(description = "Trạng thái cảng") @RequestParam(required = false) com.casms.ship.enums.PortStatus status,
+            @Parameter(description = "Từ khóa tìm kiếm (tên hoặc mã cảng)") @RequestParam(required = false) String search,
+            Pageable pageable) {
+        List<String> combinedCountries = new java.util.ArrayList<>();
+        if (countryCode != null && !countryCode.isBlank()) combinedCountries.add(countryCode.trim().toUpperCase());
+        if (countryCodes != null) combinedCountries.addAll(countryCodes.stream().filter(c -> c != null && !c.isBlank()).map(c -> c.trim().toUpperCase()).toList());
+        return ApiResponse.success(service.list(combinedCountries.isEmpty() ? null : combinedCountries, status, search, pageable));
     }
 
-    @Operation(summary = "Danh sách cảng hoạt động", description = "Lấy danh sách tất cả cảng đang ACTIVE (không phân trang)")
+    @Operation(summary = "Danh sách cảng hoạt động", description = "Lấy danh sách tất cả cảng đang ACTIVE (hỗ trợ lọc theo quốc gia)")
     @PreAuthorize("permitAll()")
     @GetMapping("/active")
-    public ApiResponse<List<PortResponse>> listActive() {
-        return ApiResponse.success(service.listAllActive());
+    public ApiResponse<List<PortResponse>> listActive(
+            @Parameter(description = "Mã quốc gia ISO-2 (ví dụ: VN, TH)") @RequestParam(required = false) String countryCode,
+            @Parameter(description = "Danh sách mã quốc gia ISO-2") @RequestParam(required = false) List<String> countryCodes,
+            @Parameter(description = "Từ khóa tìm kiếm (tên hoặc mã cảng)") @RequestParam(required = false) String search) {
+        List<String> combinedCountries = new java.util.ArrayList<>();
+        if (countryCode != null && !countryCode.isBlank()) combinedCountries.add(countryCode.trim().toUpperCase());
+        if (countryCodes != null) combinedCountries.addAll(countryCodes.stream().filter(c -> c != null && !c.isBlank()).map(c -> c.trim().toUpperCase()).toList());
+        return ApiResponse.success(service.listAllActive(combinedCountries.isEmpty() ? null : combinedCountries, search));
     }
 
     @Operation(summary = "Chi tiết cảng", description = "Lấy thông tin chi tiết của một cảng theo ID")

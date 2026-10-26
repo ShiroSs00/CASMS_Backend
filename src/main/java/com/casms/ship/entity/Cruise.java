@@ -49,6 +49,18 @@ public class Cruise {
     @JoinColumn(name = "return_port_id", nullable = false)
     private Port returnPort;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "source_trip_id")
+    private com.casms.trip.entity.Trip sourceTrip;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "source_version_id")
+    private com.casms.trip.entity.TripScheduleVersion sourceVersion;
+
+    @Version
+    @Column(name = "revision", nullable = false)
+    private Long revision = 1L;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false)
     private CruiseStatus status;

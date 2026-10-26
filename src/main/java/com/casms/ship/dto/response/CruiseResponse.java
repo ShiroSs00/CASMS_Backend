@@ -54,6 +54,18 @@ public class CruiseResponse {
     @Schema(description = "Trạng thái chuyến đi (DRAFT, PUBLISHED, IN_PROGRESS, COMPLETED, CANCELLED)", example = "DRAFT")
     private CruiseStatus status;
 
+    @Schema(description = "ID Trip mẫu nguồn (D01)")
+    private UUID sourceTripId;
+
+    @Schema(description = "Mã Trip mẫu nguồn", example = "TP-0001")
+    private String sourceTripCode;
+
+    @Schema(description = "ID phiên bản TripScheduleVersion nguồn (D01)")
+    private UUID sourceVersionId;
+
+    @Schema(description = "Số phiên bản nguồn", example = "2")
+    private Integer sourceVersionNumber;
+
     @Schema(description = "Thời điểm tạo")
     private Instant createdAt;
 

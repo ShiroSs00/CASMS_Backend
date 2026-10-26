@@ -38,4 +38,7 @@ public class CruiseCreateRequest {
     @Schema(description = "ID cảng kết thúc (có thể trùng cảng xuất phát nếu là chuyến vòng)", example = "3fa85f64-5717-4562-b3fc-2c963f66afa6", requiredMode = Schema.RequiredMode.REQUIRED)
     @NotNull(message = "Return port ID is required")
     private UUID returnPortId;
+
+    @Schema(description = "(Tùy chọn) ID phiên bản TripScheduleVersion (đã PUBLISHED) dùng làm nguồn cho chuyến đi này", example = "3fa85f64-5717-4562-b3fc-2c963f66afa6")
+    private UUID sourceVersionId;
 }
