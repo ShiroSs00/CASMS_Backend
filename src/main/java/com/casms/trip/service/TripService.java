@@ -233,6 +233,54 @@ public class TripService {
         if (request.getTripType() != null) {
             trip.setTripType(request.getTripType());
         }
+
+        // BE-11.2 / E33: Validate scope change against existing stops in all versions
+        boolean scopeChanged = (request.getPlannedScope() != null && !request.getPlannedScope().equalsIgnoreCase(trip.getPlannedScope()))
+                || (request.getCountryCodes() != null && !java.util.Objects.equals(request.getCountryCodes(), trip.getCountryCodes()))
+                || (request.getDomesticRegions() != null && !java.util.Objects.equals(request.getDomesticRegions(), trip.getDomesticRegions()));
+
+        if (scopeChanged) {
+            String targetScope = request.getPlannedScope() != null ? request.getPlannedScope() : trip.getPlannedScope();
+            List<String> targetCountries = request.getCountryCodes() != null ? request.getCountryCodes() : trip.getCountryCodes();
+            List<String> targetRegions = request.getDomesticRegions() != null ? request.getDomesticRegions() : trip.getDomesticRegions();
+
+            List<TripScheduleVersion> versions = versionRepository.findByTrip_TripIdOrderByVersionNumberAsc(trip.getTripId());
+            List<String> invalidPortViolations = new java.util.ArrayList<>();
+            for (TripScheduleVersion v : versions) {
+                if (v.getStops() != null) {
+                    for (TripPlanStop stop : v.getStops()) {
+                        if (stop.getPort() != null && stop.getPort().getCountryCode() != null) {
+                            String portCountry = stop.getPort().getCountryCode().trim().toUpperCase();
+                            if ("DOMESTIC".equalsIgnoreCase(targetScope)) {
+                                if (!"VN".equalsIgnoreCase(portCountry)) {
+                                    invalidPortViolations.add("Cảng '" + stop.getPort().getPortName() + "' (" + portCountry + ", bản " + v.getVersionNumber() + ")");
+                                } else if (targetRegions != null && !targetRegions.isEmpty()) {
+                                    String reg = VietnamGeographyRegistry.resolveDomesticRegion(stop.getPort());
+                                    if (reg == null || !targetRegions.contains(reg)) {
+                                        invalidPortViolations.add("Cảng '" + stop.getPort().getPortName() + "' (miền: " + reg + ", bản " + v.getVersionNumber() + ")");
+                                    }
+                                }
+                            } else if ("INTERNATIONAL".equalsIgnoreCase(targetScope)) {
+                                if (targetCountries != null && !targetCountries.isEmpty()) {
+                                    List<String> upperAllowed = targetCountries.stream().map(c -> c.trim().toUpperCase()).toList();
+                                    if (!upperAllowed.contains(portCountry)) {
+                                        invalidPortViolations.add("Cảng '" + stop.getPort().getPortName() + "' (" + portCountry + ", bản " + v.getVersionNumber() + ")");
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            if (!invalidPortViolations.isEmpty()) {
+                throw new BusinessException(HttpStatus.CONFLICT, "EXISTING_STOPS_OUTSIDE_NEW_SCOPE",
+                        "Không thể thay đổi phạm vi vì có " + invalidPortViolations.size()
+                                + " điểm dừng cảng hiện tại không thuộc phạm vi mới: "
+                                + String.join(", ", invalidPortViolations)
+                                + ". Vui lòng điều chỉnh hoặc gỡ bỏ các điểm dừng trước khi đổi phạm vi.");
+            }
+        }
+
         if (request.getPlannedScope() != null) {
             trip.setPlannedScope(request.getPlannedScope());
         }

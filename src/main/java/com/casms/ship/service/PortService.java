@@ -80,12 +80,31 @@ public class PortService {
 
     @Transactional(readOnly = true)
     public Page<PortResponse> list(Pageable pageable) {
-        return portRepository.findAll(pageable).map(this::mapToResponse);
+        return list(null, null, null, pageable);
+    }
+
+    @Transactional(readOnly = true)
+    public Page<PortResponse> list(List<String> countryCodes, PortStatus status, String search, Pageable pageable) {
+        List<String> normalizedCountries = (countryCodes != null && !countryCodes.isEmpty())
+                ? countryCodes.stream().filter(c -> c != null && !c.isBlank()).map(c -> c.trim().toUpperCase()).toList()
+                : null;
+        String normalizedSearch = (search != null && !search.isBlank()) ? search.trim() : null;
+        return portRepository.findPortsWithFilters(normalizedCountries, status, normalizedSearch, pageable)
+                .map(this::mapToResponse);
     }
 
     @Transactional(readOnly = true)
     public List<PortResponse> listAllActive() {
-        return portRepository.findAllActivePorts().stream()
+        return listAllActive(null, null);
+    }
+
+    @Transactional(readOnly = true)
+    public List<PortResponse> listAllActive(List<String> countryCodes, String search) {
+        List<String> normalizedCountries = (countryCodes != null && !countryCodes.isEmpty())
+                ? countryCodes.stream().filter(c -> c != null && !c.isBlank()).map(c -> c.trim().toUpperCase()).toList()
+                : null;
+        String normalizedSearch = (search != null && !search.isBlank()) ? search.trim() : null;
+        return portRepository.findActivePortsWithFilters(normalizedCountries, normalizedSearch).stream()
                 .map(this::mapToResponse)
                 .collect(Collectors.toList());
     }

@@ -15,6 +15,7 @@ import com.casms.ship.enums.CruiseStopCallType;
 import com.casms.ship.enums.CruiseStopStatus;
 import com.casms.ship.enums.ItineraryDayType;
 import com.casms.ship.enums.ItineraryStatus;
+import com.casms.ship.enums.PortStatus;
 import com.casms.ship.repository.CruiseStopRepository;
 import com.casms.ship.repository.DestinationRepository;
 import com.casms.ship.repository.ItineraryDayRepository;
@@ -40,6 +41,13 @@ public class CruiseStopService {
     private final ItineraryDayRepository itineraryDayRepository;
     private final PortRepository portRepository;
     private final DestinationRepository destinationRepository;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.casms.activity.repository.ShoreExcursionRepository shoreExcursionRepository;
+
+    public void setShoreExcursionRepository(com.casms.activity.repository.ShoreExcursionRepository repo) {
+        this.shoreExcursionRepository = repo;
+    }
 
     @Transactional
     public CruiseStopResponse add(CruiseStopCreateRequest request) {
@@ -70,6 +78,13 @@ public class CruiseStopService {
         Port port = portRepository.findById(request.getPortId())
                 .orElseThrow(() -> new ResourceNotFoundException("Port", request.getPortId()));
 
+        if (port.getStatus() != PortStatus.ACTIVE) {
+            throw new BusinessException("INACTIVE_PORT", "Port " + port.getPortCode() + " is not ACTIVE");
+        }
+
+        // GAP-1 / BE-11.2: country scope write-path validation
+        validatePortCountryScope(port, itinerary);
+
         if (request.getStopOrder() == null) {
             int maxOrder = cruiseStopRepository.findByItineraryItineraryIdOrderByStopOrderAsc(request.getItineraryId())
                     .stream().mapToInt(CruiseStop::getStopOrder).max().orElse(0);
@@ -92,6 +107,10 @@ public class CruiseStopService {
             request.getPlannedDeparture().equals(request.getPlannedArrival())) {
             throw new BusinessException("INVALID_TIME_RANGE", "Planned departure must be after planned arrival");
         }
+
+        List<CruiseStop> existingStops = cruiseStopRepository.findByItineraryItineraryIdOrderByStopOrderAsc(request.getItineraryId());
+        validateCruiseStopInvariants(null, request.getStopOrder(), port.getPortId(), port.getPortName(),
+                request.getPlannedArrival(), request.getPlannedDeparture(), existingStops);
 
         Destination destination = null;
         if (request.getDestinationId() != null) {
@@ -191,6 +210,11 @@ public class CruiseStopService {
         if (request.getPortId() != null) {
             Port port = portRepository.findById(request.getPortId())
                     .orElseThrow(() -> new ResourceNotFoundException("Port", request.getPortId()));
+            if (port.getStatus() != PortStatus.ACTIVE) {
+                throw new BusinessException("INACTIVE_PORT", "Port " + port.getPortCode() + " is not ACTIVE");
+            }
+            // GAP-1 / BE-11.2: country scope on port change
+            validatePortCountryScope(port, stop.getItinerary());
             stop.setPort(port);
         }
 
@@ -200,11 +224,37 @@ public class CruiseStopService {
             stop.setDestination(destination);
         }
 
-        if (request.getStopOrder() != null && !request.getStopOrder().equals(stop.getStopOrder())) {
-            if (cruiseStopRepository.existsByItineraryItineraryIdAndStopOrder(stop.getItinerary().getItineraryId(), request.getStopOrder())) {
-                throw new BusinessException("DUPLICATE_STOP_ORDER", "Stop order already exists in this itinerary");
+        Instant arrival = request.getPlannedArrival() != null ? request.getPlannedArrival() : stop.getPlannedArrival();
+        Instant departure = request.getPlannedDeparture() != null ? request.getPlannedDeparture() : stop.getPlannedDeparture();
+        if (departure.isBefore(arrival) || departure.equals(arrival)) {
+            throw new BusinessException("INVALID_TIME_RANGE", "Planned departure must be after planned arrival");
+        }
+
+        Integer effectiveStopOrder = request.getStopOrder() != null ? request.getStopOrder() : stop.getStopOrder();
+        UUID effectivePortId = stop.getPort() != null ? stop.getPort().getPortId() : null;
+        String effectivePortName = stop.getPort() != null ? stop.getPort().getPortName() : "Unknown";
+
+        List<CruiseStop> existingStops = cruiseStopRepository.findByItineraryItineraryIdOrderByStopOrderAsc(stop.getItinerary().getItineraryId());
+        validateCruiseStopInvariants(stop.getCruiseStopId(), effectiveStopOrder, effectivePortId, effectivePortName,
+                arrival, departure, existingStops);
+
+        // BE-12.3: Validate shore excursions under this stop to ensure shortening stop window does not violate excursion return time (E41)
+        Instant effectiveAllAboard = request.getAllAboardTime() != null ? request.getAllAboardTime() : stop.getAllAboardTime();
+        Instant deadline = effectiveAllAboard != null ? effectiveAllAboard : departure;
+        if (shoreExcursionRepository != null) {
+            List<com.casms.activity.entity.ShoreExcursion> excursions = shoreExcursionRepository.findByCruiseStop_CruiseStopId(stop.getCruiseStopId());
+            for (com.casms.activity.entity.ShoreExcursion exc : excursions) {
+                if (exc.getStartTime() != null && exc.getStartTime().isBefore(arrival)) {
+                    throw new BusinessException("EXCURSION_OUTSIDE_PORT_WINDOW",
+                            "Không thể điều chỉnh giờ cảng vì tour bờ '" + exc.getExcursionName() + "' bắt đầu ("
+                                    + exc.getStartTime() + ") trước khi tàu cập cảng (" + arrival + ").");
+                }
+                if (exc.getPlannedReturnTime() != null && deadline != null && exc.getPlannedReturnTime().isAfter(deadline)) {
+                    throw new BusinessException("EXCURSION_OUTSIDE_PORT_WINDOW",
+                            "Không thể điều chỉnh giờ cảng vì tour bờ '" + exc.getExcursionName() + "' kết thúc ("
+                                    + exc.getPlannedReturnTime() + ") sau hạn lên tàu / rời cảng (" + deadline + ").");
+                }
             }
-            stop.setStopOrder(request.getStopOrder());
         }
 
         if (request.getPlannedArrival() != null) {
@@ -212,13 +262,6 @@ public class CruiseStopService {
         }
         if (request.getPlannedDeparture() != null) {
             stop.setPlannedDeparture(request.getPlannedDeparture());
-        }
-        if (request.getPlannedArrival() != null || request.getPlannedDeparture() != null) {
-            Instant arrival = request.getPlannedArrival() != null ? request.getPlannedArrival() : stop.getPlannedArrival();
-            Instant departure = request.getPlannedDeparture() != null ? request.getPlannedDeparture() : stop.getPlannedDeparture();
-            if (departure.isBefore(arrival) || departure.equals(arrival)) {
-                throw new BusinessException("INVALID_TIME_RANGE", "Planned departure must be after planned arrival");
-            }
         }
 
         if (request.getCallType() != null) stop.setCallType(request.getCallType());
@@ -266,6 +309,11 @@ public class CruiseStopService {
             if (cruiseStopRepository.existsByItineraryItineraryIdAndStopOrder(stop.getItinerary().getItineraryId(), newStopOrder)) {
                 throw new BusinessException("DUPLICATE_STOP_ORDER", "Stop order already exists in this itinerary");
             }
+            List<CruiseStop> existingStops = cruiseStopRepository.findByItineraryItineraryIdOrderByStopOrderAsc(stop.getItinerary().getItineraryId());
+            validateCruiseStopInvariants(stop.getCruiseStopId(), newStopOrder,
+                    stop.getPort() != null ? stop.getPort().getPortId() : null,
+                    stop.getPort() != null ? stop.getPort().getPortName() : "Unknown",
+                    stop.getPlannedArrival(), stop.getPlannedDeparture(), existingStops);
             stop.setStopOrder(newStopOrder);
             stop = cruiseStopRepository.save(stop);
         }
@@ -386,6 +434,28 @@ public class CruiseStopService {
                 .orElseThrow(() -> new ResourceNotFoundException("CruiseStop", cruiseStopId));
     }
 
+    /**
+     * GAP-1 / BE-11.2: Validates that the given port's country code is within the allowed
+     * country scope of the Cruise that owns this Itinerary (derived from sourceTrip.countryCodes).
+     * If no scope is configured the check is skipped (allows free-form cruises without a Trip source).
+     */
+    private void validatePortCountryScope(Port port, Itinerary itinerary) {
+        if (itinerary == null || itinerary.getCruise() == null) return;
+        com.casms.ship.entity.Cruise cruise = itinerary.getCruise();
+        if (cruise.getSourceTrip() == null) return; // no scope constraint
+
+        java.util.List<String> allowed = cruise.getSourceTrip().getCountryCodes();
+        if (allowed == null || allowed.isEmpty()) return;
+
+        String portCountry = port.getCountryCode();
+        if (portCountry == null || !allowed.contains(portCountry.trim().toUpperCase())) {
+            throw new BusinessException("PORT_COUNTRY_SCOPE_VIOLATION",
+                    String.format("Cảng '%s' (mã quốc gia: %s) không thuộc phạm vi quốc gia cho phép của chuyến đi này: %s. " +
+                                    "Vui lòng chọn cảng thuộc đúng quốc gia hoặc cập nhật phạm vi của Trip nguồn.",
+                            port.getPortCode(), portCountry, allowed));
+        }
+    }
+
     private CruiseStopResponse mapToResponse(CruiseStop stop) {
         CruiseStopResponse res = new CruiseStopResponse();
         res.setCruiseStopId(stop.getCruiseStopId());
@@ -434,5 +504,55 @@ public class CruiseStopService {
         res.setPortContactResponsibility(stop.getPortContactResponsibility());
         res.setNotes(stop.getNotes());
         return res;
+    }
+
+    private void validateCruiseStopInvariants(UUID currentStopId, Integer stopOrder, UUID portId, String portName,
+                                              Instant arrival, Instant departure, List<CruiseStop> existingStops) {
+        if (arrival == null || departure == null) {
+            return;
+        }
+
+        for (CruiseStop other : existingStops) {
+            if (currentStopId != null && currentStopId.equals(other.getCruiseStopId())) {
+                continue; // Skip self (E40)
+            }
+            Instant otherArr = other.getPlannedArrival();
+            Instant otherDep = other.getPlannedDeparture();
+            if (otherArr == null || otherDep == null) {
+                continue;
+            }
+
+            // BE-12.1: Overlap check: arrA < depB && arrB < depA
+            if (arrival.isBefore(otherDep) && otherArr.isBefore(departure)) {
+                throw new BusinessException("PORT_CALL_OVERLAP",
+                        String.format("Khoảng thời gian ghé cảng %s (%s - %s) bị chồng lấn với lần ghé cảng %s (%s - %s).",
+                                portName, arrival, departure,
+                                other.getPort() != null ? other.getPort().getPortName() : "Unknown", otherArr, otherDep));
+            }
+
+            // BE-12.1 & E37: Boundary check - if arrival == otherDep or otherArr == departure between distinct ports, transit time must be positive
+            boolean isSamePort = portId != null && other.getPort() != null && portId.equals(other.getPort().getPortId());
+            if (!isSamePort) {
+                if (arrival.equals(otherDep) || otherArr.equals(departure)) {
+                    throw new BusinessException("NON_POSITIVE_TRANSIT_TIME",
+                            String.format("Thời gian di chuyển giữa hai cảng khác nhau (%s và %s) phải là số dương (lớn hơn 0).",
+                                    portName, other.getPort() != null ? other.getPort().getPortName() : "Unknown"));
+                }
+            }
+
+            // Sequence check with stopOrder
+            if (stopOrder != null && other.getStopOrder() != null) {
+                if (stopOrder < other.getStopOrder() && !departure.isBefore(otherArr)) {
+                    throw new BusinessException("INVALID_STOP_SEQUENCE_TIME",
+                            String.format("Lần ghé thứ %d (%s) phải kết thúc trước khi lần ghé thứ %d (%s) bắt đầu.",
+                                    stopOrder, portName, other.getStopOrder(), other.getPort() != null ? other.getPort().getPortName() : "Unknown"));
+                }
+                if (stopOrder > other.getStopOrder() && !arrival.isAfter(otherDep)) {
+                    throw new BusinessException("INVALID_STOP_SEQUENCE_TIME",
+                            String.format("Lần ghé thứ %d (%s) phải bắt đầu sau khi lần ghé thứ %d (%s) kết thúc.",
+                                    stopOrder, portName, other.getStopOrder(), other.getPort() != null ? other.getPort().getPortName() : "Unknown"));
+                }
+            }
+        }
     }
 }

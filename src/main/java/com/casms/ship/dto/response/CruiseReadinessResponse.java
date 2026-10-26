@@ -3,6 +3,7 @@ package com.casms.ship.dto.response;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
@@ -36,4 +37,10 @@ public class CruiseReadinessResponse {
 
     @Schema(description = "Danh sách các thông báo hoặc điểm chưa hoàn tất")
     private List<String> issues;
+
+    @Schema(description = "Thời điểm thực hiện đánh giá (server time, ISO-8601)", example = "2026-10-26T09:00:00Z")
+    private Instant evaluatedAt;
+
+    @Schema(description = "Revision của Cruise tại thời điểm đánh giá (D09 / BE-08 fingerprint)", example = "3")
+    private Long cruiseRevision;
 }

@@ -61,6 +61,10 @@ public class TripCatalogController {
     @lombok.Setter
     private PortRepository portRepository;
 
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    @lombok.Setter
+    private com.casms.trip.repository.TripRepository tripRepository;
+
     @Operation(summary = "Lấy danh mục lập kế hoạch hành trình", description = "Trả về operatingAreas từ server, tripTypes, fleetIntegrationStatus=DEFERRED_EXTERNAL, supported policies, domesticRegions và countries")
     @PreAuthorize("hasAuthority('TRIP_READ')")
     @GetMapping
@@ -412,15 +416,67 @@ public class TripCatalogController {
     }
 
     @Operation(summary = "Danh sách cảng ghé (Ports) cho lập kế hoạch hành trình",
-               description = "Cung cấp danh mục cảng biển đầy đủ thông tin UN/LOCODE, tên cảng, quốc gia, múi giờ và điểm đến liên kết (yêu cầu TRIP_READ)")
+               description = "Cung cấp danh mục cảng biển đầy đủ thông tin UN/LOCODE, tên cảng, quốc gia, múi giờ và điểm đến liên kết (hỗ trợ lọc theo phạm vi quốc gia hoặc Trip)")
     @PreAuthorize("hasAuthority('TRIP_READ')")
     @GetMapping("/sources/ports")
     public ApiResponse<List<PlanningSourcePortResponse>> getSourcePorts(
             @Parameter(description = "Lọc theo ID điểm đến / khu vực") @RequestParam(required = false) UUID destinationId,
-            @Parameter(description = "Từ khóa tìm kiếm theo tên hoặc mã cảng") @RequestParam(required = false) String keyword) {
+            @Parameter(description = "Từ khóa tìm kiếm theo tên hoặc mã cảng") @RequestParam(required = false) String keyword,
+            @Parameter(description = "Lọc theo mã quốc gia ISO-2 (ví dụ: VN, TH)") @RequestParam(required = false) String countryCode,
+            @Parameter(description = "Lọc theo danh sách mã quốc gia ISO-2") @RequestParam(required = false) List<String> countryCodes,
+            @Parameter(description = "Lọc theo phạm vi quốc gia có thẩm quyền của Trip") @RequestParam(required = false) UUID tripId) {
         if (portRepository == null) {
             return ApiResponse.success(List.of());
         }
+
+        // 1. Determine allowed country scope
+        List<String> allowedCountryCodes = null;
+        if (tripId != null) {
+            if (tripRepository == null) {
+                throw new com.casms.common.exception.BusinessException(org.springframework.http.HttpStatus.INTERNAL_SERVER_ERROR, "TRIP_REPO_UNAVAILABLE", "TripRepository is not available.");
+            }
+            com.casms.trip.entity.Trip trip = tripRepository.findById(tripId)
+                    .orElseThrow(() -> new com.casms.common.exception.ResourceNotFoundException("Trip", tripId));
+
+            if ("DOMESTIC".equalsIgnoreCase(trip.getPlannedScope())) {
+                allowedCountryCodes = List.of("VN");
+            } else if ("INTERNATIONAL".equalsIgnoreCase(trip.getPlannedScope())) {
+                List<String> tripCountries = trip.getCountryCodes();
+                if (tripCountries == null || tripCountries.isEmpty()) {
+                    throw new com.casms.common.exception.BusinessException(org.springframework.http.HttpStatus.BAD_REQUEST, "SCOPE_COUNTRY_REQUIRED",
+                            "Chuyến đi quốc tế " + trip.getTripCode() + " chưa được cấu hình danh sách quốc gia (countryCodes). Vui lòng cập nhật phạm vi quốc gia trước khi tra cứu cảng.");
+                }
+                allowedCountryCodes = tripCountries.stream().map(c -> c.trim().toUpperCase()).toList();
+            } else {
+                throw new com.casms.common.exception.BusinessException(org.springframework.http.HttpStatus.BAD_REQUEST, "SCOPE_COUNTRY_REQUIRED",
+                        "Chuyến đi " + trip.getTripCode() + " chưa được xác định phạm vi địa lý (plannedScope).");
+            }
+        }
+
+        // Explicit countryCode / countryCodes from request
+        List<String> directCountries = new java.util.ArrayList<>();
+        if (countryCode != null && !countryCode.isBlank()) {
+            directCountries.add(countryCode.trim().toUpperCase());
+        }
+        if (countryCodes != null && !countryCodes.isEmpty()) {
+            directCountries.addAll(countryCodes.stream().filter(c -> c != null && !c.isBlank()).map(c -> c.trim().toUpperCase()).toList());
+        }
+
+        if (!directCountries.isEmpty()) {
+            if (allowedCountryCodes != null) {
+                // Verify all requested direct countries are within the trip's authoritative scope
+                for (String dc : directCountries) {
+                    if (!allowedCountryCodes.contains(dc)) {
+                        throw new com.casms.common.exception.BusinessException(org.springframework.http.HttpStatus.BAD_REQUEST, "PORT_OUTSIDE_COUNTRY_SCOPE",
+                                "Mã quốc gia '" + dc + "' không nằm trong phạm vi quốc gia có thẩm quyền của Trip: " + String.join(", ", allowedCountryCodes));
+                    }
+                }
+                allowedCountryCodes = directCountries;
+            } else {
+                allowedCountryCodes = directCountries;
+            }
+        }
+
         List<Port> ports;
         if (destinationId != null) {
             ports = portRepository.findByDestinationDestinationIdOrderByPortNameAsc(destinationId);
@@ -429,9 +485,11 @@ public class TripCatalogController {
         }
 
         String kw = keyword != null ? keyword.trim().toLowerCase() : null;
+        final List<String> filterCountries = allowedCountryCodes;
 
         List<PlanningSourcePortResponse> result = ports.stream()
                 .filter(p -> p.getStatus() == com.casms.ship.enums.PortStatus.ACTIVE)
+                .filter(p -> filterCountries == null || (p.getCountryCode() != null && filterCountries.contains(p.getCountryCode().trim().toUpperCase())))
                 .filter(p -> kw == null || (p.getPortName() != null && p.getPortName().toLowerCase().contains(kw))
                         || (p.getPortCode() != null && p.getPortCode().toLowerCase().contains(kw)))
                 .map(p -> PlanningSourcePortResponse.builder()
@@ -452,6 +510,6 @@ public class TripCatalogController {
     }
 
     public ApiResponse<List<PlanningSourcePortResponse>> getSourcePorts() {
-        return getSourcePorts(null, null);
+        return getSourcePorts(null, null, null, null, null);
     }
 }

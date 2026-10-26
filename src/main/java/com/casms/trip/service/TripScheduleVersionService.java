@@ -195,7 +195,101 @@ public class TripScheduleVersionService {
                 if (port.getStatus() != PortStatus.ACTIVE) {
                     throw new BusinessException(HttpStatus.BAD_REQUEST, "INACTIVE_PORT", "Cảng " + port.getPortCode() + " hiện không ở trạng thái ACTIVE.");
                 }
+
+                // BE-11.2: Validate port country against Trip scope
+                if ("DOMESTIC".equalsIgnoreCase(trip.getPlannedScope())) {
+                    if (port.getCountryCode() != null && !"VN".equalsIgnoreCase(port.getCountryCode().trim())) {
+                        throw new BusinessException(HttpStatus.BAD_REQUEST, "PORT_OUTSIDE_COUNTRY_SCOPE",
+                                "Cảng '" + port.getPortName() + "' (mã: " + port.getPortCode() + ", quốc gia: "
+                                        + port.getCountryCode() + ") không thuộc phạm vi quốc gia Việt Nam (VN) của chuyến nội địa.");
+                    }
+                    if (trip.getDomesticRegions() != null && !trip.getDomesticRegions().isEmpty()) {
+                        String region = resolveDomesticRegion(port);
+                        if (region == null || !trip.getDomesticRegions().contains(region)) {
+                            throw new BusinessException(HttpStatus.BAD_REQUEST, "PORT_OUTSIDE_DOMESTIC_REGION",
+                                    "Cảng '" + port.getPortName() + "' (miền: " + (region != null ? region : "Chưa xác định")
+                                            + ") không thuộc các miền đã đăng ký: " + String.join(", ", trip.getDomesticRegions()));
+                        }
+                    }
+                } else if ("INTERNATIONAL".equalsIgnoreCase(trip.getPlannedScope())) {
+                    List<String> registeredCountries = trip.getCountryCodes();
+                    if (registeredCountries != null && !registeredCountries.isEmpty()) {
+                        String country = port.getCountryCode() != null ? port.getCountryCode().trim().toUpperCase() : "";
+                        List<String> upperReg = registeredCountries.stream().map(c -> c.trim().toUpperCase()).toList();
+                        if (!upperReg.contains(country)) {
+                            throw new BusinessException(HttpStatus.BAD_REQUEST, "PORT_OUTSIDE_COUNTRY_SCOPE",
+                                    "Cảng '" + port.getPortName() + "' (mã: " + port.getPortCode() + ", quốc gia: "
+                                            + country + ") không thuộc danh sách quốc gia đăng ký của Trip: "
+                                            + String.join(", ", upperReg));
+                        }
+                    }
+                }
+
                 portCache.put(stopDto.getPortId(), port);
+            }
+        }
+
+        // BE-12: Port Call Timeline, Overlap, and Transit Time Invariants
+        for (int i = 0; i < stopDtos.size(); i++) {
+            TripPlanStopDraftDto stopA = stopDtos.get(i);
+            Port portA = portCache.get(stopA.getPortId());
+            long arrMinA = toTimelineMinutes(stopA.getArrivalDayNumber(), stopA.getPlannedArrivalTime(), false);
+            long depMinA = toTimelineMinutes(stopA.getDepartureDayNumber(), stopA.getPlannedDepartureTime(), true);
+
+            // Invariant: departure must be strictly after arrival
+            if (depMinA <= arrMinA) {
+                throw new BusinessException(HttpStatus.BAD_REQUEST, "INVALID_PORT_CALL_TIMES",
+                        "Tại điểm dừng '" + stopA.getClientKey() + "' (" + (portA != null ? portA.getPortName() : "")
+                                + "), thời điểm rời cảng (Ngày " + stopA.getDepartureDayNumber() + " "
+                                + (stopA.getPlannedDepartureTime() != null ? stopA.getPlannedDepartureTime() : "")
+                                + ") phải sau thời điểm cập cảng (Ngày " + stopA.getArrivalDayNumber() + " "
+                                + (stopA.getPlannedArrivalTime() != null ? stopA.getPlannedArrivalTime() : "") + ").");
+            }
+
+            for (int j = i + 1; j < stopDtos.size(); j++) {
+                TripPlanStopDraftDto stopB = stopDtos.get(j);
+                Port portB = portCache.get(stopB.getPortId());
+                long arrMinB = toTimelineMinutes(stopB.getArrivalDayNumber(), stopB.getPlannedArrivalTime(), false);
+                long depMinB = toTimelineMinutes(stopB.getDepartureDayNumber(), stopB.getPlannedDepartureTime(), true);
+
+                // Invariant: Overlap check arrA < depB && arrB < depA
+                if (arrMinA < depMinB && arrMinB < depMinA) {
+                    throw new BusinessException(HttpStatus.BAD_REQUEST, "PORT_CALL_OVERLAP",
+                            "Khoảng thời gian lưu cảng " + (portA != null ? portA.getPortName() : stopA.getClientKey())
+                                    + " (Ngày " + stopA.getArrivalDayNumber() + " " + stopA.getPlannedArrivalTime()
+                                    + " - Ngày " + stopA.getDepartureDayNumber() + " " + stopA.getPlannedDepartureTime()
+                                    + ") chồng lấn với cảng " + (portB != null ? portB.getPortName() : stopB.getClientKey())
+                                    + " (Ngày " + stopB.getArrivalDayNumber() + " " + stopB.getPlannedArrivalTime()
+                                    + " - Ngày " + stopB.getDepartureDayNumber() + " " + stopB.getPlannedDepartureTime() + ").");
+                }
+
+                // Invariant: Non-positive transit time between two distinct ports on boundary
+                if (depMinA == arrMinB || depMinB == arrMinA) {
+                    if (!stopA.getPortId().equals(stopB.getPortId())) {
+                        throw new BusinessException(HttpStatus.BAD_REQUEST, "NON_POSITIVE_TRANSIT_TIME",
+                                "Thời gian di chuyển giữa hai cảng khác nhau ("
+                                        + (portA != null ? portA.getPortName() : stopA.getClientKey()) + " -> "
+                                        + (portB != null ? portB.getPortName() : stopB.getClientKey())
+                                        + ") phải lớn hơn 0 (không thể cập cảng mới ngay tại thời điểm rời cảng cũ mà không có thời gian di chuyển).");
+                    }
+                }
+
+                // Invariant: stopOrder chronological sequence
+                if (stopA.getStopOrder() != null && stopB.getStopOrder() != null) {
+                    if (stopA.getStopOrder() < stopB.getStopOrder() && depMinA > arrMinB) {
+                        throw new BusinessException(HttpStatus.BAD_REQUEST, "INVALID_STOP_SEQUENCE_TIME",
+                                "Thứ tự điểm dừng (" + stopA.getStopOrder() + " -> " + stopB.getStopOrder()
+                                        + ") không khớp với trình tự thời gian di chuyển (Cảng "
+                                        + (portA != null ? portA.getPortName() : stopA.getClientKey())
+                                        + " rời sau khi Cảng " + (portB != null ? portB.getPortName() : stopB.getClientKey()) + " cập).");
+                    } else if (stopB.getStopOrder() < stopA.getStopOrder() && depMinB > arrMinA) {
+                        throw new BusinessException(HttpStatus.BAD_REQUEST, "INVALID_STOP_SEQUENCE_TIME",
+                                "Thứ tự điểm dừng (" + stopB.getStopOrder() + " -> " + stopA.getStopOrder()
+                                        + ") không khớp với trình tự thời gian di chuyển (Cảng "
+                                        + (portB != null ? portB.getPortName() : stopB.getClientKey())
+                                        + " rời sau khi Cảng " + (portA != null ? portA.getPortName() : stopA.getClientKey()) + " cập).");
+                    }
+                }
             }
         }
 
@@ -252,6 +346,33 @@ public class TripScheduleVersionService {
                     throw new BusinessException(HttpStatus.BAD_REQUEST, "SHORE_REQUIRES_STOP",
                             "Mục tham quan trên bờ '" + entryDto.getTitle() + "' bắt buộc phải liên kết với một điểm dừng cảng hợp lệ (stopClientKey: "
                                     + entryDto.getStopClientKey() + ")");
+                }
+
+                // BE-12.3: Excursion must be within port call window
+                TripPlanStop stop = activeStopKeyMap.get(entryDto.getStopClientKey());
+                Port stopPort = stop.getPort();
+                int excStartDay = entryDto.getStartDayNumber() != null ? entryDto.getStartDayNumber() : (entryDto.getDayNumber() != null ? entryDto.getDayNumber() : 1);
+                int excEndDay = entryDto.getEndDayNumber() != null ? entryDto.getEndDayNumber() : excStartDay;
+                long excStartMin = toTimelineMinutes(excStartDay, entryDto.getPlannedStartTime(), false);
+                long excEndMin = toTimelineMinutes(excEndDay, entryDto.getPlannedEndTime(), true);
+
+                long stopArrMin = toTimelineMinutes(stop.getArrivalDayNumber(), stop.getPlannedArrivalTime(), false);
+                int deadlineDay = stop.getAllAboardDayNumber() != null ? stop.getAllAboardDayNumber() : stop.getDepartureDayNumber();
+                LocalTime deadlineTime = stop.getAllAboardTime() != null ? stop.getAllAboardTime() : stop.getPlannedDepartureTime();
+                long deadlineMin = toTimelineMinutes(deadlineDay, deadlineTime, true);
+
+                if (excStartMin < stopArrMin) {
+                    throw new BusinessException(HttpStatus.BAD_REQUEST, "SHORE_EXCURSION_OUTSIDE_PORT_WINDOW",
+                            "Tour tham quan trên bờ '" + entryDto.getTitle() + "' không thể bắt đầu trước khi tàu cập cảng '"
+                                    + (stopPort != null ? stopPort.getPortName() : stop.getClientKey()) + "' (Giờ bắt đầu: Ngày " + excStartDay
+                                    + " " + entryDto.getPlannedStartTime() + ", Giờ tàu cập: Ngày " + stop.getArrivalDayNumber()
+                                    + " " + stop.getPlannedArrivalTime() + ").");
+                }
+                if (excEndMin > deadlineMin) {
+                    throw new BusinessException(HttpStatus.BAD_REQUEST, "SHORE_EXCURSION_OUTSIDE_PORT_WINDOW",
+                            "Tour tham quan trên bờ '" + entryDto.getTitle() + "' phải kết thúc trước hạn lên tàu / rời cảng '"
+                                    + (stopPort != null ? stopPort.getPortName() : stop.getClientKey()) + "' (Giờ kết thúc: Ngày " + excEndDay
+                                    + " " + entryDto.getPlannedEndTime() + ", Hạn lên tàu: Ngày " + deadlineDay + " " + deadlineTime + ").");
                 }
             }
         }
@@ -1065,25 +1186,23 @@ public class TripScheduleVersionService {
                 hasDisembarkation = true;
             }
 
-            // Time logic for same day call
-            if (stop.getArrivalDayNumber().equals(stop.getDepartureDayNumber())) {
-                LocalTime arr = stop.getPlannedArrivalTime();
-                LocalTime dep = stop.getPlannedDepartureTime();
-                if (arr != null && dep != null && !dep.isAfter(arr)) {
-                    violations.add(PlanViolation.builder()
-                            .code("INVALID_PORT_CALL_TIMES")
-                            .severity("ERROR")
-                            .entityType("STOP")
-                            .clientKey(stop.getClientKey())
-                            .dayNumber(stop.getArrivalDayNumber())
-                            .field("plannedDepartureTime")
-                            .fieldPath("stops[clientKey=" + stop.getClientKey() + "].plannedDepartureTime")
-                            .actionHint("EDIT_PORT_CALL_TIMES")
-                            .message("Tại ngày " + stop.getArrivalDayNumber() + " (cảng "
-                                    + (stop.getPort() != null ? stop.getPort().getPortName() : "")
-                                    + "), giờ rời cảng (" + dep + ") phải sau giờ cập cảng (" + arr + ")")
-                            .build());
-                }
+            // Time logic for port call (both same day and cross day)
+            long stopArrMin = toTimelineMinutes(stop.getArrivalDayNumber(), stop.getPlannedArrivalTime(), false);
+            long stopDepMin = toTimelineMinutes(stop.getDepartureDayNumber(), stop.getPlannedDepartureTime(), true);
+            if (stopDepMin <= stopArrMin) {
+                violations.add(PlanViolation.builder()
+                        .code("INVALID_PORT_CALL_TIMES")
+                        .severity("ERROR")
+                        .entityType("STOP")
+                        .clientKey(stop.getClientKey())
+                        .dayNumber(stop.getArrivalDayNumber())
+                        .field("plannedDepartureTime")
+                        .fieldPath("stops[clientKey=" + stop.getClientKey() + "].plannedDepartureTime")
+                        .actionHint("EDIT_PORT_CALL_TIMES")
+                        .message("Tại ngày " + stop.getArrivalDayNumber() + " (cảng "
+                                + (stop.getPort() != null ? stop.getPort().getPortName() : "")
+                                + "), thời điểm rời cảng (" + stop.getPlannedDepartureTime() + ") phải sau thời điểm cập cảng (" + stop.getPlannedArrivalTime() + ")")
+                        .build());
             }
 
             // All aboard logic
@@ -1122,6 +1241,82 @@ public class TripScheduleVersionService {
                         .actionHint("SET_ALL_ABOARD_TIME")
                         .message("Điểm dừng " + stop.getClientKey() + " có tour tham quan trên bờ nhưng chưa thiết lập giờ tất cả lên tàu (allAboardTime).")
                         .build());
+            }
+        }
+
+        // BE-12: Overlap check between all pairs of stops
+        for (int i = 0; i < stops.size(); i++) {
+            TripPlanStop stopA = stops.get(i);
+            long arrA = toTimelineMinutes(stopA.getArrivalDayNumber(), stopA.getPlannedArrivalTime(), false);
+            long depA = toTimelineMinutes(stopA.getDepartureDayNumber(), stopA.getPlannedDepartureTime(), true);
+
+            for (int j = i + 1; j < stops.size(); j++) {
+                TripPlanStop stopB = stops.get(j);
+                long arrB = toTimelineMinutes(stopB.getArrivalDayNumber(), stopB.getPlannedArrivalTime(), false);
+                long depB = toTimelineMinutes(stopB.getDepartureDayNumber(), stopB.getPlannedDepartureTime(), true);
+
+                if (arrA < depB && arrB < depA) {
+                    violations.add(PlanViolation.builder()
+                            .code("PORT_CALL_OVERLAP")
+                            .severity("ERROR")
+                            .entityType("STOP")
+                            .clientKey(stopA.getClientKey())
+                            .dayNumber(stopA.getArrivalDayNumber())
+                            .field("plannedArrivalTime")
+                            .fieldPath("stops[clientKey=" + stopA.getClientKey() + "].plannedArrivalTime")
+                            .actionHint("ADJUST_PORT_CALL_SCHEDULE")
+                            .message("Khoảng thời gian lưu cảng '" + (stopA.getPort() != null ? stopA.getPort().getPortName() : stopA.getClientKey())
+                                    + "' bị chồng lấn với cảng '" + (stopB.getPort() != null ? stopB.getPort().getPortName() : stopB.getClientKey()) + "'.")
+                            .build());
+                }
+
+                if (depA == arrB || depB == arrA) {
+                    if (stopA.getPort() != null && stopB.getPort() != null
+                            && !Objects.equals(stopA.getPort().getPortId(), stopB.getPort().getPortId())) {
+                        violations.add(PlanViolation.builder()
+                                .code("NON_POSITIVE_TRANSIT_TIME")
+                                .severity("ERROR")
+                                .entityType("STOP")
+                                .clientKey(stopA.getClientKey())
+                                .dayNumber(stopA.getDepartureDayNumber())
+                                .field("plannedDepartureTime")
+                                .fieldPath("stops[clientKey=" + stopA.getClientKey() + "].plannedDepartureTime")
+                                .actionHint("ADD_TRANSIT_BUFFER")
+                                .message("Thời gian di chuyển giữa hai cảng khác nhau (" + stopA.getPort().getPortName()
+                                        + " -> " + stopB.getPort().getPortName() + ") phải lớn hơn 0.")
+                                .build());
+                    }
+                }
+
+                if (stopA.getStopOrder() != null && stopB.getStopOrder() != null) {
+                    if (stopA.getStopOrder() < stopB.getStopOrder() && depA > arrB) {
+                        violations.add(PlanViolation.builder()
+                                .code("INVALID_STOP_SEQUENCE_TIME")
+                                .severity("ERROR")
+                                .entityType("STOP")
+                                .clientKey(stopA.getClientKey())
+                                .dayNumber(stopA.getDepartureDayNumber())
+                                .field("stopOrder")
+                                .fieldPath("stops[clientKey=" + stopA.getClientKey() + "].stopOrder")
+                                .actionHint("REORDER_STOPS_OR_ADJUST_TIMES")
+                                .message("Thứ tự điểm dừng (" + stopA.getStopOrder() + " -> " + stopB.getStopOrder()
+                                        + ") không khớp với trình tự thời gian di chuyển.")
+                                .build());
+                    } else if (stopB.getStopOrder() < stopA.getStopOrder() && depB > arrA) {
+                        violations.add(PlanViolation.builder()
+                                .code("INVALID_STOP_SEQUENCE_TIME")
+                                .severity("ERROR")
+                                .entityType("STOP")
+                                .clientKey(stopB.getClientKey())
+                                .dayNumber(stopB.getDepartureDayNumber())
+                                .field("stopOrder")
+                                .fieldPath("stops[clientKey=" + stopB.getClientKey() + "].stopOrder")
+                                .actionHint("REORDER_STOPS_OR_ADJUST_TIMES")
+                                .message("Thứ tự điểm dừng (" + stopB.getStopOrder() + " -> " + stopA.getStopOrder()
+                                        + ") không khớp với trình tự thời gian di chuyển.")
+                                .build());
+                    }
+                }
             }
         }
 
@@ -1727,5 +1922,13 @@ public class TripScheduleVersionService {
         } catch (NoSuchAlgorithmException e) {
             return UUID.randomUUID().toString().replace("-", "");
         }
+    }
+
+    public static long toTimelineMinutes(int dayNumber, LocalTime time, boolean isEnd) {
+        long base = (dayNumber - 1) * 1440L;
+        if (time != null) {
+            return base + (time.toSecondOfDay() / 60);
+        }
+        return isEnd ? base + 1440L : base;
     }
 }
