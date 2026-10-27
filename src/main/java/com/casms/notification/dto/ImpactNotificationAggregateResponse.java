@@ -28,8 +28,11 @@ public class ImpactNotificationAggregateResponse {
     @Schema(description = "Tổng số hành khách bị ảnh hưởng")
     private long totalImpactedPassengers;
 
-    @Schema(description = "Số lượng thông báo đã phát thành công (SENT)")
+    @Schema(description = "Số lượng thông báo đã phát thành công (SENT hoặc IN_APP_DELIVERED)")
     private long notificationsSentCount;
+
+    @Schema(description = "Số lượng thông báo In-App đã phát thành công")
+    private long inAppDeliveredCount;
 
     @Schema(description = "Số lượng thông báo đang chờ phát (PENDING)")
     private long notificationsPendingCount;
@@ -42,6 +45,12 @@ public class ImpactNotificationAggregateResponse {
 
     @Schema(description = "Trạng thái tiến độ tổng thể (NOT_STARTED, IN_PROGRESS, COMPLETED)")
     private String deliveryStatus;
+
+    @Schema(description = "Kênh phân phối chính thức áp dụng (IN_APP, EMAIL, SMS)")
+    private String deliveryChannel;
+
+    @Schema(description = "Ý nghĩa ngữ nghĩa phân phối (Delivery Channel Semantics)")
+    private String deliverySemantics;
 
     @Schema(description = "Thời điểm phát thông báo gần nhất")
     private Instant lastDispatchedAt;

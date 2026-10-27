@@ -1,5 +1,6 @@
 package com.casms.trip.service;
 
+import com.casms.booking.dto.response.BookingDetailResponse;
 import com.casms.common.exception.BusinessException;
 import com.casms.ship.dto.response.CruiseResponse;
 import com.casms.trip.dto.response.TripDetailResponse;
@@ -103,6 +104,8 @@ public class IdempotencyService {
                 resultingId = detail.getTripId();
             } else if (result instanceof CruiseResponse cruiseRes) {
                 resultingId = cruiseRes.getCruiseId();
+            } else if (result instanceof BookingDetailResponse bookingRes) {
+                resultingId = bookingRes.getBookingId();
             }
             reservationService.completeKey(reservationId, json, resultingId);
         } catch (Exception e) {
@@ -151,6 +154,8 @@ public class IdempotencyService {
             return (Class<T>) TripDetailResponse.class;
         } else if ("CREATE_CRUISE".equals(operation)) {
             return (Class<T>) CruiseResponse.class;
+        } else if ("CREATE_BOOKING".equals(operation)) {
+            return (Class<T>) BookingDetailResponse.class;
         }
         return null;
     }

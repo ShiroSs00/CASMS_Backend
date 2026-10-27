@@ -77,6 +77,7 @@ public class CruiseEvidenceReadinessPostgresIntegrationTest {
     @Autowired private ShipRegulationRepository shipRegulationRepository;
     @Autowired private UserRepository userRepository;
     @Autowired private RolePermissionRepository rolePermissionRepository;
+    @Autowired private CruisePricingPolicyRepository cruisePricingPolicyRepository;
 
     private Ship testShip;
     private Deck testDeck;
@@ -171,6 +172,23 @@ public class CruiseEvidenceReadinessPostgresIntegrationTest {
         itinerary.setItineraryType(ItineraryType.ROUND_TRIP);
         itinerary.setStatus(ItineraryStatus.APPROVED);
         itineraryRepository.save(itinerary);
+
+        CruisePricingPolicy policy = CruisePricingPolicy.builder()
+                .cruise(cruiseRepository.findById(cruise.getCruiseId()).orElseThrow())
+                .policyVersion("PRC-2026.10-V1")
+                .status(PricingPolicyStatus.APPROVED)
+                .currency("USD")
+                .interiorBaseFare(BigDecimal.valueOf(300.00))
+                .oceanViewBaseFare(BigDecimal.valueOf(350.00))
+                .balconyBaseFare(BigDecimal.valueOf(450.00))
+                .suiteBaseFare(BigDecimal.valueOf(650.00))
+                .taxRate(BigDecimal.valueOf(0.1000))
+                .portFeePerPassenger(BigDecimal.valueOf(25.00))
+                .depositPercentage(BigDecimal.valueOf(0.3000))
+                .finalPaymentDueDays(14)
+                .fullPaymentCutoffDays(7)
+                .build();
+        cruisePricingPolicyRepository.save(policy);
 
         return cruise;
     }

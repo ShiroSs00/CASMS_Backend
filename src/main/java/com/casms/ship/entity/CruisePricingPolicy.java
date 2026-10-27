@@ -1,6 +1,8 @@
 package com.casms.ship.entity;
 
+import com.casms.identity.entity.User;
 import com.casms.ship.enums.CabinType;
+import com.casms.ship.enums.PricingPolicyStatus;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -35,36 +37,37 @@ public class CruisePricingPolicy {
     @Column(name = "policy_version", nullable = false, length = 50)
     private String policyVersion = "PRC-2026.10-V1";
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status", nullable = false, length = 30)
+    @Builder.Default
+    private PricingPolicyStatus status = PricingPolicyStatus.DRAFT;
+
     @Builder.Default
     @Column(name = "currency", nullable = false, length = 3)
     private String currency = "USD";
 
-    @Builder.Default
-    @Column(name = "interior_base_fare", nullable = false, precision = 19, scale = 4)
-    private BigDecimal interiorBaseFare = BigDecimal.valueOf(300);
+    @Column(name = "interior_base_fare", precision = 19, scale = 4)
+    private BigDecimal interiorBaseFare;
+
+    @Column(name = "ocean_view_base_fare", precision = 19, scale = 4)
+    private BigDecimal oceanViewBaseFare;
+
+    @Column(name = "balcony_base_fare", precision = 19, scale = 4)
+    private BigDecimal balconyBaseFare;
+
+    @Column(name = "suite_base_fare", precision = 19, scale = 4)
+    private BigDecimal suiteBaseFare;
 
     @Builder.Default
-    @Column(name = "ocean_view_base_fare", nullable = false, precision = 19, scale = 4)
-    private BigDecimal oceanViewBaseFare = BigDecimal.valueOf(450);
+    @Column(name = "port_fee_per_passenger", precision = 19, scale = 4)
+    private BigDecimal portFeePerPassenger = BigDecimal.ZERO;
 
     @Builder.Default
-    @Column(name = "balcony_base_fare", nullable = false, precision = 19, scale = 4)
-    private BigDecimal balconyBaseFare = BigDecimal.valueOf(650);
+    @Column(name = "tax_rate", precision = 5, scale = 4)
+    private BigDecimal taxRate = BigDecimal.ZERO;
 
     @Builder.Default
-    @Column(name = "suite_base_fare", nullable = false, precision = 19, scale = 4)
-    private BigDecimal suiteBaseFare = BigDecimal.valueOf(1100);
-
-    @Builder.Default
-    @Column(name = "port_fee_per_passenger", nullable = false, precision = 19, scale = 4)
-    private BigDecimal portFeePerPassenger = BigDecimal.valueOf(50);
-
-    @Builder.Default
-    @Column(name = "tax_rate", nullable = false, precision = 5, scale = 4)
-    private BigDecimal taxRate = BigDecimal.valueOf(0.0800);
-
-    @Builder.Default
-    @Column(name = "deposit_percentage", nullable = false, precision = 5, scale = 4)
+    @Column(name = "deposit_percentage", precision = 5, scale = 4)
     private BigDecimal depositPercentage = BigDecimal.valueOf(0.3000);
 
     @Builder.Default
@@ -74,6 +77,16 @@ public class CruisePricingPolicy {
     @Builder.Default
     @Column(name = "full_payment_cutoff_days", nullable = false)
     private int fullPaymentCutoffDays = 7;
+
+    @Column(name = "cancellation_policy", columnDefinition = "TEXT")
+    private String cancellationPolicy;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "approved_by")
+    private User approvedBy;
+
+    @Column(name = "approved_at")
+    private Instant approvedAt;
 
     @Builder.Default
     @Column(name = "created_at", nullable = false)
@@ -87,6 +100,7 @@ public class CruisePricingPolicy {
     protected void onCreate() {
         if (createdAt == null) createdAt = Instant.now();
         if (updatedAt == null) updatedAt = Instant.now();
+        if (status == null) status = PricingPolicyStatus.DRAFT;
     }
 
     @PreUpdate
@@ -94,13 +108,17 @@ public class CruisePricingPolicy {
         updatedAt = Instant.now();
     }
 
+    /**
+     * Authoritative base fare lookup. Returns exact base fare configured.
+     * Returns null if unpriced (strictly distinguishes 0 from NULL).
+     */
     public BigDecimal getBaseFareForCabinType(CabinType type) {
-        if (type == null) return interiorBaseFare != null ? interiorBaseFare : BigDecimal.valueOf(300);
+        if (type == null) return null;
         return switch (type) {
-            case INTERIOR -> interiorBaseFare != null ? interiorBaseFare : BigDecimal.valueOf(300);
-            case OCEAN_VIEW -> oceanViewBaseFare != null ? oceanViewBaseFare : BigDecimal.valueOf(450);
-            case BALCONY -> balconyBaseFare != null ? balconyBaseFare : BigDecimal.valueOf(650);
-            case SUITE -> suiteBaseFare != null ? suiteBaseFare : BigDecimal.valueOf(1100);
+            case INTERIOR -> interiorBaseFare;
+            case OCEAN_VIEW -> oceanViewBaseFare;
+            case BALCONY -> balconyBaseFare;
+            case SUITE -> suiteBaseFare;
         };
     }
 }

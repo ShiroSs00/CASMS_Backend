@@ -66,6 +66,13 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
+import org.mockito.Spy;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.casms.ship.repository.CruisePricingPolicyRepository;
+import com.casms.booking.repository.BookingQuoteRepository;
+import com.casms.ship.entity.CruisePricingPolicy;
+import com.casms.ship.enums.PricingPolicyStatus;
+
 @ExtendWith(MockitoExtension.class)
 class BookingServiceTest {
 
@@ -87,6 +94,9 @@ class BookingServiceTest {
     @Mock private BusinessCodeGenerator businessCodeGenerator;
     @Mock private com.casms.ship.repository.CruiseTourPackageRepository cruiseTourPackageRepository;
     @Mock private com.casms.ship.repository.ItineraryRepository itineraryRepository;
+    @Mock private CruisePricingPolicyRepository cruisePricingPolicyRepository;
+    @Mock private BookingQuoteRepository bookingQuoteRepository;
+    @Spy private ObjectMapper objectMapper = new ObjectMapper();
 
     @InjectMocks
     private BookingService bookingService;
@@ -172,7 +182,23 @@ class BookingServiceTest {
         when(itineraryRepository.findByCruiseCruiseId(cruiseId)).thenReturn(Optional.of(itinerary));
         when(bookingPassengerRepository.countActivePassengersByCruiseId(cruiseId)).thenReturn(10L);
         when(cabinRepository.findByIdForUpdate(cabinId)).thenReturn(Optional.of(cabin));
+        when(cabinRepository.sumCapacityByShipIdAndCabinType(any(), any())).thenReturn(50L);
         when(cabinAssignmentRepository.countActiveAssignmentsByCabinAndCruise(cabinId, cruiseId)).thenReturn(0L);
+
+        CruisePricingPolicy policy = new CruisePricingPolicy();
+        policy.setPricingPolicyId(UUID.randomUUID());
+        policy.setCruise(cruise);
+        policy.setStatus(PricingPolicyStatus.APPROVED);
+        policy.setPolicyVersion("PRC-2026.10-V1");
+        policy.setBalconyBaseFare(new BigDecimal("450.00"));
+        policy.setInteriorBaseFare(new BigDecimal("300.00"));
+        policy.setOceanViewBaseFare(new BigDecimal("350.00"));
+        policy.setSuiteBaseFare(new BigDecimal("650.00"));
+        policy.setTaxRate(new BigDecimal("0.1000"));
+        policy.setPortFeePerPassenger(new BigDecimal("25.00"));
+        policy.setDepositPercentage(new BigDecimal("0.3000"));
+        policy.setFinalPaymentDueDays(14);
+        when(cruisePricingPolicyRepository.findByCruise_CruiseId(cruiseId)).thenReturn(Optional.of(policy));
 
         when(bookingRepository.save(any(Booking.class))).thenAnswer(i -> {
             Booking b = i.getArgument(0);

@@ -7,6 +7,8 @@ import com.casms.ship.dto.request.CruiseStopUpdateRequest;
 import com.casms.ship.dto.response.CruiseStopResponse;
 import com.casms.ship.enums.CruiseStopStatus;
 import com.casms.ship.service.CruiseStopService;
+import com.casms.security.principal.CasmsPrincipal;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -66,8 +68,10 @@ public class CruiseStopController {
     @PatchMapping("/{cruiseStopId}/coordination")
     public ApiResponse<CruiseStopResponse> updatePortCoordination(
             @Parameter(description = "ID của điểm dừng", required = true) @PathVariable UUID cruiseStopId,
-            @RequestBody @Valid CruisePortCoordinationRequest request) {
-        return ApiResponse.success(service.updatePortCoordination(cruiseStopId, request));
+            @RequestBody @Valid CruisePortCoordinationRequest request,
+            @AuthenticationPrincipal CasmsPrincipal principal) {
+        UUID actorId = principal != null ? principal.getUserId() : null;
+        return ApiResponse.success(service.updatePortCoordination(cruiseStopId, request, actorId));
     }
 
     @Operation(summary = "Ghi nhận mã tham chiếu giấy phép chính thức từ cơ quan chức năng (BE-20 External Clearance Reference)",
@@ -77,8 +81,10 @@ public class CruiseStopController {
     public ApiResponse<CruiseStopResponse> recordClearanceReference(
             @Parameter(description = "ID của điểm dừng", required = true) @PathVariable UUID cruiseStopId,
             @Parameter(description = "Mã tham chiếu giấy phép cảng", required = true) @RequestParam String clearanceReference,
-            @Parameter(description = "Tên cơ quan thẩm quyền cấp phép (ví dụ Cảng vụ)", required = false) @RequestParam(required = false) String authority) {
-        return ApiResponse.success(service.recordOfficialClearanceReference(cruiseStopId, clearanceReference, authority));
+            @Parameter(description = "Tên cơ quan thẩm quyền cấp phép (ví dụ Cảng vụ)", required = false) @RequestParam(required = false) String authority,
+            @AuthenticationPrincipal CasmsPrincipal principal) {
+        UUID actorId = principal != null ? principal.getUserId() : null;
+        return ApiResponse.success(service.recordOfficialClearanceReference(cruiseStopId, clearanceReference, authority, actorId));
     }
 
     @Operation(summary = "Xóa điểm dừng bản nháp", description = "Xóa điểm dừng nếu lịch trình ở trạng thái DRAFT hoặc PENDING_APPROVAL")

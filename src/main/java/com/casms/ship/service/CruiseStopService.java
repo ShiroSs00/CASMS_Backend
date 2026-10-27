@@ -54,8 +54,15 @@ public class CruiseStopService {
     @Autowired(required = false)
     private ShoreExcursionRepository shoreExcursionRepository;
 
+    @Autowired(required = false)
+    private CruiseAuditService cruiseAuditService;
+
     public void setShoreExcursionRepository(ShoreExcursionRepository repo) {
         this.shoreExcursionRepository = repo;
+    }
+
+    public void setCruiseAuditService(CruiseAuditService service) {
+        this.cruiseAuditService = service;
     }
 
     @Transactional
@@ -168,7 +175,7 @@ public class CruiseStopService {
                 itineraryDayRepository.save(departureDay);
             }
         }
-
+        markItineraryContentModified(itinerary);
         return mapToResponse(stop);
     }
 
@@ -279,6 +286,7 @@ public class CruiseStopService {
         if (request.getNotes() != null) stop.setNotes(request.getNotes());
 
         stop = cruiseStopRepository.save(stop);
+        markItineraryContentModified(itinerary);
         return mapToResponse(stop);
     }
 
@@ -292,6 +300,7 @@ public class CruiseStopService {
         }
 
         cruiseStopRepository.delete(stop);
+        markItineraryContentModified(itinerary);
         log.info("Removed draft cruise stop: {}", cruiseStopId);
     }
 
@@ -319,6 +328,7 @@ public class CruiseStopService {
                     stop.getPlannedArrival(), stop.getPlannedDeparture(), existingStops);
             stop.setStopOrder(newStopOrder);
             stop = cruiseStopRepository.save(stop);
+            markItineraryContentModified(itinerary);
         }
 
         return mapToResponse(stop);
@@ -427,6 +437,7 @@ public class CruiseStopService {
         
         stop.setPlannedArrival(plannedArrival);
         stop = cruiseStopRepository.save(stop);
+        markItineraryContentModified(itinerary);
         return mapToResponse(stop);
     }
 
@@ -456,6 +467,7 @@ public class CruiseStopService {
         
         stop.setPlannedDeparture(plannedDeparture);
         stop = cruiseStopRepository.save(stop);
+        markItineraryContentModified(itinerary);
         return mapToResponse(stop);
     }
 
@@ -558,6 +570,8 @@ public class CruiseStopService {
         res.setStatus(stop.getStatus());
         res.setCancellationReason(stop.getCancellationReason());
         res.setSubstitutedByStopId(stop.getSubstitutedByStop() != null ? stop.getSubstitutedByStop().getCruiseStopId() : null);
+        res.setPortAgencyName(stop.getPortAgencyName());
+        res.setBerthIdentifier(stop.getBerthIdentifier());
         res.setPortContactName(stop.getPortContactName());
         res.setPortContactRole(stop.getPortContactRole());
         res.setPortContactPhone(stop.getPortContactPhone());
@@ -574,36 +588,86 @@ public class CruiseStopService {
     }
 
     /**
-     * BE-20: Cập nhật hồ sơ và trạng thái phối hợp cảng (Port Coordination)
+     * BE-20 / BE-H16: Cập nhật hồ sơ và trạng thái phối hợp cảng (Port Coordination)
+     * Trạng thái không giả APPROVED khi chưa có bằng chứng / cơ quan thẩm quyền chính thức.
      */
     @Transactional
     public CruiseStopResponse updatePortCoordination(UUID cruiseStopId, CruisePortCoordinationRequest request) {
+        return updatePortCoordination(cruiseStopId, request, null);
+    }
+
+    @Transactional
+    public CruiseStopResponse updatePortCoordination(UUID cruiseStopId, CruisePortCoordinationRequest request, UUID actorId) {
         CruiseStop stop = cruiseStopRepository.findById(cruiseStopId)
                 .orElseThrow(() -> new ResourceNotFoundException("CruiseStop", cruiseStopId));
 
-        if (request.getPortContactName() != null) stop.setPortContactName(request.getPortContactName());
-        if (request.getPortContactRole() != null) stop.setPortContactRole(request.getPortContactRole());
-        if (request.getPortContactPhone() != null) stop.setPortContactPhone(request.getPortContactPhone());
-        if (request.getPortContactEmail() != null) stop.setPortContactEmail(request.getPortContactEmail());
-        if (request.getPortContactResponsibility() != null) stop.setPortContactResponsibility(request.getPortContactResponsibility());
-        if (request.getCoordinationStatus() != null && !request.getCoordinationStatus().isBlank()) {
-            stop.setCoordinationStatus(request.getCoordinationStatus().trim().toUpperCase());
-        }
+        if (request.getPortAgencyName() != null) stop.setPortAgencyName(request.getPortAgencyName().trim());
+        if (request.getBerthIdentifier() != null) stop.setBerthIdentifier(request.getBerthIdentifier().trim());
+        if (request.getArrivalMethod() != null) stop.setArrivalMethod(request.getArrivalMethod());
+        if (request.getTenderTransferMinutes() != null) stop.setTenderTransferMinutes(request.getTenderTransferMinutes());
+        if (request.getPortContactName() != null) stop.setPortContactName(request.getPortContactName().trim());
+        if (request.getPortContactRole() != null) stop.setPortContactRole(request.getPortContactRole().trim());
+        if (request.getPortContactPhone() != null) stop.setPortContactPhone(request.getPortContactPhone().trim());
+        if (request.getPortContactEmail() != null) stop.setPortContactEmail(request.getPortContactEmail().trim());
+        if (request.getPortContactResponsibility() != null) stop.setPortContactResponsibility(request.getPortContactResponsibility().trim());
         if (request.getCoordinationDeadline() != null) stop.setCoordinationDeadline(request.getCoordinationDeadline());
-        if (request.getDossierReference() != null) stop.setDossierReference(request.getDossierReference());
-        if (request.getNotes() != null) stop.setNotes(request.getNotes());
+        if (request.getDossierReference() != null) stop.setDossierReference(request.getDossierReference().trim());
+        if (request.getNotes() != null) stop.setNotes(request.getNotes().trim());
+        if (request.getOfficialClearanceReference() != null && !request.getOfficialClearanceReference().isBlank()) {
+            stop.setOfficialClearanceReference(request.getOfficialClearanceReference().trim());
+        }
+        if (request.getClearanceAuthority() != null && !request.getClearanceAuthority().isBlank()) {
+            stop.setClearanceAuthority(request.getClearanceAuthority().trim());
+        }
+
+        // BE-H16: Trạng thái không giả APPROVED khi chưa có bằng chứng / cơ quan thẩm quyền
+        if (request.getCoordinationStatus() != null && !request.getCoordinationStatus().isBlank()) {
+            String targetStatus = request.getCoordinationStatus().trim().toUpperCase();
+            if (java.util.Set.of("APPROVED", "OFFICIALLY_APPROVED", "CONFIRMED_BY_AUTHORITY").contains(targetStatus)) {
+                String ref = stop.getOfficialClearanceReference();
+                String auth = stop.getClearanceAuthority();
+                if (ref == null || ref.isBlank() || auth == null || auth.isBlank()) {
+                    throw new BusinessException(HttpStatus.UNPROCESSABLE_ENTITY, "CLEARANCE_EVIDENCE_REQUIRED",
+                            "Không thể xác lập trạng thái " + targetStatus + " khi chưa có mã tham chiếu giấy phép (officialClearanceReference) và cơ quan thẩm quyền phê duyệt chính thức (clearanceAuthority).");
+                }
+            }
+            stop.setCoordinationStatus(targetStatus);
+        }
 
         stop = cruiseStopRepository.save(stop);
         log.info("Updated port coordination for cruise stop: {}, status: {}", cruiseStopId, stop.getCoordinationStatus());
+
+        // Audit Trail
+        if (cruiseAuditService != null && stop.getItinerary() != null && stop.getItinerary().getCruise() != null) {
+            cruiseAuditService.recordEvent(
+                    stop.getItinerary().getCruise(),
+                    "PORT_COORDINATION_UPDATE",
+                    "EVT-PORT-" + stop.getCruiseStopId() + "-" + System.currentTimeMillis(),
+                    actorId,
+                    "PORT_OPERATIONS_COORDINATOR",
+                    "CRUISE_STOP_UPDATE",
+                    "PORT_CALL:" + stop.getCruiseStopId(),
+                    null,
+                    "CoordinationStatus=" + stop.getCoordinationStatus() + ", Berth=" + stop.getBerthIdentifier(),
+                    "Cập nhật hồ sơ phối hợp cảng",
+                    "Agency=" + stop.getPortAgencyName() + ", Dossier=" + stop.getDossierReference() + ", Clearance=" + stop.getOfficialClearanceReference()
+            );
+        }
+
         return mapToResponse(stop);
     }
 
     /**
-     * BE-20: Ghi nhận mã tham chiếu giấy phép chính thức từ cơ quan chức năng (External Verified Clearance Reference)
-     * TUYỆT ĐỐI không CASMS tự phát hành official clearance; chỉ lưu reference xác thực khi có tích hợp chính thức.
+     * BE-20 / BE-H16: Ghi nhận mã tham chiếu giấy phép chính thức từ cơ quan chức năng (External Verified Clearance Reference)
+     * TUYỆT ĐỐI không CASMS tự phát hành official clearance; lưu reference xác thực và tách bạch "đã nhập reference" với "cảng vụ duyệt chính thức".
      */
     @Transactional
     public CruiseStopResponse recordOfficialClearanceReference(UUID cruiseStopId, String clearanceReference, String authority) {
+        return recordOfficialClearanceReference(cruiseStopId, clearanceReference, authority, null);
+    }
+
+    @Transactional
+    public CruiseStopResponse recordOfficialClearanceReference(UUID cruiseStopId, String clearanceReference, String authority, UUID actorId) {
         if (clearanceReference == null || clearanceReference.isBlank()) {
             throw new BusinessException(HttpStatus.BAD_REQUEST, "CLEARANCE_REF_REQUIRED",
                     "Mã tham chiếu giấy phép cảng chính thức (Clearance Reference) là bắt buộc.");
@@ -615,8 +679,33 @@ public class CruiseStopService {
         if (authority != null && !authority.isBlank()) {
             stop.setClearanceAuthority(authority.trim());
         }
+        // “Đã nhập reference” != “cảng vụ duyệt chính thức”
+        // Đặt trạng thái phối hợp là CLEARANCE_RECORDED thay vì giả lập APPROVED
+        if (stop.getCoordinationStatus() == null
+                || "NOT_STARTED".equalsIgnoreCase(stop.getCoordinationStatus())
+                || "SUBMITTED".equalsIgnoreCase(stop.getCoordinationStatus())) {
+            stop.setCoordinationStatus("CLEARANCE_RECORDED");
+        }
         stop = cruiseStopRepository.save(stop);
         log.info("Recorded official clearance reference for cruise stop {}: {} by {}", cruiseStopId, clearanceReference, authority);
+
+        // Audit Trail
+        if (cruiseAuditService != null && stop.getItinerary() != null && stop.getItinerary().getCruise() != null) {
+            cruiseAuditService.recordEvent(
+                    stop.getItinerary().getCruise(),
+                    "PORT_CLEARANCE_RECORDED",
+                    "EVT-CLR-" + stop.getCruiseStopId() + "-" + System.currentTimeMillis(),
+                    actorId,
+                    "PORT_OPERATIONS_COORDINATOR",
+                    "CRUISE_STOP_UPDATE",
+                    "PORT_CALL:" + stop.getCruiseStopId(),
+                    null,
+                    "ClearanceRef=" + clearanceReference + ", Authority=" + authority,
+                    "Ghi nhận mã tham chiếu giấy phép cảng",
+                    "ClearanceRef=" + clearanceReference + ", Authority=" + authority
+            );
+        }
+
         return mapToResponse(stop);
     }
 
@@ -682,6 +771,17 @@ public class CruiseStopService {
                             String.format("Lần ghé thứ %d (%s) phải bắt đầu sau khi lần ghé thứ %d (%s) kết thúc.",
                                     stopOrder, portName, other.getStopOrder(), other.getPort() != null ? other.getPort().getPortName() : "Unknown"));
                 }
+            }
+        }
+    }
+
+    private void markItineraryContentModified(Itinerary itinerary) {
+        if (itinerary != null) {
+            if (Boolean.TRUE.equals(itinerary.getApprovalInherited()) || !Boolean.TRUE.equals(itinerary.getContentModifiedAfterMaterialization())) {
+                itinerary.setApprovalInherited(false);
+                itinerary.setContentModifiedAfterMaterialization(true);
+                itineraryRepository.save(itinerary);
+                log.info("Itinerary {} content modified after materialization; inherited approval revoked.", itinerary.getItineraryId());
             }
         }
     }

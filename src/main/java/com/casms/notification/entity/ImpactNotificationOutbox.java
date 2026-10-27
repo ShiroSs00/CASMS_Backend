@@ -63,6 +63,17 @@ public class ImpactNotificationOutbox {
     @Column(name = "status", nullable = false, length = 30)
     private String status = "PENDING";
 
+    @Builder.Default
+    @Column(name = "delivery_channel", length = 30)
+    private String deliveryChannel = "IN_APP";
+
+    @Builder.Default
+    @Column(name = "delivery_semantics", length = 255)
+    private String deliverySemantics = "IN_APP_DELIVERED (Thông báo gửi vào hộp thư trong ứng dụng)";
+
+    @Column(name = "in_app_delivered_at")
+    private Instant inAppDeliveredAt;
+
     @Column(name = "sent_at")
     private Instant sentAt;
 

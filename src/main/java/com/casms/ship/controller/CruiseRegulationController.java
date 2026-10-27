@@ -22,7 +22,7 @@ import java.util.UUID;
 
 @Tag(name = "Cruise Regulation Management", description = "Quản lý và áp dụng quy định vận hành cho chuyến đi du thuyền (Cruise)")
 @RestController
-@RequestMapping("/cruises/{cruiseId}/regulations")
+@RequestMapping({"/cruises/{cruiseId}/regulations", "/cruise/{cruiseId}/regulations"})
 @RequiredArgsConstructor
 public class CruiseRegulationController {
 

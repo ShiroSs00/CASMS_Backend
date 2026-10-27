@@ -120,4 +120,12 @@ public class CasmsPrincipal implements UserDetails {
     public boolean isStaff() {
         return user.isStaff();
     }
+
+    public boolean hasAuthority(String authority) {
+        if (authority == null) {
+            return false;
+        }
+        return getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equalsIgnoreCase(authority));
+    }
 }

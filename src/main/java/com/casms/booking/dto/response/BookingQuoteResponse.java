@@ -41,4 +41,5 @@ public class BookingQuoteResponse {
     private Instant issuedAt;
     private Instant expiresAt;
     private String status;
+    private String guestToken;
 }

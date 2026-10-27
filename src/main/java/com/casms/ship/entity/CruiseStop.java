@@ -82,6 +82,12 @@ public class CruiseStop {
     @JoinColumn(name = "substituted_by_stop_id")
     private CruiseStop substitutedByStop;
 
+    @Column(name = "port_agency_name", length = 200)
+    private String portAgencyName;
+
+    @Column(name = "berth_identifier", length = 100)
+    private String berthIdentifier;
+
     @Column(name = "port_contact_name", length = 200)
     private String portContactName;
 

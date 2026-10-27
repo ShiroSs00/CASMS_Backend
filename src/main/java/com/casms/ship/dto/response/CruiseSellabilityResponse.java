@@ -46,10 +46,16 @@ public class CruiseSellabilityResponse {
     @Schema(description = "Thời điểm tạm dừng mở bán")
     private Instant stoppedAt;
 
-    @Schema(description = "Tổng sức chứa của tàu")
+    @Schema(description = "Tổng sức chứa thiết kế của tàu (Physical Capacity)")
+    private int physicalCapacity;
+
+    @Schema(description = "Tổng sức chứa của tàu (tương đương physicalCapacity)")
     private int totalCapacity;
 
-    @Schema(description = "Số lượng chỗ còn trống")
+    @Schema(description = "Tổng tải trọng phòng khả dụng thương mại (AVAILABLE cabins trừ booked/held)")
+    private long sellableInventory;
+
+    @Schema(description = "Số lượng chỗ còn trống (tương đương sellableInventory)")
     private long remainingCapacity;
 
     @Schema(description = "Phiên bản chính sách giá đang áp dụng")

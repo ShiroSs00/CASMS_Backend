@@ -1,9 +1,11 @@
 package com.casms.ship.service;
 
+import com.casms.activity.repository.OnboardActivityRepository;
 import com.casms.activity.repository.ShoreExcursionRepository;
 import com.casms.common.exception.BusinessException;
 import com.casms.common.exception.ResourceNotFoundException;
 import com.casms.security.principal.CasmsPrincipal;
+import com.casms.servicepackage.repository.ServiceScheduleRepository;
 import com.casms.ship.dto.request.CruisePreparationConfirmRequest;
 import com.casms.ship.dto.request.CruisePreparationReturnRequest;
 import com.casms.ship.dto.request.CruisePreparationSubmitRequest;
@@ -13,6 +15,7 @@ import com.casms.ship.dto.response.CruisePreparationSectionResponse.PreparationC
 import com.casms.ship.entity.Cruise;
 import com.casms.ship.entity.CruisePreparationSection;
 import com.casms.ship.entity.Ship;
+import com.casms.ship.enums.CabinStatus;
 import com.casms.ship.enums.ShipStatus;
 import com.casms.ship.repository.*;
 import lombok.RequiredArgsConstructor;
@@ -35,6 +38,8 @@ public class CruisePreparationService {
     private final DeckRepository deckRepository;
     private final CabinRepository cabinRepository;
     private final ShoreExcursionRepository shoreExcursionRepository;
+    private final ServiceScheduleRepository serviceScheduleRepository;
+    private final OnboardActivityRepository onboardActivityRepository;
 
     private static final List<SectionTemplate> TEMPLATES = List.of(
             new SectionTemplate("TECHNICAL_NAUTICAL", "Kỹ thuật Hàng hải & Tàu", "SHIP_MANAGER"),
@@ -164,8 +169,19 @@ public class CruisePreparationService {
 
         // Maker-Checker: người nộp bằng chứng không được tự duyệt cho chính mình
         if (section.getSubmittedByUserId() != null && section.getSubmittedByUserId().equals(actorId)) {
-            throw new BusinessException("SELF_APPROVAL_FORBIDDEN",
+            throw new BusinessException(HttpStatus.FORBIDDEN, "SELF_APPROVAL_FORBIDDEN",
                     "Người nộp hồ sơ chuẩn bị không được tự phê duyệt xác nhận phân hệ này");
+        }
+
+        // BE-H05: Chặn confirm khi item bắt buộc chưa đạt tiêu chuẩn
+        List<PreparationCheckItemDto> checkItems = computeCheckItems(section.getCruise(), sectionCode);
+        List<String> failedRequired = checkItems.stream()
+                .filter(item -> Boolean.TRUE.equals(item.getRequired()) && !item.isReady())
+                .map(PreparationCheckItemDto::getItemName)
+                .toList();
+        if (!failedRequired.isEmpty()) {
+            throw new BusinessException(HttpStatus.UNPROCESSABLE_ENTITY, "SECTION_PREREQUISITES_NOT_MET",
+                    "Không thể xác nhận phân hệ " + section.getSectionName() + " do còn hạng mục bắt buộc chưa đạt tiêu chuẩn: " + String.join(", ", failedRequired));
         }
 
         section.setStatus("CONFIRMED");
@@ -253,36 +269,93 @@ public class CruisePreparationService {
         switch (sectionCode) {
             case "TECHNICAL_NAUTICAL" -> {
                 boolean shipAssigned = (ship != null);
-                items.add(new PreparationCheckItemDto("SHIP_ASSIGNED", "Gán tàu hợp lệ", shipAssigned,
-                        shipAssigned ? "Đã gán: " + ship.getShipName() : "Chưa gán tàu"));
+                items.add(PreparationCheckItemDto.builder()
+                        .itemCode("SHIP_ASSIGNED")
+                        .itemName("Gán tàu hợp lệ")
+                        .ready(shipAssigned)
+                        .required(true)
+                        .state(shipAssigned ? "PASSED" : "BLOCKED")
+                        .evidence(shipAssigned ? "Đã gán: " + ship.getShipName() : "Chưa gán tàu")
+                        .details(shipAssigned ? "Tàu ID: " + ship.getShipId() : "Chưa có tàu được gán")
+                        .build());
                 boolean shipActive = (ship != null && ship.getStatus() == ShipStatus.ACTIVE);
-                items.add(new PreparationCheckItemDto("SHIP_STATUS_ACTIVE", "Tàu ở trạng thái ACTIVE", shipActive,
-                        ship != null ? "Trạng thái: " + ship.getStatus() : "Chưa có tàu"));
+                items.add(PreparationCheckItemDto.builder()
+                        .itemCode("SHIP_STATUS_ACTIVE")
+                        .itemName("Tàu ở trạng thái ACTIVE")
+                        .ready(shipActive)
+                        .required(true)
+                        .state(shipActive ? "PASSED" : "BLOCKED")
+                        .evidence(ship != null ? "Trạng thái: " + ship.getStatus() : "Chưa có tàu")
+                        .details(shipActive ? "Tàu đang hoạt động" : "Tàu không ở trạng thái ACTIVE")
+                        .build());
                 long decks = ship != null ? deckRepository.countByShipShipId(ship.getShipId()) : 0;
                 long cabins = ship != null ? cabinRepository.countByShipShipId(ship.getShipId()) : 0;
                 boolean configReady = decks > 0 && cabins > 0;
-                items.add(new PreparationCheckItemDto("SHIP_CONFIG", "Cấu hình boong và cabin", configReady,
-                        "Tầng boong: " + decks + ", Cabin: " + cabins));
+                items.add(PreparationCheckItemDto.builder()
+                        .itemCode("SHIP_CONFIG")
+                        .itemName("Cấu hình boong và cabin")
+                        .ready(configReady)
+                        .required(true)
+                        .state(configReady ? "PASSED" : "BLOCKED")
+                        .evidence("Tầng boong: " + decks + ", Cabin: " + cabins)
+                        .details(configReady ? "Boong và phòng đã được cấu hình" : "Thiếu boong hoặc phòng")
+                        .build());
             }
             case "HOTEL_CABIN" -> {
                 long totalCabins = ship != null ? cabinRepository.countByShipShipId(ship.getShipId()) : 0;
-                items.add(new PreparationCheckItemDto("CABIN_INVENTORY", "Kiểm kê phòng khách sạn", totalCabins > 0,
-                        "Tổng số phòng khả dụng: " + totalCabins));
+                long availableCabins = ship != null ? cabinRepository.countByShipShipIdAndStatus(ship.getShipId(), CabinStatus.AVAILABLE) : 0;
+                boolean cabinReady = totalCabins > 0 && availableCabins > 0;
+                items.add(PreparationCheckItemDto.builder()
+                        .itemCode("CABIN_INVENTORY")
+                        .itemName("Kiểm kê buồng phòng khách sạn")
+                        .ready(cabinReady)
+                        .required(true)
+                        .state(cabinReady ? "PASSED" : "BLOCKED")
+                        .evidence(cabinReady ? "Khả dụng: " + availableCabins + "/" + totalCabins + " phòng" : "Không có phòng khả dụng trên tàu")
+                        .details("Tổng phòng: " + totalCabins + ", Khả dụng: " + availableCabins)
+                        .build());
             }
             case "FOOD_BEVERAGE" -> {
-                items.add(new PreparationCheckItemDto("SERVING_WINDOWS", "Khung giờ phục vụ ăn uống", true,
-                        "Các khung giờ phục vụ nhà hàng, quầy bar đã đồng bộ từ lịch trình"));
+                long scheduleCount = serviceScheduleRepository.countByCruise_CruiseId(cruiseId);
+                boolean hasFB = scheduleCount > 0;
+                items.add(PreparationCheckItemDto.builder()
+                        .itemCode("SERVING_WINDOWS")
+                        .itemName("Khung giờ phục vụ ăn uống & dịch vụ")
+                        .ready(hasFB)
+                        .required(true)
+                        .state(hasFB ? "PASSED" : "BLOCKED")
+                        .evidence(hasFB ? "Đã cấu hình " + scheduleCount + " khung giờ phục vụ ẩm thực/dịch vụ" : "Chưa có khung giờ phục vụ dịch vụ/ẩm thực nào được cấu hình cho chuyến đi")
+                        .details(hasFB ? "Đã đồng bộ lịch trình và khung giờ phục vụ" : "Yêu cầu cấu hình ServiceSchedule cho chuyến đi")
+                        .build());
             }
             case "ENTERTAINMENT_SHORE" -> {
                 long excursions = shoreExcursionRepository.countByCruiseId(cruiseId);
-                items.add(new PreparationCheckItemDto("SHORE_EXCURSIONS", "Tour bờ và đối tác cung ứng", excursions > 0,
-                        "Số lượng tour bờ đã liên kết: " + excursions));
+                long activities = onboardActivityRepository.countByCruise_CruiseId(cruiseId);
+                boolean entReady = excursions > 0 || activities > 0;
+                items.add(PreparationCheckItemDto.builder()
+                        .itemCode("SHORE_EXCURSIONS")
+                        .itemName("Hoạt động Giải trí & Tour bờ")
+                        .ready(entReady)
+                        .required(true)
+                        .state(entReady ? "PASSED" : "BLOCKED")
+                        .evidence(entReady ? "Tour bờ: " + excursions + ", Hoạt động onboard: " + activities : "Chưa cấu hình tour bờ hoặc hoạt động giải trí")
+                        .details("Tour bờ liên kết: " + excursions + ", Hoạt động trên tàu: " + activities)
+                        .build());
             }
             case "SAFETY_CREW" -> {
                 boolean captainAssigned = cruiseStaffRepository.existsByCruise_CruiseIdAndRoleInCruiseAndStatus(
                         cruiseId, "CAPTAIN", "ACTIVE");
-                items.add(new PreparationCheckItemDto("CAPTAIN_ASSIGNED", "Phân công Thuyền trưởng", captainAssigned,
-                        captainAssigned ? "Thuyền trưởng đã sẵn sàng" : "Chưa phân công Thuyền trưởng"));
+                long activeCrew = cruiseStaffRepository.countByCruise_CruiseIdAndStatus(cruiseId, "ACTIVE");
+                boolean crewReady = captainAssigned && activeCrew >= 1;
+                items.add(PreparationCheckItemDto.builder()
+                        .itemCode("CAPTAIN_ASSIGNED")
+                        .itemName("Phân công Thuyền trưởng & Thuyền viên")
+                        .ready(crewReady)
+                        .required(true)
+                        .state(crewReady ? "PASSED" : "BLOCKED")
+                        .evidence(captainAssigned ? "Thuyền trưởng đã phân công (Tổng thuyền viên hoạt động: " + activeCrew + ")" : "Chưa phân công Thuyền trưởng")
+                        .details("Thuyền trưởng: " + (captainAssigned ? "SẴN SÀNG" : "CHƯA PHÂN CÔNG") + ", Thuyền viên: " + activeCrew)
+                        .build());
             }
             default -> {}
         }

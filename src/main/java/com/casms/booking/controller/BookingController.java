@@ -11,6 +11,7 @@ import com.casms.booking.dto.response.BookingDetailResponse;
 import com.casms.booking.dto.response.BookingSummaryResponse;
 import com.casms.booking.enums.BookingStatus;
 import com.casms.booking.service.BookingService;
+import com.casms.common.exception.BusinessException;
 import com.casms.common.response.ApiResponse;
 import com.casms.security.principal.CasmsPrincipal;
 import com.casms.ship.enums.CabinType;
@@ -71,20 +72,33 @@ public class BookingController {
         return ApiResponse.success(bookingService.createQuote(request, principal));
     }
 
-    @Operation(summary = "Tra cứu thông tin báo giá (BE-11)", description = "Xem chi tiết báo giá và kiểm tra hạn sử dụng của báo giá")
+    @Operation(summary = "Tra cứu thông tin báo giá (BE-11 / BE-H02)",
+               description = "Xem chi tiết báo giá và kiểm tra hạn sử dụng của báo giá (Yêu cầu quyền sở hữu hoặc X-Guest-Token đối với khách vãng lai)")
     @GetMapping("/quotes/{quoteId}")
-    public ApiResponse<BookingQuoteResponse> getQuote(@PathVariable UUID quoteId) {
-        return ApiResponse.success(bookingService.getQuote(quoteId));
+    public ApiResponse<BookingQuoteResponse> getQuote(
+            @PathVariable UUID quoteId,
+            @RequestHeader(value = "X-Guest-Token", required = false) String guestTokenHeader,
+            @RequestParam(value = "guestToken", required = false) String guestTokenParam,
+            @AuthenticationPrincipal CasmsPrincipal principal) {
+        String guestToken = (guestTokenHeader != null && !guestTokenHeader.isBlank())
+                ? guestTokenHeader
+                : guestTokenParam;
+        return ApiResponse.success(bookingService.getQuote(quoteId, principal, guestToken));
     }
 
-    @Operation(summary = "Tạo đặt chỗ chuyến đi (Hỗ trợ cả khách chưa đăng nhập và đã đăng nhập - BE-16 Idempotency)",
-               description = "Hành khách tự chọn cabin cụ thể và gói dịch vụ. Hỗ trợ Idempotency-Key header để chống duplicate booking khi mạng chập chờn hoặc retry timeout.")
+    @Operation(summary = "Tạo đặt chỗ chuyến đi (Hỗ trợ cả khách chưa đăng nhập và đã đăng nhập - BE-16 / BE-H03 Idempotency)",
+               description = "Hành khách tự chọn cabin cụ thể và gói dịch vụ. Bắt buộc Idempotency-Key header đối với khách hàng để chống duplicate booking khi mạng chập chờn hoặc retry timeout.")
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<BookingDetailResponse> create(
             @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
             @RequestBody @Valid BookingCreateRequest request,
             @AuthenticationPrincipal CasmsPrincipal principal) {
+        boolean isStaff = principal != null && (principal.hasAuthority("BOOKING_MANAGE") || principal.hasAuthority("ROLE_ADMIN"));
+        if (!isStaff && (idempotencyKey == null || idempotencyKey.isBlank())) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "IDEMPOTENCY_KEY_REQUIRED",
+                    "Tiêu đề Idempotency-Key là bắt buộc đối với giao dịch đặt vé.");
+        }
         UUID actorId = principal != null ? principal.getUserId() : null;
         if (idempotencyKey != null && !idempotencyKey.isBlank()) {
             BookingDetailResponse response = idempotencyService.execute(
@@ -93,6 +107,16 @@ public class BookingController {
             return ApiResponse.success("Booking created successfully", response);
         }
         return ApiResponse.success("Booking created successfully", bookingService.createBooking(request, principal));
+    }
+
+    @Operation(summary = "Phục hồi kết quả đặt chỗ sau sự cố mạng / timeout (BE-H03 Recovery Intent)",
+               description = "Truy vấn lại kết quả đặt chỗ bằng Idempotency-Key khi client bị timeout hoặc mất kết nối trước khi nhận được Booking Reference")
+    @GetMapping("/recovery")
+    public ApiResponse<BookingDetailResponse> recoverBooking(
+            @Parameter(description = "Idempotency-Key đã gửi khi tạo đặt chỗ", required = true)
+            @RequestParam String idempotencyKey,
+            @AuthenticationPrincipal CasmsPrincipal principal) {
+        return ApiResponse.success(bookingService.recoverBookingByIdempotencyKey(idempotencyKey, principal));
     }
 
     @Operation(summary = "Tra cứu đơn đặt chỗ cho khách vãng lai",

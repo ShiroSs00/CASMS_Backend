@@ -46,6 +46,7 @@ public class CruiseStaffService {
     private final CruiseStaffRepository cruiseStaffRepository;
     private final CruiseRepository cruiseRepository;
     private final UserRepository userRepository;
+    private final CruisePreparationService cruisePreparationService;
 
     @Transactional
     public CruiseStaffResponse assignStaff(UUID cruiseId, CruiseStaffRequest request, UUID actorId) {
@@ -101,6 +102,7 @@ public class CruiseStaffService {
                 .orElseThrow(() -> new ResourceNotFoundException("Assigning user not found")));
 
         CruiseStaff saved = cruiseStaffRepository.save(staff);
+        cruisePreparationService.invalidateSignoffs(cruiseId, "Phân công nhân sự mới: " + user.getUsername() + " (" + assignmentRole + ")");
         return toResponse(saved);
     }
 
@@ -125,6 +127,7 @@ public class CruiseStaffService {
         staff.setEndedBy(userRepository.findById(actorId)
                 .orElseThrow(() -> new ResourceNotFoundException("Removing user not found")));
         cruiseStaffRepository.save(staff);
+        cruisePreparationService.invalidateSignoffs(cruiseId, "Gỡ bỏ phân công nhân sự: " + staff.getUser().getUsername());
         log.info("Relieved staff user {} from cruise {}", userId, cruiseId);
     }
 

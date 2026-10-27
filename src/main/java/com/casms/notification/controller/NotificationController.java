@@ -16,7 +16,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 
 @Tag(name = "Notifications", description = "Quản lý thông báo người dùng và hành khách")
 @RestController
-@RequestMapping("/notification")
+@RequestMapping({"/notification", "/notifications"})
 @RequiredArgsConstructor
 public class NotificationController {
 
