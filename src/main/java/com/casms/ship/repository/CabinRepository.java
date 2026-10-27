@@ -35,8 +35,17 @@ public interface CabinRepository extends JpaRepository<Cabin, UUID> {
     @Query("SELECT COALESCE(SUM(c.capacity), 0) FROM Cabin c WHERE c.ship.shipId = :shipId AND c.cabinType = :cabinType")
     Long sumCapacityByShipIdAndCabinType(@Param("shipId") UUID shipId, @Param("cabinType") CabinType cabinType);
 
+    @Query("SELECT COALESCE(SUM(c.capacity), 0) FROM Cabin c WHERE c.ship.shipId = :shipId AND c.cabinType = :cabinType AND c.status = 'AVAILABLE'")
+    Long sumAvailableCapacityByShipIdAndCabinType(@Param("shipId") UUID shipId, @Param("cabinType") CabinType cabinType);
+
     @Query("SELECT COALESCE(SUM(c.capacity), 0) FROM Cabin c WHERE c.ship.shipId = :shipId")
     Long sumCapacityByShipId(@Param("shipId") UUID shipId);
+
+    @Query("SELECT COALESCE(SUM(c.capacity), 0) FROM Cabin c WHERE c.ship.shipId = :shipId AND c.status = 'AVAILABLE'")
+    Long sumAvailableCapacityByShipId(@Param("shipId") UUID shipId);
+
+    @Query("SELECT COUNT(c) FROM Cabin c WHERE c.ship.shipId = :shipId AND c.status = 'AVAILABLE'")
+    Long countAvailableCabinsByShipId(@Param("shipId") UUID shipId);
     boolean existsByDeckDeckId(UUID deckId);
     List<Cabin> findByDeckDeckId(UUID deckId);
     long countByDeckDeckId(UUID deckId);

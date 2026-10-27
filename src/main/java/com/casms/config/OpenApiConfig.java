@@ -110,6 +110,7 @@ public class OpenApiConfig {
                 .group("2. Đội tàu & Chuyến đi (Fleet & Cruise)")
                 .pathsToMatch(
                         "/cruise/**", "/cruises/**",
+                        "/api/cruise/**", "/api/cruises/**",
                         "/cruise-stops/**", "/cruise-stop/**",
                         "/ship/**", "/ships/**",
                         "/deck/**", "/decks/**",

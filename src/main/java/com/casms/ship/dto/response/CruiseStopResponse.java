@@ -94,6 +94,12 @@ public class CruiseStopResponse {
     @Schema(description = "ID điểm dừng thay thế", example = "3fa85f64-5717-4562-b3fc-2c963f66afa6")
     private UUID substitutedByStopId;
 
+    @Schema(description = "Tên đại lý cảng / Port Agency", example = "Viconship Hải Phòng")
+    private String portAgencyName;
+
+    @Schema(description = "Vị trí cầu bến neo đậu (Berth)", example = "Berth 03 - Cầu cảng số 3")
+    private String berthIdentifier;
+
     @Schema(description = "Tên liên hệ cảng", example = "Nguyễn Văn A")
     private String portContactName;
 

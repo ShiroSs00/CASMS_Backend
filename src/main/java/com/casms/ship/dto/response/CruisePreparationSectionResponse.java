@@ -71,5 +71,18 @@ public class CruisePreparationSectionResponse {
         private String itemName;
         private boolean ready;
         private String details;
+        private Boolean required;
+        private String state;
+        private String evidence;
+
+        public PreparationCheckItemDto(String itemCode, String itemName, boolean ready, String details) {
+            this.itemCode = itemCode;
+            this.itemName = itemName;
+            this.ready = ready;
+            this.details = details;
+            this.required = true;
+            this.state = ready ? "PASSED" : "BLOCKED";
+            this.evidence = details;
+        }
     }
 }

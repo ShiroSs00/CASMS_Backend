@@ -60,7 +60,7 @@ import java.util.UUID;
 
 @Tag(name = "Cruise Management", description = "Quản lý kế hoạch và vòng đời chuyến đi du thuyền (Cruise)")
 @RestController
-@RequestMapping("/cruise")
+@RequestMapping({"/cruise", "/cruises"})
 @RequiredArgsConstructor
 public class CruiseController {
 
@@ -117,6 +117,7 @@ public class CruiseController {
     public ApiResponse<Page<CruiseResponse>> list(
             @Parameter(description = "Lọc theo trạng thái chuyến đi") @RequestParam(required = false) CruiseStatus status,
             @Parameter(description = "Lọc theo ID tàu") @RequestParam(required = false) UUID shipId,
+            @Parameter(description = "Lọc các chuyến đi chưa gán tàu (unassigned=true)") @RequestParam(required = false) Boolean unassigned,
             @Parameter(description = "Lọc theo loại chuyến đi (ONE_DAY, MULTI_DAYS)") @RequestParam(required = false) CruiseCruiseType cruiseType,
             @Parameter(description = "Lọc theo ID Trip mẫu nguồn (C15)") @RequestParam(required = false) UUID sourceTripId,
             @Parameter(description = "Lọc theo ID phiên bản TripScheduleVersion nguồn (C15)") @RequestParam(required = false) UUID sourceVersionId,
@@ -124,7 +125,11 @@ public class CruiseController {
             org.springframework.security.core.Authentication auth) {
         boolean hasCruiseRead = auth != null && auth.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("CRUISE_READ"));
         CruiseStatus effectiveStatus = hasCruiseRead ? status : CruiseStatus.PUBLISHED;
-        return ApiResponse.success(service.list(effectiveStatus, shipId, cruiseType, sourceTripId, sourceVersionId, pageable));
+        Page<CruiseResponse> page = service.list(effectiveStatus, shipId, unassigned, cruiseType, sourceTripId, sourceVersionId, pageable);
+        if (!hasCruiseRead) {
+            page = page.map(this::sanitizeForPublic);
+        }
+        return ApiResponse.success(page);
     }
 
     @Operation(summary = "Chi tiết chuyến đi", description = "Lấy thông tin chi tiết của một chuyến đi theo ID")
@@ -138,7 +143,25 @@ public class CruiseController {
         if (!hasCruiseRead && response.getStatus() != CruiseStatus.PUBLISHED) {
             throw new org.springframework.security.access.AccessDeniedException("Access denied to non-published cruise");
         }
+        if (!hasCruiseRead) {
+            response = sanitizeForPublic(response);
+        }
         return ApiResponse.success(response);
+    }
+
+    private CruiseResponse sanitizeForPublic(CruiseResponse res) {
+        if (res == null) return null;
+        res.setStoppedByUsername(null);
+        res.setStopEvidence(null);
+        res.setStopEventIdentity(null);
+        res.setOpenedForSaleByUsername(null);
+        res.setSaleEventIdentity(null);
+        res.setDepartureActorUsername(null);
+        res.setCompletionActorUsername(null);
+        res.setClosureNotes(null);
+        res.setRevision(null);
+        res.setSourceVersionRevision(null);
+        return res;
     }
 
     @Operation(summary = "Cập nhật bản nháp chuyến đi", description = "Cập nhật thông tin chuyến đi (chỉ áp dụng khi chuyến ở trạng thái DRAFT)")
@@ -165,8 +188,10 @@ public class CruiseController {
     @PostMapping("/{cruiseId}/assign-ship")
     public ApiResponse<CruiseResponse> assignShip(
             @Parameter(description = "ID chuyến đi", required = true) @PathVariable UUID cruiseId,
-            @Parameter(description = "ID tàu cần gán", required = true) @RequestParam UUID shipId) {
-        return ApiResponse.success(service.assignShip(cruiseId, shipId));
+            @Parameter(description = "ID tàu cần gán", required = true) @RequestParam UUID shipId,
+            @AuthenticationPrincipal CasmsPrincipal principal) {
+        UUID actorId = principal != null ? principal.getUserId() : null;
+        return ApiResponse.success(service.assignShip(cruiseId, shipId, actorId));
     }
 
     @Operation(summary = "Thay đổi tàu đã gán", description = "Đổi sang tàu khác cho chuyến đi (kiểm tra tàu mới ACTIVE, không trùng lịch, và sức chứa đáp ứng lượng khách đã đặt)")
@@ -174,8 +199,10 @@ public class CruiseController {
     @PutMapping("/{cruiseId}/change-assigned-ship")
     public ApiResponse<CruiseResponse> changeAssignedShip(
             @Parameter(description = "ID chuyến đi", required = true) @PathVariable UUID cruiseId,
-            @Parameter(description = "ID tàu mới", required = true) @RequestParam UUID newShipId) {
-        return ApiResponse.success(service.changeAssignedShip(cruiseId, newShipId));
+            @Parameter(description = "ID tàu mới", required = true) @RequestParam UUID newShipId,
+            @AuthenticationPrincipal CasmsPrincipal principal) {
+        UUID actorId = principal != null ? principal.getUserId() : null;
+        return ApiResponse.success(service.changeAssignedShip(cruiseId, newShipId, actorId));
     }
 
     @Operation(summary = "Hủy gán tàu khỏi chuyến đi", description = "Gỡ bỏ tàu khỏi chuyến đi (chỉ áp dụng khi chuyến ở trạng thái DRAFT và chưa có đặt chỗ)")
@@ -221,7 +248,9 @@ public class CruiseController {
         return ApiResponse.success(service.validateOperationalReadiness(cruiseId));
     }
 
-    @Operation(summary = "Phát hành chuyến đi (Publish)", description = "Chuyển trạng thái từ DRAFT sang PUBLISHED (yêu cầu kiểm tra sẵn sàng vận hành đạt tiêu chuẩn)")
+    @Deprecated
+    @Operation(summary = "Phát hành chuyến đi (Publish - Legacy / Operational materialization)",
+               description = "Chuyển trạng thái từ DRAFT sang PUBLISHED để ghi nhận chuyến đi đã sẵn sàng vận hành. LƯU Ý: Thao tác này KHÔNG mở bán thương mại cho hành khách (khách hàng chỉ có thể mua vé sau khi OPS mở bán qua POST /{cruiseId}/open-sale).")
     @PreAuthorize("hasAuthority('CRUISE_PUBLISH')")
     @PostMapping("/{cruiseId}/publish")
     public ApiResponse<CruiseResponse> publish(
@@ -470,12 +499,12 @@ public class CruiseController {
         return ApiResponse.success(service.validateDepartureReadiness(cruiseId));
     }
 
-    @Operation(summary = "Mở bán chuyến đi hoặc sản phẩm dịch vụ (BE-08B / BE-13)", description = "Kích hoạt trạng thái PUBLISHED cho chuyến đi và OPEN_FOR_SALE cho lịch trình sau khi đạt kiểm tra sale readiness")
+    @Operation(summary = "Mở bán chuyến đi hoặc sản phẩm dịch vụ (BE-08B / BE-13 / BE-H04)", description = "Kích hoạt trạng thái PUBLISHED cho chuyến đi và OPEN_FOR_SALE cho lịch trình sau khi đạt kiểm tra sale readiness theo scope")
     @PreAuthorize("hasAuthority('CRUISE_OPEN_SALE')")
     @PostMapping("/{cruiseId}/open-sale")
     public ApiResponse<CruiseResponse> openSale(
             @PathVariable UUID cruiseId,
-            @RequestBody(required = false) CruiseOpenSaleRequest request,
+            @RequestBody @Valid @jakarta.validation.constraints.NotNull CruiseOpenSaleRequest request,
             @AuthenticationPrincipal CasmsPrincipal principal) {
         UUID actorId = principal != null ? principal.getUserId() : null;
         return ApiResponse.success(service.openSale(cruiseId, request, actorId));

@@ -17,4 +17,6 @@ public interface ServiceScheduleRepository extends JpaRepository<ServiceSchedule
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select s from ServiceSchedule s where s.serviceScheduleId = :id")
     Optional<ServiceSchedule> lockById(@Param("id") UUID id);
+
+    long countByCruise_CruiseId(UUID cruiseId);
 }

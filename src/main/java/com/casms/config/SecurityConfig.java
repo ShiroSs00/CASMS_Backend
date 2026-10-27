@@ -51,9 +51,11 @@ public class SecurityConfig {
                                 "/h2-console/**",
                                 "/booking/available-cabins",
                                 "/booking/3d-available-cabins",
-                                "/booking/lookup"
+                                "/booking/lookup",
+                                "/booking/recovery"
                         ).permitAll()
                         .requestMatchers(HttpMethod.GET,
+                                "/booking/quotes/**",
                                 "/cruise",
                                 "/cruise/**",
                                 "/destinations",
@@ -69,7 +71,7 @@ public class SecurityConfig {
                                 "/servicepackage/packages",
                                 "/servicepackage/packages/**"
                         ).permitAll()
-                        .requestMatchers(HttpMethod.POST, "/booking").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/booking", "/booking/quotes").permitAll()
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);

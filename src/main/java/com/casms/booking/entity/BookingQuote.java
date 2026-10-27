@@ -72,6 +72,9 @@ public class BookingQuote {
     @Column(name = "quote_payload_json", columnDefinition = "TEXT")
     private String quotePayloadJson;
 
+    @Column(name = "guest_token", length = 128)
+    private String guestToken;
+
     @Builder.Default
     @Column(name = "status", nullable = false, length = 30)
     private String status = "ACTIVE"; // ACTIVE, COMMITTED, EXPIRED

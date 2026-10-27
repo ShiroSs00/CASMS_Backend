@@ -22,7 +22,7 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 @RestController
-@RequestMapping("/api/cruises/{cruiseId}/preparation")
+@RequestMapping({"/cruises/{cruiseId}/preparation", "/cruise/{cruiseId}/preparation", "/api/cruises/{cruiseId}/preparation", "/api/cruise/{cruiseId}/preparation"})
 @RequiredArgsConstructor
 @Tag(name = "Cruise Preparation", description = "Quản lý chuẩn bị liên phòng ban và ký duyệt sẵn sàng (BE-07 / Mainflow S3)")
 public class CruisePreparationController {

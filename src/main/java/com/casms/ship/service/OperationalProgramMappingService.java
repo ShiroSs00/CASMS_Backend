@@ -157,6 +157,7 @@ public class OperationalProgramMappingService {
                             .status("LINKED")
                             .reservationRequired(false)
                             .reason("Khung phục vụ thông tin tiện ích (không yêu cầu đặt chỗ trước)")
+                            .action("READY")
                             .warnings(itemWarnings)
                             .requiredData(null)
                             .build());
@@ -197,9 +198,18 @@ public class OperationalProgramMappingService {
                     }
 
                     Optional<OnboardActivity> existingOpt = onboardActivityRepository.findByActivityCode(activityCode);
+                    if (existingOpt.isEmpty()) {
+                        // Secondary idempotent deduplication check to prevent duplicate activity on retry
+                        List<OnboardActivity> cruiseActivities = onboardActivityRepository.findByCruise_CruiseId(cruise.getCruiseId());
+                        existingOpt = cruiseActivities.stream()
+                                .filter(a -> a.getActivityName().equalsIgnoreCase(entry.getTitle()))
+                                .findFirst();
+                    }
+
                     UUID activityId;
                     String status;
                     String reason;
+                    String action = "READY";
 
                     if (existingOpt.isPresent()) {
                         OnboardActivity existing = existingOpt.get();
@@ -212,6 +222,7 @@ public class OperationalProgramMappingService {
                             itemWarnings.add(regMsg);
                             status = "LINKED";
                             reason = "Đã liên kết (bảo toàn cấu hình vì đã có khách đăng ký)";
+                            action = "READY";
                         } else {
                             // Cập nhật an toàn chỉ thời gian và vị trí, bảo toàn các trường đã cập nhật thủ công
                             existing.setActivityName(entry.getTitle());
@@ -225,8 +236,28 @@ public class OperationalProgramMappingService {
                             if (deck != null) existing.setDeck(deck);
                             if (cabin != null) existing.setCabin(cabin);
                             onboardActivityRepository.save(existing);
-                            status = "LINKED";
-                            reason = "Đã cập nhật theo kế hoạch nguồn (Idempotent update)";
+
+                            boolean incomplete = false;
+                            if (existing.getPrice() == null) {
+                                itemWarnings.add("Hoạt động chưa có cấu hình giá (không tự động gán giá 0)");
+                                requiredData.append("Cần cấu hình giá và loại tiền tệ; ");
+                                incomplete = true;
+                                action = "CONFIGURE_PRICING";
+                            } else if (existing.getPrice().compareTo(BigDecimal.ZERO) > 0 && existing.getCurrencyCode() == null) {
+                                itemWarnings.add("Hoạt động có giá nhưng chưa có mã tiền tệ");
+                                requiredData.append("Cần cấu hình mã tiền tệ; ");
+                                incomplete = true;
+                                action = "CONFIGURE_PRICING";
+                            }
+                            if (existing.getCapacity() == null || existing.getCapacity() <= 0) {
+                                itemWarnings.add("Hoạt động thiếu định biên sức chứa");
+                                requiredData.append("Cần cấu hình sức chứa; ");
+                                incomplete = true;
+                                action = "CONFIGURE_CAPACITY";
+                            }
+
+                            status = incomplete ? "INCOMPLETE" : "LINKED";
+                            reason = incomplete ? "Đã liên kết hoạt động nhưng thiếu thông tin nghiệp vụ cần cấu hình" : "Đã cập nhật theo kế hoạch nguồn (Idempotent update)";
                         }
                     } else {
                         OnboardActivity activity = new OnboardActivity();
@@ -243,33 +274,61 @@ public class OperationalProgramMappingService {
                         activity.setCabin(cabin);
 
                         // Thừa hưởng thuộc tính từ template nếu có
+                        BigDecimal actPrice = null;
+                        String actCurrency = null;
+                        Integer actCapacity = null;
                         if (entry.getSourceActivityId() != null) {
                             Optional<OnboardActivity> srcActOpt = onboardActivityRepository.findById(entry.getSourceActivityId());
                             if (srcActOpt.isPresent()) {
                                 OnboardActivity srcAct = srcActOpt.get();
-                                activity.setCapacity(srcAct.getCapacity());
-                                activity.setPrice(srcAct.getPrice());
-                                activity.setCurrencyCode(srcAct.getCurrencyCode());
+                                actCapacity = srcAct.getCapacity();
+                                actPrice = srcAct.getPrice();
+                                actCurrency = srcAct.getCurrencyCode();
                             }
                         }
 
-                        boolean missingCapacity = (activity.getCapacity() == null || activity.getCapacity() <= 0);
-                        if (missingCapacity) {
+                        boolean incomplete = false;
+                        if (actCapacity != null && actCapacity > 0) {
+                            activity.setCapacity(actCapacity);
+                        } else {
                             activity.setCapacity(30);
                             itemWarnings.add("Chưa có cấu hình sức chứa từ nguồn (thiếu định biên)");
                             requiredData.append("Cần cấu hình sức chứa; ");
+                            incomplete = true;
+                            action = "CONFIGURE_CAPACITY";
                         }
-                        if (activity.getPrice() == null) {
+
+                        // BE-H13: Phân biệt giá = 0 thật và chưa cấu hình; không biến null thành giá 0 hay currency giả
+                        if (actPrice == null) {
+                            activity.setPrice(null);
+                            activity.setCurrencyCode(null);
+                            itemWarnings.add("Chưa có cấu hình giá cho hoạt động (không tự động gán giá 0)");
+                            requiredData.append("Cần cấu hình giá và loại tiền tệ; ");
+                            incomplete = true;
+                            if ("READY".equals(action)) action = "CONFIGURE_PRICING";
+                        } else if (actPrice.compareTo(BigDecimal.ZERO) == 0) {
+                            // Giá 0 thật (hoạt động miễn phí / bao gồm)
                             activity.setPrice(BigDecimal.ZERO);
+                            activity.setCurrencyCode(actCurrency != null ? actCurrency : "VND");
+                        } else {
+                            // Hoạt động có phí
+                            activity.setPrice(actPrice);
+                            if (actCurrency == null || actCurrency.isBlank()) {
+                                activity.setCurrencyCode(null);
+                                itemWarnings.add("Hoạt động có phí nhưng thiếu mã tiền tệ");
+                                requiredData.append("Cần cấu hình mã tiền tệ; ");
+                                incomplete = true;
+                                if ("READY".equals(action)) action = "CONFIGURE_PRICING";
+                            } else {
+                                activity.setCurrencyCode(actCurrency.trim());
+                            }
                         }
-                        if (activity.getCurrencyCode() == null) {
-                            activity.setCurrencyCode("VND");
-                        }
+
                         activity.setStatus(OnboardActivityStatus.PLANNED);
                         activity = onboardActivityRepository.save(activity);
                         activityId = activity.getOnboardActivityId();
-                        status = missingCapacity ? "INCOMPLETE" : "CREATED";
-                        reason = missingCapacity ? "Tạo hoạt động trên tàu nhưng thiếu cấu hình sức chứa chuẩn" : "Tạo mới hoạt động trên tàu thành công";
+                        status = incomplete ? "INCOMPLETE" : "CREATED";
+                        reason = incomplete ? "Tạo hoạt động trên tàu nhưng thiếu cấu hình nghiệp vụ (giá hoặc định biên sức chứa)" : "Tạo mới hoạt động trên tàu thành công";
                     }
 
                     activitiesCount++;
@@ -284,6 +343,7 @@ public class OperationalProgramMappingService {
                             .status(status)
                             .reservationRequired(true)
                             .reason(reason)
+                            .action(action)
                             .warnings(itemWarnings)
                             .requiredData(requiredData.length() > 0 ? requiredData.toString().trim() : null)
                             .build());
@@ -336,6 +396,7 @@ public class OperationalProgramMappingService {
                                 .status("FAILED")
                                 .reservationRequired(true)
                                 .reason("Không tìm thấy lần ghé cảng tương ứng (Stop không khớp hoặc null)")
+                                .action("LINK_PORT_CALL")
                                 .warnings(itemWarnings)
                                 .requiredData("Cần liên kết đúng lần ghé cảng trong hải trình")
                                 .build());
@@ -347,8 +408,11 @@ public class OperationalProgramMappingService {
                         Port stopPort = portRepository.findById(matchedStop.getPort().getPortId()).orElse(null);
                         if (stopPort != null && stopPort.getTimeZoneId() != null) {
                             ZoneId excursionZone = PortTimeZoneHelper.resolveZone(stopPort.getTimeZoneId());
-                            startTime = startDate.atTime(startTimeVal).atZone(excursionZone).toInstant();
-                            endTime = endDate.atTime(endTimeVal).atZone(excursionZone).toInstant();
+                            LocalDate stopDate = matchedStop.getPlannedArrival() != null
+                                    ? matchedStop.getPlannedArrival().atZone(excursionZone).toLocalDate()
+                                    : startDate;
+                            startTime = stopDate.atTime(startTimeVal).atZone(excursionZone).toInstant();
+                            endTime = stopDate.atTime(endTimeVal).atZone(excursionZone).toInstant();
                         }
                     }
 
@@ -405,6 +469,7 @@ public class OperationalProgramMappingService {
                                 .status("FAILED")
                                 .reservationRequired(true)
                                 .reason("Thiếu nhà cung cấp (Supplier) - Không tạo bản ghi với dữ liệu giả")
+                                .action("ASSIGN_SUPPLIER")
                                 .warnings(itemWarnings)
                                 .requiredData("Cần phân công Nhà cung cấp (Supplier)")
                                 .build());
@@ -425,6 +490,7 @@ public class OperationalProgramMappingService {
                                 .status("FAILED")
                                 .reservationRequired(true)
                                 .reason("Nhà cung cấp chưa được xác minh (VERIFIED) hoặc không ACTIVE")
+                                .action("VERIFY_SUPPLIER")
                                 .warnings(itemWarnings)
                                 .requiredData("Cần phân công Nhà cung cấp đã xác minh (VERIFIED)")
                                 .build());
@@ -446,6 +512,7 @@ public class OperationalProgramMappingService {
                                 .status("FAILED")
                                 .reservationRequired(true)
                                 .reason("Thiếu điểm tập trung đón khách (meetingPoint) - Không gán dữ liệu giả")
+                                .action("SET_MEETING_POINT")
                                 .warnings(itemWarnings)
                                 .requiredData("Cần bổ sung điểm tập trung đón khách")
                                 .build());
@@ -467,6 +534,7 @@ public class OperationalProgramMappingService {
                                 .status("FAILED")
                                 .reservationRequired(true)
                                 .reason("Thiếu cấu hình sức chứa tối đa (maximumCapacity) - Không gán dữ liệu giả")
+                                .action("CONFIGURE_CAPACITY")
                                 .warnings(itemWarnings)
                                 .requiredData("Cần cấu hình sức chứa tối đa hợp lệ")
                                 .build());
@@ -474,9 +542,18 @@ public class OperationalProgramMappingService {
                     }
 
                     Optional<ShoreExcursion> existingOpt = shoreExcursionRepository.findByExcursionCode(excursionCode);
+                    if (existingOpt.isEmpty()) {
+                        // Secondary idempotent deduplication check to prevent duplicate excursion on retry
+                        List<ShoreExcursion> stopExcursions = shoreExcursionRepository.findByCruiseStop_CruiseStopId(matchedStop.getCruiseStopId());
+                        existingOpt = stopExcursions.stream()
+                                .filter(e -> e.getExcursionName().equalsIgnoreCase(entry.getTitle()))
+                                .findFirst();
+                    }
+
                     UUID excursionId;
                     String status;
                     String reason;
+                    String action = "READY";
 
                     if (existingOpt.isPresent()) {
                         ShoreExcursion existing = existingOpt.get();
@@ -489,6 +566,7 @@ public class OperationalProgramMappingService {
                             itemWarnings.add(regMsg);
                             status = "LINKED";
                             reason = "Đã liên kết (bảo toàn cấu hình vì đã có khách đăng ký)";
+                            action = "READY";
                         } else {
                             // Cập nhật an toàn chỉ thời gian và điểm dừng
                             existing.setCruiseStop(matchedStop);
@@ -509,9 +587,35 @@ public class OperationalProgramMappingService {
                             if (existing.getPrice() == null && price != null) {
                                 existing.setPrice(price);
                             }
+                            if (existing.getCurrencyCode() == null && currencyCode != null) {
+                                existing.setCurrencyCode(currencyCode);
+                            }
+                            if (existing.getMinimumParticipants() == null && minParticipants != null) {
+                                existing.setMinimumParticipants(minParticipants);
+                            }
                             shoreExcursionRepository.save(existing);
-                            status = "LINKED";
-                            reason = "Đã cập nhật theo kế hoạch nguồn (Idempotent update)";
+
+                            boolean incomplete = false;
+                            if (existing.getPrice() == null) {
+                                itemWarnings.add("Tour bờ chưa được cấu hình giá (không tự động gán giá 0)");
+                                requiredData.append("Cần cấu hình giá và loại tiền tệ cho tour tham quan bờ; ");
+                                incomplete = true;
+                                action = "CONFIGURE_PRICING";
+                            } else if (existing.getPrice().compareTo(BigDecimal.ZERO) > 0 && (existing.getCurrencyCode() == null || existing.getCurrencyCode().isBlank())) {
+                                itemWarnings.add("Tour bờ có giá nhưng chưa có mã tiền tệ");
+                                requiredData.append("Cần cấu hình mã tiền tệ; ");
+                                incomplete = true;
+                                action = "CONFIGURE_PRICING";
+                            }
+                            if (existing.getMinimumParticipants() == null) {
+                                itemWarnings.add("Tour bờ chưa cấu hình số người tham gia tối thiểu");
+                                requiredData.append("Cần cấu hình số người tối thiểu; ");
+                                incomplete = true;
+                                if ("READY".equals(action)) action = "CONFIGURE_CAPACITY";
+                            }
+
+                            status = incomplete ? "INCOMPLETE" : "LINKED";
+                            reason = incomplete ? "Đã liên kết tour bờ nhưng còn thiếu thông tin nghiệp vụ cần cấu hình" : "Đã cập nhật theo kế hoạch nguồn (Idempotent update)";
                         }
                     } else {
                         ShoreExcursion excursion = new ShoreExcursion();
@@ -523,16 +627,51 @@ public class OperationalProgramMappingService {
                         excursion.setPlannedReturnTime(endTime);
                         excursion.setMeetingPoint(meetingPoint);
                         excursion.setSupplier(supplier);
-                        excursion.setMinimumParticipants(minParticipants != null ? minParticipants : 1);
                         excursion.setMaximumCapacity(maxCapacity);
-                        excursion.setPrice(price != null ? price : BigDecimal.ZERO);
-                        excursion.setCurrencyCode(currencyCode != null ? currencyCode : "USD");
-                        excursion.setStatus(ShoreExcursionStatus.PLANNED);
 
+                        boolean incomplete = false;
+                        // BE-H13: Không tự động gán minimumParticipants = 1 khi thiếu input
+                        if (minParticipants != null && minParticipants > 0) {
+                            excursion.setMinimumParticipants(minParticipants);
+                        } else {
+                            excursion.setMinimumParticipants(null);
+                            itemWarnings.add("Chưa cấu hình số người tham gia tối thiểu (không tự động gán min=1)");
+                            requiredData.append("Cần cấu hình số người tối thiểu; ");
+                            incomplete = true;
+                            action = "CONFIGURE_CAPACITY";
+                        }
+
+                        // BE-H13: Phân biệt giá = 0 thật và chưa cấu hình; không biến null thành giá 0 hay fake USD
+                        if (price == null) {
+                            excursion.setPrice(null);
+                            excursion.setCurrencyCode(null);
+                            itemWarnings.add("Chưa cấu hình đơn giá cho tour bờ (không tự động gán giá 0 hay USD)");
+                            requiredData.append("Cần cấu hình đơn giá và loại tiền tệ cho tour tham quan bờ; ");
+                            incomplete = true;
+                            if ("READY".equals(action)) action = "CONFIGURE_PRICING";
+                        } else if (price.compareTo(BigDecimal.ZERO) == 0) {
+                            // Miễn phí thật
+                            excursion.setPrice(BigDecimal.ZERO);
+                            excursion.setCurrencyCode(currencyCode != null ? currencyCode : "VND");
+                        } else {
+                            // Tour có phí
+                            excursion.setPrice(price);
+                            if (currencyCode == null || currencyCode.isBlank()) {
+                                excursion.setCurrencyCode(null);
+                                itemWarnings.add("Tour bờ có giá nhưng chưa có mã tiền tệ");
+                                requiredData.append("Cần cấu hình mã tiền tệ; ");
+                                incomplete = true;
+                                if ("READY".equals(action)) action = "CONFIGURE_PRICING";
+                            } else {
+                                excursion.setCurrencyCode(currencyCode.trim());
+                            }
+                        }
+
+                        excursion.setStatus(ShoreExcursionStatus.PLANNED);
                         excursion = shoreExcursionRepository.save(excursion);
                         excursionId = excursion.getShoreExcursionId();
-                        status = "CREATED";
-                        reason = "Tạo mới tour tham quan bờ thành công";
+                        status = incomplete ? "INCOMPLETE" : "CREATED";
+                        reason = incomplete ? "Tạo tour tham quan bờ nhưng thiếu cấu hình nghiệp vụ (giá, tiền tệ hoặc định biên tối thiểu)" : "Tạo mới tour tham quan bờ thành công";
                     }
 
                     excursionsCount++;
@@ -547,6 +686,7 @@ public class OperationalProgramMappingService {
                             .status(status)
                             .reservationRequired(true)
                             .reason(reason)
+                            .action(action)
                             .warnings(itemWarnings)
                             .requiredData(requiredData.length() > 0 ? requiredData.toString().trim() : null)
                             .build());
@@ -564,6 +704,7 @@ public class OperationalProgramMappingService {
                         .title(entry.getTitle())
                         .status("FAILED")
                         .reason(err)
+                        .action("RETRY_OR_FIX_INPUT")
                         .warnings(List.of(ex.getMessage() != null ? ex.getMessage() : ex.getClass().getSimpleName()))
                         .build());
             }

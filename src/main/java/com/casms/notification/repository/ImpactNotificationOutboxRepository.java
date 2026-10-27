@@ -29,4 +29,6 @@ public interface ImpactNotificationOutboxRepository extends JpaRepository<Impact
 
     @Query("SELECT COUNT(DISTINCT o.booking.bookingId) FROM ImpactNotificationOutbox o WHERE o.cruise.cruiseId = :cruiseId")
     long countDistinctBookingsByCruiseId(@Param("cruiseId") UUID cruiseId);
+
+    List<ImpactNotificationOutbox> findByRecipientUser_UserIdAndAcknowledgedAtIsNull(UUID userId);
 }

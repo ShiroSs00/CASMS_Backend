@@ -1,5 +1,6 @@
 package com.casms.ship.dto.request;
 
+import com.casms.ship.enums.CruiseStopArrivalMethod;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.Size;
 import lombok.Data;
@@ -7,8 +8,30 @@ import lombok.Data;
 import java.time.Instant;
 
 @Data
-@Schema(description = "Yêu cầu cập nhật hồ sơ và trạng thái phối hợp cảng (BE-20)")
+@Schema(description = "Yêu cầu cập nhật hồ sơ và trạng thái phối hợp cảng (BE-20 / BE-H16)")
 public class CruisePortCoordinationRequest {
+
+    @Schema(description = "Tên đại lý cảng / Port Agency", example = "Viconship Hải Phòng")
+    @Size(max = 200, message = "Tên đại lý không vượt quá 200 ký tự")
+    private String portAgencyName;
+
+    @Schema(description = "Vị trí cầu bến neo đậu (Berth)", example = "Berth 03 - Cầu cảng số 3")
+    @Size(max = 100, message = "Vị trí cầu bến không vượt quá 100 ký tự")
+    private String berthIdentifier;
+
+    @Schema(description = "Phương thức cập cảng: BERTH hoặc TENDER", example = "BERTH")
+    private CruiseStopArrivalMethod arrivalMethod;
+
+    @Schema(description = "Thời gian di chuyển bằng xuồng trung chuyển tender (phút)", example = "30")
+    private Integer tenderTransferMinutes;
+
+    @Schema(description = "Mã tham chiếu giấy phép cảng chính thức", example = "CLR-HPG-2026-001")
+    @Size(max = 100, message = "Mã tham chiếu không vượt quá 100 ký tự")
+    private String officialClearanceReference;
+
+    @Schema(description = "Cơ quan thẩm quyền cấp giấy phép", example = "Cảng vụ Hàng hải Hải Phòng")
+    @Size(max = 150, message = "Tên cơ quan không vượt quá 150 ký tự")
+    private String clearanceAuthority;
 
     @Schema(description = "Tên đầu mối cảng / Port Agent", example = "Nguyễn Văn Hùng")
     @Size(max = 200, message = "Tên đầu mối không vượt quá 200 ký tự")

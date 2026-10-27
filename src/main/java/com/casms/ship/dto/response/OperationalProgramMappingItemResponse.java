@@ -54,4 +54,7 @@ public class OperationalProgramMappingItemResponse {
 
     @Schema(description = "Dữ liệu nghiệp vụ còn thiếu cần bổ sung (ví dụ: Nhà cung cấp, Sức chứa, Boong tàu)")
     private String requiredData;
+
+    @Schema(description = "Hành động gợi ý cho FE xử lý tiếp theo (READY, CONFIGURE_PRICING, CONFIGURE_CAPACITY, ASSIGN_SUPPLIER, SET_MEETING_POINT, ADJUST_SCHEDULE)")
+    private String action;
 }
