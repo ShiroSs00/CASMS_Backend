@@ -37,4 +37,11 @@ public class CruiseSaleReadinessResponse {
 
     private Instant evaluatedAt;
     private Long cruiseRevision;
+
+    private com.casms.ship.enums.ReadinessStatus status;
+    private String fingerprint;
+    private Instant validUntil;
+
+    @Builder.Default
+    private List<ReadinessIssueDetail> details = new ArrayList<>();
 }

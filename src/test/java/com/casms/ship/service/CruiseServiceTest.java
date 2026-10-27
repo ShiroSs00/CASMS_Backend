@@ -69,6 +69,8 @@ class CruiseServiceTest {
     private CruiseRegulationRepository cruiseRegulationRepository;
     @Mock
     private CruiseImpactTaskRepository cruiseImpactTaskRepository;
+    @Mock
+    private com.casms.servicepackage.repository.TourPackageRepository tourPackageRepository;
 
     @InjectMocks
     private CruiseService cruiseService;

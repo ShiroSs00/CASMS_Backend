@@ -51,7 +51,7 @@ public class Cabin {
     private CabinStatus status;
 
     @Column(name = "is_accessible", nullable = false)
-    private Boolean isAccessible;
+    private Boolean isAccessible = false;
 
     @Column(name = "minimum_occupancy", nullable = false)
     private Integer minimumOccupancy = 1;

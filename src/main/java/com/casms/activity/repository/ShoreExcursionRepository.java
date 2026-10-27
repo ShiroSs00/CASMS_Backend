@@ -43,6 +43,8 @@ public interface ShoreExcursionRepository
     @Query("SELECT COUNT(se) FROM ShoreExcursion se WHERE se.cruiseStop.itinerary.cruise.cruiseId = :cruiseId")
     long countByCruiseId(@Param("cruiseId") UUID cruiseId);
 
+    List<ShoreExcursion> findByCruiseStop_Itinerary_Cruise_CruiseId(UUID cruiseId);
+
     @Query("""
         SELECT COUNT(se)
         FROM ShoreExcursion se

@@ -25,6 +25,7 @@ import com.casms.ship.dto.response.OperationalProgramSyncResponse;
 import com.casms.ship.dto.request.CruiseChangeImpactRequest;
 import com.casms.ship.dto.response.CruiseChangeImpactResponse;
 import com.casms.ship.dto.response.CruiseImpactTaskResponse;
+import com.casms.ship.dto.response.CruiseApplyChangeResponse;
 import com.casms.ship.enums.CruiseCruiseType;
 import com.casms.ship.enums.CruiseStatus;
 import com.casms.ship.dto.request.CruiseSchedulePreviewRequest;
@@ -361,8 +362,8 @@ public class CruiseController {
     }
 
     @Operation(summary = "Xem trước tác động thay đổi lịch trình hoặc cấu hình (C11, C17)", description = "Đánh giá tác động dời ngày, đổi tàu đối với khách đặt, tour, hoạt động và sinh ra danh sách công việc xử lý")
-    @PreAuthorize("hasAnyAuthority('CRUISE_READ', 'CRUISE_VALIDATE')")
-    @PostMapping("/{cruiseId}/preview-change-impact")
+    @PreAuthorize("hasAnyAuthority('CRUISE_READ', 'CRUISE_VALIDATE', 'CRUISE_UPDATE_DRAFT')")
+    @PostMapping(value = {"/{cruiseId}/preview-change-impact", "/{cruiseId}/change-impact"})
     public ApiResponse<CruiseChangeImpactResponse> previewChangeImpact(
             @PathVariable UUID cruiseId,
             @RequestBody @Valid CruiseChangeImpactRequest request) {
@@ -387,16 +388,29 @@ public class CruiseController {
         return ApiResponse.success(cruiseImpactAssessmentService.listTasks(cruiseId, status));
     }
 
-    @Operation(summary = "Đánh dấu hoàn tất công việc xử lý tác động (C17)", description = "Cập nhật trạng thái công việc thành RESOLVED kèm ghi chú giải quyết")
+    @Operation(summary = "Đánh dấu hoàn tất công việc xử lý tác động (C17)", description = "Cập nhật trạng thái công việc thành RESOLVED kèm ghi chú giải quyết và bằng chứng")
     @PreAuthorize("hasAnyAuthority('CRUISE_UPDATE_DRAFT', 'CRUISE_STATUS_CHANGE', 'OPERATIONAL_ISSUE_RESOLVE')")
     @PostMapping("/{cruiseId}/impact-tasks/{taskId}/resolve")
     public ApiResponse<CruiseImpactTaskResponse> resolveImpactTask(
             @PathVariable UUID cruiseId,
             @PathVariable UUID taskId,
-            @RequestParam(required = false, defaultValue = "Resolved by operations staff") String resolutionNotes,
+            @RequestParam String resolutionNotes,
+            @RequestParam(required = false) Long expectedRevision,
             @AuthenticationPrincipal CasmsPrincipal principal) {
         UUID actorId = principal != null ? principal.getUserId() : null;
-        return ApiResponse.success(cruiseImpactAssessmentService.resolveTask(taskId, resolutionNotes, actorId));
+        return ApiResponse.success(cruiseImpactAssessmentService.resolveTask(cruiseId, taskId, resolutionNotes, expectedRevision, actorId));
+    }
+
+    @Operation(summary = "Áp dụng thay đổi lịch trình, tàu hoặc cấu hình (BE-R05b / C11, C17)",
+               description = "Áp dụng thay đổi toàn diện với kiểm tra dữ liệu mới nhất, bảo vệ booking hiện có và đồng bộ các đối tượng phụ thuộc")
+    @PreAuthorize("hasAnyAuthority('CRUISE_UPDATE_DRAFT', 'CRUISE_STATUS_CHANGE')")
+    @PostMapping("/{cruiseId}/apply-change")
+    public ApiResponse<CruiseApplyChangeResponse> applyChange(
+            @PathVariable UUID cruiseId,
+            @RequestBody @Valid CruiseChangeImpactRequest request,
+            @AuthenticationPrincipal CasmsPrincipal principal) {
+        UUID actorId = principal != null ? principal.getUserId() : null;
+        return ApiResponse.success(service.applyChange(cruiseId, request, actorId));
     }
 
     @Operation(summary = "Lấy báo cáo tồn chỗ và năng lực phục vụ của chuyến đi (BE-07 / C08)", description = "Tra cứu chi tiết tồn phòng theo từng hạng và tổng sức chứa khả dụng phục vụ mở bán")
@@ -429,8 +443,10 @@ public class CruiseController {
     @PostMapping("/{cruiseId}/stop-sale")
     public ApiResponse<CruiseResponse> stopSale(
             @PathVariable UUID cruiseId,
-            @RequestBody @Valid CruiseStopSaleRequest request) {
-        return ApiResponse.success(service.stopSale(cruiseId, request));
+            @RequestBody @Valid CruiseStopSaleRequest request,
+            @AuthenticationPrincipal CasmsPrincipal principal) {
+        UUID actorId = principal != null ? principal.getUserId() : null;
+        return ApiResponse.success(service.stopSale(cruiseId, request, actorId));
     }
 
     @Operation(summary = "Tiếp tục mở bán sau khi tạm dừng (BE-08B / C16)", description = "Mở lại bán cho toàn bộ chuyến đi hoặc gói dịch vụ sau khi kiểm tra lại sale readiness")

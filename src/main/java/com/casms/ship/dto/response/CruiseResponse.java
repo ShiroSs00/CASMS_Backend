@@ -69,6 +69,27 @@ public class CruiseResponse {
     @Schema(description = "Số revision của Cruise phục vụ optimistic concurrency control", example = "1")
     private Long revision;
 
+    @Schema(description = "Thời điểm dừng mở bán (nếu có)")
+    private Instant stoppedAt;
+
+    @Schema(description = "Tài khoản thực hiện dừng mở bán")
+    private String stoppedByUsername;
+
+    @Schema(description = "Lý do dừng mở bán")
+    private String stopReason;
+
+    @Schema(description = "Bằng chứng/căn cứ dừng mở bán")
+    private String stopEvidence;
+
+    @Schema(description = "Phạm vi dừng bán (CRUISE hoặc PACKAGE)")
+    private String stopScope;
+
+    @Schema(description = "Định danh sự kiện dừng mở bán (Event Identity)")
+    private String stopEventIdentity;
+
+    @Schema(description = "Trạng thái đang bị dừng bán hay không")
+    private boolean saleStopped;
+
     @Schema(description = "Thời điểm tạo")
     private Instant createdAt;
 

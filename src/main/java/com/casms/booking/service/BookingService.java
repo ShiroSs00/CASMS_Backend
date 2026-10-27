@@ -51,6 +51,7 @@ import com.casms.servicepackage.repository.BookingPassengerPackageRepository;
 import com.casms.servicepackage.repository.TourPackageRepository;
 import com.casms.ship.entity.Cabin;
 import com.casms.ship.entity.Cruise;
+import com.casms.ship.entity.Itinerary;
 import com.casms.ship.entity.ShipModel;
 import com.casms.ship.entity.ShipModelObject;
 import com.casms.ship.enums.CabinStatus;
@@ -237,12 +238,15 @@ public class BookingService {
         if (cruise.getStatus() != CruiseStatus.PUBLISHED) {
             throw new BusinessException("INVALID_CRUISE_STATUS", "Bookings can only be created for PUBLISHED cruises (Current: " + cruise.getStatus() + ")");
         }
-        // BE-08B: Gating - Check if sale has been suspended on itinerary
-        itineraryRepository.findByCruiseCruiseId(cruise.getCruiseId()).ifPresent(itinerary -> {
-            if (itinerary.getStatus() == ItineraryStatus.SUSPENDED) {
-                throw new BusinessException("SALE_SUSPENDED", "Chuyến đi đang tạm dừng mở bán, không thể tiếp nhận đặt chỗ mới");
-            }
-        });
+        // BE-08B / BE-R00: Gating - Check if itinerary exists and is OPEN_FOR_SALE
+        Itinerary itinerary = itineraryRepository.findByCruiseCruiseId(cruise.getCruiseId())
+                .orElseThrow(() -> new BusinessException("CRUISE_NOT_OPEN_FOR_SALE", "Chuyến đi chưa có lịch trình mở bán thương mại"));
+        if (itinerary.getStatus() == ItineraryStatus.SUSPENDED) {
+            throw new BusinessException("SALE_SUSPENDED", "Chuyến đi đang tạm dừng mở bán, không thể tiếp nhận đặt chỗ mới");
+        }
+        if (itinerary.getStatus() != ItineraryStatus.OPEN_FOR_SALE) {
+            throw new BusinessException("CRUISE_NOT_OPEN_FOR_SALE", "Chuyến đi chưa mở bán thương mại (Trạng thái lịch trình: " + itinerary.getStatus() + ")");
+        }
         if (cruise.getDepartureDatetime().isBefore(Instant.now())) {
             throw new BusinessException("CRUISE_ALREADY_DEPARTED", "Cannot book a cruise that has already departed");
         }
@@ -264,10 +268,11 @@ public class BookingService {
         Map<UUID, List<PassengerBookingItemRequest>> cabinPassengersMap = request.getPassengers().stream()
                 .collect(Collectors.groupingBy(PassengerBookingItemRequest::getCabinId));
 
+        List<UUID> sortedCabinIds = cabinPassengersMap.keySet().stream().sorted().toList();
+
         Map<UUID, Cabin> validatedCabins = new HashMap<>();
-        for (Map.Entry<UUID, List<PassengerBookingItemRequest>> entry : cabinPassengersMap.entrySet()) {
-            UUID cabinId = entry.getKey();
-            List<PassengerBookingItemRequest> passengersInCabin = entry.getValue();
+        for (UUID cabinId : sortedCabinIds) {
+            List<PassengerBookingItemRequest> passengersInCabin = cabinPassengersMap.get(cabinId);
 
             Cabin cabin = cabinRepository.findByIdForUpdate(cabinId)
                     .orElseThrow(() -> new ResourceNotFoundException("Cabin", cabinId));
@@ -568,6 +573,19 @@ public class BookingService {
         UUID capacityCruiseId = booking.getCruise().getCruiseId();
         Cruise capacityLockedCruise = cruiseRepository.findByIdForUpdate(capacityCruiseId)
                 .orElseThrow(() -> new ResourceNotFoundException("Cruise", capacityCruiseId));
+        if (capacityLockedCruise.getStatus() == CruiseStatus.CANCELLED) {
+            throw new BusinessException("CRUISE_CANCELLED", "Cannot confirm booking on a cancelled cruise");
+        }
+        itineraryRepository.findByCruiseCruiseId(capacityCruiseId).ifPresent(itinerary -> {
+            if (itinerary.getStatus() == com.casms.ship.enums.ItineraryStatus.SUSPENDED) {
+                throw new BusinessException(org.springframework.http.HttpStatus.CONFLICT, "SALE_SUSPENDED",
+                        "Cannot confirm booking when cruise sale is suspended");
+            }
+            if (itinerary.getStatus() != com.casms.ship.enums.ItineraryStatus.OPEN_FOR_SALE) {
+                throw new BusinessException(org.springframework.http.HttpStatus.CONFLICT, "CRUISE_NOT_OPEN_FOR_SALE",
+                        "Cruise is not currently open for sale");
+            }
+        });
         String bookingCurrency = booking.getCurrency();
         BigDecimal collectedAmount = paymentRepository.findForBooking(bookingId).stream()
                 .filter(payment -> payment.getStatus() == PaymentStatus.Confirmed

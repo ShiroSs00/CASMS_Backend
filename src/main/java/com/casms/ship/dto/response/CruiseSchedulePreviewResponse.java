@@ -70,6 +70,18 @@ public class CruiseSchedulePreviewResponse {
     @Schema(description = "Mã cảng kết thúc")
     private String returnPortCode;
 
+    @Schema(description = "ID của hải trình thực tế đã lưu (ItineraryId) - null khi ở chế độ preview")
+    private UUID itineraryId;
+
+    @Schema(description = "Trạng thái hải trình thực tế (DRAFT, APPROVED, OPEN_FOR_SALE, SUSPENDED, ...) - null khi ở chế độ preview")
+    private String itineraryStatus;
+
+    @Schema(description = "Cờ xác định lịch trình đã được lưu vào database hay chưa (false = xem trước/chưa lưu, true = đã lưu)")
+    private Boolean materialized;
+
+    @Schema(description = "Danh sách cảnh báo liên quan đến tính toán múi giờ và lịch trình")
+    private List<String> warnings;
+
     @Schema(description = "Danh sách các ngày hải trình được chuyển đổi sang ngày lịch thực tế")
     private List<ProjectedDayDto> days;
 
@@ -79,6 +91,9 @@ public class CruiseSchedulePreviewResponse {
     @AllArgsConstructor
     @Schema(description = "Thông tin ngày hải trình dự kiến")
     public static class ProjectedDayDto {
+        @Schema(description = "ID ngày hải trình thực tế đã lưu (ItineraryDayId) - null khi ở chế độ preview")
+        private UUID itineraryDayId;
+
         @Schema(description = "Số thứ tự ngày (1-indexed)", example = "1")
         private Integer dayNumber;
 
@@ -107,6 +122,9 @@ public class CruiseSchedulePreviewResponse {
     @AllArgsConstructor
     @Schema(description = "Thông tin điểm dừng cảng dự kiến")
     public static class ProjectedStopDto {
+        @Schema(description = "ID của lần cập cảng thực tế đã lưu (CruiseStopId) - null khi ở chế độ preview")
+        private UUID cruiseStopId;
+
         @Schema(description = "ID của điểm dừng mẫu nguồn")
         private UUID sourceStopId;
 
@@ -179,5 +197,14 @@ public class CruiseSchedulePreviewResponse {
 
         @Schema(description = "Thứ tự cảng ghé liên kết (nếu có)")
         private Integer stopOrder;
+
+        @Schema(description = "ID bản ghi thực tế đã lưu (OnboardActivityId hoặc ShoreExcursionId)")
+        private UUID targetId;
+
+        @Schema(description = "Mã nghiệp vụ thực tế đã lưu (activityCode hoặc excursionCode)")
+        private String targetCode;
+
+        @Schema(description = "Trạng thái vận hành thực tế")
+        private String status;
     }
 }

@@ -41,4 +41,7 @@ public class CruiseCreateRequest {
 
     @Schema(description = "(Tùy chọn) ID phiên bản TripScheduleVersion (đã PUBLISHED) dùng làm nguồn cho chuyến đi này", example = "3fa85f64-5717-4562-b3fc-2c963f66afa6")
     private UUID sourceVersionId;
+
+    @Schema(description = "(Tùy chọn) Revision của phiên bản nguồn tại thời điểm preview, dùng để phát hiện stale preview", example = "1")
+    private Long expectedSourceVersionRevision;
 }

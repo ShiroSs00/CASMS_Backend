@@ -64,4 +64,16 @@ public class CruiseReadinessResponse {
 
     @Schema(description = "Revision của Cruise tại thời điểm đánh giá (D09 / BE-08 fingerprint)", example = "3")
     private Long cruiseRevision;
+
+    @Schema(description = "Trạng thái đánh giá chi tiết (READY, NOT_READY, INDETERMINATE, WARNING, NOT_APPLICABLE)")
+    private com.casms.ship.enums.ReadinessStatus status;
+
+    @Schema(description = "Dấu vân tay trạng thái (Fingerprint hash) phản ánh toàn bộ state nguồn")
+    private String fingerprint;
+
+    @Schema(description = "Thời hạn hiệu lực của kết quả đánh giá (Freshness/Valid-until)")
+    private Instant validUntil;
+
+    @Schema(description = "Danh sách chi tiết bằng chứng và hướng dẫn khắc phục của từng vấn đề")
+    private List<ReadinessIssueDetail> details = new java.util.ArrayList<>();
 }

@@ -2,10 +2,16 @@ package com.casms.ship.service;
 
 import com.casms.activity.entity.OnboardActivity;
 import com.casms.activity.entity.ShoreExcursion;
+import com.casms.activity.entity.Supplier;
 import com.casms.activity.enums.OnboardActivityCategory;
+import com.casms.activity.enums.ShoreExcursionStatus;
+import com.casms.activity.enums.SupplierStatus;
+import com.casms.activity.enums.SupplierVerificationStatus;
 import com.casms.activity.repository.OnboardActivityRepository;
 import com.casms.activity.repository.ShoreExcursionRepository;
+import com.casms.activity.repository.SupplierRepository;
 import com.casms.common.exception.BusinessException;
+import java.math.BigDecimal;
 import com.casms.identity.entity.User;
 import com.casms.identity.enums.Role;
 import com.casms.identity.enums.UserStatus;
@@ -65,6 +71,7 @@ public class CruiseOperationalReadinessPostgresIntegrationTest {
     @Autowired private TripPlanEntryRepository planEntryRepository;
     @Autowired private OnboardActivityRepository onboardActivityRepository;
     @Autowired private ShoreExcursionRepository shoreExcursionRepository;
+    @Autowired private SupplierRepository supplierRepository;
     @Autowired private CruiseStaffRepository cruiseStaffRepository;
     @Autowired private CruiseImpactTaskRepository cruiseImpactTaskRepository;
     @Autowired private UserRepository userRepository;
@@ -318,7 +325,27 @@ public class CruiseOperationalReadinessPostgresIntegrationTest {
         entryAct.setLocationText("Bếp Trưởng Deck 1");
         planEntryRepository.save(entryAct);
 
-        // Entry 2: Shore Excursion
+        // Entry 2: Shore Excursion with valid template and verified supplier
+        Supplier supplier = new Supplier();
+        supplier.setSupplierName("Nhà Cung Cấp Tour Ngũ Hành Sơn");
+        supplier.setContactName("Trần Điều Hành");
+        supplier.setStatus(SupplierStatus.ACTIVE);
+        supplier.setVerificationStatus(SupplierVerificationStatus.VERIFIED);
+        supplier = supplierRepository.save(supplier);
+
+        ShoreExcursion templateExc = new ShoreExcursion();
+        templateExc.setExcursionCode("TPL-EXC-" + UUID.randomUUID().toString().substring(0, 8));
+        templateExc.setExcursionName("Tour Mẫu Ngũ Hành Sơn");
+        templateExc.setSupplier(supplier);
+        templateExc.setStartTime(Instant.now());
+        templateExc.setPlannedReturnTime(Instant.now().plus(6, ChronoUnit.HOURS));
+        templateExc.setMeetingPoint("Cổng Cảng Tiên Sa");
+        templateExc.setMaximumCapacity(40);
+        templateExc.setPrice(BigDecimal.valueOf(350000));
+        templateExc.setCurrencyCode("VND");
+        templateExc.setStatus(ShoreExcursionStatus.PLANNED);
+        templateExc = shoreExcursionRepository.save(templateExc);
+
         TripPlanEntry entryExc = new TripPlanEntry();
         entryExc.setVersion(version);
         entryExc.setDay(day1);
@@ -331,6 +358,7 @@ public class CruiseOperationalReadinessPostgresIntegrationTest {
         entryExc.setEndDayNumber(2);
         entryExc.setPlannedEndTime(LocalTime.of(16, 0));
         entryExc.setMeetingPoint("Cổng Cảng Tiên Sa");
+        entryExc.setSourceExcursionId(templateExc.getShoreExcursionId());
         planEntryRepository.save(entryExc);
 
         // 2. Create Cruise from version

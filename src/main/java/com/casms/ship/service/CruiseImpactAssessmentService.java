@@ -29,7 +29,10 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
+import org.springframework.http.HttpStatus;
 
 @Slf4j
 @Service
@@ -91,6 +94,11 @@ public class CruiseImpactAssessmentService {
         boolean shipImpacted = false;
         UUID newShipId = request.getNewShipId();
 
+        String eventIdentity = (request.getEventIdentity() != null && !request.getEventIdentity().isBlank())
+                ? request.getEventIdentity()
+                : "EVT-" + cruise.getCruiseCode() + "-" + (request.getNewShipId() != null ? "SHIP" : "DATE")
+                  + "-" + (newDep != null ? newDep.getEpochSecond() : (cruise.getDepartureDatetime() != null ? cruise.getDepartureDatetime().getEpochSecond() : 0));
+
         if (newShipId != null && (cruise.getShip() == null || !cruise.getShip().getShipId().equals(newShipId))) {
             shipImpacted = true;
             Ship newShip = shipRepository.findById(newShipId)
@@ -120,15 +128,19 @@ public class CruiseImpactAssessmentService {
 
             if (bookedPassengers > 0) {
                 warnings.add("Cần phân bổ lại phòng cho " + bookedPassengers + " khách đã đặt khi đổi tàu");
+                String taskSuffix = Integer.toHexString(Math.abs(Objects.hash(eventIdentity, cruiseId, "CABIN_REASSIGNMENT")));
                 tasks.add(CruiseImpactTaskResponse.builder()
                         .cruiseId(cruiseId)
-                        .taskCode("TASK-" + cruise.getCruiseCode() + "-REASSIGN-CABINS")
+                        .taskCode("TASK-" + cruise.getCruiseCode() + "-CABINS-" + taskSuffix)
+                        .eventIdentity(eventIdentity)
+                        .targetType("CABIN")
+                        .targetId(newShip.getShipId().toString())
                         .category("CABIN_REASSIGNMENT")
                         .title("Phân bổ lại phòng sau khi đổi tàu")
                         .description("Tàu được đổi từ " + (cruise.getShip() != null ? cruise.getShip().getShipName() : "None") + " sang " + newShip.getShipName() + ". Cần xếp lại phòng cho khách đã đặt.")
                         .status("PENDING")
                         .severity("BLOCKING")
-                        .evidence("Số khách bị ảnh hưởng: " + bookedPassengers)
+                        .evidence("Số khách bị ảnh hưởng: " + bookedPassengers + "; Tàu mới: " + newShip.getShipName())
                         .revision(1L)
                         .createdAt(Instant.now())
                         .updatedAt(Instant.now())
@@ -143,9 +155,13 @@ public class CruiseImpactAssessmentService {
 
         if (scheduleImpacted && bookedPassengers > 0) {
             warnings.add("Lịch khởi hành thay đổi " + dateShiftDays + " ngày ảnh hưởng tới " + bookedPassengers + " khách đã đặt");
+            String taskSuffix = Integer.toHexString(Math.abs(Objects.hash(eventIdentity, cruiseId, "PASSENGER_NOTIFICATION")));
             tasks.add(CruiseImpactTaskResponse.builder()
                     .cruiseId(cruiseId)
-                    .taskCode("TASK-" + cruise.getCruiseCode() + "-NOTIFY-SCHEDULE")
+                    .taskCode("TASK-" + cruise.getCruiseCode() + "-NOTIFY-" + taskSuffix)
+                    .eventIdentity(eventIdentity)
+                    .targetType("CRUISE")
+                    .targetId(cruiseId.toString())
                     .category("PASSENGER_NOTIFICATION")
                     .title("Thông báo dời lịch khởi hành cho hành khách")
                     .description("Chuyến đi thay đổi ngày khởi hành từ " + cruise.getDepartureDatetime() + " sang " + newDep + ". Cần liên hệ thông báo hành khách.")
@@ -160,9 +176,13 @@ public class CruiseImpactAssessmentService {
 
         if (scheduleImpacted && affectedExcursions > 0) {
             warnings.add("Có " + affectedExcursions + " tour tham quan cần điều chỉnh lại giờ đón/trả với nhà cung cấp");
+            String taskSuffix = Integer.toHexString(Math.abs(Objects.hash(eventIdentity, cruiseId, "EXCURSION_RESCHEDULE")));
             tasks.add(CruiseImpactTaskResponse.builder()
                     .cruiseId(cruiseId)
-                    .taskCode("TASK-" + cruise.getCruiseCode() + "-RESCHEDULE-EXCURSIONS")
+                    .taskCode("TASK-" + cruise.getCruiseCode() + "-EXC-" + taskSuffix)
+                    .eventIdentity(eventIdentity)
+                    .targetType("EXCURSION")
+                    .targetId(cruiseId.toString())
                     .category("EXCURSION_RESCHEDULE")
                     .title("Xác nhận lại lịch tour tham quan với nhà cung cấp")
                     .description("Lịch ghé cảng thay đổi, cần xác nhận lại dịch vụ và thời gian đón với đối tác tour.")
@@ -195,24 +215,30 @@ public class CruiseImpactAssessmentService {
     }
 
     @Transactional
-    public List<CruiseImpactTaskResponse> generateAndPersistImpactTasks(UUID cruiseId, CruiseChangeImpactRequest request) {
-        CruiseChangeImpactResponse preview = previewChangeImpact(cruiseId, request);
+    public List<CruiseImpactTaskResponse> generateAndPersistImpactTasks(UUID cruiseId, CruiseChangeImpactResponse preview) {
         Cruise cruise = cruiseRepository.findById(cruiseId)
                 .orElseThrow(() -> new ResourceNotFoundException("Cruise", cruiseId));
 
         List<CruiseImpactTaskResponse> persisted = new ArrayList<>();
         for (CruiseImpactTaskResponse taskDto : preview.getGeneratedTasks()) {
-            CruiseImpactTask task = cruiseImpactTaskRepository.findByTaskCode(taskDto.getTaskCode())
-                    .orElseGet(CruiseImpactTask::new);
+            Optional<CruiseImpactTask> existing = cruiseImpactTaskRepository.findByTaskCode(taskDto.getTaskCode());
+            if (existing.isPresent()) {
+                CruiseImpactTask existingTask = existing.get();
+                // BE-R07: Retry cùng sự kiện không tạo lặp; nếu đã RESOLVED thì giữ nguyên
+                persisted.add(toTaskResponse(existingTask));
+                continue;
+            }
 
+            CruiseImpactTask task = new CruiseImpactTask();
             task.setCruise(cruise);
             task.setTaskCode(taskDto.getTaskCode());
+            task.setEventIdentity(taskDto.getEventIdentity());
+            task.setTargetType(taskDto.getTargetType());
+            task.setTargetId(taskDto.getTargetId());
             task.setCategory(taskDto.getCategory());
             task.setTitle(taskDto.getTitle());
             task.setDescription(taskDto.getDescription());
-            if (task.getStatus() == null) {
-                task.setStatus("PENDING");
-            }
+            task.setStatus("PENDING");
             task.setSeverity(taskDto.getSeverity());
             task.setEvidence(taskDto.getEvidence());
 
@@ -221,6 +247,12 @@ public class CruiseImpactAssessmentService {
         }
 
         return persisted;
+    }
+
+    @Transactional
+    public List<CruiseImpactTaskResponse> generateAndPersistImpactTasks(UUID cruiseId, CruiseChangeImpactRequest request) {
+        CruiseChangeImpactResponse preview = previewChangeImpact(cruiseId, request);
+        return generateAndPersistImpactTasks(cruiseId, preview);
     }
 
     @Transactional(readOnly = true)
@@ -237,19 +269,51 @@ public class CruiseImpactAssessmentService {
     }
 
     @Transactional
-    public CruiseImpactTaskResponse resolveTask(UUID taskId, String resolutionNotes, UUID actorId) {
+    public CruiseImpactTaskResponse resolveTask(UUID cruiseId, UUID taskId, String resolutionNotes, Long expectedRevision, UUID actorId) {
         CruiseImpactTask task = cruiseImpactTaskRepository.findById(taskId)
                 .orElseThrow(() -> new ResourceNotFoundException("CruiseImpactTask", taskId));
 
-        task.setStatus("RESOLVED");
-        task.setResolutionNotes(resolutionNotes);
-
-        if (actorId != null) {
-            userRepository.findById(actorId).ifPresent(task::setAssignedTo);
+        // BE-R07: Resolve kiểm task thuộc Cruise trong URL
+        if (cruiseId != null && !task.getCruise().getCruiseId().equals(cruiseId)) {
+            throw new BusinessException("TASK_CRUISE_MISMATCH",
+                    "Công việc " + taskId + " không thuộc chuyến đi được chỉ định trong URL (" + cruiseId + ")");
         }
+
+        // BE-R07: Task đã xong không ghi đè lại
+        if ("RESOLVED".equals(task.getStatus())) {
+            throw new BusinessException("TASK_ALREADY_RESOLVED",
+                    "Công việc đã được hoàn tất trước đó, không thể ghi đè");
+        }
+
+        // BE-R07: Mutation stale bị từ chối
+        if (expectedRevision != null && !expectedRevision.equals(task.getRevision())) {
+            throw new BusinessException(HttpStatus.CONFLICT, "STALE_REVISION",
+                    String.format("Task revision đã thay đổi (hiện tại: %d, mong đợi: %d)", task.getRevision(), expectedRevision));
+        }
+
+        // BE-R07: Bằng chứng hoàn tất theo loại việc đã chốt; không tạo "resolved by staff" giả
+        if (resolutionNotes == null || resolutionNotes.trim().length() < 5
+                || "Resolved by operations staff".equalsIgnoreCase(resolutionNotes.trim())) {
+            throw new BusinessException("INSUFFICIENT_RESOLUTION_EVIDENCE",
+                    "Bắt buộc phải cung cấp ghi chú giải quyết hoặc bằng chứng cụ thể; không dùng mẫu mặc định 'Resolved by operations staff'");
+        }
+
+        // BE-R07: Không tự thay assignedTo bằng người resolve; owner và actor là hai ý nghĩa riêng
+        if (actorId != null) {
+            userRepository.findById(actorId).ifPresent(task::setResolvedBy);
+        }
+        task.setResolvedAt(Instant.now());
+        task.setStatus("RESOLVED");
+        task.setResolutionNotes(resolutionNotes.trim());
 
         CruiseImpactTask saved = cruiseImpactTaskRepository.save(task);
         return toTaskResponse(saved);
+    }
+
+    // Overload for backward compatibility
+    @Transactional
+    public CruiseImpactTaskResponse resolveTask(UUID taskId, String resolutionNotes, UUID actorId) {
+        return resolveTask(null, taskId, resolutionNotes, null, actorId);
     }
 
     private CruiseImpactTaskResponse toTaskResponse(CruiseImpactTask task) {
@@ -257,6 +321,9 @@ public class CruiseImpactAssessmentService {
                 .taskId(task.getTaskId())
                 .cruiseId(task.getCruise().getCruiseId())
                 .taskCode(task.getTaskCode())
+                .eventIdentity(task.getEventIdentity())
+                .targetType(task.getTargetType())
+                .targetId(task.getTargetId())
                 .category(task.getCategory())
                 .title(task.getTitle())
                 .description(task.getDescription())
@@ -264,6 +331,9 @@ public class CruiseImpactAssessmentService {
                 .severity(task.getSeverity())
                 .assignedToUserId(task.getAssignedTo() != null ? task.getAssignedTo().getUserId() : null)
                 .assignedToUsername(task.getAssignedTo() != null ? task.getAssignedTo().getUsername() : null)
+                .resolvedByUserId(task.getResolvedBy() != null ? task.getResolvedBy().getUserId() : null)
+                .resolvedByUsername(task.getResolvedBy() != null ? task.getResolvedBy().getUsername() : null)
+                .resolvedAt(task.getResolvedAt())
                 .evidence(task.getEvidence())
                 .resolutionNotes(task.getResolutionNotes())
                 .revision(task.getRevision())

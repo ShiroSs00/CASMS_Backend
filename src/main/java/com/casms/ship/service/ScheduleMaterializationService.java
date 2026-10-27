@@ -1,5 +1,9 @@
 package com.casms.ship.service;
 
+import com.casms.activity.entity.OnboardActivity;
+import com.casms.activity.entity.ShoreExcursion;
+import com.casms.activity.repository.OnboardActivityRepository;
+import com.casms.activity.repository.ShoreExcursionRepository;
 import com.casms.common.exception.BusinessException;
 import com.casms.common.exception.ResourceNotFoundException;
 import com.casms.ship.dto.request.CruiseSchedulePreviewRequest;
@@ -19,11 +23,13 @@ import com.casms.ship.repository.CruiseRepository;
 import com.casms.ship.repository.CruiseStopRepository;
 import com.casms.ship.repository.ItineraryDayRepository;
 import com.casms.ship.repository.ItineraryRepository;
+import com.casms.ship.util.PortTimeZoneHelper;
 import com.casms.trip.entity.Trip;
 import com.casms.trip.entity.TripPlanDay;
 import com.casms.trip.entity.TripPlanEntry;
 import com.casms.trip.entity.TripPlanStop;
 import com.casms.trip.entity.TripScheduleVersion;
+import com.casms.trip.enums.TripPlanEntryKind;
 import com.casms.trip.enums.TripScheduleVersionStatus;
 import com.casms.trip.enums.TripStatus;
 import com.casms.trip.repository.TripScheduleVersionRepository;
@@ -37,7 +43,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
-import java.time.format.DateTimeParseException;
+import java.time.ZoneOffset;
 import java.util.*;
 
 /**
@@ -56,6 +62,8 @@ public class ScheduleMaterializationService {
     private final CruiseRepository cruiseRepository;
     private final com.casms.ship.repository.PortRepository portRepository;
     private final OperationalProgramMappingService operationalProgramMappingService;
+    private final OnboardActivityRepository onboardActivityRepository;
+    private final ShoreExcursionRepository shoreExcursionRepository;
 
     /**
      * Preview (C02): Tính toán xem trước toàn bộ lịch trình thực tế mà không commit database.
@@ -218,13 +226,26 @@ public class ScheduleMaterializationService {
 
         Itinerary itinerary = itineraryRepository.findByCruiseCruiseId(cruiseId).orElse(null);
         if (itinerary == null) {
-            if (cruise.getSourceVersion() != null) {
-                return previewSchedule(cruise.getSourceVersion().getVersionId(), cruise.getDepartureDatetime());
-            }
             return CruiseSchedulePreviewResponse.builder()
+                    .itineraryId(null)
+                    .itineraryStatus(null)
+                    .materialized(false)
+                    .sourceTripId(cruise.getSourceTrip() != null ? cruise.getSourceTrip().getTripId() : null)
+                    .sourceTripCode(cruise.getSourceTrip() != null ? cruise.getSourceTrip().getTripCode() : null)
+                    .sourceTripName(cruise.getSourceTrip() != null ? cruise.getSourceTrip().getName() : null)
+                    .sourceVersionId(cruise.getSourceVersion() != null ? cruise.getSourceVersion().getVersionId() : null)
+                    .sourceVersionNumber(cruise.getSourceVersion() != null ? cruise.getSourceVersion().getVersionNumber() : null)
+                    .sourceVersionRevision(cruise.getSourceVersion() != null ? cruise.getSourceVersion().getRevision() : null)
                     .departureDatetime(cruise.getDepartureDatetime())
                     .returnDatetime(cruise.getReturnDatetime())
+                    .departurePortId(cruise.getDeparturePort() != null ? cruise.getDeparturePort().getPortId() : null)
+                    .departurePortName(cruise.getDeparturePort() != null ? cruise.getDeparturePort().getPortName() : null)
+                    .departurePortCode(cruise.getDeparturePort() != null ? cruise.getDeparturePort().getPortCode() : null)
+                    .returnPortId(cruise.getReturnPort() != null ? cruise.getReturnPort().getPortId() : null)
+                    .returnPortName(cruise.getReturnPort() != null ? cruise.getReturnPort().getPortName() : null)
+                    .returnPortCode(cruise.getReturnPort() != null ? cruise.getReturnPort().getPortCode() : null)
                     .days(Collections.emptyList())
+                    .warnings(List.of("Chuyến đi chưa được khởi tạo lịch trình thực tế (Itinerary chưa tồn tại)"))
                     .build();
         }
 
@@ -239,6 +260,9 @@ public class ScheduleMaterializationService {
             }
         }
 
+        List<OnboardActivity> activities = onboardActivityRepository.findByCruise_CruiseId(cruiseId);
+        List<ShoreExcursion> excursions = shoreExcursionRepository.findByCruiseStop_Itinerary_Cruise_CruiseId(cruiseId);
+
         List<CruiseSchedulePreviewResponse.ProjectedDayDto> dayDtos = new ArrayList<>();
         for (ItineraryDay d : days) {
             List<CruiseStop> dayStops = dayStopsMap.getOrDefault(d.getItineraryDayId(), Collections.emptyList());
@@ -251,6 +275,7 @@ public class ScheduleMaterializationService {
                     } catch (Exception ignored) {}
                 }
                 return CruiseSchedulePreviewResponse.ProjectedStopDto.builder()
+                        .cruiseStopId(s.getCruiseStopId())
                         .sourceStopId(sourceStopId)
                         .stopOrder(s.getStopOrder())
                         .portId(p != null ? p.getPortId() : null)
@@ -267,14 +292,57 @@ public class ScheduleMaterializationService {
                         .build();
             }).toList();
 
+            ZoneId dayZone = d.getShipTimeZoneId() != null
+                    ? PortTimeZoneHelper.resolveZone(d.getShipTimeZoneId())
+                    : ZoneOffset.UTC;
+
+            List<CruiseSchedulePreviewResponse.ProjectedEntryDto> dayEntries = new ArrayList<>();
+            for (OnboardActivity act : activities) {
+                if (act.getStartTime() != null) {
+                    LocalDate actDate = act.getStartTime().atZone(dayZone).toLocalDate();
+                    if (Objects.equals(actDate, d.getDate())) {
+                        dayEntries.add(CruiseSchedulePreviewResponse.ProjectedEntryDto.builder()
+                                .targetId(act.getOnboardActivityId())
+                                .targetCode(act.getActivityCode())
+                                .kind(TripPlanEntryKind.ONBOARD_ACTIVITY)
+                                .category(act.getCategory())
+                                .status(act.getStatus() != null ? act.getStatus().name() : null)
+                                .plannedStartTime(act.getStartTime())
+                                .plannedEndTime(act.getEndTime())
+                                .build());
+                    }
+                }
+            }
+
+            for (ShoreExcursion exc : excursions) {
+                if (exc.getStartTime() != null) {
+                    ZoneId excZone = (exc.getPort() != null && exc.getPort().getTimeZoneId() != null)
+                            ? PortTimeZoneHelper.resolveZone(exc.getPort().getTimeZoneId())
+                            : dayZone;
+                    LocalDate excDate = exc.getStartTime().atZone(excZone).toLocalDate();
+                    if (Objects.equals(excDate, d.getDate())) {
+                        dayEntries.add(CruiseSchedulePreviewResponse.ProjectedEntryDto.builder()
+                                .targetId(exc.getShoreExcursionId())
+                                .targetCode(exc.getExcursionCode())
+                                .kind(TripPlanEntryKind.SHORE_EXCURSION)
+                                .status(exc.getStatus() != null ? exc.getStatus().name() : null)
+                                .plannedStartTime(exc.getStartTime())
+                                .plannedEndTime(exc.getPlannedReturnTime())
+                                .stopOrder(exc.getCruiseStop() != null ? exc.getCruiseStop().getStopOrder() : null)
+                                .build());
+                    }
+                }
+            }
+
             dayDtos.add(CruiseSchedulePreviewResponse.ProjectedDayDto.builder()
+                    .itineraryDayId(d.getItineraryDayId())
                     .dayNumber(d.getDayNumber())
                     .calendarDate(d.getDate())
                     .dayType(d.getDayType())
                     .title(d.getDescription())
                     .shipTimeZoneId(d.getShipTimeZoneId())
                     .stops(stopDtos)
-                    .entries(Collections.emptyList())
+                    .entries(dayEntries)
                     .build());
         }
 
@@ -282,6 +350,9 @@ public class ScheduleMaterializationService {
         TripScheduleVersion sourceVersion = cruise.getSourceVersion();
 
         return CruiseSchedulePreviewResponse.builder()
+                .itineraryId(itinerary.getItineraryId())
+                .itineraryStatus(itinerary.getStatus() != null ? itinerary.getStatus().name() : null)
+                .materialized(true)
                 .sourceTripId(sourceTrip != null ? sourceTrip.getTripId() : null)
                 .sourceTripCode(sourceTrip != null ? sourceTrip.getTripCode() : null)
                 .sourceTripName(sourceTrip != null ? sourceTrip.getName() : null)
@@ -319,8 +390,12 @@ public class ScheduleMaterializationService {
         TripPlanStop firstStop = planStops.isEmpty() ? null : planStops.get(0);
         TripPlanStop lastStop = planStops.isEmpty() ? null : planStops.get(planStops.size() - 1);
 
-        ZoneId depZone = resolveZone(firstStop != null && firstStop.getPort() != null ? firstStop.getPort().getTimeZoneId() : null);
-        LocalDate day1Date = departureDatetime.atZone(depZone).toLocalDate();
+        if (firstStop == null || firstStop.getPort() == null) {
+            throw new BusinessException("MISSING_DEPARTURE_STOP", "Phiên bản lịch trình nguồn không có điểm dừng khởi hành.");
+        }
+
+        ZoneId shipZone = PortTimeZoneHelper.resolveZone(firstStop.getPort().getTimeZoneId());
+        LocalDate day1Date = departureDatetime.atZone(shipZone).toLocalDate();
 
         int totalDays = trip.getDurationDays() != null ? trip.getDurationDays() : Math.max(1, planDays.size());
 
@@ -335,7 +410,10 @@ public class ScheduleMaterializationService {
         List<CruiseSchedulePreviewResponse.ProjectedStopDto> projectedStops = new ArrayList<>();
         for (TripPlanStop stop : planStops) {
             Port port = stop.getPort();
-            ZoneId portZone = resolveZone(port != null ? port.getTimeZoneId() : null);
+            if (port == null) {
+                throw new BusinessException("MISSING_PORT", "Điểm dừng không có thông tin cảng.");
+            }
+            ZoneId portZone = PortTimeZoneHelper.resolveZone(port.getTimeZoneId());
 
             int arrDayNum = stop.getArrivalDayNumber() != null ? stop.getArrivalDayNumber() : 1;
             int depDayNum = stop.getDepartureDayNumber() != null ? stop.getDepartureDayNumber() : arrDayNum;
@@ -354,7 +432,7 @@ public class ScheduleMaterializationService {
             if (plannedDep.isBefore(plannedArr) || plannedDep.equals(plannedArr)) {
                 throw new BusinessException("INVALID_TIME_RANGE",
                         String.format("Lịch ghé cảng %s có giờ rời (%s) không sau giờ cập (%s).",
-                                port != null ? port.getPortName() : "Unknown", plannedDep, plannedArr));
+                                port.getPortName(), plannedDep, plannedArr));
             }
 
             Instant allAboard = stop.getAllAboardTime() != null
@@ -364,10 +442,10 @@ public class ScheduleMaterializationService {
             CruiseSchedulePreviewResponse.ProjectedStopDto stopDto = CruiseSchedulePreviewResponse.ProjectedStopDto.builder()
                     .sourceStopId(stop.getStopId())
                     .stopOrder(stop.getStopOrder())
-                    .portId(port != null ? port.getPortId() : null)
-                    .portCode(port != null ? port.getPortCode() : null)
-                    .portName(port != null ? port.getPortName() : null)
-                    .countryCode(port != null ? port.getCountryCode() : null)
+                    .portId(port.getPortId())
+                    .portCode(port.getPortCode())
+                    .portName(port.getPortName())
+                    .countryCode(port.getCountryCode())
                     .portTimeZoneId(portZone.getId())
                     .plannedArrival(plannedArr)
                     .plannedDeparture(plannedDep)
@@ -425,11 +503,23 @@ public class ScheduleMaterializationService {
             LocalDate startCal = day1Date.plusDays(startDay - 1);
             LocalDate endCal = day1Date.plusDays(endDay - 1);
 
+            ZoneId entryZone;
+            if (entry.getKind() == TripPlanEntryKind.SHORE_EXCURSION) {
+                TripPlanStop stop = entry.getStop();
+                if (stop != null && stop.getPort() != null && stop.getPort().getTimeZoneId() != null) {
+                    entryZone = PortTimeZoneHelper.resolveZone(stop.getPort().getTimeZoneId());
+                } else {
+                    entryZone = shipZone;
+                }
+            } else {
+                entryZone = shipZone;
+            }
+
             Instant startInst = entry.getPlannedStartTime() != null
-                    ? LocalDateTime.of(startCal, entry.getPlannedStartTime()).atZone(depZone).toInstant()
+                    ? LocalDateTime.of(startCal, entry.getPlannedStartTime()).atZone(entryZone).toInstant()
                     : null;
             Instant endInst = entry.getPlannedEndTime() != null
-                    ? LocalDateTime.of(endCal, entry.getPlannedEndTime()).atZone(depZone).toInstant()
+                    ? LocalDateTime.of(endCal, entry.getPlannedEndTime()).atZone(entryZone).toInstant()
                     : null;
 
             Integer stopOrder = entry.getStop() != null ? entry.getStop().getStopOrder() : null;
@@ -465,7 +555,7 @@ public class ScheduleMaterializationService {
                     .calendarDate(calDate)
                     .dayType(dayType)
                     .title(title)
-                    .shipTimeZoneId(depZone.getId())
+                    .shipTimeZoneId(shipZone.getId())
                     .stops(dayStopsMap.getOrDefault(d, Collections.emptyList()))
                     .entries(dayEntriesMap.getOrDefault(d, Collections.emptyList()))
                     .build());
@@ -480,6 +570,7 @@ public class ScheduleMaterializationService {
         }
 
         return CruiseSchedulePreviewResponse.builder()
+                .materialized(false)
                 .sourceTripId(trip.getTripId())
                 .sourceTripCode(trip.getTripCode())
                 .sourceTripName(trip.getName())
@@ -490,24 +581,13 @@ public class ScheduleMaterializationService {
                 .returnDatetime(returnDatetime)
                 .durationDays(trip.getDurationDays())
                 .durationNights(trip.getDurationNights())
-                .departurePortId(firstStop != null && firstStop.getPort() != null ? firstStop.getPort().getPortId() : null)
-                .departurePortName(firstStop != null && firstStop.getPort() != null ? firstStop.getPort().getPortName() : null)
-                .departurePortCode(firstStop != null && firstStop.getPort() != null ? firstStop.getPort().getPortCode() : null)
+                .departurePortId(firstStop.getPort().getPortId())
+                .departurePortName(firstStop.getPort().getPortName())
+                .departurePortCode(firstStop.getPort().getPortCode())
                 .returnPortId(lastStop != null && lastStop.getPort() != null ? lastStop.getPort().getPortId() : null)
                 .returnPortName(lastStop != null && lastStop.getPort() != null ? lastStop.getPort().getPortName() : null)
                 .returnPortCode(lastStop != null && lastStop.getPort() != null ? lastStop.getPort().getPortCode() : null)
                 .days(projectedDays)
                 .build();
-    }
-
-    private ZoneId resolveZone(String zoneId) {
-        if (zoneId == null || zoneId.isBlank()) {
-            return ZoneId.of("Asia/Ho_Chi_Minh");
-        }
-        try {
-            return ZoneId.of(zoneId.trim());
-        } catch (DateTimeParseException | java.time.zone.ZoneRulesException e) {
-            return ZoneId.of("Asia/Ho_Chi_Minh");
-        }
     }
 }

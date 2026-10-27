@@ -233,7 +233,7 @@ public class CruiseRegulationService {
     /**
      * Snapshot quy định hiệu lực (direct và inherited) cho chuyến đi.
      */
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true, noRollbackFor = Exception.class)
     public RegulationAssignmentSnapshotResponse getEffectiveSnapshot(UUID cruiseId, Instant at) {
         if (cruiseId == null) {
             throw new IllegalArgumentException("Cruise ID must not be null.");

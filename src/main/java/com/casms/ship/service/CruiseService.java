@@ -7,25 +7,41 @@ import com.casms.checkin.repository.CruiseCheckinRepository;
 import com.casms.common.exception.BusinessException;
 import com.casms.common.exception.ResourceNotFoundException;
 import com.casms.common.service.BusinessCodeGenerator;
+import java.util.Objects;
+import com.casms.identity.repository.UserRepository;
+import com.casms.ship.dto.request.CruiseChangeImpactRequest;
 import com.casms.ship.dto.request.CruiseCreateRequest;
-import com.casms.ship.dto.request.CruiseUpdateDraftRequest;
 import com.casms.ship.dto.request.CruiseOpenSaleRequest;
-import com.casms.ship.dto.request.CruiseStopSaleRequest;
 import com.casms.ship.dto.request.CruiseResumeSaleRequest;
+import com.casms.ship.dto.request.CruiseStopSaleRequest;
+import com.casms.ship.dto.request.CruiseUpdateDraftRequest;
 import com.casms.ship.dto.response.CabinTypeInventoryItem;
+import com.casms.ship.dto.response.CruiseApplyChangeResponse;
 import com.casms.ship.dto.response.CruiseCapacityValidationResponse;
+import com.casms.ship.dto.response.CruiseChangeImpactResponse;
 import com.casms.ship.dto.response.CruiseDownstreamHandoffResponse;
+import com.casms.ship.dto.response.CruiseImpactTaskResponse;
 import com.casms.ship.dto.response.CruiseInventorySummaryResponse;
 import com.casms.ship.dto.response.CruiseManifestResponse;
 import com.casms.ship.dto.response.CruiseReadinessResponse;
 import com.casms.ship.dto.response.CruiseResponse;
 import com.casms.ship.dto.response.CruiseSaleReadinessResponse;
 import com.casms.ship.dto.response.CruiseStaffResponse;
+import com.casms.ship.dto.response.ReadinessIssueDetail;
 import com.casms.ship.dto.response.ShipCompatibilityResponse;
 import com.casms.ship.dto.response.ShipChangeImpactResponse;
+import com.casms.ship.enums.ReadinessSeverity;
+import com.casms.ship.enums.ReadinessStatus;
+import com.casms.activity.entity.ShoreExcursion;
+import com.casms.activity.entity.Supplier;
+import com.casms.activity.enums.SupplierStatus;
+import com.casms.activity.enums.SupplierVerificationStatus;
 import com.casms.ship.entity.Cruise;
+import com.casms.ship.entity.CruiseImpactTask;
+import com.casms.ship.entity.CruiseStop;
 import com.casms.ship.entity.CruiseTourPackage;
 import com.casms.ship.entity.Itinerary;
+import com.casms.ship.entity.ItineraryDay;
 import com.casms.ship.entity.Port;
 import com.casms.ship.entity.Ship;
 import com.casms.ship.enums.CabinStatus;
@@ -35,6 +51,11 @@ import com.casms.ship.enums.CruiseStatus;
 import com.casms.ship.enums.ItineraryStatus;
 import com.casms.ship.enums.PortStatus;
 import com.casms.ship.enums.ShipStatus;
+import com.casms.ship.repository.ItineraryDayRepository;
+import com.casms.ship.util.PortTimeZoneHelper;
+import com.casms.trip.service.CountryScopeValidator;
+import java.time.Duration;
+import java.time.LocalDate;
 import com.casms.ship.repository.*;
 import com.casms.trip.entity.TripScheduleVersion;
 import com.casms.trip.enums.TripScheduleVersionStatus;
@@ -52,6 +73,12 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
+import com.casms.servicepackage.entity.TourPackage;
+import com.casms.servicepackage.enums.TourPackageStatus;
+import com.casms.servicepackage.repository.TourPackageRepository;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -83,6 +110,10 @@ public class CruiseService {
     private final CruiseStopRepository cruiseStopRepository;
     private final CruiseRegulationRepository cruiseRegulationRepository;
     private final CruiseImpactTaskRepository cruiseImpactTaskRepository;
+    private final TourPackageRepository tourPackageRepository;
+    private final UserRepository userRepository;
+    private final ItineraryDayRepository itineraryDayRepository;
+    private final CruiseImpactAssessmentService cruiseImpactAssessmentService;
 
     @Transactional
     public CruiseResponse create(CruiseCreateRequest request) {
@@ -134,6 +165,14 @@ public class CruiseService {
             if (sourceVersion.getStatus() != TripScheduleVersionStatus.PUBLISHED) {
                 throw new BusinessException("VERSION_NOT_PUBLISHED",
                         "Source TripScheduleVersion must be in PUBLISHED status (current: " + sourceVersion.getStatus() + ")");
+            }
+            if (sourceVersion.getTrip() != null && sourceVersion.getTrip().getStatus() == com.casms.trip.enums.TripStatus.ARCHIVED) {
+                throw new BusinessException("TRIP_ARCHIVED", "Trip nguồn đã bị ARCHIVED hoặc không tồn tại.");
+            }
+            if (request.getExpectedSourceVersionRevision() != null && !Objects.equals(request.getExpectedSourceVersionRevision(), sourceVersion.getRevision())) {
+                throw new BusinessException("STALE_PREVIEW",
+                        String.format("Phiên bản nguồn đã thay đổi (revision hiện tại: %d, revision preview: %d). Vui lòng tải lại preview trước khi tạo.",
+                                sourceVersion.getRevision(), request.getExpectedSourceVersionRevision()));
             }
         }
 
@@ -217,11 +256,25 @@ public class CruiseService {
             throw new BusinessException("CRUISE_NOT_DRAFT", "Only draft cruises can be modified directly");
         }
 
+        // BE-R05b: Nội dung không được phép thay khi đã có booking phải từ chối hoặc dùng workflow đã duyệt (/apply-change)
+        long bookedCount = bookingRepository.countByCruiseCruiseId(cruiseId);
+        if (bookedCount > 0) {
+            boolean scheduleChanged = (request.getDepartureDatetime() != null && !request.getDepartureDatetime().equals(cruise.getDepartureDatetime()))
+                    || (request.getReturnDatetime() != null && !request.getReturnDatetime().equals(cruise.getReturnDatetime()));
+            boolean portsChanged = (request.getDeparturePortId() != null && (cruise.getDeparturePort() == null || !request.getDeparturePortId().equals(cruise.getDeparturePort().getPortId())))
+                    || (request.getReturnPortId() != null && (cruise.getReturnPort() == null || !request.getReturnPortId().equals(cruise.getReturnPort().getPortId())));
+            if (scheduleChanged || portsChanged) {
+                throw new BusinessException("CANNOT_MODIFY_COMMITTED_CRUISE_DIRECTLY",
+                        "Chuyến đi đã có " + bookedCount + " đặt chỗ. Bắt buộc phải thực hiện thay đổi thông qua quy trình đánh giá tác động /apply-change");
+            }
+        }
+
         if (request.getExpectedRevision() != null && !request.getExpectedRevision().equals(cruise.getRevision())) {
             throw new BusinessException(org.springframework.http.HttpStatus.CONFLICT, "STALE_REVISION",
                     "Revision của Cruise không khớp (expected: " + request.getExpectedRevision() + ", current: " + cruise.getRevision() + ")");
         }
 
+        Instant oldDep = cruise.getDepartureDatetime();
         Instant effectiveDeparture = request.getDepartureDatetime() != null ? request.getDepartureDatetime() : cruise.getDepartureDatetime();
         Instant effectiveReturn = request.getReturnDatetime() != null ? request.getReturnDatetime() : cruise.getReturnDatetime();
 
@@ -239,6 +292,9 @@ public class CruiseService {
         if (request.getCruiseType() != null) cruise.setCruiseType(request.getCruiseType());
         cruise.setDepartureDatetime(effectiveDeparture);
         cruise.setReturnDatetime(effectiveReturn);
+
+        // BE-R05b: Cập nhật ngày của Itinerary/CruiseStop/OnboardActivity/ShoreExcursion đồng bộ khi dời ngày
+        shiftScheduleAndPrograms(cruise, oldDep, effectiveDeparture);
 
         com.casms.trip.entity.Trip sourceTrip = cruise.getSourceTrip();
 
@@ -571,12 +627,14 @@ public class CruiseService {
         return res;
     }
 
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true, noRollbackFor = Exception.class)
     public CruiseReadinessResponse validateOperationalReadiness(UUID cruiseId) {
         Cruise cruise = getCruiseById(cruiseId);
         List<String> issues = new ArrayList<>();
         List<String> blockers = new ArrayList<>();
         List<String> warnings = new ArrayList<>();
+        List<ReadinessIssueDetail> details = new ArrayList<>();
+        boolean hasInfrastructureError = false;
 
         boolean shipAssigned = cruise.getShip() != null;
         boolean shipActive = false;
@@ -585,12 +643,34 @@ public class CruiseService {
         if (!shipAssigned) {
             issues.add("Chưa gán tàu cho chuyến đi");
             blockers.add("NO_SHIP_ASSIGNED");
+            details.add(ReadinessIssueDetail.builder()
+                    .code("NO_SHIP_ASSIGNED")
+                    .targetType("CRUISE")
+                    .targetId(cruiseId)
+                    .scope("CRUISE")
+                    .severity(ReadinessSeverity.BLOCKER)
+                    .message("Chưa gán tàu cho chuyến đi")
+                    .evidence("Cruise.ship is null")
+                    .allowedAction("Gán tàu cho chuyến đi qua /cruises/{id}/assign-ship")
+                    .requiredPermission("CRUISE_ASSIGN_SHIP")
+                    .build());
         } else {
             Ship ship = cruise.getShip();
             shipActive = ship.getStatus() == ShipStatus.ACTIVE;
             if (!shipActive) {
                 issues.add("Tàu được gán đang không ở trạng thái ACTIVE (hiện tại: " + ship.getStatus() + ")");
                 blockers.add("SHIP_NOT_ACTIVE");
+                details.add(ReadinessIssueDetail.builder()
+                        .code("SHIP_NOT_ACTIVE")
+                        .targetType("SHIP")
+                        .targetId(ship.getShipId())
+                        .scope("SHIP")
+                        .severity(ReadinessSeverity.BLOCKER)
+                        .message("Tàu được gán đang không ở trạng thái ACTIVE (hiện tại: " + ship.getStatus() + ")")
+                        .evidence("Ship.status=" + ship.getStatus())
+                        .allowedAction("Kích hoạt tàu hoặc đổi tàu khác qua /cruises/{id}/change-ship")
+                        .requiredPermission("SHIP_UPDATE")
+                        .build());
             }
 
             long decks = deckRepository.countByShipShipId(ship.getShipId());
@@ -599,13 +679,60 @@ public class CruiseService {
             if (!shipConfigValid) {
                 issues.add("Tàu chưa được cấu hình đầy đủ tầng (decks=" + decks + ") hoặc phòng (cabins=" + cabins + ")");
                 blockers.add("SHIP_NOT_CONFIGURED");
+                details.add(ReadinessIssueDetail.builder()
+                        .code("SHIP_NOT_CONFIGURED")
+                        .targetType("SHIP")
+                        .targetId(ship.getShipId())
+                        .scope("SHIP")
+                        .severity(ReadinessSeverity.BLOCKER)
+                        .message("Tàu chưa được cấu hình đầy đủ tầng hoặc phòng")
+                        .evidence("Decks count=" + decks + ", Cabins count=" + cabins)
+                        .allowedAction("Cấu hình boong và cabin cho con tàu trước khi vận hành")
+                        .requiredPermission("SHIP_UPDATE")
+                        .build());
+            }
+
+            if (cruise.getDepartureDatetime() != null && cruise.getReturnDatetime() != null) {
+                boolean shipOverlapped = cruiseRepository.existsOverlappingCruisesExcluding(
+                        ship.getShipId(),
+                        cruiseId,
+                        cruise.getDepartureDatetime(),
+                        cruise.getReturnDatetime()
+                );
+                if (shipOverlapped) {
+                    issues.add("Tàu được gán bị trùng lịch với chuyến đi khác");
+                    blockers.add("SHIP_SCHEDULE_CONFLICT");
+                    details.add(ReadinessIssueDetail.builder()
+                            .code("SHIP_SCHEDULE_CONFLICT")
+                            .targetType("SHIP")
+                            .targetId(ship.getShipId())
+                            .scope("SHIP")
+                            .severity(ReadinessSeverity.BLOCKER)
+                            .message("Tàu được gán đang bị trùng lịch độc quyền với chuyến đi khác trong cùng khoảng thời gian")
+                            .evidence("existsOverlappingCruisesExcluding=true")
+                            .allowedAction("Đổi lịch trình hoặc đổi tàu khác qua /cruises/{id}/change-ship")
+                            .requiredPermission("CRUISE_CHANGE_SHIP")
+                            .build());
+                }
             }
         }
 
-        boolean scheduleValid = cruise.getReturnDatetime().isAfter(cruise.getDepartureDatetime());
+        boolean scheduleValid = cruise.getReturnDatetime() != null && cruise.getDepartureDatetime() != null
+                && cruise.getReturnDatetime().isAfter(cruise.getDepartureDatetime());
         if (!scheduleValid) {
             issues.add("Lịch trình không hợp lệ: Thời điểm kết thúc phải sau thời điểm khởi hành");
             blockers.add("INVALID_SCHEDULE");
+            details.add(ReadinessIssueDetail.builder()
+                    .code("INVALID_SCHEDULE")
+                    .targetType("CRUISE")
+                    .targetId(cruiseId)
+                    .scope("CRUISE")
+                    .severity(ReadinessSeverity.BLOCKER)
+                    .message("Thời điểm kết thúc phải sau thời điểm khởi hành")
+                    .evidence("Departure: " + cruise.getDepartureDatetime() + ", Return: " + cruise.getReturnDatetime())
+                    .allowedAction("Cập nhật thời gian khởi hành/kết thúc qua /cruises/{id}")
+                    .requiredPermission("CRUISE_UPDATE")
+                    .build());
         }
 
         boolean departurePortActive = cruise.getDeparturePort() != null && cruise.getDeparturePort().getStatus() == PortStatus.ACTIVE;
@@ -614,6 +741,18 @@ public class CruiseService {
         if (!portsActive) {
             issues.add("Cảng đi hoặc cảng về đang không ở trạng thái hoạt động (ACTIVE)");
             blockers.add("PORTS_NOT_ACTIVE");
+            details.add(ReadinessIssueDetail.builder()
+                    .code("PORTS_NOT_ACTIVE")
+                    .targetType("PORT")
+                    .targetId(cruise.getDeparturePort() != null ? cruise.getDeparturePort().getPortId() : null)
+                    .scope("GLOBAL")
+                    .severity(ReadinessSeverity.BLOCKER)
+                    .message("Cảng đi hoặc cảng về đang không ở trạng thái hoạt động (ACTIVE)")
+                    .evidence("DeparturePort: " + (cruise.getDeparturePort() != null ? cruise.getDeparturePort().getStatus() : "null")
+                            + ", ReturnPort: " + (cruise.getReturnPort() != null ? cruise.getReturnPort().getStatus() : "null"))
+                    .allowedAction("Kích hoạt cảng khả dụng qua /ports/{id}")
+                    .requiredPermission("PORT_UPDATE")
+                    .build());
         }
 
         Optional<com.casms.ship.entity.Itinerary> itineraryOpt = itineraryRepository.findByCruiseCruiseId(cruiseId);
@@ -627,12 +766,34 @@ public class CruiseService {
         if (!itineraryConfigured) {
             issues.add("Chuyến đi chưa được liên kết hải trình (Itinerary)");
             blockers.add("ITINERARY_MISSING");
+            details.add(ReadinessIssueDetail.builder()
+                    .code("ITINERARY_MISSING")
+                    .targetType("ITINERARY")
+                    .targetId(null)
+                    .scope("CRUISE")
+                    .severity(ReadinessSeverity.BLOCKER)
+                    .message("Chuyến đi chưa được liên kết hải trình (Itinerary)")
+                    .evidence("Itinerary reference is null")
+                    .allowedAction("Tạo hoặc liên kết hải trình cho chuyến đi")
+                    .requiredPermission("ITINERARY_MANAGE")
+                    .build());
         } else if (!itineraryApproved) {
             issues.add("Hải trình của chuyến đi chưa được phê duyệt hoặc mở bán (Trạng thái hiện tại: " + itineraryOpt.get().getStatus() + ")");
             blockers.add("ITINERARY_NOT_APPROVED");
+            details.add(ReadinessIssueDetail.builder()
+                    .code("ITINERARY_NOT_APPROVED")
+                    .targetType("ITINERARY")
+                    .targetId(itineraryOpt.get().getItineraryId())
+                    .scope("CRUISE")
+                    .severity(ReadinessSeverity.BLOCKER)
+                    .message("Hải trình chưa được phê duyệt (hiện tại: " + itineraryOpt.get().getStatus() + ")")
+                    .evidence("Itinerary.status=" + itineraryOpt.get().getStatus())
+                    .allowedAction("Phê duyệt hải trình sang APPROVED qua /itinerary/{id}/approve")
+                    .requiredPermission("ITINERARY_APPROVE")
+                    .build());
         }
 
-        // BE-06: Staff readiness verification
+        // BE-06 / BE-R03: Staff readiness verification
         List<com.casms.ship.entity.CruiseStaff> staffList = cruiseStaffRepository != null
                 ? cruiseStaffRepository.findByCruise_CruiseId(cruiseId)
                 : List.of();
@@ -648,6 +809,17 @@ public class CruiseService {
         if (!captainAssigned) {
             issues.add("Chuyến đi chưa được phân công Thuyền trưởng (CAPTAIN)");
             blockers.add("MISSING_CAPTAIN");
+            details.add(ReadinessIssueDetail.builder()
+                    .code("MISSING_CAPTAIN")
+                    .targetType("CRUISE")
+                    .targetId(cruiseId)
+                    .scope("CRUISE")
+                    .severity(ReadinessSeverity.BLOCKER)
+                    .message("Chuyến đi chưa được phân công Thuyền trưởng (CAPTAIN)")
+                    .evidence("Active staff with CAPTAIN role = 0")
+                    .allowedAction("Phân công nhân sự có vai trò Thuyền trưởng qua /cruises/{id}/staff")
+                    .requiredPermission("CRUISE_ASSIGN_STAFF")
+                    .build());
         }
 
         for (com.casms.ship.entity.CruiseStaff s : activeStaff) {
@@ -666,33 +838,91 @@ public class CruiseService {
                     staffConflicts.add(msg);
                     issues.add(msg);
                     blockers.add("STAFF_SCHEDULE_CONFLICT");
+                    details.add(ReadinessIssueDetail.builder()
+                            .code("STAFF_SCHEDULE_CONFLICT")
+                            .targetType("STAFF")
+                            .targetId(s.getUser().getUserId())
+                            .scope("CRUISE")
+                            .severity(ReadinessSeverity.BLOCKER)
+                            .message(msg)
+                            .evidence("Conflicting cruise: " + cs.getCruise().getCruiseCode())
+                            .allowedAction("Điều chuyển nhân sự sang ca khác hoặc phân công người thay thế")
+                            .requiredPermission("CRUISE_ASSIGN_STAFF")
+                            .build());
                 }
             }
         }
 
-        // BE-06: Regulations readiness verification
+        // BE-06 / BE-R03: Regulations readiness verification at milestone D07
         boolean regulationsCompliant = true;
         List<String> regulationConflicts = new ArrayList<>();
+        Instant regulationEvaluationTime = cruise.getDepartureDatetime() != null ? cruise.getDepartureDatetime() : Instant.now();
+        int regCount = 0;
         if (cruiseRegulationService != null) {
             try {
-                var snapshot = cruiseRegulationService.getEffectiveSnapshot(cruiseId, Instant.now());
+                var snapshot = cruiseRegulationService.getEffectiveSnapshot(cruiseId, regulationEvaluationTime);
                 if (snapshot != null) {
-                    boolean directEmpty = snapshot.getDirect() == null || snapshot.getDirect().isEmpty();
-                    boolean inheritedEmpty = snapshot.getInherited() == null || snapshot.getInherited().isEmpty();
-                    if (directEmpty && inheritedEmpty) {
+                    int directCount = snapshot.getDirect() != null ? snapshot.getDirect().size() : 0;
+                    int inheritedCount = snapshot.getInherited() != null ? snapshot.getInherited().size() : 0;
+                    regCount = directCount + inheritedCount;
+                    if (directCount == 0 && inheritedCount == 0) {
                         warnings.add("Chưa có quy định an toàn/vận hành nào được gán hoặc kế thừa cho chuyến đi");
+                        details.add(ReadinessIssueDetail.builder()
+                                .code("NO_EFFECTIVE_REGULATIONS")
+                                .targetType("CRUISE")
+                                .targetId(cruiseId)
+                                .scope("CRUISE")
+                                .severity(ReadinessSeverity.WARNING)
+                                .message("Chưa có quy định an toàn/vận hành nào có hiệu lực cho chuyến đi tại mốc khởi hành")
+                                .evidence("Direct=0, Inherited=0 at " + regulationEvaluationTime)
+                                .allowedAction("Gán quy định vận hành cho chuyến đi hoặc tàu qua /cruiseregulations")
+                                .requiredPermission("REGULATION_ASSIGN")
+                                .build());
                     }
                 }
             } catch (Exception ex) {
                 log.warn("Failed to check regulation snapshot for cruise {}: {}", cruiseId, ex.getMessage());
+                regulationsCompliant = false;
+                hasInfrastructureError = true;
+                issues.add("Lỗi hệ thống phụ thuộc khi kiểm tra quy định vận hành: " + ex.getMessage());
+                details.add(ReadinessIssueDetail.builder()
+                        .code("DEPENDENCY_TIMEOUT")
+                        .targetType("REGULATION")
+                        .targetId(cruiseId)
+                        .scope("GLOBAL")
+                        .severity(ReadinessSeverity.INFRASTRUCTURE_ERROR)
+                        .message("Không thể kiểm tra quy định do lỗi hạ tầng hoặc timeout hệ thống phụ thuộc")
+                        .evidence("Exception in CruiseRegulationService: " + ex.getClass().getSimpleName() + " - " + ex.getMessage())
+                        .allowedAction("Thử lại đánh giá sau khi kiểm tra kết nối dịch vụ quy định")
+                        .requiredPermission("CRUISE_READ")
+                        .build());
             }
         }
 
-        boolean ready = issues.isEmpty();
+        ReadinessStatus status;
+        if (hasInfrastructureError) {
+            status = ReadinessStatus.INDETERMINATE;
+        } else if (!blockers.isEmpty()) {
+            status = ReadinessStatus.NOT_READY;
+        } else if (!warnings.isEmpty()) {
+            status = ReadinessStatus.WARNING;
+        } else {
+            status = ReadinessStatus.READY;
+        }
+        boolean ready = (status == ReadinessStatus.READY || status == ReadinessStatus.WARNING) && blockers.isEmpty() && !hasInfrastructureError;
+
+        String rawState = String.format("CRUISE:%s:REV:%s:SHIP:%s:ACT:%s:CONFIG:%s:PORTS:%s:CAPTAIN:%s:REGS:%d:BLOCKERS:%d:WARNS:%d:INFRA:%s",
+                cruiseId, cruise.getRevision(), shipAssigned, shipActive, shipConfigValid, portsActive, captainAssigned,
+                regCount, blockers.size(), warnings.size(), hasInfrastructureError);
+        String fingerprint = generateFingerprint(rawState);
 
         CruiseReadinessResponse response = new CruiseReadinessResponse();
         response.setCruiseId(cruiseId);
         response.setReady(ready);
+        response.setStatus(status);
+        response.setFingerprint(fingerprint);
+        response.setValidUntil(Instant.now().plus(15, ChronoUnit.MINUTES));
+        response.setDetails(details);
         response.setShipAssigned(shipAssigned);
         response.setShipActive(shipActive);
         response.setShipConfigurationValid(shipConfigValid);
@@ -862,6 +1092,15 @@ public class CruiseService {
             res.setSourceVersionNumber(cruise.getSourceVersion().getVersionNumber());
         }
         res.setRevision(cruise.getRevision());
+        res.setStoppedAt(cruise.getStoppedAt());
+        if (cruise.getStoppedBy() != null) {
+            res.setStoppedByUsername(cruise.getStoppedBy().getUsername());
+        }
+        res.setStopReason(cruise.getStopReason());
+        res.setStopEvidence(cruise.getStopEvidence());
+        res.setStopScope(cruise.getStopScope());
+        res.setStopEventIdentity(cruise.getStopEventIdentity());
+        res.setSaleStopped(cruise.getStoppedAt() != null);
         res.setCreatedAt(cruise.getCreatedAt());
         res.setUpdatedAt(cruise.getUpdatedAt());
         return res;
@@ -956,7 +1195,7 @@ public class CruiseService {
         long totalCabins = shipId != null ? cabinRepository.countByShipShipId(shipId) : 0;
         long operationalCabins = shipId != null ? cabinRepository.countByShipShipIdAndStatus(shipId, CabinStatus.AVAILABLE) : 0;
 
-        long bookedPassengers = bookingPassengerRepository.countActivePassengersByCruiseId(cruiseId);
+        long bookedPassengers = bookingPassengerRepository.countConfirmedPassengersByCruiseId(cruiseId);
         long heldPassengers = bookingPassengerRepository.countHeldPassengersByCruiseId(cruiseId);
         long remainingCapacity = Math.max(0, physicalCapacity - bookedPassengers - heldPassengers);
         long activePackages = cruiseTourPackageRepository.countByCruise_CruiseIdAndActiveTrue(cruiseId);
@@ -999,12 +1238,14 @@ public class CruiseService {
                 .build();
     }
 
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true, noRollbackFor = Exception.class)
     public CruiseSaleReadinessResponse validateSaleReadiness(UUID cruiseId) {
         Cruise cruise = getCruiseById(cruiseId);
         List<String> blockers = new ArrayList<>();
         List<String> warnings = new ArrayList<>();
         List<String> issues = new ArrayList<>();
+        List<ReadinessIssueDetail> details = new ArrayList<>();
+        boolean hasInfrastructureError = false;
 
         // 1. Evaluate operational readiness
         CruiseReadinessResponse opReadiness = validateOperationalReadiness(cruiseId);
@@ -1012,6 +1253,13 @@ public class CruiseService {
         if (!operationalReady) {
             blockers.addAll(opReadiness.getBlockers());
             issues.addAll(opReadiness.getIssues());
+        }
+        warnings.addAll(opReadiness.getWarnings());
+        if (opReadiness.getDetails() != null) {
+            details.addAll(opReadiness.getDetails());
+        }
+        if (opReadiness.getStatus() == ReadinessStatus.INDETERMINATE) {
+            hasInfrastructureError = true;
         }
 
         // 2. Check departure time in the future (at least 24 hours)
@@ -1021,38 +1269,249 @@ public class CruiseService {
             if (cruise.getDepartureDatetime() == null || cruise.getDepartureDatetime().isBefore(Instant.now())) {
                 blockers.add("CRUISE_ALREADY_DEPARTED");
                 issues.add("Thời điểm khởi hành đã qua hoặc không xác định");
+                details.add(ReadinessIssueDetail.builder()
+                        .code("CRUISE_ALREADY_DEPARTED")
+                        .targetType("CRUISE")
+                        .targetId(cruiseId)
+                        .scope("CRUISE")
+                        .severity(ReadinessSeverity.BLOCKER)
+                        .message("Thời điểm khởi hành đã qua hoặc không xác định")
+                        .evidence("Departure: " + cruise.getDepartureDatetime())
+                        .allowedAction("Thiết lập lại lịch khởi hành trong tương lai")
+                        .requiredPermission("CRUISE_UPDATE")
+                        .build());
             } else {
                 warnings.add("Thời điểm khởi hành còn dưới 24 giờ kể từ thời điểm kiểm tra");
+                details.add(ReadinessIssueDetail.builder()
+                        .code("DEPARTURE_NEAR")
+                        .targetType("CRUISE")
+                        .targetId(cruiseId)
+                        .scope("CRUISE")
+                        .severity(ReadinessSeverity.WARNING)
+                        .message("Thời điểm khởi hành còn dưới 24 giờ")
+                        .evidence("Departure: " + cruise.getDepartureDatetime())
+                        .allowedAction("Đảm bảo mọi công tác chuẩn bị đã sẵn sàng")
+                        .requiredPermission("CRUISE_READ")
+                        .build());
             }
         }
 
-        // 3. Check tour packages assigned and active
-        long activePackages = cruiseTourPackageRepository.countByCruise_CruiseIdAndActiveTrue(cruiseId);
+        // 3. Check tour packages assigned, active, and priced
+        List<CruiseTourPackage> assignedPackages = cruiseTourPackageRepository.findByCruise_CruiseId(cruiseId);
+        List<CruiseTourPackage> activeCtpList = assignedPackages.stream()
+                .filter(CruiseTourPackage::isActive)
+                .toList();
+
+        long activePackages = activeCtpList.size();
         boolean packagesConfigured = activePackages > 0;
         if (!packagesConfigured) {
             blockers.add("NO_ACTIVE_PACKAGES");
             issues.add("Chưa có gói tour/sản phẩm dịch vụ nào được gán và kích hoạt cho chuyến đi");
+            details.add(ReadinessIssueDetail.builder()
+                    .code("NO_ACTIVE_PACKAGES")
+                    .targetType("CRUISE")
+                    .targetId(cruiseId)
+                    .scope("CRUISE")
+                    .severity(ReadinessSeverity.BLOCKER)
+                    .message("Chưa có gói tour/sản phẩm dịch vụ nào được kích hoạt mở bán")
+                    .evidence("Active packages count = 0")
+                    .allowedAction("Mở bán các gói dịch vụ qua /cruises/{id}/open-sale")
+                    .requiredPermission("CRUISE_OPEN_SALE")
+                    .build());
+        }
+
+        // BE-R03: Bỏ kết quả đạt gán cố định cho giá. Kiểm tra cụ thể giá và tiền tệ từng gói
+        boolean pricingConfigured = true;
+        StringBuilder packageDigest = new StringBuilder();
+        for (CruiseTourPackage ctp : activeCtpList) {
+            TourPackage pkg = ctp.getTourPackage();
+            if (pkg == null) continue;
+            packageDigest.append(pkg.getTourPackageId()).append(":")
+                    .append(pkg.getPrice()).append(":")
+                    .append(pkg.getCurrencyCode()).append(";");
+            if (pkg.getPrice() == null || pkg.getPrice().compareTo(BigDecimal.ZERO) <= 0) {
+                pricingConfigured = false;
+                blockers.add("PACKAGE_PRICE_MISSING");
+                String msg = "Gói dịch vụ " + pkg.getPackageName() + " (" + pkg.getPackageCode() + ") chưa được cấu hình giá bán hợp lệ";
+                issues.add(msg);
+                details.add(ReadinessIssueDetail.builder()
+                        .code("PACKAGE_PRICE_MISSING")
+                        .targetType("PACKAGE")
+                        .targetId(pkg.getTourPackageId())
+                        .scope("PACKAGE")
+                        .severity(ReadinessSeverity.BLOCKER)
+                        .message(msg)
+                        .evidence("TourPackage.price is " + pkg.getPrice())
+                        .allowedAction("Cấu hình giá bán cho gói tour qua /servicepackage/packages/{id}")
+                        .requiredPermission("TOUR_PACKAGE_MANAGE")
+                        .build());
+            }
+            if (pkg.getCurrencyCode() == null || pkg.getCurrencyCode().isBlank()) {
+                pricingConfigured = false;
+                blockers.add("PACKAGE_CURRENCY_MISSING");
+                String msg = "Gói dịch vụ " + pkg.getPackageName() + " (" + pkg.getPackageCode() + ") chưa được cấu hình đơn vị tiền tệ";
+                issues.add(msg);
+                details.add(ReadinessIssueDetail.builder()
+                        .code("PACKAGE_CURRENCY_MISSING")
+                        .targetType("PACKAGE")
+                        .targetId(pkg.getTourPackageId())
+                        .scope("PACKAGE")
+                        .severity(ReadinessSeverity.BLOCKER)
+                        .message(msg)
+                        .evidence("TourPackage.currencyCode is null or empty")
+                        .allowedAction("Thiết lập mã tiền tệ (USD/VND) cho gói dịch vụ qua /servicepackage/packages/{id}")
+                        .requiredPermission("TOUR_PACKAGE_MANAGE")
+                        .build());
+            }
         }
 
         // 4. Check inventory
         int physicalCapacity = cruise.getShip() != null ? cruise.getShip().getTotalCapacity() : 0;
-        long booked = bookingPassengerRepository.countActivePassengersByCruiseId(cruiseId);
+        long booked = bookingPassengerRepository.countConfirmedPassengersByCruiseId(cruiseId);
         long held = bookingPassengerRepository.countHeldPassengersByCruiseId(cruiseId);
         long remaining = Math.max(0, physicalCapacity - booked - held);
         boolean inventoryAvailable = remaining > 0 && physicalCapacity > 0;
         if (!inventoryAvailable) {
             blockers.add("INVENTORY_EXHAUSTED");
             issues.add("Không còn chỗ trống trên tàu để mở bán");
+            details.add(ReadinessIssueDetail.builder()
+                    .code("INVENTORY_EXHAUSTED")
+                    .targetType("CRUISE")
+                    .targetId(cruiseId)
+                    .scope("CRUISE")
+                    .severity(ReadinessSeverity.BLOCKER)
+                    .message("Không còn chỗ trống khả dụng trên tàu")
+                    .evidence("PhysicalCapacity=" + physicalCapacity + ", Booked=" + booked + ", Held=" + held + ", Remaining=" + remaining)
+                    .allowedAction("Tạm dừng mở bán hoặc tăng tải trọng tàu nếu có thể")
+                    .requiredPermission("CRUISE_STOP_SALE")
+                    .build());
         }
 
-        // 5. Pricing configuration
-        boolean pricingConfigured = true;
+        // 5. BE-R03: Supplier & Programs (Bắt buộc vs Optional phân lập đúng phạm vi)
+        List<ShoreExcursion> excursions = shoreExcursionRepository.findByCruiseStop_Itinerary_Cruise_CruiseId(cruiseId);
+        StringBuilder supplierDigest = new StringBuilder();
+        for (ShoreExcursion exc : excursions) {
+            boolean isOptional = exc.getPrice() != null && exc.getPrice().compareTo(BigDecimal.ZERO) > 0;
+            Supplier supplier = exc.getSupplier();
+            supplierDigest.append(exc.getShoreExcursionId()).append(":");
 
-        boolean ready = blockers.isEmpty();
+            if (exc.getMaximumCapacity() == null || exc.getMaximumCapacity() <= 0) {
+                if (!isOptional) {
+                    blockers.add("EXCURSION_CAPACITY_INVALID");
+                    issues.add("Tour bờ bắt buộc " + exc.getExcursionName() + " chưa cấu hình sức chứa hợp lệ");
+                } else {
+                    warnings.add("Tour bờ tự chọn " + exc.getExcursionName() + " chưa cấu hình sức chứa hợp lệ");
+                }
+                details.add(ReadinessIssueDetail.builder()
+                        .code("EXCURSION_CAPACITY_INVALID")
+                        .targetType("EXCURSION")
+                        .targetId(exc.getShoreExcursionId())
+                        .scope(isOptional ? "EXCURSION" : "CRUISE")
+                        .severity(isOptional ? ReadinessSeverity.WARNING : ReadinessSeverity.BLOCKER)
+                        .message("Tour bờ " + exc.getExcursionName() + " chưa cấu hình sức chứa (maximumCapacity <= 0)")
+                        .evidence("maximumCapacity=" + exc.getMaximumCapacity())
+                        .allowedAction("Cấu hình sức chứa cho tour bờ qua /shore-excursions/{id}")
+                        .requiredPermission("EXCURSION_MANAGE")
+                        .build());
+            }
+
+            if (exc.getStartTime() != null && exc.getPlannedReturnTime() != null && exc.getPlannedReturnTime().isBefore(exc.getStartTime())) {
+                if (!isOptional) {
+                    blockers.add("EXCURSION_SCHEDULE_INVALID");
+                    issues.add("Tour bờ bắt buộc " + exc.getExcursionName() + " có thời gian kết thúc trước thời gian bắt đầu");
+                } else {
+                    warnings.add("Tour bờ tự chọn " + exc.getExcursionName() + " có thời gian kết thúc trước thời gian bắt đầu");
+                }
+                details.add(ReadinessIssueDetail.builder()
+                        .code("EXCURSION_SCHEDULE_INVALID")
+                        .targetType("EXCURSION")
+                        .targetId(exc.getShoreExcursionId())
+                        .scope(isOptional ? "EXCURSION" : "CRUISE")
+                        .severity(isOptional ? ReadinessSeverity.WARNING : ReadinessSeverity.BLOCKER)
+                        .message("Thời gian kết thúc tour bờ trước thời gian bắt đầu")
+                        .evidence("StartTime=" + exc.getStartTime() + ", ReturnTime=" + exc.getPlannedReturnTime())
+                        .allowedAction("Điều chỉnh khung giờ tour bờ qua /shore-excursions/{id}")
+                        .requiredPermission("EXCURSION_MANAGE")
+                        .build());
+            }
+
+            if (supplier == null) {
+                supplierDigest.append("NOSUP;");
+                if (!isOptional) {
+                    blockers.add("MANDATORY_EXCURSION_SUPPLIER_MISSING");
+                    issues.add("Tour bờ bắt buộc " + exc.getExcursionName() + " chưa được phân công nhà cung cấp");
+                } else {
+                    warnings.add("Tour bờ tự chọn " + exc.getExcursionName() + " chưa có nhà cung cấp (chỉ khóa bán tour này)");
+                }
+                details.add(ReadinessIssueDetail.builder()
+                        .code("SUPPLIER_MISSING")
+                        .targetType("EXCURSION")
+                        .targetId(exc.getShoreExcursionId())
+                        .scope(isOptional ? "EXCURSION" : "CRUISE")
+                        .severity(isOptional ? ReadinessSeverity.WARNING : ReadinessSeverity.BLOCKER)
+                        .message("Tour bờ " + exc.getExcursionName() + " chưa được phân công nhà cung cấp")
+                        .evidence("Supplier is null on excursion " + exc.getExcursionCode())
+                        .allowedAction("Phân công nhà cung cấp cho tour bờ qua /shore-excursions/{id}")
+                        .requiredPermission("EXCURSION_MANAGE")
+                        .build());
+            } else {
+                supplierDigest.append(supplier.getSupplierId()).append(":").append(supplier.getStatus()).append(":").append(supplier.getVerificationStatus()).append(";");
+                boolean isActive = supplier.getStatus() == SupplierStatus.ACTIVE;
+                boolean isVerified = supplier.getVerificationStatus() == SupplierVerificationStatus.VERIFIED;
+                if (!isActive || !isVerified) {
+                    boolean isRejected = supplier.getVerificationStatus() == SupplierVerificationStatus.REJECTED;
+                    String statusLabel = !isActive ? "INACTIVE" : supplier.getVerificationStatus().name();
+                    String code = isRejected ? "SUPPLIER_REJECTED" : "SUPPLIER_NOT_VERIFIED";
+                    if (!isOptional) {
+                        blockers.add(isRejected ? "MANDATORY_EXCURSION_SUPPLIER_REJECTED" : "MANDATORY_EXCURSION_SUPPLIER_UNVERIFIED");
+                        issues.add("Nhà cung cấp " + supplier.getSupplierName() + " cho tour bắt buộc " + exc.getExcursionName() + " chưa sẵn sàng (" + statusLabel + ")");
+                    } else {
+                        warnings.add("Nhà cung cấp " + supplier.getSupplierName() + " cho tour tự chọn " + exc.getExcursionName() + " chưa sẵn sàng (" + statusLabel + "), tạm khóa bán tour này");
+                    }
+                    details.add(ReadinessIssueDetail.builder()
+                            .code(code)
+                            .targetType("SUPPLIER")
+                            .targetId(supplier.getSupplierId())
+                            .scope(isOptional ? "EXCURSION" : "CRUISE")
+                            .severity(isOptional ? ReadinessSeverity.WARNING : ReadinessSeverity.BLOCKER)
+                            .message("Nhà cung cấp " + supplier.getSupplierName() + " chưa ở trạng thái ACTIVE và VERIFIED (hiện tại: " + statusLabel + ")")
+                            .evidence("Supplier status=" + supplier.getStatus() + ", verification=" + supplier.getVerificationStatus())
+                            .allowedAction("Xác minh hoặc kích hoạt nhà cung cấp qua /supplier/{id}/verify")
+                            .requiredPermission("SUPPLIER_VERIFY")
+                            .build());
+                }
+            }
+        }
+
+        // Determine Overall Readiness Status
+        ReadinessStatus status;
+        if (hasInfrastructureError) {
+            status = ReadinessStatus.INDETERMINATE;
+        } else if (!blockers.isEmpty()) {
+            status = ReadinessStatus.NOT_READY;
+        } else if (!warnings.isEmpty()) {
+            status = ReadinessStatus.WARNING;
+        } else {
+            status = ReadinessStatus.READY;
+        }
+        boolean ready = (status == ReadinessStatus.READY || status == ReadinessStatus.WARNING) && blockers.isEmpty() && !hasInfrastructureError;
+
+        // Composite fingerprint including external dependencies (prices, supplier status, ports, capacity)
+        String rawState = String.format("CRUISE:%s:REV:%s:STAT:%s:DEP:%s:RET:%s:PACKAGES:%s:PRICE_OK:%s:INV:%d:SUP:%s:BLOCKERS:%d:WARNS:%d:INFRA:%s",
+                cruiseId, cruise.getRevision(), cruise.getStatus(),
+                cruise.getDeparturePort() != null ? cruise.getDeparturePort().getStatus() : "null",
+                cruise.getReturnPort() != null ? cruise.getReturnPort().getStatus() : "null",
+                packageDigest.toString(), pricingConfigured, remaining, supplierDigest.toString(),
+                blockers.size(), warnings.size(), hasInfrastructureError);
+        String fingerprint = generateFingerprint(rawState);
 
         return CruiseSaleReadinessResponse.builder()
                 .cruiseId(cruiseId)
                 .ready(ready)
+                .status(status)
+                .fingerprint(fingerprint)
+                .validUntil(Instant.now().plus(15, ChronoUnit.MINUTES))
+                .details(details)
                 .operationalReady(operationalReady)
                 .packagesConfigured(packagesConfigured)
                 .activePackagesCount(activePackages)
@@ -1069,6 +1528,22 @@ public class CruiseService {
                 .build();
     }
 
+    private String generateFingerprint(String input) {
+        try {
+            java.security.MessageDigest digest = java.security.MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(input.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            StringBuilder hexString = new StringBuilder();
+            for (byte b : hash) {
+                String hex = Integer.toHexString(0xff & b);
+                if (hex.length() == 1) hexString.append('0');
+                hexString.append(hex);
+            }
+            return hexString.toString();
+        } catch (java.security.NoSuchAlgorithmException e) {
+            return Integer.toHexString(input.hashCode());
+        }
+    }
+
     @Transactional
     public CruiseResponse openSale(UUID cruiseId, CruiseOpenSaleRequest request) {
         Cruise cruise = cruiseRepository.findByIdForUpdate(cruiseId)
@@ -1079,11 +1554,65 @@ public class CruiseService {
                     "Revision của Cruise không khớp (expected: " + request.getExpectedRevision() + ", current: " + cruise.getRevision() + ")");
         }
 
-        // Idempotency: if already PUBLISHED and Itinerary is OPEN_FOR_SALE, return existing
         Optional<Itinerary> itineraryOpt = itineraryRepository.findByCruiseCruiseId(cruiseId);
-        if (cruise.getStatus() == CruiseStatus.PUBLISHED
-                && itineraryOpt.isPresent() && itineraryOpt.get().getStatus() == ItineraryStatus.OPEN_FOR_SALE) {
-            return mapToResponse(cruise);
+        boolean alreadyOpen = cruise.getStatus() == CruiseStatus.PUBLISHED
+                && itineraryOpt.isPresent() && itineraryOpt.get().getStatus() == ItineraryStatus.OPEN_FOR_SALE;
+
+        List<CruiseTourPackage> allAssigned = cruiseTourPackageRepository.findByCruise_CruiseId(cruiseId);
+
+        // BE-R01: Validate requested scope and check idempotency
+        if (request != null && request.getPackageIds() != null) {
+            Set<UUID> requestedPackageIds = new HashSet<>(request.getPackageIds());
+
+            // Validate every package ID in the requested scope: must exist, be ACTIVE, and be assigned to this cruise
+            for (UUID pkgId : request.getPackageIds()) {
+                TourPackage tourPackage = tourPackageRepository.findById(pkgId)
+                        .orElseThrow(() -> new ResourceNotFoundException("TourPackage", pkgId));
+                if (tourPackage.getStatus() != TourPackageStatus.ACTIVE) {
+                    throw new BusinessException("PACKAGE_INACTIVE",
+                            "Không thể mở bán gói tour đang không hoạt động: " + tourPackage.getPackageName());
+                }
+                boolean assignedToCruise = allAssigned.stream()
+                        .anyMatch(ctp -> ctp.getTourPackage().getTourPackageId().equals(pkgId));
+                if (!assignedToCruise) {
+                    throw new BusinessException("PACKAGE_NOT_ASSIGNED_TO_CRUISE",
+                            "Gói tour " + pkgId + " chưa được gán cho chuyến đi này");
+                }
+            }
+
+            // Check if already open and current active packages already match requested scope exactly
+            if (alreadyOpen) {
+                Set<UUID> currentActivePackageIds = allAssigned.stream()
+                        .filter(CruiseTourPackage::isActive)
+                        .map(ctp -> ctp.getTourPackage().getTourPackageId())
+                        .collect(Collectors.toSet());
+                if (currentActivePackageIds.equals(requestedPackageIds)) {
+                    return mapToResponse(cruise); // Truly idempotent retry
+                }
+            }
+
+            // Apply scope: requested packages -> active = true, other assigned packages -> active = false (Scope A không mở B)
+            for (CruiseTourPackage ctp : allAssigned) {
+                boolean shouldBeActive = requestedPackageIds.contains(ctp.getTourPackage().getTourPackageId());
+                if (ctp.isActive() != shouldBeActive) {
+                    ctp.setActive(shouldBeActive);
+                    cruiseTourPackageRepository.save(ctp);
+                }
+            }
+        } else {
+            // Omitted list (request == null || request.getPackageIds() == null)
+            if (alreadyOpen) {
+                return mapToResponse(cruise); // Already open, no scope change requested -> idempotent
+            }
+            // Cruise-wide open sale: ensure assigned active packages are active
+            for (CruiseTourPackage ctp : allAssigned) {
+                if (ctp.getTourPackage() != null && ctp.getTourPackage().getStatus() == TourPackageStatus.ACTIVE) {
+                    if (!ctp.isActive()) {
+                        ctp.setActive(true);
+                        cruiseTourPackageRepository.save(ctp);
+                    }
+                }
+            }
         }
 
         // Validation gate: validateSaleReadiness
@@ -1091,17 +1620,6 @@ public class CruiseService {
         if (!saleReadiness.isReady()) {
             throw new BusinessException("CRUISE_NOT_SALE_READY",
                     "Chuyến đi chưa đủ điều kiện mở bán: " + String.join("; ", saleReadiness.getIssues()));
-        }
-
-        // Activate specific packages if requested
-        if (request != null && request.getPackageIds() != null && !request.getPackageIds().isEmpty()) {
-            for (UUID pkgId : request.getPackageIds()) {
-                cruiseTourPackageRepository.findByCruise_CruiseIdAndTourPackage_TourPackageId(cruiseId, pkgId)
-                        .ifPresent(ctp -> {
-                            ctp.setActive(true);
-                            cruiseTourPackageRepository.save(ctp);
-                        });
-            }
         }
 
         cruise.setStatus(CruiseStatus.PUBLISHED);
@@ -1120,7 +1638,7 @@ public class CruiseService {
     }
 
     @Transactional
-    public CruiseResponse stopSale(UUID cruiseId, CruiseStopSaleRequest request) {
+    public CruiseResponse stopSale(UUID cruiseId, CruiseStopSaleRequest request, UUID actorId) {
         Cruise cruise = cruiseRepository.findByIdForUpdate(cruiseId)
                 .orElseThrow(() -> new ResourceNotFoundException("Cruise", cruiseId));
 
@@ -1129,7 +1647,12 @@ public class CruiseService {
                     "Revision của Cruise không khớp (expected: " + request.getExpectedRevision() + ", current: " + cruise.getRevision() + ")");
         }
 
-        if (request != null && request.getPackageId() != null) {
+        String scope = (request != null && request.getPackageId() != null) ? "PACKAGE" : "CRUISE";
+        String eventIdentity = (request != null && request.getEventIdentity() != null && !request.getEventIdentity().isBlank())
+                ? request.getEventIdentity()
+                : "EVT-" + cruise.getCruiseCode() + "-STOP-" + scope + "-" + System.currentTimeMillis();
+
+        if ("PACKAGE".equals(scope)) {
             // Targeted stop-sale: deactivate only specific package
             CruiseTourPackage ctp = cruiseTourPackageRepository
                     .findByCruise_CruiseIdAndTourPackage_TourPackageId(cruiseId, request.getPackageId())
@@ -1143,12 +1666,49 @@ public class CruiseService {
                 itinerary.setStatus(ItineraryStatus.SUSPENDED);
                 itineraryRepository.save(itinerary);
             });
-            log.info("Stopped sale (SUSPENDED) for entire cruise {}. Reason: {}", cruise.getCruiseCode(), request != null ? request.getReason() : "N/A");
+            cruise.setStoppedAt(Instant.now());
+            if (actorId != null) {
+                userRepository.findById(actorId).ifPresent(cruise::setStoppedBy);
+            }
+            cruise.setStopReason(request != null ? request.getReason() : "Stop sale triggered");
+            cruise.setStopEvidence(request != null ? request.getEvidence() : null);
+            cruise.setStopScope("CRUISE");
+            cruise.setStopEventIdentity(eventIdentity);
+            log.info("Stopped sale (SUSPENDED) for entire cruise {}. Reason: {}", cruise.getCruiseCode(), cruise.getStopReason());
+        }
+
+        // BE-R06: Có booking/registration bị ảnh hưởng thì tạo việc phù hợp theo C17; retry cùng sự kiện không tạo lặp.
+        // Không bắt mọi manual stop tạo một task giống nhau nếu không có tác động cần xử lý.
+        long affectedBookings = bookingRepository.countByCruiseCruiseId(cruiseId);
+        if (affectedBookings > 0) {
+            String taskCode = "TASK-" + cruise.getCruiseCode() + "-STOP-" + Math.abs(eventIdentity.hashCode() % 10000);
+            Optional<CruiseImpactTask> existingTask = cruiseImpactTaskRepository.findByTaskCode(taskCode);
+            if (existingTask.isEmpty()) {
+                CruiseImpactTask task = new CruiseImpactTask();
+                task.setCruise(cruise);
+                task.setTaskCode(taskCode);
+                task.setEventIdentity(eventIdentity);
+                task.setCategory("SALE_STOPPED");
+                task.setTargetType("CRUISE");
+                task.setTargetId(cruiseId.toString());
+                task.setTitle("Xử lý tác động dừng bán chuyến đi " + cruise.getCruiseCode());
+                task.setDescription("Chuyến đi bị tạm dừng mở bán do: " + (request != null ? request.getReason() : "N/A") + ". Có " + affectedBookings + " booking cần rà soát.");
+                task.setStatus("PENDING");
+                task.setSeverity("BLOCKING");
+                task.setEvidence("Số booking bị ảnh hưởng: " + affectedBookings + "; Lý do: " + (request != null ? request.getReason() : "N/A"));
+                cruiseImpactTaskRepository.save(task);
+            }
         }
 
         cruise = cruiseRepository.save(cruise);
         cruiseRepository.flush();
         return mapToResponse(cruise);
+    }
+
+    // Overload for backward compatibility
+    @Transactional
+    public CruiseResponse stopSale(UUID cruiseId, CruiseStopSaleRequest request) {
+        return stopSale(cruiseId, request, null);
     }
 
     @Transactional
@@ -1166,6 +1726,10 @@ public class CruiseService {
             CruiseTourPackage ctp = cruiseTourPackageRepository
                     .findByCruise_CruiseIdAndTourPackage_TourPackageId(cruiseId, request.getPackageId())
                     .orElseThrow(() -> new ResourceNotFoundException("CruiseTourPackage", request.getPackageId()));
+            if (ctp.getTourPackage() != null && ctp.getTourPackage().getStatus() != TourPackageStatus.ACTIVE) {
+                throw new BusinessException("PACKAGE_INACTIVE",
+                        "Không thể mở bán lại gói tour đang không hoạt động: " + ctp.getTourPackage().getPackageName());
+            }
             ctp.setActive(true);
             cruiseTourPackageRepository.save(ctp);
             log.info("Resumed sale for package {} on cruise {}", request.getPackageId(), cruise.getCruiseCode());
@@ -1181,12 +1745,186 @@ public class CruiseService {
                 itinerary.setStatus(ItineraryStatus.OPEN_FOR_SALE);
                 itineraryRepository.save(itinerary);
             });
+            cruise.setStoppedAt(null);
+            cruise.setStoppedBy(null);
+            cruise.setStopReason(null);
+            cruise.setStopEvidence(null);
+            cruise.setStopScope(null);
+            cruise.setStopEventIdentity(null);
             log.info("Resumed sale for entire cruise {}", cruise.getCruiseCode());
         }
 
         cruise = cruiseRepository.save(cruise);
         cruiseRepository.flush();
         return mapToResponse(cruise);
+    }
+
+    // BE-R05b / C11, C17: Áp dụng thay đổi toàn diện với kiểm tra dữ liệu mới nhất
+    @Transactional
+    public CruiseApplyChangeResponse applyChange(UUID cruiseId, CruiseChangeImpactRequest request, UUID actorId) {
+        Cruise cruise = cruiseRepository.findByIdForUpdate(cruiseId)
+                .orElseThrow(() -> new ResourceNotFoundException("Cruise", cruiseId));
+
+        if (request.getExpectedRevision() != null && !request.getExpectedRevision().equals(cruise.getRevision())) {
+            throw new BusinessException(HttpStatus.CONFLICT, "STALE_REVISION",
+                    String.format("Cruise revision đã thay đổi (hiện tại: %d, mong đợi: %d). Vui lòng tải lại trang trước khi áp dụng.",
+                            cruise.getRevision(), request.getExpectedRevision()));
+        }
+
+        // 1. Kiểm tra lại dữ liệu mới nhất (không tin preview cũ)
+        CruiseChangeImpactResponse impact = cruiseImpactAssessmentService.previewChangeImpact(cruiseId, request);
+        if (!impact.isCanProceed()) {
+            throw new BusinessException("CHANGE_BLOCKED",
+                    "Không thể áp dụng thay đổi do có điều kiện bị vi phạm: " + String.join("; ", impact.getBlockers()));
+        }
+
+        long activeBookings = bookingRepository.countByCruiseCruiseId(cruiseId);
+        if (activeBookings > 0) {
+            if (request.getReason() == null || request.getReason().trim().length() < 5) {
+                throw new BusinessException("REASON_REQUIRED_FOR_COMMITTED_CRUISE",
+                        "Chuyến đi đã có khách đặt chỗ, bắt buộc phải cung cấp lý do thay đổi cụ thể");
+            }
+        }
+
+        Instant beforeDeparture = cruise.getDepartureDatetime();
+        UUID beforeShipId = cruise.getShip() != null ? cruise.getShip().getShipId() : null;
+
+        // 2. Thay đổi tàu
+        if (request.getNewShipId() != null && (cruise.getShip() == null || !cruise.getShip().getShipId().equals(request.getNewShipId()))) {
+            Ship newShip = shipRepository.findById(request.getNewShipId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Ship", request.getNewShipId()));
+            cruise.setShip(newShip);
+
+            // Xử lý OnboardActivities có deck thuộc tàu cũ
+            List<com.casms.activity.entity.OnboardActivity> activities = onboardActivityRepository.findByCruise_CruiseId(cruiseId);
+            for (com.casms.activity.entity.OnboardActivity act : activities) {
+                if (act.getDeck() != null && !act.getDeck().getShip().getShipId().equals(newShip.getShipId())) {
+                    act.setDeck(null);
+                    act.setCabin(null);
+                    onboardActivityRepository.save(act);
+                }
+            }
+        }
+
+        // 3. Thay đổi cảng
+        if (request.getNewDeparturePortId() != null) {
+            Port newDepPort = portRepository.findById(request.getNewDeparturePortId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Departure Port", request.getNewDeparturePortId()));
+            if (newDepPort.getStatus() != PortStatus.ACTIVE) {
+                throw new BusinessException("PORT_NOT_ACTIVE", "Cảng khởi hành mới phải ở trạng thái ACTIVE");
+            }
+            if (cruise.getSourceTrip() != null) {
+                CountryScopeValidator.validatePort(newDepPort, cruise.getSourceTrip(), "Cảng khởi hành mới");
+            }
+            cruise.setDeparturePort(newDepPort);
+        }
+        if (request.getNewReturnPortId() != null) {
+            Port newRetPort = portRepository.findById(request.getNewReturnPortId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Return Port", request.getNewReturnPortId()));
+            if (newRetPort.getStatus() != PortStatus.ACTIVE) {
+                throw new BusinessException("PORT_NOT_ACTIVE", "Cảng về mới phải ở trạng thái ACTIVE");
+            }
+            if (cruise.getSourceTrip() != null) {
+                CountryScopeValidator.validatePort(newRetPort, cruise.getSourceTrip(), "Cảng về mới");
+            }
+            cruise.setReturnPort(newRetPort);
+        }
+
+        // 4. Thay đổi thời gian và dời lịch
+        if (request.getNewDepartureDatetime() != null) {
+            Instant oldDep = cruise.getDepartureDatetime();
+            Instant newDep = request.getNewDepartureDatetime();
+            Instant newRet = request.getNewReturnDatetime() != null ? request.getNewReturnDatetime() :
+                    (oldDep != null && cruise.getReturnDatetime() != null
+                            ? newDep.plus(Duration.between(oldDep, cruise.getReturnDatetime()))
+                            : newDep.plusSeconds(86400 * 3));
+
+            cruise.setDepartureDatetime(newDep);
+            cruise.setReturnDatetime(newRet);
+            shiftScheduleAndPrograms(cruise, oldDep, newDep);
+        }
+
+        cruise = cruiseRepository.save(cruise);
+        cruiseRepository.flush();
+
+        // 5. Tự động sinh và lưu công việc C17 nếu có tác động cần xử lý
+        List<CruiseImpactTaskResponse> generatedTasks = List.of();
+        if (!impact.getGeneratedTasks().isEmpty()) {
+            generatedTasks = cruiseImpactAssessmentService.generateAndPersistImpactTasks(cruiseId, impact);
+        }
+
+        return CruiseApplyChangeResponse.builder()
+                .cruiseId(cruiseId)
+                .cruiseCode(cruise.getCruiseCode())
+                .revision(cruise.getRevision())
+                .appliedAt(Instant.now())
+                .beforeDepartureDatetime(beforeDeparture)
+                .afterDepartureDatetime(cruise.getDepartureDatetime())
+                .beforeShipId(beforeShipId)
+                .afterShipId(cruise.getShip() != null ? cruise.getShip().getShipId() : null)
+                .affectedBookingsCount(impact.getAffectedBookingsCount())
+                .affectedPassengersCount(impact.getBookedPassengersCount())
+                .affectedActivitiesCount(impact.getAffectedActivitiesCount())
+                .affectedExcursionsCount(impact.getAffectedExcursionsCount())
+                .generatedTasks(generatedTasks)
+                .message("Áp dụng thay đổi hành trình và cập nhật các đối tượng phụ thuộc thành công")
+                .build();
+    }
+
+    // Helper: Đồng bộ dời thời gian của ItineraryDay, CruiseStop, OnboardActivity, ShoreExcursion
+    private void shiftScheduleAndPrograms(Cruise cruise, Instant oldDep, Instant newDep) {
+        if (oldDep == null || newDep == null || oldDep.equals(newDep)) {
+            return;
+        }
+        Duration shift = Duration.between(oldDep, newDep);
+        UUID cruiseId = cruise.getCruiseId();
+
+        Optional<Itinerary> itOpt = itineraryRepository.findByCruiseCruiseId(cruiseId);
+        if (itOpt.isPresent()) {
+            Itinerary it = itOpt.get();
+            List<ItineraryDay> days = itineraryDayRepository.findByItineraryItineraryIdOrderByDayNumberAsc(it.getItineraryId());
+            if (cruise.getDeparturePort() != null && cruise.getDeparturePort().getTimeZoneId() != null) {
+                LocalDate newStartDate = newDep.atZone(PortTimeZoneHelper.resolveZone(cruise.getDeparturePort().getTimeZoneId())).toLocalDate();
+                // Pass 1: Temporarily shift dates far into future to free up dates and avoid unique constraint conflict
+                for (ItineraryDay day : days) {
+                    day.setDate(day.getDate().plusYears(100));
+                }
+                itineraryDayRepository.saveAllAndFlush(days);
+
+                // Pass 2: Set final shifted dates
+                for (ItineraryDay day : days) {
+                    day.setDate(newStartDate.plusDays(day.getDayNumber() - 1));
+                }
+                itineraryDayRepository.saveAllAndFlush(days);
+            }
+
+            List<CruiseStop> stops = cruiseStopRepository.findByItineraryItineraryIdOrderByStopOrderAsc(it.getItineraryId());
+            for (CruiseStop stop : stops) {
+                if (stop.getPlannedArrival() != null) {
+                    stop.setPlannedArrival(stop.getPlannedArrival().plus(shift));
+                }
+                if (stop.getPlannedDeparture() != null) {
+                    stop.setPlannedDeparture(stop.getPlannedDeparture().plus(shift));
+                }
+                cruiseStopRepository.save(stop);
+            }
+        }
+
+        // Dời thời gian của OnboardActivity
+        List<com.casms.activity.entity.OnboardActivity> activities = onboardActivityRepository.findByCruise_CruiseId(cruiseId);
+        for (com.casms.activity.entity.OnboardActivity act : activities) {
+            if (act.getStartTime() != null) act.setStartTime(act.getStartTime().plus(shift));
+            if (act.getEndTime() != null) act.setEndTime(act.getEndTime().plus(shift));
+            onboardActivityRepository.save(act);
+        }
+
+        // Dời thời gian của ShoreExcursion
+        List<ShoreExcursion> excursions = shoreExcursionRepository.findByCruiseStop_Itinerary_Cruise_CruiseId(cruiseId);
+        for (ShoreExcursion exc : excursions) {
+            if (exc.getStartTime() != null) exc.setStartTime(exc.getStartTime().plus(shift));
+            if (exc.getPlannedReturnTime() != null) exc.setPlannedReturnTime(exc.getPlannedReturnTime().plus(shift));
+            shoreExcursionRepository.save(exc);
+        }
     }
 
     @Transactional(readOnly = true)
