@@ -20,12 +20,17 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.http.HttpStatus;
+import org.springframework.security.authentication.AnonymousAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.time.ZoneOffset;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -45,7 +50,7 @@ public class ItineraryService {
         log.info("Creating new itinerary for cruise: {}", request.getCruiseId());
 
         if (creatorUserId == null) {
-            throw new BusinessException(org.springframework.http.HttpStatus.UNAUTHORIZED, "AUTH_REQUIRED", "Creator user ID is required");
+            throw new BusinessException(HttpStatus.UNAUTHORIZED, "AUTH_REQUIRED", "Creator user ID is required");
         }
 
         Cruise cruise = cruiseRepository.findById(request.getCruiseId())
@@ -59,9 +64,9 @@ public class ItineraryService {
                 .orElseThrow(() -> new ResourceNotFoundException("User", creatorUserId));
 
         LocalDate startDate = request.getStartDate() != null ? request.getStartDate()
-                : cruise.getDepartureDatetime().atZone(java.time.ZoneOffset.UTC).toLocalDate();
+                : cruise.getDepartureDatetime().atZone(ZoneOffset.UTC).toLocalDate();
         LocalDate endDate = request.getEndDate() != null ? request.getEndDate()
-                : cruise.getReturnDatetime().atZone(java.time.ZoneOffset.UTC).toLocalDate();
+                : cruise.getReturnDatetime().atZone(ZoneOffset.UTC).toLocalDate();
 
         if (!endDate.isAfter(startDate)) {
             throw new BusinessException("INVALID_DATE_RANGE", "End date must be after start date");
@@ -92,8 +97,8 @@ public class ItineraryService {
     }
 
     private boolean hasInternalStaffRole() {
-        var auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
-        if (auth == null || !auth.isAuthenticated() || auth instanceof org.springframework.security.authentication.AnonymousAuthenticationToken) {
+        var auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || !auth.isAuthenticated() || auth instanceof AnonymousAuthenticationToken) {
             return false;
         }
         return auth.getAuthorities().stream().anyMatch(a ->
@@ -119,7 +124,7 @@ public class ItineraryService {
         Itinerary itinerary = getItineraryById(itineraryId);
         if (itinerary.getStatus() != ItineraryStatus.APPROVED && itinerary.getStatus() != ItineraryStatus.OPEN_FOR_SALE) {
             if (!hasInternalStaffRole()) {
-                throw new BusinessException(org.springframework.http.HttpStatus.FORBIDDEN, "FORBIDDEN",
+                throw new BusinessException(HttpStatus.FORBIDDEN, "FORBIDDEN",
                         "Chỉ nhân viên quản lý mới có quyền xem bản nháp hoặc lịch trình chưa phát hành");
             }
         }
@@ -149,6 +154,10 @@ public class ItineraryService {
         if (request.getItineraryType() != null) {
             itinerary.setItineraryType(request.getItineraryType());
         }
+
+        // BE-02: Chỉnh sửa thủ công thu hồi kế thừa phê duyệt và đánh dấu đã bị sửa đổi
+        itinerary.setApprovalInherited(false);
+        itinerary.setContentModifiedAfterMaterialization(true);
 
         itinerary = itineraryRepository.save(itinerary);
         return mapToResponse(itinerary);
@@ -187,7 +196,7 @@ public class ItineraryService {
             throw new BusinessException("EMPTY_ITINERARY_DAYS", "Lịch trình phải có ít nhất một ngày trước khi gửi duyệt hoặc kiểm tra tính khả thi");
         }
 
-        long expectedDayCount = java.time.temporal.ChronoUnit.DAYS.between(itinerary.getStartDate(), itinerary.getEndDate()) + 1;
+        long expectedDayCount = ChronoUnit.DAYS.between(itinerary.getStartDate(), itinerary.getEndDate()) + 1;
         if (days.size() != expectedDayCount) {
             throw new BusinessException("INVALID_DAY_COUNT",
                     String.format("Số lượng ngày trong lịch trình (%d ngày) không khớp với khoảng thời gian từ %s đến %s (%d ngày)",
@@ -211,8 +220,8 @@ public class ItineraryService {
         if (itinerary.getCruise() != null) {
             Cruise cruise = itinerary.getCruise();
             if (cruise.getDepartureDatetime() != null && cruise.getReturnDatetime() != null) {
-                LocalDate departureDate = cruise.getDepartureDatetime().atZone(java.time.ZoneOffset.UTC).toLocalDate();
-                LocalDate returnDate = cruise.getReturnDatetime().atZone(java.time.ZoneOffset.UTC).toLocalDate();
+                LocalDate departureDate = cruise.getDepartureDatetime().atZone(ZoneOffset.UTC).toLocalDate();
+                LocalDate returnDate = cruise.getReturnDatetime().atZone(ZoneOffset.UTC).toLocalDate();
                 if (itinerary.getStartDate().isBefore(departureDate) ||
                     itinerary.getEndDate().isAfter(returnDate)) {
                     throw new BusinessException("ITINERARY_OUTSIDE_CRUISE_RANGE",
@@ -257,6 +266,7 @@ public class ItineraryService {
         itinerary.setStatus(ItineraryStatus.APPROVED);
         itinerary.setApprovedByUser(approver);
         itinerary.setApprovedAt(Instant.now());
+        itinerary.setContentModifiedAfterMaterialization(false);
 
         itinerary = itineraryRepository.save(itinerary);
         log.info("Approved itinerary: {}", itinerary.getItineraryId());
@@ -413,6 +423,8 @@ public class ItineraryService {
         res.setEndDate(itinerary.getEndDate());
         res.setItineraryType(itinerary.getItineraryType());
         res.setStatus(itinerary.getStatus());
+        res.setApprovalInherited(itinerary.getApprovalInherited());
+        res.setContentModifiedAfterMaterialization(itinerary.getContentModifiedAfterMaterialization());
         res.setApprovedByUserId(itinerary.getApprovedByUser() != null ? itinerary.getApprovedByUser().getUserId() : null);
         res.setApprovedAt(itinerary.getApprovedAt());
         res.setCreatedByUserId(itinerary.getCreatedByUser() != null ? itinerary.getCreatedByUser().getUserId() : null);

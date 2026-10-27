@@ -6,6 +6,7 @@ import com.casms.activity.entity.Supplier;
 import com.casms.activity.service.SupplierService;
 import com.casms.common.exception.BusinessException;
 import com.casms.common.response.ApiResponse;
+import com.casms.identity.entity.User;
 import com.casms.security.principal.CasmsPrincipal;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -147,7 +148,7 @@ public class SupplierController {
             Object principal = authentication.getPrincipal();
             if (principal instanceof CasmsPrincipal casmsPrincipal) {
                 return casmsPrincipal.getUserId();
-            } else if (principal instanceof com.casms.identity.entity.User user) {
+            } else if (principal instanceof User user) {
                 return user.getUserId();
             } else if (principal instanceof String str) {
                 try {

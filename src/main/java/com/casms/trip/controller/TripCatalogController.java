@@ -15,6 +15,11 @@ import com.casms.ship.repository.DeckRepository;
 import com.casms.ship.repository.DestinationRepository;
 import com.casms.ship.repository.PortRepository;
 import com.casms.activity.enums.OnboardActivityCategory;
+import com.casms.activity.enums.OnboardActivityStatus;
+import com.casms.activity.enums.ShoreExcursionStatus;
+import com.casms.common.exception.BusinessException;
+import com.casms.common.exception.ResourceNotFoundException;
+import com.casms.ship.enums.PortStatus;
 import com.casms.trip.dto.response.ActivityCategoryResponse;
 import com.casms.trip.dto.response.PlanningSourceActivityResponse;
 import com.casms.trip.dto.response.PlanningSourceCabinResponse;
@@ -23,18 +28,25 @@ import com.casms.trip.dto.response.PlanningSourceExcursionResponse;
 import com.casms.trip.dto.response.PlanningSourcePortResponse;
 import com.casms.trip.dto.response.PlanningSourceServiceResponse;
 import com.casms.trip.dto.response.TripCatalogResponse;
+import com.casms.trip.entity.Trip;
+import com.casms.trip.repository.TripRepository;
 import com.casms.trip.service.CountryScopeValidator;
+import com.casms.trip.service.VietnamGeographyRegistry;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import lombok.Setter;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Sort;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -50,21 +62,21 @@ public class TripCatalogController {
     private final ShoreExcursionRepository shoreExcursionRepository;
     private final ServiceRepository serviceRepository;
 
-    @org.springframework.beans.factory.annotation.Autowired(required = false)
-    @lombok.Setter
+    @Autowired(required = false)
+    @Setter
     private DeckRepository deckRepository;
 
-    @org.springframework.beans.factory.annotation.Autowired(required = false)
-    @lombok.Setter
+    @Autowired(required = false)
+    @Setter
     private CabinRepository cabinRepository;
 
-    @org.springframework.beans.factory.annotation.Autowired(required = false)
-    @lombok.Setter
+    @Autowired(required = false)
+    @Setter
     private PortRepository portRepository;
 
-    @org.springframework.beans.factory.annotation.Autowired(required = false)
-    @lombok.Setter
-    private com.casms.trip.repository.TripRepository tripRepository;
+    @Autowired(required = false)
+    @Setter
+    private TripRepository tripRepository;
 
     @Operation(summary = "Lấy danh mục lập kế hoạch hành trình", description = "Trả về operatingAreas từ server, tripTypes, fleetIntegrationStatus=DEFERRED_EXTERNAL, supported policies, domesticRegions và countries")
     @PreAuthorize("hasAuthority('TRIP_READ')")
@@ -129,7 +141,7 @@ public class TripCatalogController {
         String kw = keyword != null ? keyword.trim().toLowerCase() : null;
 
         List<PlanningSourceActivityResponse> result = activities.stream()
-                .filter(a -> a.getStatus() != com.casms.activity.enums.OnboardActivityStatus.CANCELLED)
+                .filter(a -> a.getStatus() != OnboardActivityStatus.CANCELLED)
                 .filter(a -> category == null || a.getCategory() == category)
                 .filter(a -> kw == null || (a.getActivityName() != null && a.getActivityName().toLowerCase().contains(kw))
                         || (a.getActivityCode() != null && a.getActivityCode().toLowerCase().contains(kw)))
@@ -204,7 +216,7 @@ public class TripCatalogController {
         String kw = keyword != null ? keyword.trim().toLowerCase() : null;
 
         List<PlanningSourceExcursionResponse> result = excursions.stream()
-                .filter(e -> e.getStatus() != com.casms.activity.enums.ShoreExcursionStatus.CANCELLED)
+                .filter(e -> e.getStatus() != ShoreExcursionStatus.CANCELLED)
                 .filter(e -> {
                     UUID pId = null;
                     if (e.getPort() != null) {
@@ -434,28 +446,28 @@ public class TripCatalogController {
         List<String> allowedCountryCodes = null;
         if (tripId != null) {
             if (tripRepository == null) {
-                throw new com.casms.common.exception.BusinessException(org.springframework.http.HttpStatus.INTERNAL_SERVER_ERROR, "TRIP_REPO_UNAVAILABLE", "TripRepository is not available.");
+                throw new BusinessException(HttpStatus.INTERNAL_SERVER_ERROR, "TRIP_REPO_UNAVAILABLE", "TripRepository is not available.");
             }
-            com.casms.trip.entity.Trip trip = tripRepository.findById(tripId)
-                    .orElseThrow(() -> new com.casms.common.exception.ResourceNotFoundException("Trip", tripId));
+            Trip trip = tripRepository.findById(tripId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Trip", tripId));
 
             if (CountryScopeValidator.isDomestic(trip)) {
                 allowedCountryCodes = List.of("VN");
             } else if (CountryScopeValidator.isInternational(trip)) {
                 List<String> tripCountries = trip.getCountryCodes();
                 if (tripCountries == null || tripCountries.isEmpty()) {
-                    throw new com.casms.common.exception.BusinessException(org.springframework.http.HttpStatus.BAD_REQUEST, "SCOPE_COUNTRY_REQUIRED",
+                    throw new BusinessException(HttpStatus.BAD_REQUEST, "SCOPE_COUNTRY_REQUIRED",
                             "Chuyến đi quốc tế " + trip.getTripCode() + " chưa được cấu hình danh sách quốc gia (countryCodes). Vui lòng cập nhật phạm vi quốc gia trước khi tra cứu cảng.");
                 }
                 allowedCountryCodes = tripCountries.stream().map(c -> c.trim().toUpperCase()).toList();
             } else {
-                throw new com.casms.common.exception.BusinessException(org.springframework.http.HttpStatus.BAD_REQUEST, "SCOPE_COUNTRY_REQUIRED",
+                throw new BusinessException(HttpStatus.BAD_REQUEST, "SCOPE_COUNTRY_REQUIRED",
                         "Chuyến đi " + trip.getTripCode() + " chưa được xác định phạm vi địa lý (plannedScope).");
             }
         }
 
         // Explicit countryCode / countryCodes from request
-        List<String> directCountries = new java.util.ArrayList<>();
+        List<String> directCountries = new ArrayList<>();
         if (countryCode != null && !countryCode.isBlank()) {
             directCountries.add(countryCode.trim().toUpperCase());
         }
@@ -468,7 +480,7 @@ public class TripCatalogController {
                 // Verify all requested direct countries are within the trip's authoritative scope
                 for (String dc : directCountries) {
                     if (!allowedCountryCodes.contains(dc)) {
-                        throw new com.casms.common.exception.BusinessException(org.springframework.http.HttpStatus.BAD_REQUEST, "PORT_OUTSIDE_COUNTRY_SCOPE",
+                        throw new BusinessException(HttpStatus.BAD_REQUEST, "PORT_OUTSIDE_COUNTRY_SCOPE",
                                 "Mã quốc gia '" + dc + "' không nằm trong phạm vi quốc gia có thẩm quyền của Trip: " + String.join(", ", allowedCountryCodes));
                     }
                 }
@@ -489,7 +501,7 @@ public class TripCatalogController {
         final List<String> filterCountries = allowedCountryCodes;
 
         List<PlanningSourcePortResponse> result = ports.stream()
-                .filter(p -> p.getStatus() == com.casms.ship.enums.PortStatus.ACTIVE)
+                .filter(p -> p.getStatus() == PortStatus.ACTIVE)
                 .filter(p -> filterCountries == null || (p.getCountryCode() != null && filterCountries.contains(p.getCountryCode().trim().toUpperCase())))
                 .filter(p -> kw == null || (p.getPortName() != null && p.getPortName().toLowerCase().contains(kw))
                         || (p.getPortCode() != null && p.getPortCode().toLowerCase().contains(kw)))
@@ -498,7 +510,7 @@ public class TripCatalogController {
                         .portCode(p.getPortCode())
                         .portName(p.getPortName())
                         .countryCode(p.getCountryCode())
-                        .domesticRegion(com.casms.trip.service.VietnamGeographyRegistry.resolveDomesticRegion(p))
+                        .domesticRegion(VietnamGeographyRegistry.resolveDomesticRegion(p))
                         .timeZoneId(p.getTimeZoneId())
                         .destinationId(p.getDestination() != null ? p.getDestination().getDestinationId() : null)
                         .destinationName(p.getDestination() != null ? p.getDestination().getDestinationName() : null)

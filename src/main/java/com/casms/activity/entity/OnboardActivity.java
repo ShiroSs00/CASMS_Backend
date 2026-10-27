@@ -2,6 +2,7 @@ package com.casms.activity.entity;
 
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
+import com.casms.activity.enums.OnboardActivityCategory;
 import com.casms.activity.enums.OnboardActivityStatus;
 import com.casms.ship.entity.Cabin;
 import com.casms.ship.entity.Cruise;
@@ -34,7 +35,7 @@ public class OnboardActivity {
     /** Phân loại danh mục hoạt động trên tàu (Giải trí, Thể thao, Gia đình, Sự kiện, Lớp học) */
     @Enumerated(EnumType.STRING)
     @Column(name = "category", length = 50)
-    private com.casms.activity.enums.OnboardActivityCategory category;
+    private OnboardActivityCategory category;
 
     @Column(name = "description", length = 1000)
     private String description;

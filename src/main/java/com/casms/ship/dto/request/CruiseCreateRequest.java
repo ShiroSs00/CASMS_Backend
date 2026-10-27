@@ -27,16 +27,13 @@ public class CruiseCreateRequest {
     @NotNull(message = "Departure datetime is required")
     private Instant departureDatetime;
 
-    @Schema(description = "Thời điểm kết thúc / trở về (ISO-8601)", example = "2026-11-03T18:00:00Z", requiredMode = Schema.RequiredMode.REQUIRED)
-    @NotNull(message = "Return datetime is required")
+    @Schema(description = "Thời điểm kết thúc / trở về (ISO-8601). Tự động tính toán và khóa từ nguồn nếu có sourceVersionId (G04)", example = "2026-11-03T18:00:00Z")
     private Instant returnDatetime;
 
-    @Schema(description = "ID cảng xuất phát", example = "3fa85f64-5717-4562-b3fc-2c963f66afa6", requiredMode = Schema.RequiredMode.REQUIRED)
-    @NotNull(message = "Departure port ID is required")
+    @Schema(description = "ID cảng xuất phát. Tự động lấy từ điểm dừng đầu tiên nếu có sourceVersionId (G04)", example = "3fa85f64-5717-4562-b3fc-2c963f66afa6")
     private UUID departurePortId;
 
-    @Schema(description = "ID cảng kết thúc (có thể trùng cảng xuất phát nếu là chuyến vòng)", example = "3fa85f64-5717-4562-b3fc-2c963f66afa6", requiredMode = Schema.RequiredMode.REQUIRED)
-    @NotNull(message = "Return port ID is required")
+    @Schema(description = "ID cảng kết thúc. Tự động lấy từ điểm dừng cuối cùng nếu có sourceVersionId (G04)", example = "3fa85f64-5717-4562-b3fc-2c963f66afa6")
     private UUID returnPortId;
 
     @Schema(description = "(Tùy chọn) ID phiên bản TripScheduleVersion (đã PUBLISHED) dùng làm nguồn cho chuyến đi này", example = "3fa85f64-5717-4562-b3fc-2c963f66afa6")

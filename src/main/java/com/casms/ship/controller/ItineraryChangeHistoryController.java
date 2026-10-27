@@ -1,5 +1,6 @@
 package com.casms.ship.controller;
 
+import com.casms.common.exception.BusinessException;
 import com.casms.ship.dto.request.ItineraryChangeRequest;
 import com.casms.ship.dto.response.ItineraryChangeHistoryResponse;
 import com.casms.ship.enums.ItineraryChangeType;
@@ -39,7 +40,7 @@ public class ItineraryChangeHistoryController {
             @AuthenticationPrincipal CasmsPrincipal principal
     ) {
         if (principal == null || principal.getUserId() == null) {
-            throw new com.casms.common.exception.BusinessException(
+            throw new BusinessException(
                     HttpStatus.UNAUTHORIZED, "AUTH_REQUIRED", "Authentication required");
         }
         return ResponseEntity.status(HttpStatus.CREATED)

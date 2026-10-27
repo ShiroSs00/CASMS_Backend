@@ -111,4 +111,22 @@ public class CruiseStopResponse {
 
     @Schema(description = "Ghi chú", example = "Cần xem xét thời tiết")
     private String notes;
+
+    @Schema(description = "Trạng thái phối hợp cảng (NOT_STARTED, SUBMITTED, IN_COORDINATION, CONFIRMED, REJECTED)", example = "CONFIRMED")
+    private String coordinationStatus;
+
+    @Schema(description = "Hạn chót phối hợp cảng", example = "2026-01-14T12:00:00Z")
+    private Instant coordinationDeadline;
+
+    @Schema(description = "Mã hồ sơ phối hợp cảng", example = "DOS-HPH-2026-01")
+    private String dossierReference;
+
+    @Schema(description = "Mã tham chiếu giấy phép chính thức từ cơ quan quản lý cảng (nếu có tích hợp ngoài)", example = "CLR-VPA-2026-9981")
+    private String officialClearanceReference;
+
+    @Schema(description = "Cơ quan thẩm quyền cấp giấy phép cảng", example = "Cảng vụ Hàng hải Hải Phòng")
+    private String clearanceAuthority;
+
+    @Schema(description = "Lý do thay đổi thứ tự hoặc điều chỉnh lượt ghé", example = "Thời tiết vùng vịnh chuyển xấu, đảo thứ tự cập cảng")
+    private String sequenceChangeReason;
 }

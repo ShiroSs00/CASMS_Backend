@@ -2,6 +2,7 @@ package com.casms.ship.service;
 
 import com.casms.common.exception.BusinessException;
 import com.casms.common.exception.ResourceNotFoundException;
+import com.casms.common.util.CodeGenerator;
 import com.casms.ship.dto.request.BleAnchorCreateRequest;
 import com.casms.ship.dto.request.BleAnchorUpdateRequest;
 import com.casms.ship.dto.response.BleAnchorResponse;
@@ -47,7 +48,7 @@ public class BleAnchorService {
         validateTransform(posX, posY, posZ, request.getRotationX(), request.getRotationY(), request.getRotationZ());
         validateRadio(request.getTxPowerDbm(), request.getPathLossExponent(), request.getModelUnitsPerMeter());
         String code = (request.getDeviceCode() == null || request.getDeviceCode().isBlank())
-                ? com.casms.common.util.CodeGenerator.generate("ANCHOR", devices.count() + 1, devices::existsByDeviceCode)
+                ? CodeGenerator.generate("ANCHOR", devices.count() + 1, devices::existsByDeviceCode)
                 : request.getDeviceCode().trim();
         if (devices.existsByDeviceCode(code)) throw new BusinessException("DUPLICATE_BLE_DEVICE_CODE", "Device code already exists");
         String identifier = normalizeBleIdentifier(request.getBleIdentifier());

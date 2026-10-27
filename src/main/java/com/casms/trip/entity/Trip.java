@@ -2,13 +2,17 @@ package com.casms.trip.entity;
 
 import com.casms.identity.entity.User;
 import com.casms.ship.enums.ItineraryType;
+import com.casms.trip.enums.TripDurationGroup;
 import com.casms.trip.enums.TripStatus;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
 
@@ -40,7 +44,7 @@ public class Trip {
 
     @Enumerated(EnumType.STRING)
     @Column(name = "duration_group", length = 20)
-    private com.casms.trip.enums.TripDurationGroup durationGroup;
+    private TripDurationGroup durationGroup;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "trip_type", length = 50)
@@ -109,13 +113,13 @@ public class Trip {
             return new ArrayList<>();
         }
         try {
-            return new com.fasterxml.jackson.databind.ObjectMapper().readValue(
-                    domesticRegionsJson, new com.fasterxml.jackson.core.type.TypeReference<List<String>>() {});
+            return new ObjectMapper().readValue(
+                    domesticRegionsJson, new TypeReference<List<String>>() {});
         } catch (Exception e) {
-            return java.util.Arrays.stream(domesticRegionsJson.split(","))
+            return Arrays.stream(domesticRegionsJson.split(","))
                     .map(String::trim)
                     .filter(s -> !s.isEmpty())
-                    .collect(java.util.stream.Collectors.toList());
+                    .toList();
         }
     }
 
@@ -124,7 +128,7 @@ public class Trip {
             this.domesticRegionsJson = null;
         } else {
             try {
-                this.domesticRegionsJson = new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(regions);
+                this.domesticRegionsJson = new ObjectMapper().writeValueAsString(regions);
             } catch (Exception e) {
                 this.domesticRegionsJson = String.join(",", regions);
             }
@@ -136,13 +140,13 @@ public class Trip {
             return new ArrayList<>();
         }
         try {
-            return new com.fasterxml.jackson.databind.ObjectMapper().readValue(
-                    countryCodesJson, new com.fasterxml.jackson.core.type.TypeReference<List<String>>() {});
+            return new ObjectMapper().readValue(
+                    countryCodesJson, new TypeReference<List<String>>() {});
         } catch (Exception e) {
-            return java.util.Arrays.stream(countryCodesJson.split(","))
+            return Arrays.stream(countryCodesJson.split(","))
                     .map(String::trim)
                     .filter(s -> !s.isEmpty())
-                    .collect(java.util.stream.Collectors.toList());
+                    .toList();
         }
     }
 
@@ -151,7 +155,7 @@ public class Trip {
             this.countryCodesJson = null;
         } else {
             try {
-                this.countryCodesJson = new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(codes);
+                this.countryCodesJson = new ObjectMapper().writeValueAsString(codes);
             } catch (Exception e) {
                 this.countryCodesJson = String.join(",", codes);
             }

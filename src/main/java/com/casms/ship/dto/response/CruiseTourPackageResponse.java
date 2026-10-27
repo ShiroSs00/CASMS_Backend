@@ -17,5 +17,7 @@ public class CruiseTourPackageResponse {
     private String packageName;
     private BigDecimal defaultPrice;
     private boolean active;
+    private boolean mandatory;
+    private String entitlementType;
     private Instant createdAt;
 }

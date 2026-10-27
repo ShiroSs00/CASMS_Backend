@@ -18,12 +18,14 @@ import com.casms.payment.repository.PaymentRepository;
 import com.casms.booking.service.BookingService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -82,7 +84,7 @@ public class PaymentService {
         payment.setOperationType(PaymentOperationType.Collect);
         payment.setPaymentMethod(request.getPaymentMethod());
         payment.setRequestedAmount(request.getRequestedAmount());
-        payment.setCurrency(currency.toUpperCase(java.util.Locale.ROOT));
+        payment.setCurrency(currency.toUpperCase(Locale.ROOT));
         payment.setRequestedAt(Instant.now());
         payment.setStatus(PaymentStatus.Pending);
         payment.setIdempotencyKey(request.getIdempotencyKey());
@@ -147,6 +149,31 @@ public class PaymentService {
         }
 
         return toResponse(updated);
+    }
+
+    /**
+     * BE-16: Ghi nhận trạng thái thanh toán thất bại (Failed) có Idempotent.
+     */
+    @Transactional
+    public PaymentResponse failPayment(UUID paymentId, String reason) {
+        log.warn("Recording payment failure for {} with reason: {}", paymentId, reason);
+        Payment payment = paymentRepository.findByIdForUpdate(paymentId)
+                .orElseThrow(() -> new ResourceNotFoundException("Payment not found with id: " + paymentId));
+
+        if (payment.getStatus() == PaymentStatus.Failed) {
+            log.info("Payment {} is already marked as Failed", paymentId);
+            return toResponse(payment); // Idempotent retry
+        }
+
+        if (payment.getStatus() == PaymentStatus.Confirmed) {
+            throw new BusinessException(HttpStatus.CONFLICT, "PAYMENT_ALREADY_CONFIRMED",
+                    "Cannot mark an already confirmed payment as failed");
+        }
+
+        payment.setStatus(PaymentStatus.Failed);
+        payment.setFailureReason(reason != null && !reason.isBlank() ? reason.trim() : "Payment processing failed");
+        Payment saved = paymentRepository.save(payment);
+        return toResponse(saved);
     }
 
     private void allocateInstallmentsAndSync(Booking booking) {

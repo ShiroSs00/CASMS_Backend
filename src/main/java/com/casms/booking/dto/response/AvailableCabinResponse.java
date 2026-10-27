@@ -1,10 +1,12 @@
 package com.casms.booking.dto.response;
 
+import com.casms.ship.dto.response.Ship3dConfigurationResponse.Vector3;
 import com.casms.ship.enums.CabinType;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Getter;
 import lombok.Setter;
 
+import java.math.BigDecimal;
 import java.util.UUID;
 
 @Getter
@@ -39,10 +41,10 @@ public class AvailableCabinResponse {
     private Boolean isAccessible;
 
     @Schema(description = "Hệ số giá tầng boong (mặc định 1.00)", example = "1.15")
-    private java.math.BigDecimal priceMultiplier;
+    private BigDecimal priceMultiplier;
 
     @Schema(description = "Giá tham chiếu ước tính cho 1 khách đối với phòng này (đã nhân hệ số tầng)", example = "747.50")
-    private java.math.BigDecimal estimatedPrice;
+    private BigDecimal estimatedPrice;
 
     @Schema(description = "ID phiên bản model 3D READY đang ánh xạ cabin")
     private UUID modelId;
@@ -51,11 +53,11 @@ public class AvailableCabinResponse {
     private String modelNodeKey;
 
     @Schema(description = "Vị trí cabin trong hệ tọa độ model")
-    private com.casms.ship.dto.response.Ship3dConfigurationResponse.Vector3 modelPosition;
+    private Vector3 modelPosition;
 
     @Schema(description = "Góc xoay cabin trong hệ tọa độ model")
-    private com.casms.ship.dto.response.Ship3dConfigurationResponse.Vector3 modelRotation;
+    private Vector3 modelRotation;
 
     @Schema(description = "Kích thước cabin trong hệ tọa độ model")
-    private com.casms.ship.dto.response.Ship3dConfigurationResponse.Vector3 modelDimensions;
+    private Vector3 modelDimensions;
 }

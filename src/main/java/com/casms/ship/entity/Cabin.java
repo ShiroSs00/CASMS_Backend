@@ -6,6 +6,7 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.UUID;
 
@@ -63,10 +64,10 @@ public class Cabin {
     private String bedConfiguration;
 
     @Column(name = "area_square_meters", precision = 8, scale = 2)
-    private java.math.BigDecimal areaSquareMeters;
+    private BigDecimal areaSquareMeters;
 
     @Column(name = "balcony_area_square_meters", precision = 8, scale = 2)
-    private java.math.BigDecimal balconyAreaSquareMeters;
+    private BigDecimal balconyAreaSquareMeters;
 
     @Column(name = "location_code", length = 30)
     private String locationCode;

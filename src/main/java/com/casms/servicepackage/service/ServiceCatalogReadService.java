@@ -1,5 +1,6 @@
 package com.casms.servicepackage.service;
 
+import com.casms.servicepackage.entity.PackageEntitlement;
 import com.casms.servicepackage.entity.ServiceCategory;
 import com.casms.servicepackage.entity.ServiceSchedule;
 import com.casms.servicepackage.repository.ServiceCategoryRepository;
@@ -9,6 +10,7 @@ import com.casms.servicepackage.repository.PackageEntitlementRepository;
 import com.casms.servicepackage.repository.ServiceRequestRepository;
 import com.casms.servicepackage.repository.TourPackageRepository;
 import com.casms.servicepackage.enums.ServiceRequestStatus;
+import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -36,16 +38,16 @@ public class ServiceCatalogReadService {
 
     public List<ServiceSchedule> openSchedules(UUID serviceId) {
         if (!serviceRepository.existsById(serviceId)) {
-            throw new jakarta.persistence.EntityNotFoundException("Service not found: " + serviceId);
+            throw new EntityNotFoundException("Service not found: " + serviceId);
         }
         return scheduleRepository.findByService_ServiceIdAndStatusOrderByStartsAtAsc(serviceId, "OPEN");
     }
 
-    public List<com.casms.servicepackage.entity.PackageEntitlement> entitlements(UUID packageId) {
-        Map<UUID,com.casms.servicepackage.entity.PackageEntitlement> inherited = new LinkedHashMap<>();
+    public List<PackageEntitlement> entitlements(UUID packageId) {
+        Map<UUID, PackageEntitlement> inherited = new LinkedHashMap<>();
         Set<UUID> seen = new HashSet<>();
         var current = packageRepository.findById(packageId)
-                .orElseThrow(() -> new jakarta.persistence.EntityNotFoundException("Tour package not found: " + packageId));
+                .orElseThrow(() -> new EntityNotFoundException("Tour package not found: " + packageId));
         while (current != null) {
             if (!seen.add(current.getTourPackageId())) throw new IllegalStateException("Package inheritance cycle detected");
             for (var entitlement : entitlementRepository.findByTourPackage_TourPackageId(current.getTourPackageId()))

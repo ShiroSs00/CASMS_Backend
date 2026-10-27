@@ -5,6 +5,7 @@ import com.casms.ship.dto.request.PortCreateRequest;
 import com.casms.ship.dto.request.PortUpdateRequest;
 import com.casms.ship.dto.response.PortResponse;
 import com.casms.ship.dto.response.TimeZoneOptionResponse;
+import com.casms.ship.enums.PortStatus;
 import com.casms.ship.service.PortService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -17,6 +18,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
@@ -63,10 +65,10 @@ PortController {
     public ApiResponse<Page<PortResponse>> list(
             @Parameter(description = "Mã quốc gia ISO-2 (ví dụ: VN, TH)") @RequestParam(required = false) String countryCode,
             @Parameter(description = "Danh sách mã quốc gia ISO-2") @RequestParam(required = false) List<String> countryCodes,
-            @Parameter(description = "Trạng thái cảng") @RequestParam(required = false) com.casms.ship.enums.PortStatus status,
+            @Parameter(description = "Trạng thái cảng") @RequestParam(required = false) PortStatus status,
             @Parameter(description = "Từ khóa tìm kiếm (tên hoặc mã cảng)") @RequestParam(required = false) String search,
             Pageable pageable) {
-        List<String> combinedCountries = new java.util.ArrayList<>();
+        List<String> combinedCountries = new ArrayList<>();
         if (countryCode != null && !countryCode.isBlank()) combinedCountries.add(countryCode.trim().toUpperCase());
         if (countryCodes != null) combinedCountries.addAll(countryCodes.stream().filter(c -> c != null && !c.isBlank()).map(c -> c.trim().toUpperCase()).toList());
         return ApiResponse.success(service.list(combinedCountries.isEmpty() ? null : combinedCountries, status, search, pageable));
@@ -79,7 +81,7 @@ PortController {
             @Parameter(description = "Mã quốc gia ISO-2 (ví dụ: VN, TH)") @RequestParam(required = false) String countryCode,
             @Parameter(description = "Danh sách mã quốc gia ISO-2") @RequestParam(required = false) List<String> countryCodes,
             @Parameter(description = "Từ khóa tìm kiếm (tên hoặc mã cảng)") @RequestParam(required = false) String search) {
-        List<String> combinedCountries = new java.util.ArrayList<>();
+        List<String> combinedCountries = new ArrayList<>();
         if (countryCode != null && !countryCode.isBlank()) combinedCountries.add(countryCode.trim().toUpperCase());
         if (countryCodes != null) combinedCountries.addAll(countryCodes.stream().filter(c -> c != null && !c.isBlank()).map(c -> c.trim().toUpperCase()).toList());
         return ApiResponse.success(service.listAllActive(combinedCountries.isEmpty() ? null : combinedCountries, search));

@@ -6,6 +6,7 @@ import com.casms.identity.repository.RolePermissionRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
@@ -52,7 +53,7 @@ public class SecurityConfig {
                                 "/booking/3d-available-cabins",
                                 "/booking/lookup"
                         ).permitAll()
-                        .requestMatchers(org.springframework.http.HttpMethod.GET,
+                        .requestMatchers(HttpMethod.GET,
                                 "/cruise",
                                 "/cruise/**",
                                 "/destinations",
@@ -68,7 +69,7 @@ public class SecurityConfig {
                                 "/servicepackage/packages",
                                 "/servicepackage/packages/**"
                         ).permitAll()
-                        .requestMatchers(org.springframework.http.HttpMethod.POST, "/booking").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/booking").permitAll()
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);

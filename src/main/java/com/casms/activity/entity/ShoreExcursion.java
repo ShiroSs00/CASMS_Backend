@@ -69,6 +69,9 @@ public class ShoreExcursion {
     @Column(name = "status", nullable = false)
     private ShoreExcursionStatus status;
 
+    @Column(name = "is_mandatory", nullable = false)
+    private boolean mandatory = false;
+
     @Column(name = "cancellation_reason", length = 500)
     private String cancellationReason;
 

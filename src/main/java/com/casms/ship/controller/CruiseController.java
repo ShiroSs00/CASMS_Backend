@@ -17,6 +17,7 @@ import com.casms.ship.dto.response.CruiseManifestResponse;
 import com.casms.ship.dto.response.CruiseReadinessResponse;
 import com.casms.ship.dto.response.CruiseResponse;
 import com.casms.ship.dto.response.CruiseSaleReadinessResponse;
+import com.casms.ship.dto.response.CruiseSellabilityResponse;
 import com.casms.ship.dto.response.CruiseStaffResponse;
 import com.casms.ship.dto.response.CruiseTourPackageResponse;
 import com.casms.ship.dto.response.ShipCompatibilityResponse;
@@ -38,6 +39,10 @@ import com.casms.ship.service.OperationalProgramMappingService;
 import com.casms.ship.service.CruiseImpactAssessmentService;
 import com.casms.security.principal.CasmsPrincipal;
 import com.casms.trip.service.IdempotencyService;
+import com.casms.notification.service.NotificationService;
+import com.casms.notification.dto.ImpactNotificationAggregateResponse;
+import com.casms.ship.service.CruiseAuditService;
+import com.casms.ship.dto.response.CruiseAuditEventResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -66,6 +71,8 @@ public class CruiseController {
     private final ScheduleMaterializationService scheduleMaterializationService;
     private final OperationalProgramMappingService operationalProgramMappingService;
     private final CruiseImpactAssessmentService cruiseImpactAssessmentService;
+    private final NotificationService notificationService;
+    private final CruiseAuditService cruiseAuditService;
 
     @Operation(summary = "Xem trước lịch trình chuyến đi (Preview)", description = "Tính toán ngày thực tế cho các ngày và điểm dừng từ phiên bản TripScheduleVersion đã phát hành mà không lưu vào DB (C02)")
     @PreAuthorize("hasAnyAuthority('CRUISE_CREATE', 'CRUISE_READ', 'TRIP_READ')")
@@ -77,7 +84,7 @@ public class CruiseController {
     }
 
     @Operation(summary = "Xem lịch trình thực tế của chuyến đi", description = "Đọc lại lịch trình (Itinerary, Days, CruiseStops) đã được tạo cho chuyến đi (C04)")
-    @PreAuthorize("permitAll()")
+    @PreAuthorize("hasAnyAuthority('CRUISE_READ', 'TRIP_READ', 'ITINERARY_READ')")
     @GetMapping("/{cruiseId}/schedule")
     public ApiResponse<CruiseSchedulePreviewResponse> getCruiseSchedule(
             @Parameter(description = "ID chuyến đi", required = true) @PathVariable UUID cruiseId) {
@@ -175,8 +182,10 @@ public class CruiseController {
     @PreAuthorize("hasAuthority('CRUISE_UNASSIGN_SHIP')")
     @PostMapping("/{cruiseId}/unassign-ship")
     public ApiResponse<CruiseResponse> unassignShip(
-            @Parameter(description = "ID chuyến đi", required = true) @PathVariable UUID cruiseId) {
-        return ApiResponse.success(service.unassignShip(cruiseId));
+            @Parameter(description = "ID chuyến đi", required = true) @PathVariable UUID cruiseId,
+            @AuthenticationPrincipal CasmsPrincipal principal) {
+        UUID actorId = principal != null ? principal.getUserId() : null;
+        return ApiResponse.success(service.unassignShip(cruiseId, actorId));
     }
 
     @Operation(summary = "Kiểm tra tính khả dụng của tàu đối với chuyến đi", description = "Kiểm tra tàu có ACTIVE và không bị trùng lịch với chuyến đi này không")
@@ -220,20 +229,25 @@ public class CruiseController {
         return ApiResponse.success(service.publish(cruiseId));
     }
 
-    @Operation(summary = "Bắt đầu chuyến đi (Start)", description = "Chuyển trạng thái từ PUBLISHED sang IN_PROGRESS khi chuyến đi chính thức bắt đầu")
+    @Operation(summary = "Bắt đầu chuyến đi (Start - BE-21)", description = "Chuyển trạng thái từ PUBLISHED sang IN_PROGRESS khi chuyến đi chính thức bắt đầu (bắt buộc kiểm tra Departure Readiness)")
     @PreAuthorize("hasAuthority('CRUISE_START')")
     @PostMapping("/{cruiseId}/start")
     public ApiResponse<CruiseResponse> start(
-            @Parameter(description = "ID chuyến đi", required = true) @PathVariable UUID cruiseId) {
-        return ApiResponse.success(service.start(cruiseId));
+            @Parameter(description = "ID chuyến đi", required = true) @PathVariable UUID cruiseId,
+            @AuthenticationPrincipal CasmsPrincipal principal) {
+        UUID actorId = principal != null ? principal.getUserId() : null;
+        return ApiResponse.success(service.start(cruiseId, actorId));
     }
 
-    @Operation(summary = "Hoàn tất chuyến đi (Complete)", description = "Chuyển trạng thái từ IN_PROGRESS sang COMPLETED khi tàu cập cảng an toàn và kết thúc chuyến đi")
+    @Operation(summary = "Hoàn tất chuyến đi (Complete - BE-21)", description = "Chuyển trạng thái từ IN_PROGRESS sang COMPLETED khi tàu cập cảng an toàn và kết thúc chuyến đi (kiểm tra checklist đóng chuyến)")
     @PreAuthorize("hasAuthority('CRUISE_COMPLETE')")
     @PostMapping("/{cruiseId}/complete")
     public ApiResponse<CruiseResponse> complete(
-            @Parameter(description = "ID chuyến đi", required = true) @PathVariable UUID cruiseId) {
-        return ApiResponse.success(service.complete(cruiseId));
+            @Parameter(description = "ID chuyến đi", required = true) @PathVariable UUID cruiseId,
+            @Parameter(description = "Ghi chú đóng chuyến và quyết toán", required = false) @RequestParam(required = false) String closureNotes,
+            @AuthenticationPrincipal CasmsPrincipal principal) {
+        UUID actorId = principal != null ? principal.getUserId() : null;
+        return ApiResponse.success(service.complete(cruiseId, actorId, closureNotes));
     }
 
     @Operation(summary = "Hủy chuyến đi (Cancel)", description = "Hủy chuyến đi (yêu cầu cung cấp lý do hủy, không thể hủy chuyến đã hoàn tất)")
@@ -413,6 +427,25 @@ public class CruiseController {
         return ApiResponse.success(service.applyChange(cruiseId, request, actorId));
     }
 
+    @Operation(summary = "Thống kê an toàn kết quả phát thông báo tác động (BE-19)", description = "Cung cấp safe aggregate status cho FE/OPS, không để lộ PII qua dashboard chung")
+    @PreAuthorize("hasAnyAuthority('CRUISE_READ', 'OPERATIONAL_ISSUE_READ')")
+    @GetMapping("/{cruiseId}/impact-notifications/aggregate")
+    public ApiResponse<ImpactNotificationAggregateResponse> getImpactNotificationAggregate(
+            @PathVariable UUID cruiseId) {
+        return ApiResponse.success(notificationService.getImpactAggregate(cruiseId));
+    }
+
+    @Operation(summary = "Phát thông báo tác động an toàn và cập nhật trạng thái tác vụ (BE-19)", description = "Ghi outbox đáng tin cậy, retry idempotent, tách biệt task created với customer notified")
+    @PreAuthorize("hasAnyAuthority('CRUISE_UPDATE_DRAFT', 'CRUISE_STATUS_CHANGE', 'OPERATIONAL_ISSUE_RESOLVE')")
+    @PostMapping("/{cruiseId}/impact-notifications/dispatch")
+    public ApiResponse<ImpactNotificationAggregateResponse> dispatchImpactNotifications(
+            @PathVariable UUID cruiseId,
+            @RequestParam(required = false) String eventIdentity,
+            @AuthenticationPrincipal CasmsPrincipal principal) {
+        UUID actorId = principal != null ? principal.getUserId() : null;
+        return ApiResponse.success(notificationService.dispatchImpactNotifications(cruiseId, eventIdentity, actorId));
+    }
+
     @Operation(summary = "Lấy báo cáo tồn chỗ và năng lực phục vụ của chuyến đi (BE-07 / C08)", description = "Tra cứu chi tiết tồn phòng theo từng hạng và tổng sức chứa khả dụng phục vụ mở bán")
     @PreAuthorize("hasAnyAuthority('CRUISE_READ', 'BOOKING_READ')")
     @GetMapping("/{cruiseId}/inventory-summary")
@@ -429,17 +462,45 @@ public class CruiseController {
         return ApiResponse.success(service.validateSaleReadiness(cruiseId));
     }
 
-    @Operation(summary = "Mở bán chuyến đi hoặc sản phẩm dịch vụ (BE-08B / C10)", description = "Kích hoạt trạng thái PUBLISHED cho chuyến đi và OPEN_FOR_SALE cho lịch trình sau khi đạt kiểm tra sale readiness")
-    @PreAuthorize("hasAnyAuthority('CRUISE_PUBLISH', 'CRUISE_STATUS_CHANGE')")
+    @Operation(summary = "Đánh giá điều kiện khởi hành của chuyến đi (Departure Readiness Gate - BE-08)", description = "Kiểm tra toàn diện điều kiện khởi hành bao gồm thuyền trưởng, nhân sự, và 5 phân hệ chuẩn bị liên phòng ban")
+    @PreAuthorize("hasAnyAuthority('CRUISE_READ', 'CRUISE_VALIDATE')")
+    @GetMapping("/{cruiseId}/departure-readiness")
+    public ApiResponse<CruiseReadinessResponse> getDepartureReadiness(
+            @PathVariable UUID cruiseId) {
+        return ApiResponse.success(service.validateDepartureReadiness(cruiseId));
+    }
+
+    @Operation(summary = "Mở bán chuyến đi hoặc sản phẩm dịch vụ (BE-08B / BE-13)", description = "Kích hoạt trạng thái PUBLISHED cho chuyến đi và OPEN_FOR_SALE cho lịch trình sau khi đạt kiểm tra sale readiness")
+    @PreAuthorize("hasAuthority('CRUISE_OPEN_SALE')")
     @PostMapping("/{cruiseId}/open-sale")
     public ApiResponse<CruiseResponse> openSale(
             @PathVariable UUID cruiseId,
-            @RequestBody(required = false) CruiseOpenSaleRequest request) {
-        return ApiResponse.success(service.openSale(cruiseId, request));
+            @RequestBody(required = false) CruiseOpenSaleRequest request,
+            @AuthenticationPrincipal CasmsPrincipal principal) {
+        UUID actorId = principal != null ? principal.getUserId() : null;
+        return ApiResponse.success(service.openSale(cruiseId, request, actorId));
+    }
+
+    @Operation(summary = "Kích hoạt gói dịch vụ để mở bán (BE-12)", description = "Chuyển trạng thái gói dịch vụ từ cấu hình danh mục sang sẵn sàng bán")
+    @PreAuthorize("hasAuthority('CRUISE_OPEN_SALE')")
+    @PostMapping("/{cruiseId}/packages/{tourPackageId}/activate")
+    public ApiResponse<CruiseTourPackageResponse> activatePackage(
+            @PathVariable UUID cruiseId,
+            @PathVariable UUID tourPackageId) {
+        return ApiResponse.success(packageService.activatePackage(cruiseId, tourPackageId));
+    }
+
+    @Operation(summary = "Hủy kích hoạt bán gói dịch vụ (BE-12)", description = "Đưa gói dịch vụ về lại trạng thái cấu hình mà không xóa khỏi chuyến đi")
+    @PreAuthorize("hasAuthority('CRUISE_STOP_SALE')")
+    @PostMapping("/{cruiseId}/packages/{tourPackageId}/deactivate")
+    public ApiResponse<CruiseTourPackageResponse> deactivatePackage(
+            @PathVariable UUID cruiseId,
+            @PathVariable UUID tourPackageId) {
+        return ApiResponse.success(packageService.deactivatePackage(cruiseId, tourPackageId));
     }
 
     @Operation(summary = "Tạm dừng mở bán chuyến đi hoặc gói dịch vụ cụ thể (BE-08B / C16)", description = "Tạm dừng nhận booking mới khi điều kiện vận hành bị vi phạm mà không làm hủy các booking hiện có")
-    @PreAuthorize("hasAnyAuthority('CRUISE_PUBLISH', 'CRUISE_STATUS_CHANGE')")
+    @PreAuthorize("hasAuthority('CRUISE_STOP_SALE')")
     @PostMapping("/{cruiseId}/stop-sale")
     public ApiResponse<CruiseResponse> stopSale(
             @PathVariable UUID cruiseId,
@@ -450,19 +511,40 @@ public class CruiseController {
     }
 
     @Operation(summary = "Tiếp tục mở bán sau khi tạm dừng (BE-08B / C16)", description = "Mở lại bán cho toàn bộ chuyến đi hoặc gói dịch vụ sau khi kiểm tra lại sale readiness")
-    @PreAuthorize("hasAnyAuthority('CRUISE_PUBLISH', 'CRUISE_STATUS_CHANGE')")
+    @PreAuthorize("hasAuthority('CRUISE_RESUME_SALE')")
     @PostMapping("/{cruiseId}/resume-sale")
     public ApiResponse<CruiseResponse> resumeSale(
             @PathVariable UUID cruiseId,
-            @RequestBody(required = false) CruiseResumeSaleRequest request) {
-        return ApiResponse.success(service.resumeSale(cruiseId, request));
+            @RequestBody(required = false) CruiseResumeSaleRequest request,
+            @AuthenticationPrincipal CasmsPrincipal principal) {
+        UUID actorId = principal != null ? principal.getUserId() : null;
+        return ApiResponse.success(service.resumeSale(cruiseId, request, actorId));
+    }
+
+    @Operation(summary = "Truy vấn tình trạng mở bán công khai authoritative (BE-15 Public Sellability)",
+               description = "Cung cấp nguồn sự thật duy nhất (Single Source of Truth) về trạng thái mở bán của chuyến đi, từng hạng phòng và gói tour kèm theo mà không để lộ dữ liệu nhân sự, manifest hay nhà cung cấp.")
+    @PreAuthorize("permitAll()")
+    @GetMapping("/{cruiseId}/sellability")
+    public ApiResponse<CruiseSellabilityResponse> getPublicSellability(
+            @Parameter(description = "ID chuyến đi", required = true) @PathVariable UUID cruiseId) {
+        return ApiResponse.success(service.getPublicSellability(cruiseId));
     }
 
     @Operation(summary = "Bàn giao dữ liệu và thông tin manifest cho hệ thống điều hành (BE-09 / C14)", description = "Trích xuất context chuyến đi, danh sách manifest phân biệt rõ đặt chỗ, check-in và lên tàu cho bộ phận cảng")
-    @PreAuthorize("hasAnyAuthority('CRUISE_READ', 'CHECKIN_READ')")
+    @PreAuthorize("hasAuthority('CRUISE_MANIFEST_READ')")
     @GetMapping("/{cruiseId}/downstream-handoff")
     public ApiResponse<CruiseDownstreamHandoffResponse> getDownstreamHandoff(
             @PathVariable UUID cruiseId) {
         return ApiResponse.success(service.getDownstreamHandoff(cruiseId));
+    }
+
+    @Operation(summary = "Truy nguyên dòng thời gian quyết định và sự kiện kiểm toán Cruise (BE-25)",
+               description = "Lấy lịch sử sự kiện kiểm toán (audit trail) đã được chuẩn hóa, che chắn dữ liệu nhạy cảm theo actor, scope, revision.")
+    @PreAuthorize("hasAnyAuthority('CRUISE_READ', 'OPERATIONAL_ISSUE_READ')")
+    @GetMapping("/{cruiseId}/audit-events")
+    public ApiResponse<List<CruiseAuditEventResponse>> getAuditEvents(
+            @Parameter(description = "ID chuyến đi", required = true) @PathVariable UUID cruiseId,
+            @Parameter(description = "Lọc theo loại sự kiện", required = false) @RequestParam(required = false) String eventType) {
+        return ApiResponse.success(cruiseAuditService.listAuditEvents(cruiseId, eventType));
     }
 }

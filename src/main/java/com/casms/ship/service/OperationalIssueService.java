@@ -5,6 +5,7 @@ import com.casms.common.service.BusinessCodeGenerator;
 import com.casms.identity.entity.User;
 import com.casms.identity.enums.UserStatus;
 import com.casms.identity.repository.UserRepository;
+import com.casms.identity.service.IdentityService;
 import com.casms.ship.dto.request.OperationalIssueAssignRequest;
 import com.casms.ship.dto.request.OperationalIssueRequest;
 import com.casms.ship.dto.request.OperationalIssueResolutionRequest;
@@ -160,7 +161,7 @@ public class OperationalIssueService {
             );
         }
 
-        if (!com.casms.identity.service.IdentityService.isEligibleOperationalHandler(handler)) {
+        if (!IdentityService.isEligibleOperationalHandler(handler)) {
             throw new BusinessException(
                     HttpStatus.BAD_REQUEST,
                     "HANDLER_NOT_ELIGIBLE",

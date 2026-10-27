@@ -20,6 +20,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -492,7 +493,7 @@ public class ShoreExcursionService {
         excursion.setMeetingPoint(request.meetingPoint().trim());
         excursion.setMinimumParticipants(request.minimumParticipants() == null ? 1 : request.minimumParticipants());
         excursion.setMaximumCapacity(request.maximumCapacity());
-        excursion.setPrice(request.price() == null ? java.math.BigDecimal.ZERO : request.price());
+        excursion.setPrice(request.price() == null ? BigDecimal.ZERO : request.price());
         excursion.setCurrencyCode(
                 (request.currencyCode() == null || request.currencyCode().isBlank())
                         ? "USD"

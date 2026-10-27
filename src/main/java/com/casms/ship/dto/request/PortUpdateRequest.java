@@ -1,5 +1,6 @@
 package com.casms.ship.dto.request;
 
+import com.casms.ship.enums.PortLocationType;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.Size;
 import lombok.Data;
@@ -33,5 +34,5 @@ public class PortUpdateRequest {
     private String timeZoneId;
 
     @Schema(description = "Loại vị trí cảng/neo đậu (PORT, PIER, ANCHORAGE)", example = "PORT")
-    private com.casms.ship.enums.PortLocationType locationType;
+    private PortLocationType locationType;
 }

@@ -29,7 +29,13 @@ public class CruiseTourPackage {
     private TourPackage tourPackage;
 
     @Column(name = "is_active", nullable = false)
-    private boolean active = true;
+    private boolean active = false;
+
+    @Column(name = "is_mandatory", nullable = false)
+    private boolean mandatory = false;
+
+    @Column(name = "entitlement_type", nullable = false, length = 30)
+    private String entitlementType = "OPTIONAL_ADDON";
 
     @Column(name = "created_at", nullable = false)
     private Instant createdAt = Instant.now();

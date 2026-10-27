@@ -6,6 +6,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.math.BigDecimal;
 import java.util.UUID;
 
 @Data
@@ -40,10 +41,10 @@ public class PlanningSourcePortResponse {
     private String destinationName;
 
     @Schema(description = "Tọa độ vĩ độ")
-    private java.math.BigDecimal latitude;
+    private BigDecimal latitude;
 
     @Schema(description = "Tọa độ kinh độ")
-    private java.math.BigDecimal longitude;
+    private BigDecimal longitude;
 
     @Schema(description = "Mô tả cảng")
     private String description;

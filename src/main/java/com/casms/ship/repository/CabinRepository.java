@@ -12,6 +12,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import jakarta.persistence.LockModeType;
 
@@ -19,7 +20,7 @@ import jakarta.persistence.LockModeType;
 public interface CabinRepository extends JpaRepository<Cabin, UUID> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select c from Cabin c where c.cabinId = :cabinId")
-    java.util.Optional<Cabin> findByIdForUpdate(@Param("cabinId") UUID cabinId);
+    Optional<Cabin> findByIdForUpdate(@Param("cabinId") UUID cabinId);
     List<Cabin> findByShipShipIdOrderByDeckDeckNumberAscCabinNumberAsc(UUID shipId);
     Page<Cabin> findByShipShipId(UUID shipId, Pageable pageable);
     Page<Cabin> findByDeckDeckId(UUID deckId, Pageable pageable);
@@ -27,6 +28,9 @@ public interface CabinRepository extends JpaRepository<Cabin, UUID> {
     long countByShipShipIdAndStatus(UUID shipId, CabinStatus status);
     long countByShipShipIdAndCabinType(UUID shipId, CabinType cabinType);
     long countByShipShipIdAndCabinTypeAndStatus(UUID shipId, CabinType cabinType, CabinStatus status);
+    long countByShipShipIdAndCabinTypeAndIsAccessibleTrue(UUID shipId, CabinType cabinType);
+    long countByShipShipIdAndCabinTypeAndIsFamilyCabinTrue(UUID shipId, CabinType cabinType);
+    long countByShipShipIdAndCabinTypeAndHasConnectingDoorTrue(UUID shipId, CabinType cabinType);
 
     @Query("SELECT COALESCE(SUM(c.capacity), 0) FROM Cabin c WHERE c.ship.shipId = :shipId AND c.cabinType = :cabinType")
     Long sumCapacityByShipIdAndCabinType(@Param("shipId") UUID shipId, @Param("cabinType") CabinType cabinType);
@@ -42,7 +46,7 @@ public interface CabinRepository extends JpaRepository<Cabin, UUID> {
     Long sumCapacityByDeckId(@Param("deckId") UUID deckId);
 
     boolean existsByShipShipIdAndCabinNumber(UUID shipId, String cabinNumber);
-    java.util.Optional<Cabin> findByShipShipIdAndCabinNumber(UUID shipId, String cabinNumber);
+    Optional<Cabin> findByShipShipIdAndCabinNumber(UUID shipId, String cabinNumber);
 
     @Query("SELECT c FROM Cabin c WHERE c.status = 'AVAILABLE' " +
            "AND (cast(:shipId as uuid) IS NULL OR c.ship.shipId = :shipId) " +

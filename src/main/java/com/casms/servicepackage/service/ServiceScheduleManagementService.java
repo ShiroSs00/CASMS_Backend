@@ -6,6 +6,7 @@ import com.casms.activity.repository.SupplierRepository;
 import com.casms.servicepackage.entity.ServiceSchedule;
 import com.casms.servicepackage.repository.ServiceRepository;
 import com.casms.servicepackage.repository.ServiceScheduleRepository;
+import com.casms.ship.enums.CruiseStopStatus;
 import com.casms.ship.repository.CruiseRepository;
 import com.casms.ship.repository.CruiseStopRepository;
 import jakarta.persistence.EntityNotFoundException;
@@ -43,8 +44,8 @@ public class ServiceScheduleManagementService {
                 throw new IllegalArgumentException("Cruise stop does not belong to the selected cruise");
             if (startsAt.isBefore(stop.getPlannedArrival()) || endsAt.isAfter(stop.getPlannedDeparture()))
                 throw new IllegalArgumentException("Shore service schedule must fit within the cruise stop window");
-            if (stop.getStatus() == com.casms.ship.enums.CruiseStopStatus.OMITTED
-                    || stop.getStatus() == com.casms.ship.enums.CruiseStopStatus.SUBSTITUTED)
+            if (stop.getStatus() == CruiseStopStatus.OMITTED
+                    || stop.getStatus() == CruiseStopStatus.SUBSTITUTED)
                 throw new IllegalStateException("Cannot schedule a service at an omitted or substituted cruise stop");
             cruise = stopCruise;
         }

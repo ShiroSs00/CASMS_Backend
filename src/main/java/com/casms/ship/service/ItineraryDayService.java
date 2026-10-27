@@ -184,7 +184,7 @@ public class ItineraryDayService {
     }
 
     @Transactional
-    public ItineraryDayResponse setDate(UUID itineraryDayId, java.time.LocalDate date) {
+    public ItineraryDayResponse setDate(UUID itineraryDayId, LocalDate date) {
         ItineraryDay day = getDayById(itineraryDayId);
         if (day.getItinerary().getStatus() != ItineraryStatus.DRAFT) {
             throw new BusinessException("ITINERARY_NOT_EDITABLE", "Cannot modify date in itinerary with status: " + day.getItinerary().getStatus());

@@ -3,6 +3,7 @@ package com.casms.checkin.controller;
 import com.casms.checkin.entity.CruiseCheckin;
 import com.casms.checkin.service.CheckinService;
 import com.casms.common.response.ApiResponse;
+import com.casms.security.principal.CasmsPrincipal;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -29,7 +30,7 @@ public class CheckinController {
             @RequestParam(required = false) String emergencyContactName,
             @RequestParam(required = false) String emergencyContactPhone,
             Authentication authentication) {
-        var principal = (com.casms.security.principal.CasmsPrincipal) authentication.getPrincipal();
+        var principal = (CasmsPrincipal) authentication.getPrincipal();
         return ApiResponse.success("Check-in started successfully",
                 service.startCheckin(passengerId, emergencyContactName, emergencyContactPhone,
                         principal.getUserId(), principal.isStaff()));
@@ -41,7 +42,7 @@ public class CheckinController {
     public ApiResponse<CruiseCheckin> completeCheckin(
             @Parameter(description = "ID hành khách đặt chỗ", required = true) @PathVariable UUID passengerId,
             Authentication authentication) {
-        var principal = (com.casms.security.principal.CasmsPrincipal) authentication.getPrincipal();
+        var principal = (CasmsPrincipal) authentication.getPrincipal();
         return ApiResponse.success("Check-in completed successfully",
                 service.completeCheckin(passengerId, principal.getUserId(), principal.isStaff()));
     }
@@ -52,7 +53,7 @@ public class CheckinController {
     public ApiResponse<CruiseCheckin> getStatus(
             @Parameter(description = "ID hành khách đặt chỗ", required = true) @PathVariable UUID passengerId,
             Authentication authentication) {
-        var principal = (com.casms.security.principal.CasmsPrincipal) authentication.getPrincipal();
+        var principal = (CasmsPrincipal) authentication.getPrincipal();
         return ApiResponse.success(service.getStatus(passengerId, principal.getUserId(), principal.isStaff()));
     }
 }

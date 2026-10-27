@@ -20,7 +20,9 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -48,8 +50,8 @@ public class DeckService {
         Integer deckNumber = request.getDeckNumber();
         int deckNumberLimit = ship.getDeckNumberLimit() == null ? ship.getTotalDecks() : ship.getDeckNumberLimit();
         if (deckNumber == null) {
-            java.util.Set<Integer> configured = deckRepository.findByShipShipIdOrderByDeckNumber(ship.getShipId())
-                    .stream().map(Deck::getDeckNumber).collect(java.util.stream.Collectors.toSet());
+            Set<Integer> configured = deckRepository.findByShipShipIdOrderByDeckNumber(ship.getShipId())
+                    .stream().map(Deck::getDeckNumber).collect(Collectors.toSet());
             deckNumber = 1;
             while (deckNumber <= deckNumberLimit && configured.contains(deckNumber)) deckNumber++;
             if (deckNumber > deckNumberLimit) {
@@ -74,7 +76,7 @@ public class DeckService {
         deck.setShip(ship);
         deck.setDeckNumber(deckNumber);
         deck.setDeckName(deckName);
-        deck.setPriceMultiplier(request.getPriceMultiplier() != null ? request.getPriceMultiplier() : java.math.BigDecimal.valueOf(1.00));
+        deck.setPriceMultiplier(request.getPriceMultiplier() != null ? request.getPriceMultiplier() : BigDecimal.valueOf(1.00));
         deck = deckRepository.save(deck);
         return mapToResponse(deck);
     }
@@ -198,7 +200,7 @@ public class DeckService {
         res.setShipId(deck.getShip().getShipId());
         res.setDeckNumber(deck.getDeckNumber());
         res.setDeckName(deck.getDeckName());
-        res.setPriceMultiplier(deck.getPriceMultiplier() != null ? deck.getPriceMultiplier() : java.math.BigDecimal.valueOf(1.00));
+        res.setPriceMultiplier(deck.getPriceMultiplier() != null ? deck.getPriceMultiplier() : BigDecimal.valueOf(1.00));
         res.setModelPositionX(deck.getModelPositionX());
         res.setModelPositionY(deck.getModelPositionY());
         res.setModelPositionZ(deck.getModelPositionZ());

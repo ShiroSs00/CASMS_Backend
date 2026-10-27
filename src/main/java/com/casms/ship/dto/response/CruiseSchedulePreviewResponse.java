@@ -1,5 +1,6 @@
 package com.casms.ship.dto.response;
 
+import com.casms.activity.enums.OnboardActivityCategory;
 import com.casms.ship.enums.CruiseStopArrivalMethod;
 import com.casms.ship.enums.CruiseStopCallType;
 import com.casms.ship.enums.ItineraryDayType;
@@ -181,7 +182,7 @@ public class CruiseSchedulePreviewResponse {
         private TripPlanEntryKind kind;
 
         @Schema(description = "Danh mục hoạt động (nếu có)")
-        private com.casms.activity.enums.OnboardActivityCategory category;
+        private OnboardActivityCategory category;
 
         @Schema(description = "ID hoạt động trên tàu (nếu có)")
         private UUID sourceActivityId;

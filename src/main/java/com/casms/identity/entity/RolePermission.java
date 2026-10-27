@@ -7,6 +7,7 @@ import lombok.Getter;
 import lombok.Setter;
 
 import java.util.EnumSet;
+import java.util.HashSet;
 import java.util.Set;
 import java.util.UUID;
 
@@ -25,7 +26,7 @@ public class RolePermission {
     @Enumerated(EnumType.STRING)
     @CollectionTable(name = "\"RolePermissionMapping\"", joinColumns = @JoinColumn(name = "role"))
     @Column(name = "permission")
-    private Set<Permission> permissions = new java.util.HashSet<>();
+    private Set<Permission> permissions = new HashSet<>();
 
     public RolePermission() {}
 
@@ -36,7 +37,7 @@ public class RolePermission {
 
     public void setPermissions(Set<Permission> permissions) {
         if (this.permissions == null) {
-            this.permissions = new java.util.HashSet<>();
+            this.permissions = new HashSet<>();
         } else {
             this.permissions.clear();
         }

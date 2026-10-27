@@ -18,6 +18,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -56,7 +57,7 @@ public class ActivityService {
             a.setCurrencyCode("USD");
         }
         if (a.getPrice() == null) {
-            a.setPrice(java.math.BigDecimal.ZERO);
+            a.setPrice(BigDecimal.ZERO);
         }
         resolveDeckAndCabin(a, deckId, cabinId);
         validateActivity(a, null);

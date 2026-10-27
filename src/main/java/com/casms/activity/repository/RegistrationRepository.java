@@ -2,11 +2,15 @@ package com.casms.activity.repository;
 
 import com.casms.activity.entity.Registration;
 import com.casms.activity.enums.RegistrationStatus;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.util.Collection;
+import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 public interface RegistrationRepository
@@ -14,8 +18,8 @@ public interface RegistrationRepository
 
     boolean existsByOnboardActivity_OnboardActivityId(UUID activityId);
     boolean existsByBookingPassenger_BookingPassengerIdAndOnboardActivity_OnboardActivityIdAndStatusIn(UUID bookingPassengerId, UUID activityId, Collection<RegistrationStatus> statuses);
-    java.util.List<Registration> findByOnboardActivity_OnboardActivityId(UUID activityId);
-    java.util.List<Registration> findByBookingPassenger_Passenger_User_UserId(UUID userId);
+    List<Registration> findByOnboardActivity_OnboardActivityId(UUID activityId);
+    List<Registration> findByBookingPassenger_Passenger_User_UserId(UUID userId);
 
     @Query("""
         SELECT r FROM Registration r
@@ -28,12 +32,12 @@ public interface RegistrationRepository
         WHERE r.bookingPassenger.bookingPassengerId IN :bookingPassengerIds
         ORDER BY r.registrationTime ASC
         """)
-    java.util.List<Registration> findTripRegistrations(
-            @Param("bookingPassengerIds") java.util.Collection<UUID> bookingPassengerIds);
-    java.util.Optional<Registration> findByRegistrationId(UUID id);
-    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
-    @org.springframework.data.jpa.repository.Query("select r from Registration r where r.registrationId = :id")
-    java.util.Optional<Registration> lockById(@org.springframework.data.repository.query.Param("id") UUID id);
+    List<Registration> findTripRegistrations(
+            @Param("bookingPassengerIds") Collection<UUID> bookingPassengerIds);
+    Optional<Registration> findByRegistrationId(UUID id);
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select r from Registration r where r.registrationId = :id")
+    Optional<Registration> lockById(@Param("id") UUID id);
 
     @Query("SELECT COALESCE(SUM(r.quantity), 0) FROM Registration r WHERE r.onboardActivity.onboardActivityId = :activityId AND r.status IN :statuses")
     Long sumOnboardParticipants(@Param("activityId") UUID activityId, @Param("statuses") Collection<RegistrationStatus> statuses);
@@ -66,7 +70,7 @@ public interface RegistrationRepository
         WHERE r.shoreExcursion.shoreExcursionId = :excursionId
           AND r.status = :status
         """)
-    java.util.List<Registration> findConfirmedRegistrationsByExcursion(
+    List<Registration> findConfirmedRegistrationsByExcursion(
             @Param("excursionId") UUID excursionId,
             @Param("status") RegistrationStatus status
     );

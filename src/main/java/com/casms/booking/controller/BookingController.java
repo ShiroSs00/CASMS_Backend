@@ -1,5 +1,7 @@
 package com.casms.booking.controller;
 
+import com.casms.booking.dto.request.BookingQuoteRequest;
+import com.casms.booking.dto.response.BookingQuoteResponse;
 import com.casms.booking.dto.request.BookingCancelRequest;
 import com.casms.booking.dto.request.BookingContractAcceptRequest;
 import com.casms.booking.dto.request.BookingCreateRequest;
@@ -25,6 +27,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import com.casms.trip.service.IdempotencyService;
 import java.util.UUID;
 
 @Tag(name = "Booking & Contracts", description = "Quản lý đặt chỗ chuyến đi, hành khách tự chọn phòng và hợp đồng")
@@ -34,6 +37,7 @@ import java.util.UUID;
 public class BookingController {
 
     private final BookingService bookingService;
+    private final IdempotencyService idempotencyService;
 
     @Operation(summary = "Tra cứu phòng trống để tự chọn (Công khai / Khách vãng lai)",
                description = "Tìm kiếm danh sách phòng trống trên tàu của chuyến đi để hành khách xem sơ đồ và tự chọn phòng (Không yêu cầu đăng nhập)")
@@ -57,14 +61,38 @@ public class BookingController {
         return ApiResponse.success(bookingService.getThreeDimensionalAvailableCabins(cruiseId, deckId, cabinType, minCapacity));
     }
 
-    @Operation(summary = "Tạo đặt chỗ chuyến đi (Hỗ trợ cả khách chưa đăng nhập và đã đăng nhập)",
-               description = "Hành khách tự chọn cabin cụ thể và gói dịch vụ. Nếu chưa đăng nhập, hệ thống tự động liên kết hoặc tạo tài khoản hành khách dựa theo thông tin liên hệ (Email/SĐT).")
+    @Operation(summary = "Yêu cầu báo giá chính thức (BE-11 Authoritative Quote API)",
+               description = "Tính toán báo giá chi tiết theo chính sách thương mại của chuyến đi, bao gồm cabin, gói tour, phụ phí cảng, thuế và lịch thanh toán. Báo giá có TTL 30 phút.")
+    @PostMapping("/quotes")
+    @ResponseStatus(HttpStatus.CREATED)
+    public ApiResponse<BookingQuoteResponse> createQuote(
+            @RequestBody @Valid BookingQuoteRequest request,
+            @AuthenticationPrincipal CasmsPrincipal principal) {
+        return ApiResponse.success(bookingService.createQuote(request, principal));
+    }
+
+    @Operation(summary = "Tra cứu thông tin báo giá (BE-11)", description = "Xem chi tiết báo giá và kiểm tra hạn sử dụng của báo giá")
+    @GetMapping("/quotes/{quoteId}")
+    public ApiResponse<BookingQuoteResponse> getQuote(@PathVariable UUID quoteId) {
+        return ApiResponse.success(bookingService.getQuote(quoteId));
+    }
+
+    @Operation(summary = "Tạo đặt chỗ chuyến đi (Hỗ trợ cả khách chưa đăng nhập và đã đăng nhập - BE-16 Idempotency)",
+               description = "Hành khách tự chọn cabin cụ thể và gói dịch vụ. Hỗ trợ Idempotency-Key header để chống duplicate booking khi mạng chập chờn hoặc retry timeout.")
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<BookingDetailResponse> create(
+            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
             @RequestBody @Valid BookingCreateRequest request,
             @AuthenticationPrincipal CasmsPrincipal principal) {
-        return ApiResponse.success(bookingService.createBooking(request, principal));
+        UUID actorId = principal != null ? principal.getUserId() : null;
+        if (idempotencyKey != null && !idempotencyKey.isBlank()) {
+            BookingDetailResponse response = idempotencyService.execute(
+                    idempotencyKey, actorId, "CREATE_BOOKING", request, BookingDetailResponse.class,
+                    () -> bookingService.createBooking(request, principal));
+            return ApiResponse.success("Booking created successfully", response);
+        }
+        return ApiResponse.success("Booking created successfully", bookingService.createBooking(request, principal));
     }
 
     @Operation(summary = "Tra cứu đơn đặt chỗ cho khách vãng lai",

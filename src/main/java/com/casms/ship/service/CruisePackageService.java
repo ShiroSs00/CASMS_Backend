@@ -50,11 +50,31 @@ public class CruisePackageService {
         CruiseTourPackage ctp = new CruiseTourPackage();
         ctp.setCruise(cruise);
         ctp.setTourPackage(tourPackage);
-        ctp.setActive(true);
+        ctp.setActive(false); // BE-12: Configured in catalog, NOT active-for-sale until approved by OPS
+        ctp.setMandatory(false);
+        ctp.setEntitlementType("OPTIONAL_ADDON");
         ctp.setCreatedAt(Instant.now());
 
         CruiseTourPackage saved = cruiseTourPackageRepository.save(ctp);
         return toResponse(saved);
+    }
+
+    @Transactional
+    public CruiseTourPackageResponse activatePackage(UUID cruiseId, UUID tourPackageId) {
+        CruiseTourPackage ctp = cruiseTourPackageRepository
+                .findByCruise_CruiseIdAndTourPackage_TourPackageId(cruiseId, tourPackageId)
+                .orElseThrow(() -> new ResourceNotFoundException("CruiseTourPackage", tourPackageId));
+        ctp.setActive(true);
+        return toResponse(cruiseTourPackageRepository.save(ctp));
+    }
+
+    @Transactional
+    public CruiseTourPackageResponse deactivatePackage(UUID cruiseId, UUID tourPackageId) {
+        CruiseTourPackage ctp = cruiseTourPackageRepository
+                .findByCruise_CruiseIdAndTourPackage_TourPackageId(cruiseId, tourPackageId)
+                .orElseThrow(() -> new ResourceNotFoundException("CruiseTourPackage", tourPackageId));
+        ctp.setActive(false);
+        return toResponse(cruiseTourPackageRepository.save(ctp));
     }
 
     @Transactional(readOnly = true)
@@ -86,6 +106,8 @@ public class CruisePackageService {
                 .packageName(ctp.getTourPackage().getPackageName())
                 .defaultPrice(ctp.getTourPackage().getPrice())
                 .active(ctp.isActive())
+                .mandatory(ctp.isMandatory())
+                .entitlementType(ctp.getEntitlementType())
                 .createdAt(ctp.getCreatedAt())
                 .build();
     }

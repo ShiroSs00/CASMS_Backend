@@ -74,8 +74,11 @@ class RolePermissionInitializerTest {
         Set<Permission> perms = rolePermissionsMap.get(Role.CRUISE_MANAGER);
         assertNotNull(perms);
 
-        // Positive checks: minimal cross-module reads
+        // Positive checks: minimal cross-module reads & cruise management
         assertTrue(perms.contains(Permission.CRUISE_READ));
+        assertTrue(perms.contains(Permission.CRUISE_ASSIGN_SHIP), "Cruise Manager must assign ship");
+        assertTrue(perms.contains(Permission.CRUISE_CHANGE_SHIP), "Cruise Manager must change assigned ship");
+        assertTrue(perms.contains(Permission.CRUISE_UNASSIGN_SHIP), "Cruise Manager must unassign ship");
         assertFalse(perms.contains(Permission.CRUISE_MANIFEST_READ));
         assertTrue(perms.contains(Permission.SHIP_READ), "Cruise Manager must have SHIP_READ for assignment");
         assertTrue(perms.contains(Permission.OPERATIONAL_ISSUE_READ), "Cruise Manager must have OPERATIONAL_ISSUE_READ");
@@ -88,7 +91,10 @@ class RolePermissionInitializerTest {
         assertFalse(perms.contains(Permission.PORT_CREATE));
         assertFalse(perms.contains(Permission.CRUISE_STAFF_ASSIGN));
 
-        // Negative checks: no unauthorized writes
+        // Negative checks: no unauthorized writes or sale permissions
+        assertFalse(perms.contains(Permission.CRUISE_OPEN_SALE), "Cruise Manager must not have CRUISE_OPEN_SALE");
+        assertFalse(perms.contains(Permission.CRUISE_STOP_SALE), "Cruise Manager must not have CRUISE_STOP_SALE");
+        assertFalse(perms.contains(Permission.CRUISE_RESUME_SALE), "Cruise Manager must not have CRUISE_RESUME_SALE");
         assertFalse(perms.contains(Permission.SUPPLIER_CREATE), "Cruise Manager must not create suppliers");
         assertFalse(perms.contains(Permission.EXCURSION_CREATE), "Cruise Manager must not create excursions");
         assertFalse(perms.contains(Permission.TOUR_GROUP_CREATE), "Cruise Manager must not create tour groups");
@@ -110,6 +116,10 @@ class RolePermissionInitializerTest {
         assertTrue(perms.contains(Permission.CABIN_CREATE));
 
         // Negative checks
+        assertFalse(perms.contains(Permission.CRUISE_ASSIGN_SHIP), "Ship Manager must not assign ships");
+        assertFalse(perms.contains(Permission.CRUISE_CHANGE_SHIP), "Ship Manager must not change assigned ship");
+        assertFalse(perms.contains(Permission.CRUISE_UNASSIGN_SHIP), "Ship Manager must not unassign ship");
+        assertFalse(perms.contains(Permission.CRUISE_OPEN_SALE), "Ship Manager must not open sale");
         assertFalse(perms.contains(Permission.SUPPLIER_CREATE));
         assertFalse(perms.contains(Permission.CRUISE_CREATE));
         assertFalse(perms.contains(Permission.ITINERARY_CREATE));
@@ -193,6 +203,10 @@ class RolePermissionInitializerTest {
         assertTrue(perms.contains(Permission.DESTINATION_UPDATE));
         assertTrue(perms.contains(Permission.CRUISE_STAFF_ASSIGN));
         assertTrue(perms.contains(Permission.ITINERARY_APPROVE));
+        assertTrue(perms.contains(Permission.CRUISE_OPEN_SALE), "Operations Manager must have CRUISE_OPEN_SALE");
+        assertTrue(perms.contains(Permission.CRUISE_STOP_SALE), "Operations Manager must have CRUISE_STOP_SALE");
+        assertTrue(perms.contains(Permission.CRUISE_RESUME_SALE), "Operations Manager must have CRUISE_RESUME_SALE");
+        assertFalse(perms.contains(Permission.CRUISE_ASSIGN_SHIP), "Operations Manager does not assign ship directly");
         assertFalse(perms.contains(Permission.USER_ROLE_ASSIGN));
     }
 

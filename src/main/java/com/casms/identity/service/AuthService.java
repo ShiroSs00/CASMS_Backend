@@ -11,6 +11,7 @@ import com.casms.security.jwt.JwtService;
 import com.casms.identity.dto.UserMeResponse;
 import com.casms.identity.enums.Permission;
 import com.casms.identity.enums.Role;
+import com.casms.identity.enums.UserStatus;
 import com.casms.identity.repository.RolePermissionRepository;
 import com.casms.security.principal.CasmsPrincipal;
 import lombok.RequiredArgsConstructor;
@@ -55,11 +56,11 @@ public class AuthService {
         }
 
         // Get user details
-        var principal = (com.casms.security.principal.CasmsPrincipal) authentication.getPrincipal();
+        var principal = (CasmsPrincipal) authentication.getPrincipal();
         User user = principal.getUser();
 
         // Check account status
-        if (user.getStatus() != com.casms.identity.enums.UserStatus.ACTIVE) {
+        if (user.getStatus() != UserStatus.ACTIVE) {
             throw new BusinessException("ACCOUNT_DISABLED", "Account is disabled or locked");
         }
 

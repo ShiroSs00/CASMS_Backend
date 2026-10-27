@@ -6,6 +6,7 @@ import com.casms.ship.dto.request.ShipModelCreateRequest;
 import com.casms.ship.dto.request.ShipModelObjectCreateRequest;
 import com.casms.ship.dto.response.*;
 import com.casms.ship.entity.*;
+import com.casms.ship.enums.LocationDeviceType;
 import com.casms.ship.enums.ShipModelObjectType;
 import com.casms.ship.enums.ShipModelStatus;
 import com.casms.ship.repository.*;
@@ -189,7 +190,7 @@ public class ShipModelService {
         List<Deck> shipDecks = decks.findByShipShipIdOrderByDeckNumber(shipId);
         List<Cabin> shipCabins = cabins.findByShipShipIdOrderByDeckDeckNumberAscCabinNumberAsc(shipId);
         List<LocationDevice> shipDevices = devices.findByShipShipId(shipId).stream()
-                .filter(d -> d.getDeviceType() == com.casms.ship.enums.LocationDeviceType.BLE_BEACON || d.getDeviceType() == com.casms.ship.enums.LocationDeviceType.BLE_RECEIVER).toList();
+                .filter(d -> d.getDeviceType() == LocationDeviceType.BLE_BEACON || d.getDeviceType() == LocationDeviceType.BLE_RECEIVER).toList();
         Map<UUID, List<Cabin>> cabinsByDeck = new HashMap<>();
         shipCabins.forEach(c -> cabinsByDeck.computeIfAbsent(c.getDeck().getDeckId(), ignored -> new ArrayList<>()).add(c));
         Map<UUID, List<LocationDevice>> anchorsByDeck = new HashMap<>();

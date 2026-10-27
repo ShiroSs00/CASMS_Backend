@@ -23,6 +23,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -232,7 +234,7 @@ public class ShipService {
         Ship ship = getShipById(shipId);
         long deckCount = deckRepository.countByShipShipId(shipId);
         long cabinCount = cabinRepository.countByShipShipId(shipId);
-        List<ShipReadinessAssessmentResponse.Issue> issues = new java.util.ArrayList<>();
+        List<ShipReadinessAssessmentResponse.Issue> issues = new ArrayList<>();
         String readiness;
         if (ship.getStatus() != ShipStatus.ACTIVE) {
             readiness = "BLOCKED";
@@ -271,8 +273,8 @@ public class ShipService {
         }
     }
 
-    private void validateCommissionDate(java.time.LocalDate commissionDate) {
-        if (commissionDate != null && commissionDate.isAfter(java.time.LocalDate.now())) {
+    private void validateCommissionDate(LocalDate commissionDate) {
+        if (commissionDate != null && commissionDate.isAfter(LocalDate.now())) {
             throw new BusinessException("INVALID_COMMISSION_DATE", "Commission date cannot be in the future");
         }
     }
