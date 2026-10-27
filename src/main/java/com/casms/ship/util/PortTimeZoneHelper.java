@@ -105,6 +105,21 @@ public final class PortTimeZoneHelper {
     }
 
     /**
+     * Phân giải chuỗi timeZoneId thành ZoneId chuẩn IANA (BE-R05a).
+     * Tuyệt đối không fallback âm thầm về Asia/Ho_Chi_Minh nếu thiếu hoặc sai định dạng.
+     */
+    public static ZoneId resolveZone(String timeZoneId) {
+        if (timeZoneId == null || timeZoneId.isBlank()) {
+            throw new com.casms.common.exception.BusinessException("MISSING_PORT_TIME_ZONE", "Múi giờ của cảng không được để trống.");
+        }
+        try {
+            return ZoneId.of(timeZoneId.trim());
+        } catch (Exception e) {
+            throw new com.casms.common.exception.BusinessException("INVALID_PORT_TIME_ZONE", "Múi giờ cảng không hợp lệ theo chuẩn IANA: " + timeZoneId);
+        }
+    }
+
+    /**
      * Tính toán UTC Offset hiện tại (ví dụ: "+09:00", "+07:00", "+00:00").
      */
     public static String calculateUtcOffset(String timeZoneId) {

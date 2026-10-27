@@ -41,9 +41,25 @@ public class CruiseImpactTask {
     @Column(name = "severity", nullable = false, length = 20)
     private String severity = "WARNING";
 
+    @Column(name = "event_identity", length = 100)
+    private String eventIdentity;
+
+    @Column(name = "target_type", length = 50)
+    private String targetType;
+
+    @Column(name = "target_id", length = 100)
+    private String targetId;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "assigned_to_user_id")
     private User assignedTo;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "resolved_by_user_id")
+    private User resolvedBy;
+
+    @Column(name = "resolved_at")
+    private Instant resolvedAt;
 
     @Column(name = "evidence", columnDefinition = "text")
     private String evidence;

@@ -1,5 +1,6 @@
 package com.casms.ship.service;
 
+import com.casms.booking.dto.request.BookingCancelRequest;
 import com.casms.booking.dto.request.BookingCreateRequest;
 import com.casms.booking.dto.request.PassengerBookingItemRequest;
 import com.casms.booking.dto.response.BookingDetailResponse;
@@ -20,6 +21,21 @@ import com.casms.servicepackage.entity.TourPackage;
 import com.casms.servicepackage.enums.TourPackageStatus;
 import com.casms.servicepackage.enums.TourPackageType;
 import com.casms.servicepackage.repository.TourPackageRepository;
+import com.casms.payment.entity.Payment;
+import com.casms.payment.enums.PaymentMethod;
+import com.casms.payment.enums.PaymentOperationType;
+import com.casms.payment.enums.PaymentStatus;
+import com.casms.payment.repository.PaymentRepository;
+import com.casms.booking.entity.Booking;
+import com.casms.booking.entity.BookingContract;
+import com.casms.booking.enums.BookingContractStatus;
+import com.casms.booking.enums.BookingStatus;
+import com.casms.booking.repository.BookingContractRepository;
+import com.casms.identity.entity.RolePermission;
+import com.casms.identity.enums.Permission;
+import com.casms.identity.repository.RolePermissionRepository;
+import com.casms.security.principal.CasmsPrincipal;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import com.casms.ship.dto.request.*;
 import com.casms.ship.dto.response.*;
 import com.casms.ship.entity.*;
@@ -70,10 +86,13 @@ public class CruiseSaleAndHandoffPostgresIntegrationTest {
     @Autowired private BookingRepository bookingRepository;
     @Autowired private BookingPassengerRepository bookingPassengerRepository;
     @Autowired private CabinAssignmentRepository cabinAssignmentRepository;
+    @Autowired private PaymentRepository paymentRepository;
+    @Autowired private BookingContractRepository bookingContractRepository;
     @Autowired private CruiseCheckinRepository cruiseCheckinRepository;
     @Autowired private TripRepository tripRepository;
     @Autowired private TripScheduleVersionRepository versionRepository;
     @Autowired private UserRepository userRepository;
+    @Autowired private RolePermissionRepository rolePermissionRepository;
     @Autowired private TransactionTemplate transactionTemplate;
 
     private Ship testShip;
@@ -156,8 +175,29 @@ public class CruiseSaleAndHandoffPostgresIntegrationTest {
         testStaffCaptain.setUsername(captainName);
         testStaffCaptain.setPasswordHash("hash123");
         testStaffCaptain.setStatus(UserStatus.ACTIVE);
-        testStaffCaptain.setRoles(Set.of(Role.OPERATIONS_MANAGER));
+        testStaffCaptain.setRoles(Set.of(Role.OPERATIONS_MANAGER, Role.BOOKING_AGENT));
         testStaffCaptain = userRepository.save(testStaffCaptain);
+
+        rolePermissionRepository.findByRole(Role.OPERATIONS_MANAGER).ifPresentOrElse(
+                rp -> {
+                    rp.getPermissions().add(Permission.BOOKING_CONFIRM);
+                    rp.getPermissions().add(Permission.BOOKING_READ);
+                    rp.getPermissions().add(Permission.BOOKING_CANCEL);
+                    rolePermissionRepository.save(rp);
+                },
+                () -> rolePermissionRepository.save(new RolePermission(Role.OPERATIONS_MANAGER, Set.of(
+                        Permission.BOOKING_CONFIRM, Permission.BOOKING_READ, Permission.BOOKING_CANCEL)))
+        );
+        rolePermissionRepository.findByRole(Role.BOOKING_AGENT).ifPresentOrElse(
+                rp -> {
+                    rp.getPermissions().add(Permission.BOOKING_CONFIRM);
+                    rp.getPermissions().add(Permission.BOOKING_READ);
+                    rp.getPermissions().add(Permission.BOOKING_CANCEL);
+                    rolePermissionRepository.save(rp);
+                },
+                () -> rolePermissionRepository.save(new RolePermission(Role.BOOKING_AGENT, Set.of(
+                        Permission.BOOKING_CONFIRM, Permission.BOOKING_READ, Permission.BOOKING_CANCEL)))
+        );
 
         // Tour Packages
         testPackage = new TourPackage();
@@ -245,6 +285,29 @@ public class CruiseSaleAndHandoffPostgresIntegrationTest {
         assertEquals(0L, interiorItem.getOccupiedSlots());
         assertEquals(2L, interiorItem.getRemainingSlots());
         assertEquals(BigDecimal.valueOf(300), interiorItem.getBaseFare());
+
+        // BE-R02 / Question 5: Open sale and create a Draft booking to verify held vs booked and remaining capacity
+        cruiseService.openSale(cruise.getCruiseId(), new CruiseOpenSaleRequest());
+        BookingCreateRequest req = new BookingCreateRequest();
+        req.setCruiseId(cruise.getCruiseId());
+        req.setCurrency("USD");
+        PassengerBookingItemRequest p = new PassengerBookingItemRequest();
+        p.setCabinId(testCabinInterior.getCabinId());
+        p.setFullName("Held Passenger");
+        p.setEmail("held@test.com");
+        p.setDocumentType(PassengerDocumentType.Passport);
+        p.setDocumentNumber("DOC-HELD-111");
+        p.setTourPackageId(testPackage.getTourPackageId());
+        req.setPassengers(List.of(p));
+        bookingService.createBooking(req, null);
+
+        CruiseInventorySummaryResponse invAfterDraft = cruiseService.getInventorySummary(cruise.getCruiseId());
+        assertEquals(0L, invAfterDraft.getBookedPassengersCount(), "Draft bookings must not be counted as confirmed booked");
+        assertEquals(1L, invAfterDraft.getHeldPassengersCount(), "Draft bookings must be counted as held");
+        assertEquals((long) testShip.getTotalCapacity() - 1, invAfterDraft.getRemainingCapacity(), "Remaining capacity must only subtract held passengers once");
+
+        CruiseSaleReadinessResponse saleReadiness = cruiseService.validateSaleReadiness(cruise.getCruiseId());
+        assertEquals((long) testShip.getTotalCapacity() - 1, saleReadiness.getRemainingCapacity());
     }
 
     @Test
@@ -444,6 +507,518 @@ public class CruiseSaleAndHandoffPostgresIntegrationTest {
         BookingDetailResponse booked = bookingService.createBooking(req, null);
         assertNotNull(booked);
         assertNotNull(booked.getBookingReference());
+    }
+
+    @Test
+    @DisplayName("BE-R00 / D01 Gate: Chặn đặt chỗ khi cruise PUBLISHED nhưng itinerary chưa OPEN_FOR_SALE")
+    void test_BE_R00_booking_gate_not_open_for_sale() {
+        Instant dep = Instant.now().plus(80, ChronoUnit.DAYS);
+        Instant ret = dep.plus(3, ChronoUnit.DAYS);
+        CruiseResponse cruise = createReadyCruise("Not Open For Sale Cruise", dep, ret);
+
+        // Assign package and publish cruise (operational readiness)
+        CruiseTourPackageRequest pkgReq = new CruiseTourPackageRequest();
+        pkgReq.setTourPackageId(testPackage.getTourPackageId());
+        cruisePackageService.assignPackage(cruise.getCruiseId(), pkgReq);
+        cruiseService.publish(cruise.getCruiseId());
+
+        // Notice: Cruise is PUBLISHED, but Itinerary is APPROVED (not opened for sale via /open-sale)
+        Cruise published = cruiseRepository.findById(cruise.getCruiseId()).orElseThrow();
+        assertEquals(CruiseStatus.PUBLISHED, published.getStatus());
+        Itinerary itinerary = itineraryRepository.findByCruiseCruiseId(cruise.getCruiseId()).orElseThrow();
+        assertEquals(ItineraryStatus.APPROVED, itinerary.getStatus());
+
+        BookingCreateRequest req = new BookingCreateRequest();
+        req.setCruiseId(cruise.getCruiseId());
+        req.setCurrency("USD");
+        PassengerBookingItemRequest p = new PassengerBookingItemRequest();
+        p.setCabinId(testCabinInterior.getCabinId());
+        p.setFullName("Hành Khách Gate Test");
+        p.setEmail("gate_test@test.com");
+        p.setDocumentType(PassengerDocumentType.Passport);
+        p.setDocumentNumber("DOC-GATE-999");
+        p.setTourPackageId(testPackage.getTourPackageId());
+        req.setPassengers(List.of(p));
+
+        BusinessException ex = assertThrows(BusinessException.class, () ->
+                bookingService.createBooking(req, null));
+        assertEquals("CRUISE_NOT_OPEN_FOR_SALE", ex.getCode());
+    }
+
+    @Test
+    @DisplayName("BE-R01 / Test bắt buộc: Scope A không mở B; retry không thêm scope ngoài ý định; scope mới được cập nhật")
+    void test_BE_R01_scope_A_does_not_open_B_and_retry_is_idempotent() {
+        Instant dep = Instant.now().plus(90, ChronoUnit.DAYS);
+        Instant ret = dep.plus(3, ChronoUnit.DAYS);
+        CruiseResponse cruise = createReadyCruise("Scope Isolation Cruise", dep, ret);
+
+        // Create a second active package B
+        TourPackage packageB = new TourPackage();
+        packageB.setPackageCode("PKG-B-" + UUID.randomUUID().toString().substring(0, 6));
+        packageB.setPackageName("Gói Tour B Biển Đảo");
+        packageB.setPackageType(TourPackageType.PREMIUM);
+        packageB.setPrice(BigDecimal.valueOf(250.00));
+        packageB.setCurrencyCode("USD");
+        packageB.setStatus(TourPackageStatus.ACTIVE);
+        packageB = tourPackageRepository.save(packageB);
+
+        // Assign both package A and package B to this cruise
+        CruiseTourPackageRequest pkgReqA = new CruiseTourPackageRequest();
+        pkgReqA.setTourPackageId(testPackage.getTourPackageId());
+        cruisePackageService.assignPackage(cruise.getCruiseId(), pkgReqA);
+
+        CruiseTourPackageRequest pkgReqB = new CruiseTourPackageRequest();
+        pkgReqB.setTourPackageId(packageB.getTourPackageId());
+        cruisePackageService.assignPackage(cruise.getCruiseId(), pkgReqB);
+
+        // 1. Open sale ONLY for Scope A (testPackage)
+        CruiseOpenSaleRequest openScopeA = CruiseOpenSaleRequest.builder()
+                .packageIds(List.of(testPackage.getTourPackageId()))
+                .build();
+        CruiseResponse openedCruise = cruiseService.openSale(cruise.getCruiseId(), openScopeA);
+        assertEquals(CruiseStatus.PUBLISHED, openedCruise.getStatus());
+
+        // Verify: Package A is ACTIVE, Package B is NOT ACTIVE (Scope A không mở B)
+        CruiseTourPackage ctpA = cruiseTourPackageRepository
+                .findByCruise_CruiseIdAndTourPackage_TourPackageId(cruise.getCruiseId(), testPackage.getTourPackageId()).orElseThrow();
+        CruiseTourPackage ctpB = cruiseTourPackageRepository
+                .findByCruise_CruiseIdAndTourPackage_TourPackageId(cruise.getCruiseId(), packageB.getTourPackageId()).orElseThrow();
+        assertTrue(ctpA.isActive(), "Package A must be active");
+        assertFalse(ctpB.isActive(), "Scope A must NOT open Package B");
+
+        // Verify booking: Booking Package A succeeds
+        BookingCreateRequest reqA = new BookingCreateRequest();
+        reqA.setCruiseId(cruise.getCruiseId());
+        reqA.setCurrency("USD");
+        PassengerBookingItemRequest pA = new PassengerBookingItemRequest();
+        pA.setCabinId(testCabinInterior.getCabinId());
+        pA.setFullName("Khách Scope A");
+        pA.setEmail("scope_a@test.com");
+        pA.setDocumentType(PassengerDocumentType.Passport);
+        pA.setDocumentNumber("DOC-SCOPE-A");
+        pA.setTourPackageId(testPackage.getTourPackageId());
+        reqA.setPassengers(List.of(pA));
+        BookingDetailResponse bookedA = bookingService.createBooking(reqA, null);
+        assertNotNull(bookedA);
+
+        // Booking Package B fails with PACKAGE_NOT_AVAILABLE_FOR_CRUISE
+        BookingCreateRequest reqB = new BookingCreateRequest();
+        reqB.setCruiseId(cruise.getCruiseId());
+        reqB.setCurrency("USD");
+        PassengerBookingItemRequest pB = new PassengerBookingItemRequest();
+        pB.setCabinId(testCabinInterior.getCabinId());
+        pB.setFullName("Khách Scope B");
+        pB.setEmail("scope_b@test.com");
+        pB.setDocumentType(PassengerDocumentType.Passport);
+        pB.setDocumentNumber("DOC-SCOPE-B");
+        pB.setTourPackageId(packageB.getTourPackageId());
+        reqB.setPassengers(List.of(pB));
+        BusinessException exB = assertThrows(BusinessException.class, () ->
+                bookingService.createBooking(reqB, null));
+        assertEquals("PACKAGE_NOT_AVAILABLE_FOR_CRUISE", exB.getCode());
+
+        // 2. Retry openSale with Scope A: idempotent, does not add Package B
+        CruiseResponse retried = cruiseService.openSale(cruise.getCruiseId(), openScopeA);
+        assertNotNull(retried);
+        ctpB = cruiseTourPackageRepository
+                .findByCruise_CruiseIdAndTourPackage_TourPackageId(cruise.getCruiseId(), packageB.getTourPackageId()).orElseThrow();
+        assertFalse(ctpB.isActive(), "Retry must not add scope outside intention");
+
+        // 3. Update scope: openSale with Package B (Đã mở bán không được return sớm rồi bỏ qua scope mới)
+        CruiseOpenSaleRequest openScopeB = CruiseOpenSaleRequest.builder()
+                .packageIds(List.of(packageB.getTourPackageId()))
+                .build();
+        CruiseResponse scopeBOpened = cruiseService.openSale(cruise.getCruiseId(), openScopeB);
+        assertNotNull(scopeBOpened);
+
+        ctpB = cruiseTourPackageRepository
+                .findByCruise_CruiseIdAndTourPackage_TourPackageId(cruise.getCruiseId(), packageB.getTourPackageId()).orElseThrow();
+        assertTrue(ctpB.isActive(), "Package B must now be active following explicit scope update");
+
+        // Booking Package B now succeeds!
+        PassengerBookingItemRequest pBNew = new PassengerBookingItemRequest();
+        pBNew.setCabinId(testCabinInterior.getCabinId());
+        pBNew.setFullName("Khách Scope B Hợp Lệ");
+        pBNew.setEmail("scope_b_new@test.com");
+        pBNew.setDocumentType(PassengerDocumentType.Passport);
+        pBNew.setDocumentNumber("DOC-SCOPE-B-NEW");
+        pBNew.setTourPackageId(packageB.getTourPackageId());
+        reqB.setPassengers(List.of(pBNew));
+        BookingDetailResponse bookedB = bookingService.createBooking(reqB, null);
+        assertNotNull(bookedB);
+    }
+
+    @Test
+    @DisplayName("BE-R01 / Test bắt buộc: ID khác Cruise/không tồn tại bị từ chối nguyên tử (Atomic rejection)")
+    void test_BE_R01_invalid_package_ids_rejected_atomically() {
+        Instant dep = Instant.now().plus(100, ChronoUnit.DAYS);
+        Instant ret = dep.plus(3, ChronoUnit.DAYS);
+        CruiseResponse cruise = createReadyCruise("Atomic Validation Cruise", dep, ret);
+
+        // Assign testPackage
+        CruiseTourPackageRequest pkgReq = new CruiseTourPackageRequest();
+        pkgReq.setTourPackageId(testPackage.getTourPackageId());
+        cruisePackageService.assignPackage(cruise.getCruiseId(), pkgReq);
+
+        // 1. Non-existent package ID: throws ResourceNotFoundException
+        UUID nonExistentId = UUID.randomUUID();
+        CruiseOpenSaleRequest nonExistentReq = CruiseOpenSaleRequest.builder()
+                .packageIds(List.of(nonExistentId))
+                .build();
+        assertThrows(com.casms.common.exception.ResourceNotFoundException.class, () ->
+                cruiseService.openSale(cruise.getCruiseId(), nonExistentReq));
+
+        // 2. Package not assigned to this cruise (unassignedPackage): throws PACKAGE_NOT_ASSIGNED_TO_CRUISE
+        CruiseOpenSaleRequest unassignedReq = CruiseOpenSaleRequest.builder()
+                .packageIds(List.of(unassignedPackage.getTourPackageId()))
+                .build();
+        BusinessException unassignedEx = assertThrows(BusinessException.class, () ->
+                cruiseService.openSale(cruise.getCruiseId(), unassignedReq));
+        assertEquals("PACKAGE_NOT_ASSIGNED_TO_CRUISE", unassignedEx.getCode());
+
+        // 3. Inactive package: throws PACKAGE_INACTIVE
+        TourPackage inactivePkg = new TourPackage();
+        inactivePkg.setPackageCode("PKG-INACT-" + UUID.randomUUID().toString().substring(0, 5));
+        inactivePkg.setPackageName("Gói Tạm Ngưng");
+        inactivePkg.setPackageType(TourPackageType.BASIC);
+        inactivePkg.setPrice(BigDecimal.valueOf(100.00));
+        inactivePkg.setCurrencyCode("USD");
+        inactivePkg.setStatus(TourPackageStatus.INACTIVE);
+        inactivePkg = tourPackageRepository.save(inactivePkg);
+
+        CruiseTourPackage ctpInactive = new CruiseTourPackage();
+        ctpInactive.setCruise(cruiseRepository.findById(cruise.getCruiseId()).orElseThrow());
+        ctpInactive.setTourPackage(inactivePkg);
+        ctpInactive.setActive(false);
+        cruiseTourPackageRepository.save(ctpInactive);
+
+        CruiseOpenSaleRequest inactiveReq = CruiseOpenSaleRequest.builder()
+                .packageIds(List.of(inactivePkg.getTourPackageId()))
+                .build();
+        BusinessException inactiveEx = assertThrows(BusinessException.class, () ->
+                cruiseService.openSale(cruise.getCruiseId(), inactiveReq));
+        assertEquals("PACKAGE_INACTIVE", inactiveEx.getCode());
+
+        // Verify atomicity: cruise remains DRAFT, nothing was half-opened
+        Cruise cruiseAfterFailures = cruiseRepository.findById(cruise.getCruiseId()).orElseThrow();
+        assertEquals(CruiseStatus.DRAFT, cruiseAfterFailures.getStatus());
+    }
+
+    @Test
+    @DisplayName("BE-R02 / Xác nhận suất cuối: Xác nhận hold hợp lệ của chính booking thành công, dừng bán không hủy booking")
+    void test_BE_R02_confirm_last_slot_preserves_own_hold_and_stop_sale_retains_booking() {
+        Instant dep = Instant.now().plus(110, ChronoUnit.DAYS);
+        Instant ret = dep.plus(3, ChronoUnit.DAYS);
+        CruiseResponse cruise = createReadyCruise("Last Slot Confirm Cruise", dep, ret);
+
+        // Assign package and open sale
+        CruiseTourPackageRequest pkgReq = new CruiseTourPackageRequest();
+        pkgReq.setTourPackageId(testPackage.getTourPackageId());
+        cruisePackageService.assignPackage(cruise.getCruiseId(), pkgReq);
+        cruiseService.openSale(cruise.getCruiseId(), new CruiseOpenSaleRequest());
+
+        // 1. Book the ONLY slot of testCabinSingleSlot (capacity = 1)
+        BookingCreateRequest req = new BookingCreateRequest();
+        req.setCruiseId(cruise.getCruiseId());
+        req.setCurrency("USD");
+        PassengerBookingItemRequest p = new PassengerBookingItemRequest();
+        p.setCabinId(testCabinSingleSlot.getCabinId());
+        p.setFullName("Hành Khách Suất Cuối");
+        p.setEmail("last_slot@test.com");
+        p.setDocumentType(PassengerDocumentType.Passport);
+        p.setDocumentNumber("DOC-LAST-SLOT");
+        p.setTourPackageId(testPackage.getTourPackageId());
+        req.setPassengers(List.of(p));
+
+        BookingDetailResponse draftBooking = bookingService.createBooking(req, null);
+        assertNotNull(draftBooking);
+        assertEquals(BookingStatus.Draft, draftBooking.getBookingStatus());
+        UUID bookingId = draftBooking.getBookingId();
+
+        // 2. Competing booking on this now fully-occupied cabin MUST fail with CABIN_OVERCAPACITY
+        BookingCreateRequest compReq = new BookingCreateRequest();
+        compReq.setCruiseId(cruise.getCruiseId());
+        compReq.setCurrency("USD");
+        PassengerBookingItemRequest compP = new PassengerBookingItemRequest();
+        compP.setCabinId(testCabinSingleSlot.getCabinId());
+        compP.setFullName("Khách Cạnh Tranh");
+        compP.setEmail("comp@test.com");
+        compP.setDocumentType(PassengerDocumentType.Passport);
+        compP.setDocumentNumber("DOC-COMP");
+        compReq.setPassengers(List.of(compP));
+        BusinessException compEx = assertThrows(BusinessException.class, () ->
+                bookingService.createBooking(compReq, null));
+        assertEquals("CABIN_OVERCAPACITY", compEx.getCode());
+
+        // 3. Accept hard-copy contract for this booking
+        BookingContract contract = bookingContractRepository.findByBookingBookingId(bookingId).orElseThrow();
+        contract.setStatus(BookingContractStatus.Accepted);
+        bookingContractRepository.save(contract);
+
+        // 4. Record verified payment covering full required deposit
+        Booking freshBooking = bookingRepository.findById(bookingId).orElseThrow();
+        Payment payment = new Payment();
+        payment.setBooking(freshBooking);
+        payment.setRequestedAmount(freshBooking.getRequiredDepositAmount());
+        payment.setConfirmedAmount(freshBooking.getRequiredDepositAmount());
+        payment.setRequestedAt(Instant.now());
+        payment.setConfirmedAt(Instant.now());
+        payment.setStatus(PaymentStatus.Confirmed);
+        payment.setOperationType(PaymentOperationType.Collect);
+        payment.setPaymentMethod(PaymentMethod.Cash);
+        payment.setCurrency(freshBooking.getCurrency());
+        payment.setIdempotencyKey("IDEMP-" + UUID.randomUUID());
+        payment.setInternalReceiptReference("RCPT-LAST-SLOT-001");
+        paymentRepository.save(payment);
+
+        // 5. Staff with BOOKING_CONFIRM confirms the booking:
+        // Verification: Must NOT reject with "insufficient capacity" because the slot is held by THIS booking!
+        rolePermissionRepository.findByRole(Role.BOOKING_AGENT).ifPresentOrElse(
+                rp -> {
+                    rp.getPermissions().add(Permission.BOOKING_CONFIRM);
+                    rp.getPermissions().add(Permission.BOOKING_READ);
+                    rolePermissionRepository.save(rp);
+                },
+                () -> rolePermissionRepository.save(new RolePermission(Role.BOOKING_AGENT, Set.of(Permission.BOOKING_CONFIRM, Permission.BOOKING_READ)))
+        );
+        testStaffCaptain.setRoles(Set.of(Role.BOOKING_AGENT));
+        testStaffCaptain = userRepository.save(testStaffCaptain);
+
+        CasmsPrincipal staffPrincipal = new CasmsPrincipal(testStaffCaptain, rolePermissionRepository);
+
+        BookingDetailResponse confirmed = bookingService.confirm(bookingId, staffPrincipal);
+        assertEquals(BookingStatus.Confirmed, confirmed.getBookingStatus());
+
+        // 6. Stop sale on the cruise (BE-R02: dừng bán không được tự ý cancel/refund đơn cũ)
+        CruiseStopSaleRequest stopReq = CruiseStopSaleRequest.builder()
+                .reason("Tạm dừng bán bảo trì")
+                .build();
+        cruiseService.stopSale(cruise.getCruiseId(), stopReq);
+
+        // Verify existing confirmed booking is PRESERVED, not cancelled, and still accessible
+        Booking bookingAfterStop = bookingRepository.findById(bookingId).orElseThrow();
+        assertEquals(BookingStatus.Confirmed, bookingAfterStop.getBookingStatus());
+        assertNull(bookingAfterStop.getCancellationReason());
+
+        BookingDetailResponse detailAfterStop = bookingService.detail(bookingId, staffPrincipal);
+        assertEquals(BookingStatus.Confirmed, detailAfterStop.getBookingStatus());
+    }
+
+    @Test
+    @DisplayName("BE-R02: Hai khách tranh suất cuối cho cùng 1 cabin 1 chỗ - đúng 1 khách thành công, 1 khách nhận lỗi")
+    void test_BE_R02_two_clients_compete_last_slot_exactly_one_succeeds() throws Exception {
+        Instant dep = Instant.now().plus(65, ChronoUnit.DAYS);
+        Instant ret = dep.plus(4, ChronoUnit.DAYS);
+        CruiseResponse cruise = createReadyCruise("Cruise Last Slot Race", dep, ret);
+
+        CruiseTourPackageRequest pkgReq = new CruiseTourPackageRequest();
+        pkgReq.setTourPackageId(testPackage.getTourPackageId());
+        cruisePackageService.assignPackage(cruise.getCruiseId(), pkgReq);
+
+        cruiseService.openSale(cruise.getCruiseId(), new CruiseOpenSaleRequest());
+
+        // Prepare 2 identical booking requests competing for testCabinSingleSlot (capacity = 1)
+        BookingCreateRequest req1 = new BookingCreateRequest();
+        req1.setCruiseId(cruise.getCruiseId());
+        req1.setCurrency("USD");
+        PassengerBookingItemRequest p1 = new PassengerBookingItemRequest();
+        p1.setCabinId(testCabinSingleSlot.getCabinId());
+        p1.setFullName("Khách Đua 1");
+        p1.setEmail("race1@test.com");
+        p1.setDocumentType(PassengerDocumentType.Passport);
+        p1.setDocumentNumber("RACE-001");
+        req1.setPassengers(List.of(p1));
+
+        BookingCreateRequest req2 = new BookingCreateRequest();
+        req2.setCruiseId(cruise.getCruiseId());
+        req2.setCurrency("USD");
+        PassengerBookingItemRequest p2 = new PassengerBookingItemRequest();
+        p2.setCabinId(testCabinSingleSlot.getCabinId());
+        p2.setFullName("Khách Đua 2");
+        p2.setEmail("race2@test.com");
+        p2.setDocumentType(PassengerDocumentType.Passport);
+        p2.setDocumentNumber("RACE-002");
+        req2.setPassengers(List.of(p2));
+
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        Future<BookingDetailResponse> f1 = executor.submit(() -> bookingService.createBooking(req1, null));
+        Future<BookingDetailResponse> f2 = executor.submit(() -> bookingService.createBooking(req2, null));
+
+        int successes = 0;
+        int failures = 0;
+
+        try {
+            f1.get();
+            successes++;
+        } catch (ExecutionException e) {
+            failures++;
+            assertTrue(e.getCause() instanceof BusinessException);
+            BusinessException be = (BusinessException) e.getCause();
+            assertEquals("CABIN_OVERCAPACITY", be.getCode());
+        }
+
+        try {
+            f2.get();
+            successes++;
+        } catch (ExecutionException e) {
+            failures++;
+            assertTrue(e.getCause() instanceof BusinessException);
+            BusinessException be = (BusinessException) e.getCause();
+            assertEquals("CABIN_OVERCAPACITY", be.getCode());
+        }
+
+        executor.shutdown();
+
+        assertEquals(1, successes, "Exactly 1 client must secure the single slot");
+        assertEquals(1, failures, "Exactly 1 client must be rejected with CABIN_OVERCAPACITY");
+
+        // Verify active assignments on testCabinSingleSlot is exactly 1
+        long activeAssignments = cabinAssignmentRepository
+                .countActiveAssignmentsByCabinAndCruise(testCabinSingleSlot.getCabinId(), cruise.getCruiseId());
+        assertEquals(1, activeAssignments);
+    }
+
+    @Test
+    @DisplayName("BE-R02: Confirm cạnh tranh stop/invalidation & Quote cũ không vượt được gate khi đã dừng bán")
+    void test_BE_R02_confirm_competes_with_stop_sale_and_quote_blocked() {
+        Instant dep = Instant.now().plus(70, ChronoUnit.DAYS);
+        Instant ret = dep.plus(4, ChronoUnit.DAYS);
+        CruiseResponse cruise = createReadyCruise("Cruise Stop Sale Race", dep, ret);
+
+        CruiseTourPackageRequest pkgReq = new CruiseTourPackageRequest();
+        pkgReq.setTourPackageId(testPackage.getTourPackageId());
+        cruisePackageService.assignPackage(cruise.getCruiseId(), pkgReq);
+
+        cruiseService.openSale(cruise.getCruiseId(), new CruiseOpenSaleRequest());
+
+        // 1. Client creates a valid Draft booking (holding a slot)
+        BookingCreateRequest req = new BookingCreateRequest();
+        req.setCruiseId(cruise.getCruiseId());
+        req.setCurrency("USD");
+        PassengerBookingItemRequest p = new PassengerBookingItemRequest();
+        p.setCabinId(testCabinInterior.getCabinId());
+        p.setFullName("Khách Giữ Chỗ");
+        p.setEmail("hold@test.com");
+        p.setDocumentType(PassengerDocumentType.Passport);
+        p.setDocumentNumber("HOLD-001");
+        req.setPassengers(List.of(p));
+        BookingDetailResponse draft = bookingService.createBooking(req, null);
+        UUID bookingId = draft.getBookingId();
+
+        // 2. Accept contract and record full deposit payment
+        BookingContract contract = bookingContractRepository.findByBookingBookingId(bookingId).orElseThrow();
+        contract.setStatus(BookingContractStatus.Accepted);
+        contract.setAcceptedAt(Instant.now());
+        bookingContractRepository.save(contract);
+
+        Booking freshBooking = bookingRepository.findById(bookingId).orElseThrow();
+        Payment payment = new Payment();
+        payment.setBooking(freshBooking);
+        payment.setRequestedAmount(freshBooking.getRequiredDepositAmount());
+        payment.setConfirmedAmount(freshBooking.getRequiredDepositAmount());
+        payment.setRequestedAt(Instant.now());
+        payment.setConfirmedAt(Instant.now());
+        payment.setStatus(PaymentStatus.Confirmed);
+        payment.setOperationType(PaymentOperationType.Collect);
+        payment.setPaymentMethod(PaymentMethod.Cash);
+        payment.setCurrency(freshBooking.getCurrency());
+        payment.setIdempotencyKey("IDEMP-" + UUID.randomUUID());
+        payment.setInternalReceiptReference("RCPT-STOP-001");
+        paymentRepository.save(payment);
+
+        // 3. Stop sale occurs (e.g. operational suspension)
+        CruiseStopSaleRequest stopReq = CruiseStopSaleRequest.builder()
+                .reason("Tạm dừng vận hành đột xuất")
+                .build();
+        cruiseService.stopSale(cruise.getCruiseId(), stopReq);
+
+        // 4. Verification A: New booking based on old quote MUST fail with SALE_SUSPENDED
+        BookingCreateRequest oldQuoteReq = new BookingCreateRequest();
+        oldQuoteReq.setCruiseId(cruise.getCruiseId());
+        oldQuoteReq.setCurrency("USD");
+        PassengerBookingItemRequest pOld = new PassengerBookingItemRequest();
+        pOld.setCabinId(testCabinInterior.getCabinId());
+        pOld.setFullName("Khách Quote Cũ");
+        pOld.setEmail("oldquote@test.com");
+        pOld.setDocumentType(PassengerDocumentType.Passport);
+        pOld.setDocumentNumber("OLDQUOTE-001");
+        oldQuoteReq.setPassengers(List.of(pOld));
+
+        BusinessException createEx = assertThrows(BusinessException.class,
+                () -> bookingService.createBooking(oldQuoteReq, null));
+        assertEquals("SALE_SUSPENDED", createEx.getCode());
+
+        // 5. Verification B: Confirming the Draft booking while cruise is SUSPENDED is rejected
+        CasmsPrincipal staffPrincipal = new CasmsPrincipal(testStaffCaptain, rolePermissionRepository);
+        BusinessException confirmEx = assertThrows(BusinessException.class,
+                () -> bookingService.confirm(bookingId, staffPrincipal));
+        assertEquals("SALE_SUSPENDED", confirmEx.getCode());
+
+        // 6. Resume sale: sale is restored and the existing hold can now be safely confirmed
+        CruiseResumeSaleRequest resumeReq = CruiseResumeSaleRequest.builder().build();
+        cruiseService.resumeSale(cruise.getCruiseId(), resumeReq);
+
+        BookingDetailResponse confirmed = bookingService.confirm(bookingId, staffPrincipal);
+        assertEquals(BookingStatus.Confirmed, confirmed.getBookingStatus());
+    }
+
+    @Test
+    @DisplayName("BE-R02: Cancel cạnh tranh expiry không nhả lặp (Idempotent cancellation and release)")
+    void test_BE_R02_cancel_concurrent_or_repeated_does_not_double_release() {
+        Instant dep = Instant.now().plus(75, ChronoUnit.DAYS);
+        Instant ret = dep.plus(4, ChronoUnit.DAYS);
+        CruiseResponse cruise = createReadyCruise("Cruise Cancel Concurrency", dep, ret);
+
+        CruiseTourPackageRequest pkgReq = new CruiseTourPackageRequest();
+        pkgReq.setTourPackageId(testPackage.getTourPackageId());
+        cruisePackageService.assignPackage(cruise.getCruiseId(), pkgReq);
+
+        cruiseService.openSale(cruise.getCruiseId(), new CruiseOpenSaleRequest());
+
+        // Create booking with 1 passenger
+        BookingCreateRequest req = new BookingCreateRequest();
+        req.setCruiseId(cruise.getCruiseId());
+        req.setCurrency("USD");
+        PassengerBookingItemRequest p = new PassengerBookingItemRequest();
+        p.setCabinId(testCabinInterior.getCabinId());
+        p.setFullName("Khách Huỷ Đơn");
+        p.setEmail("cancel@test.com");
+        p.setDocumentType(PassengerDocumentType.Passport);
+        p.setDocumentNumber("CANCEL-001");
+        req.setPassengers(List.of(p));
+        BookingDetailResponse booking = bookingService.createBooking(req, null);
+        UUID bookingId = booking.getBookingId();
+
+        // Verify initially 1 active assignment
+        long activeBefore = cabinAssignmentRepository
+                .countActiveAssignmentsByCabinAndCruise(testCabinInterior.getCabinId(), cruise.getCruiseId());
+        assertEquals(1, activeBefore);
+
+        // 1st Cancel (e.g., customer or expiry thread)
+        BookingCancelRequest cancelReq = new BookingCancelRequest();
+        cancelReq.setReason("Hết hạn thanh toán cọc");
+        CasmsPrincipal staffPrincipal = new CasmsPrincipal(testStaffCaptain, rolePermissionRepository);
+
+        BookingDetailResponse res1 = bookingService.cancel(bookingId, cancelReq, staffPrincipal);
+        assertEquals(BookingStatus.Cancelled, res1.getBookingStatus());
+
+        long activeAfterFirst = cabinAssignmentRepository
+                .countActiveAssignmentsByCabinAndCruise(testCabinInterior.getCabinId(), cruise.getCruiseId());
+        assertEquals(0, activeAfterFirst);
+
+        // 2nd Cancel (e.g. race with manual cancel or retry)
+        BookingDetailResponse res2 = bookingService.cancel(bookingId, cancelReq, staffPrincipal);
+        assertEquals(BookingStatus.Cancelled, res2.getBookingStatus());
+
+        long activeAfterSecond = cabinAssignmentRepository
+                .countActiveAssignmentsByCabinAndCruise(testCabinInterior.getCabinId(), cruise.getCruiseId());
+        assertEquals(0, activeAfterSecond);
+
+        // Verify only 1 cabin assignment row exists for this passenger and validTo is populated
+        UUID passengerId = booking.getPassengers().get(0).getBookingPassengerId();
+        var assignments = cabinAssignmentRepository.findByBookingPassengerBookingPassengerId(passengerId);
+        assertEquals(1, assignments.size());
+        assertNotNull(assignments.get(0).getValidTo(), "Cabin assignment must be closed with validTo set");
     }
 
     @Test

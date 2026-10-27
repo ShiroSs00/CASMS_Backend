@@ -37,6 +37,8 @@ class ScheduleMaterializationServiceTest {
     @Mock private CruiseRepository cruiseRepository;
     @Mock private PortRepository portRepository;
     @Mock private com.casms.ship.service.OperationalProgramMappingService operationalProgramMappingService;
+    @Mock private com.casms.activity.repository.OnboardActivityRepository onboardActivityRepository;
+    @Mock private com.casms.activity.repository.ShoreExcursionRepository shoreExcursionRepository;
 
     @InjectMocks
     private ScheduleMaterializationService materializationService;
@@ -275,14 +277,19 @@ class ScheduleMaterializationServiceTest {
                 .thenReturn(List.of(day1));
         when(cruiseStopRepository.findByItineraryItineraryIdOrderByStopOrderAsc(itinerary.getItineraryId()))
                 .thenReturn(List.of(stop1));
+        when(onboardActivityRepository.findByCruise_CruiseId(cruise.getCruiseId())).thenReturn(Collections.emptyList());
+        when(shoreExcursionRepository.findByCruiseStop_Itinerary_Cruise_CruiseId(cruise.getCruiseId())).thenReturn(Collections.emptyList());
 
         CruiseSchedulePreviewResponse res = materializationService.getCruiseSchedule(cruise.getCruiseId());
 
         assertNotNull(res);
+        assertTrue(res.getMaterialized());
+        assertEquals(itinerary.getItineraryId(), res.getItineraryId());
         assertEquals(testTrip.getTripId(), res.getSourceTripId());
         assertEquals(1, res.getDays().size());
         assertEquals(1, res.getDays().get(0).getStops().size());
         assertEquals("VN-HPH", res.getDays().get(0).getStops().get(0).getPortCode());
+        assertEquals(stop1.getCruiseStopId(), res.getDays().get(0).getStops().get(0).getCruiseStopId());
         assertEquals(testVersion.getStops().get(0).getStopId(), res.getDays().get(0).getStops().get(0).getSourceStopId());
     }
 }

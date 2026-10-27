@@ -27,6 +27,13 @@ public class OperationalProgramSyncResponse {
     @Schema(description = "Số lượng tour tham quan (Shore Excursions) đã đồng bộ")
     private int shoreExcursionsCount;
 
+    @Schema(description = "Số lượng khung phục vụ (Serving Windows) đã ghi nhận")
+    private int servingWindowsCount;
+
+    @Builder.Default
+    @Schema(description = "Chi tiết kết quả mapping từng mục chương trình vận hành")
+    private List<OperationalProgramMappingItemResponse> items = new ArrayList<>();
+
     @Builder.Default
     @Schema(description = "Danh sách cảnh báo trong quá trình đồng bộ")
     private List<String> warnings = new ArrayList<>();

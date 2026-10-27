@@ -108,6 +108,27 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.error(message, "VALIDATION_FAILED"));
     }
 
+    @ExceptionHandler(org.springframework.http.converter.HttpMessageNotReadableException.class)
+    public ResponseEntity<ApiResponse<Void>> handleHttpMessageNotReadable(org.springframework.http.converter.HttpMessageNotReadableException ex) {
+        log.warn("HTTP message not readable (malformed JSON or invalid format): {}", ex.getMessage());
+        return ResponseEntity.badRequest()
+                .body(ApiResponse.error("Dữ liệu gửi lên không đúng định dạng JSON hoặc trường dữ liệu không hợp lệ", "INVALID_REQUEST_BODY"));
+    }
+
+    @ExceptionHandler(org.springframework.web.servlet.resource.NoResourceFoundException.class)
+    public ResponseEntity<ApiResponse<Void>> handleNoResourceFound(org.springframework.web.servlet.resource.NoResourceFoundException ex) {
+        log.warn("Resource/Endpoint not found: {}", ex.getResourcePath());
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(ApiResponse.error("Đường dẫn hoặc tài nguyên không tồn tại: " + ex.getResourcePath(), "RESOURCE_NOT_FOUND"));
+    }
+
+    @ExceptionHandler(org.springframework.web.HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<ApiResponse<Void>> handleMethodNotSupported(org.springframework.web.HttpRequestMethodNotSupportedException ex) {
+        log.warn("HTTP method not supported: {}", ex.getMethod());
+        return ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED)
+                .body(ApiResponse.error("Phương thức HTTP không được hỗ trợ: " + ex.getMethod(), "METHOD_NOT_ALLOWED"));
+    }
+
     @ExceptionHandler(AccessDeniedException.class)
     public ResponseEntity<ApiResponse<Void>> handleAccessDenied(AccessDeniedException ex) {
         log.warn("Access denied: {}", ex.getMessage());

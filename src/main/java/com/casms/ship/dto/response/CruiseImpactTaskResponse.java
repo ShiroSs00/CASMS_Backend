@@ -40,11 +40,29 @@ public class CruiseImpactTaskResponse {
     @Schema(description = "Mức độ nghiêm trọng", example = "BLOCKING")
     private String severity;
 
+    @Schema(description = "Định danh sự kiện gốc phát sinh công việc (Event Identity)")
+    private String eventIdentity;
+
+    @Schema(description = "Loại đối tượng chịu tác động (CRUISE, CABIN, EXCURSION, BOOKING)")
+    private String targetType;
+
+    @Schema(description = "ID đối tượng chịu tác động")
+    private String targetId;
+
     @Schema(description = "ID người được phân công xử lý")
     private UUID assignedToUserId;
 
     @Schema(description = "Tên tài khoản người được phân công")
     private String assignedToUsername;
+
+    @Schema(description = "ID người thực hiện giải quyết")
+    private UUID resolvedByUserId;
+
+    @Schema(description = "Tên tài khoản người thực hiện giải quyết")
+    private String resolvedByUsername;
+
+    @Schema(description = "Thời điểm giải quyết công việc")
+    private Instant resolvedAt;
 
     @Schema(description = "Bằng chứng hoặc dữ liệu tham chiếu")
     private String evidence;

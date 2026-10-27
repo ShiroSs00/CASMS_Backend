@@ -65,6 +65,25 @@ public class Cruise {
     @Column(name = "status", nullable = false)
     private CruiseStatus status;
 
+    @Column(name = "stopped_at")
+    private Instant stoppedAt;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "stopped_by_user_id")
+    private com.casms.identity.entity.User stoppedBy;
+
+    @Column(name = "stop_reason", columnDefinition = "TEXT")
+    private String stopReason;
+
+    @Column(name = "stop_evidence", columnDefinition = "TEXT")
+    private String stopEvidence;
+
+    @Column(name = "stop_scope", length = 50)
+    private String stopScope;
+
+    @Column(name = "stop_event_identity", length = 100)
+    private String stopEventIdentity;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 

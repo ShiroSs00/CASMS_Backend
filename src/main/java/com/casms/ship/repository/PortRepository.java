@@ -27,9 +27,9 @@ public interface PortRepository extends JpaRepository<Port, UUID> {
 
     List<Port> findByDestinationDestinationIdAndStatusOrderByPortNameAsc(UUID destinationId, PortStatus status);
 
-    @Query("SELECT p FROM Port p WHERE (:status IS NULL OR p.status = :status) " +
+    @Query("SELECT p FROM Port p WHERE (cast(:status as string) IS NULL OR p.status = :status) " +
            "AND (:countryCodes IS NULL OR UPPER(p.countryCode) IN :countryCodes) " +
-           "AND (:search IS NULL OR LOWER(p.portName) LIKE LOWER(CONCAT('%', :search, '%')) OR LOWER(p.portCode) LIKE LOWER(CONCAT('%', :search, '%')))")
+           "AND (cast(:search as string) IS NULL OR LOWER(p.portName) LIKE LOWER(CONCAT('%', cast(:search as string), '%')) OR LOWER(p.portCode) LIKE LOWER(CONCAT('%', cast(:search as string), '%')))")
     org.springframework.data.domain.Page<Port> findPortsWithFilters(
             @Param("countryCodes") List<String> countryCodes,
             @Param("status") PortStatus status,
@@ -38,7 +38,7 @@ public interface PortRepository extends JpaRepository<Port, UUID> {
 
     @Query("SELECT p FROM Port p WHERE p.status = 'ACTIVE' " +
            "AND (:countryCodes IS NULL OR UPPER(p.countryCode) IN :countryCodes) " +
-           "AND (:search IS NULL OR LOWER(p.portName) LIKE LOWER(CONCAT('%', :search, '%')) OR LOWER(p.portCode) LIKE LOWER(CONCAT('%', :search, '%'))) " +
+           "AND (cast(:search as string) IS NULL OR LOWER(p.portName) LIKE LOWER(CONCAT('%', cast(:search as string), '%')) OR LOWER(p.portCode) LIKE LOWER(CONCAT('%', cast(:search as string), '%'))) " +
            "ORDER BY p.portName ASC")
     List<Port> findActivePortsWithFilters(
             @Param("countryCodes") List<String> countryCodes,
