@@ -37,4 +37,6 @@ public interface OperationalIssueRepository
 
     List<OperationalIssue> findByAssignedTo_UserIdOrderByReportedAtDesc(
             UUID userId);
+
+    long countByCruise_CruiseIdAndStatus(UUID cruiseId, OperationalIssueStatus status);
 }

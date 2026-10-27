@@ -16,6 +16,8 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 import jakarta.persistence.OptimisticLockException;
 
 import java.util.HashMap;
@@ -115,15 +117,15 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.error("Dữ liệu gửi lên không đúng định dạng JSON hoặc trường dữ liệu không hợp lệ", "INVALID_REQUEST_BODY"));
     }
 
-    @ExceptionHandler(org.springframework.web.servlet.resource.NoResourceFoundException.class)
-    public ResponseEntity<ApiResponse<Void>> handleNoResourceFound(org.springframework.web.servlet.resource.NoResourceFoundException ex) {
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<ApiResponse<Void>> handleNoResourceFound(NoResourceFoundException ex) {
         log.warn("Resource/Endpoint not found: {}", ex.getResourcePath());
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
                 .body(ApiResponse.error("Đường dẫn hoặc tài nguyên không tồn tại: " + ex.getResourcePath(), "RESOURCE_NOT_FOUND"));
     }
 
-    @ExceptionHandler(org.springframework.web.HttpRequestMethodNotSupportedException.class)
-    public ResponseEntity<ApiResponse<Void>> handleMethodNotSupported(org.springframework.web.HttpRequestMethodNotSupportedException ex) {
+    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<ApiResponse<Void>> handleMethodNotSupported(HttpRequestMethodNotSupportedException ex) {
         log.warn("HTTP method not supported: {}", ex.getMethod());
         return ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED)
                 .body(ApiResponse.error("Phương thức HTTP không được hỗ trợ: " + ex.getMethod(), "METHOD_NOT_ALLOWED"));

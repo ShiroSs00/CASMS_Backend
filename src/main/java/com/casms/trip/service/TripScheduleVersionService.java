@@ -16,6 +16,12 @@ import com.casms.ship.enums.ItineraryType;
 import com.casms.ship.enums.PortStatus;
 import com.casms.ship.repository.DestinationRepository;
 import com.casms.ship.repository.PortRepository;
+import com.casms.activity.enums.OnboardActivityStatus;
+import com.casms.activity.enums.ShoreExcursionStatus;
+import com.casms.activity.repository.OnboardActivityRepository;
+import com.casms.activity.repository.ShoreExcursionRepository;
+import com.casms.ship.repository.CabinRepository;
+import com.casms.ship.repository.DeckRepository;
 import com.casms.trip.dto.request.*;
 import com.casms.trip.dto.response.*;
 import com.casms.trip.entity.*;
@@ -24,7 +30,9 @@ import com.casms.trip.enums.TripScheduleVersionStatus;
 import com.casms.trip.enums.TripStatus;
 import com.casms.trip.repository.*;
 import lombok.RequiredArgsConstructor;
+import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -57,21 +65,21 @@ public class TripScheduleVersionService {
     private final AuditRepository auditRepository;
     private final AuditService auditService;
 
-    @org.springframework.beans.factory.annotation.Autowired(required = false)
-    @lombok.Setter
-    private com.casms.activity.repository.OnboardActivityRepository onboardActivityRepository;
+    @Autowired(required = false)
+    @Setter
+    private OnboardActivityRepository onboardActivityRepository;
 
-    @org.springframework.beans.factory.annotation.Autowired(required = false)
-    @lombok.Setter
-    private com.casms.activity.repository.ShoreExcursionRepository shoreExcursionRepository;
+    @Autowired(required = false)
+    @Setter
+    private ShoreExcursionRepository shoreExcursionRepository;
 
-    @org.springframework.beans.factory.annotation.Autowired(required = false)
-    @lombok.Setter
-    private com.casms.ship.repository.DeckRepository deckRepository;
+    @Autowired(required = false)
+    @Setter
+    private DeckRepository deckRepository;
 
-    @org.springframework.beans.factory.annotation.Autowired(required = false)
-    @lombok.Setter
-    private com.casms.ship.repository.CabinRepository cabinRepository;
+    @Autowired(required = false)
+    @Setter
+    private CabinRepository cabinRepository;
 
     @Transactional(readOnly = true)
     public TripScheduleVersionDetailResponse getVersionDetail(UUID tripId, Integer versionNumber) {
@@ -1625,7 +1633,7 @@ public class TripScheduleVersionService {
                             .actionHint("SELECT_VALID_SOURCE")
                             .message("Hoạt động nguồn (sourceActivityId: " + entry.getSourceActivityId() + ") không tồn tại trong danh mục.")
                             .build());
-                } else if (actOpt.get().getStatus() == com.casms.activity.enums.OnboardActivityStatus.CANCELLED) {
+                } else if (actOpt.get().getStatus() == OnboardActivityStatus.CANCELLED) {
                     violations.add(PlanViolation.builder()
                             .code("SOURCE_ACTIVITY_INACTIVE")
                             .severity("ERROR")
@@ -1656,7 +1664,7 @@ public class TripScheduleVersionService {
                             .build());
                 } else {
                     var exc = excOpt.get();
-                    if (exc.getStatus() == com.casms.activity.enums.ShoreExcursionStatus.CANCELLED) {
+                    if (exc.getStatus() == ShoreExcursionStatus.CANCELLED) {
                         violations.add(PlanViolation.builder()
                                 .code("SOURCE_EXCURSION_INACTIVE")
                                 .severity("ERROR")

@@ -2,6 +2,7 @@ package com.casms.activity.controller;
 
 import com.casms.activity.dto.request.TourGroupPassengerAssignRequest;
 import com.casms.activity.dto.request.TourGroupPassengerMoveRequest;
+import com.casms.activity.dto.response.EligiblePassengerResponse;
 import com.casms.activity.dto.response.TourGroupPassengerResponse;
 import com.casms.activity.enums.TourGroupPassengerAssignmentStatus;
 import com.casms.activity.service.TourGroupPassengerService;
@@ -159,7 +160,7 @@ public class TourGroupPassengerController {
     @Operation(summary = "Danh sách hành khách đủ điều kiện gán vào nhóm", description = "Lấy danh sách hành khách đã có đăng ký xác nhận (CONFIRMED) cho tour và chưa được gán vào nhóm nào")
     @PreAuthorize("hasAuthority('TOUR_GROUP_PASSENGER_READ')")
     @GetMapping("/groups/{groupId}/eligible-passengers")
-    public ResponseEntity<List<com.casms.activity.dto.response.EligiblePassengerResponse>> listEligiblePassengers(
+    public ResponseEntity<List<EligiblePassengerResponse>> listEligiblePassengers(
             @Parameter(description = "ID nhóm tour", required = true) @PathVariable UUID groupId
     ) {
         return ResponseEntity.ok(service.listEligiblePassengers(groupId));

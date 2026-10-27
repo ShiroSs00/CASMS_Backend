@@ -1,9 +1,12 @@
 package com.casms.trip.service;
 
 import com.casms.common.exception.BusinessException;
+import com.casms.ship.dto.response.CruiseResponse;
 import com.casms.trip.dto.response.TripDetailResponse;
+import com.casms.trip.entity.IdempotencyRecord;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
+import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -12,6 +15,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.UUID;
+import java.util.function.Function;
 import java.util.function.Supplier;
 
 @Slf4j
@@ -22,8 +26,8 @@ public class IdempotencyService {
     private final IdempotencyReservationService reservationService;
     private final ObjectMapper objectMapper;
 
-    @lombok.Setter
-    private java.util.function.Function<UUID, Object> entityRecoveryFunction;
+    @Setter
+    private Function<UUID, Object> entityRecoveryFunction;
 
     public <T> T execute(String idempotencyKey, UUID actorId, String operation, Object payload, Supplier<T> action) {
         return execute(idempotencyKey, actorId, operation, payload, null, action);
@@ -97,7 +101,7 @@ public class IdempotencyService {
             UUID resultingId = null;
             if (result instanceof TripDetailResponse detail) {
                 resultingId = detail.getTripId();
-            } else if (result instanceof com.casms.ship.dto.response.CruiseResponse cruiseRes) {
+            } else if (result instanceof CruiseResponse cruiseRes) {
                 resultingId = cruiseRes.getCruiseId();
             }
             reservationService.completeKey(reservationId, json, resultingId);
@@ -109,7 +113,7 @@ public class IdempotencyService {
     }
 
     @SuppressWarnings("unchecked")
-    private <T> T deserializeCached(com.casms.trip.entity.IdempotencyRecord record, Class<T> responseType, String operation, String key) {
+    private <T> T deserializeCached(IdempotencyRecord record, Class<T> responseType, String operation, String key) {
         String payload = record != null ? record.getResponsePayload() : null;
         if (payload == null || payload.isBlank()) {
             // Attempt recovery using resultingId and entityRecoveryFunction
@@ -146,7 +150,7 @@ public class IdempotencyService {
         if ("CREATE_TRIP".equals(operation) || "CLONE_TRIP".equals(operation)) {
             return (Class<T>) TripDetailResponse.class;
         } else if ("CREATE_CRUISE".equals(operation)) {
-            return (Class<T>) com.casms.ship.dto.response.CruiseResponse.class;
+            return (Class<T>) CruiseResponse.class;
         }
         return null;
     }

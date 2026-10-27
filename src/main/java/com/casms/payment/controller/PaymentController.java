@@ -1,10 +1,12 @@
 package com.casms.payment.controller;
 
 import com.casms.common.response.ApiResponse;
+import com.casms.identity.enums.Permission;
 import com.casms.payment.dto.request.PaymentConfirmRequest;
 import com.casms.payment.dto.request.PaymentCreateRequest;
 import com.casms.payment.dto.response.PaymentResponse;
 import com.casms.payment.service.PaymentService;
+import com.casms.security.principal.CasmsPrincipal;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -44,15 +46,24 @@ public class PaymentController {
         return ApiResponse.success("Payment confirmed successfully", service.confirmPayment(paymentId, request));
     }
 
+    @Operation(summary = "Ghi nhận giao dịch thanh toán thất bại (BE-16)", description = "Cập nhật trạng thái giao dịch sang Failed kèm lý do từ cổng thanh toán (Idempotent)")
+    @PreAuthorize("hasAuthority('PAYMENT_PROCESS')")
+    @PostMapping("/{paymentId}/fail")
+    public ApiResponse<PaymentResponse> failPayment(
+            @Parameter(description = "ID giao dịch thanh toán", required = true) @PathVariable UUID paymentId,
+            @RequestParam(required = false) String reason) {
+        return ApiResponse.success("Payment marked as failed", service.failPayment(paymentId, reason));
+    }
+
     @Operation(summary = "Lịch sử thanh toán của đơn đặt tour", description = "Lấy toàn bộ các lần thanh toán cọc/toàn bộ của một mã booking")
     @PreAuthorize("hasAnyAuthority('PAYMENT_READ', 'PAYMENT_REPORT')")
     @GetMapping("/booking/{bookingId}")
     public ApiResponse<List<PaymentResponse>> getPaymentsForBooking(
             @Parameter(description = "ID đơn đặt tour", required = true) @PathVariable UUID bookingId,
             Authentication authentication) {
-        var principal = (com.casms.security.principal.CasmsPrincipal) authentication.getPrincipal();
+        var principal = (CasmsPrincipal) authentication.getPrincipal();
         return ApiResponse.success(service.getPaymentsForBooking(bookingId, principal.getUserId(),
-                principal.hasPermission(com.casms.identity.enums.Permission.PAYMENT_REPORT)));
+                principal.hasPermission(Permission.PAYMENT_REPORT)));
     }
 
     @Operation(summary = "Chi tiết giao dịch thanh toán", description = "Tra cứu trạng thái và thông tin chi tiết một giao dịch thanh toán theo ID")
@@ -61,8 +72,8 @@ public class PaymentController {
     public ApiResponse<PaymentResponse> getPaymentDetail(
             @Parameter(description = "ID giao dịch thanh toán", required = true) @PathVariable UUID paymentId,
             Authentication authentication) {
-        var principal = (com.casms.security.principal.CasmsPrincipal) authentication.getPrincipal();
+        var principal = (CasmsPrincipal) authentication.getPrincipal();
         return ApiResponse.success(service.getPaymentDetail(paymentId, principal.getUserId(),
-                principal.hasPermission(com.casms.identity.enums.Permission.PAYMENT_REPORT)));
+                principal.hasPermission(Permission.PAYMENT_REPORT)));
     }
 }

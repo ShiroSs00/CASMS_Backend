@@ -1,5 +1,6 @@
 package com.casms.trip.entity;
 
+import com.casms.activity.enums.OnboardActivityCategory;
 import com.casms.ship.entity.Cabin;
 import com.casms.ship.entity.Deck;
 import com.casms.ship.entity.Destination;
@@ -41,7 +42,7 @@ public class TripPlanEntry {
     /** Phân loại danh mục hoạt động trên tàu (Giải trí, Thể thao, Gia đình, Sự kiện, Lớp học) */
     @Enumerated(EnumType.STRING)
     @Column(name = "category", length = 50)
-    private com.casms.activity.enums.OnboardActivityCategory category;
+    private OnboardActivityCategory category;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "stop_id")

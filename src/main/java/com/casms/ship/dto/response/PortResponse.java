@@ -1,5 +1,6 @@
 package com.casms.ship.dto.response;
 
+import com.casms.ship.enums.PortLocationType;
 import com.casms.ship.enums.PortStatus;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
@@ -46,7 +47,7 @@ public class PortResponse {
     private BigDecimal longitude;
 
     @Schema(description = "Loại vị trí cảng/neo đậu", example = "PORT")
-    private com.casms.ship.enums.PortLocationType locationType;
+    private PortLocationType locationType;
 
     @Schema(description = "Trạng thái cảng", example = "ACTIVE")
     private PortStatus status;

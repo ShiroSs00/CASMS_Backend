@@ -44,6 +44,15 @@ public class CruiseChangeImpactResponse {
     @Schema(description = "Số lượng tour tham quan bị tác động cần dời lịch")
     private long affectedExcursionsCount;
 
+    @Schema(description = "Số lượng cabin cần phân bổ lại (BE-18)")
+    private long affectedCabinsCount;
+
+    @Schema(description = "Số lượng gói dịch vụ bị ảnh hưởng (BE-18)")
+    private long affectedPackagesCount;
+
+    @Schema(description = "Số lượng thông báo cần phát cho khách hàng (BE-18/BE-19)")
+    private long requiredNotificationsCount;
+
     @Builder.Default
     @Schema(description = "Danh sách điều kiện chặn ngăn cản thực hiện thay đổi")
     private List<String> blockers = new ArrayList<>();

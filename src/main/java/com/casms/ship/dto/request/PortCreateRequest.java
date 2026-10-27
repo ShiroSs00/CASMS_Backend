@@ -1,5 +1,6 @@
 package com.casms.ship.dto.request;
 
+import com.casms.ship.enums.PortLocationType;
 import com.casms.ship.enums.PortStatus;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
@@ -46,7 +47,7 @@ public class PortCreateRequest {
     private BigDecimal longitude;
 
     @Schema(description = "Loại vị trí cảng/neo đậu (PORT, PIER, ANCHORAGE)", example = "PORT")
-    private com.casms.ship.enums.PortLocationType locationType = com.casms.ship.enums.PortLocationType.PORT;
+    private PortLocationType locationType = PortLocationType.PORT;
 
     @Schema(description = "Trạng thái ban đầu", example = "ACTIVE")
     private PortStatus status = PortStatus.ACTIVE;

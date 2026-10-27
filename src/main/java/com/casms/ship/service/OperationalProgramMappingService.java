@@ -27,6 +27,7 @@ import com.casms.ship.repository.CruiseStopRepository;
 import com.casms.ship.repository.ItineraryRepository;
 import com.casms.ship.repository.PortRepository;
 import com.casms.ship.repository.ShipRepository;
+import com.casms.ship.util.PortTimeZoneHelper;
 import com.casms.trip.entity.TripPlanEntry;
 import com.casms.trip.entity.TripPlanStop;
 import com.casms.trip.entity.TripScheduleVersion;
@@ -40,6 +41,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
@@ -109,31 +111,8 @@ public class OperationalProgramMappingService {
         int excursionsCount = 0;
         int servingWindowsCount = 0;
 
-        // BE-R05a / D02: Xác định múi giờ cơ sở tàu (Ship Base Timezone) từ cảng khởi hành
-        ZoneId shipZone;
-        Port departurePort = null;
-        if (cruise.getDeparturePort() != null && cruise.getDeparturePort().getPortId() != null) {
-            departurePort = portRepository.findById(cruise.getDeparturePort().getPortId()).orElse(null);
-        }
-        if (departurePort != null && departurePort.getTimeZoneId() != null) {
-            shipZone = com.casms.ship.util.PortTimeZoneHelper.resolveZone(departurePort.getTimeZoneId());
-        } else {
-            // Load itinerary stops to find departure port timezone if cruise.getDeparturePort is not loaded
-            Optional<Itinerary> itOpt = itineraryRepository.findByCruiseCruiseId(cruise.getCruiseId());
-            List<CruiseStop> tempStops = itOpt.isPresent()
-                    ? cruiseStopRepository.findByItineraryItineraryIdOrderByStopOrderAsc(itOpt.get().getItineraryId())
-                    : List.of();
-            if (!tempStops.isEmpty() && tempStops.get(0).getPort() != null) {
-                Port firstStopPort = portRepository.findById(tempStops.get(0).getPort().getPortId()).orElse(null);
-                if (firstStopPort != null && firstStopPort.getTimeZoneId() != null) {
-                    shipZone = com.casms.ship.util.PortTimeZoneHelper.resolveZone(firstStopPort.getTimeZoneId());
-                } else {
-                    throw new com.casms.common.exception.BusinessException("MISSING_PORT_TIME_ZONE", "Không xác định được múi giờ cơ sở của tàu từ cảng khởi hành.");
-                }
-            } else {
-                throw new com.casms.common.exception.BusinessException("MISSING_PORT_TIME_ZONE", "Không xác định được múi giờ cơ sở của tàu từ cảng khởi hành.");
-            }
-        }
+        // BE-04 / G06: Xác định múi giờ cơ sở tàu (Ship Base Timezone) luôn là Asia/Ho_Chi_Minh
+        ZoneId shipZone = PortTimeZoneHelper.SHIP_TIME_ZONE;
 
         LocalDate baseDate = cruise.getDepartureDatetime().atZone(shipZone).toLocalDate();
 
@@ -157,8 +136,8 @@ public class OperationalProgramMappingService {
 
             LocalDate startDate = baseDate.plusDays(Math.max(0, entry.getStartDayNumber() != null ? entry.getStartDayNumber() - 1 : 0));
             LocalDate endDate = baseDate.plusDays(Math.max(0, entry.getEndDayNumber() != null ? entry.getEndDayNumber() - 1 : 0));
-            java.time.LocalTime startTimeVal = entry.getPlannedStartTime() != null ? entry.getPlannedStartTime() : java.time.LocalTime.of(8, 0);
-            java.time.LocalTime endTimeVal = entry.getPlannedEndTime() != null ? entry.getPlannedEndTime() : startTimeVal.plusHours(2);
+            LocalTime startTimeVal = entry.getPlannedStartTime() != null ? entry.getPlannedStartTime() : LocalTime.of(8, 0);
+            LocalTime endTimeVal = entry.getPlannedEndTime() != null ? entry.getPlannedEndTime() : startTimeVal.plusHours(2);
             Instant startTime = startDate.atTime(startTimeVal).atZone(shipZone).toInstant();
             Instant endTime = endDate.atTime(endTimeVal).atZone(shipZone).toInstant();
 
@@ -234,16 +213,17 @@ public class OperationalProgramMappingService {
                             status = "LINKED";
                             reason = "Đã liên kết (bảo toàn cấu hình vì đã có khách đăng ký)";
                         } else {
-                            // Cập nhật thông tin thời gian và vị trí một cách an toàn
+                            // Cập nhật an toàn chỉ thời gian và vị trí, bảo toàn các trường đã cập nhật thủ công
                             existing.setActivityName(entry.getTitle());
                             existing.setCategory(entry.getCategory() != null ? entry.getCategory() : OnboardActivityCategory.ENTERTAINMENT);
                             existing.setDescription(entry.getNotes());
                             existing.setStartTime(startTime);
                             existing.setEndTime(endTime);
-                            existing.setLocation(entry.getLocationText() != null ? entry.getLocationText() :
-                                    (deck != null ? "Deck " + deck.getDeckNumber() : "Onboard"));
-                            existing.setDeck(deck);
-                            existing.setCabin(cabin);
+                            if (entry.getLocationText() != null && !entry.getLocationText().isBlank()) {
+                                existing.setLocation(entry.getLocationText());
+                            }
+                            if (deck != null) existing.setDeck(deck);
+                            if (cabin != null) existing.setCabin(cabin);
                             onboardActivityRepository.save(existing);
                             status = "LINKED";
                             reason = "Đã cập nhật theo kế hoạch nguồn (Idempotent update)";
@@ -273,9 +253,11 @@ public class OperationalProgramMappingService {
                             }
                         }
 
-                        if (activity.getCapacity() == null) {
+                        boolean missingCapacity = (activity.getCapacity() == null || activity.getCapacity() <= 0);
+                        if (missingCapacity) {
                             activity.setCapacity(30);
-                            itemWarnings.add("Chưa có cấu hình sức chứa từ nguồn, tạm đặt định biên tối thiểu 30");
+                            itemWarnings.add("Chưa có cấu hình sức chứa từ nguồn (thiếu định biên)");
+                            requiredData.append("Cần cấu hình sức chứa; ");
                         }
                         if (activity.getPrice() == null) {
                             activity.setPrice(BigDecimal.ZERO);
@@ -286,8 +268,8 @@ public class OperationalProgramMappingService {
                         activity.setStatus(OnboardActivityStatus.PLANNED);
                         activity = onboardActivityRepository.save(activity);
                         activityId = activity.getOnboardActivityId();
-                        status = "CREATED";
-                        reason = "Tạo mới hoạt động trên tàu thành công";
+                        status = missingCapacity ? "INCOMPLETE" : "CREATED";
+                        reason = missingCapacity ? "Tạo hoạt động trên tàu nhưng thiếu cấu hình sức chứa chuẩn" : "Tạo mới hoạt động trên tàu thành công";
                     }
 
                     activitiesCount++;
@@ -364,7 +346,7 @@ public class OperationalProgramMappingService {
                     if (matchedStop.getPort() != null && matchedStop.getPort().getPortId() != null) {
                         Port stopPort = portRepository.findById(matchedStop.getPort().getPortId()).orElse(null);
                         if (stopPort != null && stopPort.getTimeZoneId() != null) {
-                            ZoneId excursionZone = com.casms.ship.util.PortTimeZoneHelper.resolveZone(stopPort.getTimeZoneId());
+                            ZoneId excursionZone = PortTimeZoneHelper.resolveZone(stopPort.getTimeZoneId());
                             startTime = startDate.atTime(startTimeVal).atZone(excursionZone).toInstant();
                             endTime = endDate.atTime(endTimeVal).atZone(excursionZone).toInstant();
                         }
@@ -408,7 +390,6 @@ public class OperationalProgramMappingService {
 
                     String excursionCode = generateCode("EX", cruise.getCruiseCode(), entry.getClientKey(), entry.getEntryId());
 
-                    // BE-R04: Không chọn supplier ACTIVE đầu tiên hoặc tự tạo VERIFIED; không tự đặt giá/sức chứa ảo
                     if (supplier == null) {
                         String supMsg = "Chưa có nhà cung cấp (Supplier) được phân công cho tour bờ: " + entry.getTitle();
                         itemWarnings.add(supMsg);
@@ -429,17 +410,69 @@ public class OperationalProgramMappingService {
                                 .build());
                         continue;
                     } else if (supplier.getStatus() != SupplierStatus.ACTIVE || supplier.getVerificationStatus() != SupplierVerificationStatus.VERIFIED) {
-                        String supMsg = String.format("Nhà cung cấp '%s' chưa sẵn sàng (Status=%s, Verification=%s)",
+                        String supMsg = String.format("Nhà cung cấp '%s' chưa sẵn sàng (Status=%s, Verification=%s) - Bắt buộc phải là VERIFIED",
                                 supplier.getSupplierName(), supplier.getStatus(), supplier.getVerificationStatus());
                         itemWarnings.add(supMsg);
-                        requiredData.append("Nhà cung cấp chưa VERIFIED; ");
+                        warnings.add(supMsg);
+                        items.add(OperationalProgramMappingItemResponse.builder()
+                                .sourceEntryId(entry.getEntryId())
+                                .clientKey(entry.getClientKey())
+                                .kind(TripPlanEntryKind.SHORE_EXCURSION)
+                                .title(entry.getTitle())
+                                .targetId(null)
+                                .targetCode(excursionCode)
+                                .targetType("SHORE_EXCURSION")
+                                .status("FAILED")
+                                .reservationRequired(true)
+                                .reason("Nhà cung cấp chưa được xác minh (VERIFIED) hoặc không ACTIVE")
+                                .warnings(itemWarnings)
+                                .requiredData("Cần phân công Nhà cung cấp đã xác minh (VERIFIED)")
+                                .build());
+                        continue;
+                    }
+
+                    if (meetingPoint == null || meetingPoint.isBlank()) {
+                        String mpMsg = "Chưa cấu hình điểm tập trung (meetingPoint) cho tour bờ: " + entry.getTitle();
+                        itemWarnings.add(mpMsg);
+                        warnings.add(mpMsg);
+                        items.add(OperationalProgramMappingItemResponse.builder()
+                                .sourceEntryId(entry.getEntryId())
+                                .clientKey(entry.getClientKey())
+                                .kind(TripPlanEntryKind.SHORE_EXCURSION)
+                                .title(entry.getTitle())
+                                .targetId(null)
+                                .targetCode(excursionCode)
+                                .targetType("SHORE_EXCURSION")
+                                .status("FAILED")
+                                .reservationRequired(true)
+                                .reason("Thiếu điểm tập trung đón khách (meetingPoint) - Không gán dữ liệu giả")
+                                .warnings(itemWarnings)
+                                .requiredData("Cần bổ sung điểm tập trung đón khách")
+                                .build());
+                        continue;
                     }
 
                     if (maxCapacity == null || maxCapacity <= 0) {
-                        itemWarnings.add("Chưa cấu hình sức chứa tối đa cho tour bờ");
-                        requiredData.append("Cần cấu hình sức chứa tối đa; ");
-                        maxCapacity = 0; // Để ghi DB nhưng ghi nhận lỗi readiness
+                        String capMsg = "Chưa cấu hình sức chứa tối đa hợp lệ cho tour bờ: " + entry.getTitle();
+                        itemWarnings.add(capMsg);
+                        warnings.add(capMsg);
+                        items.add(OperationalProgramMappingItemResponse.builder()
+                                .sourceEntryId(entry.getEntryId())
+                                .clientKey(entry.getClientKey())
+                                .kind(TripPlanEntryKind.SHORE_EXCURSION)
+                                .title(entry.getTitle())
+                                .targetId(null)
+                                .targetCode(excursionCode)
+                                .targetType("SHORE_EXCURSION")
+                                .status("FAILED")
+                                .reservationRequired(true)
+                                .reason("Thiếu cấu hình sức chứa tối đa (maximumCapacity) - Không gán dữ liệu giả")
+                                .warnings(itemWarnings)
+                                .requiredData("Cần cấu hình sức chứa tối đa hợp lệ")
+                                .build());
+                        continue;
                     }
+
                     Optional<ShoreExcursion> existingOpt = shoreExcursionRepository.findByExcursionCode(excursionCode);
                     UUID excursionId;
                     String status;
@@ -457,14 +490,24 @@ public class OperationalProgramMappingService {
                             status = "LINKED";
                             reason = "Đã liên kết (bảo toàn cấu hình vì đã có khách đăng ký)";
                         } else {
+                            // Cập nhật an toàn chỉ thời gian và điểm dừng
                             existing.setCruiseStop(matchedStop);
                             existing.setPort(matchedStop.getPort());
                             existing.setExcursionName(entry.getTitle());
                             existing.setStartTime(startTime);
                             existing.setPlannedReturnTime(endTime);
-                            existing.setMeetingPoint(meetingPoint != null ? meetingPoint : "Port Terminal Gate");
-                            if (supplier != null) {
+                            // Bảo toàn các trường nghiệp vụ nếu đã được biên tập
+                            if (existing.getMeetingPoint() == null || existing.getMeetingPoint().isBlank()) {
+                                existing.setMeetingPoint(meetingPoint);
+                            }
+                            if (existing.getSupplier() == null && supplier != null) {
                                 existing.setSupplier(supplier);
+                            }
+                            if ((existing.getMaximumCapacity() == null || existing.getMaximumCapacity() <= 0) && maxCapacity > 0) {
+                                existing.setMaximumCapacity(maxCapacity);
+                            }
+                            if (existing.getPrice() == null && price != null) {
+                                existing.setPrice(price);
                             }
                             shoreExcursionRepository.save(existing);
                             status = "LINKED";
@@ -478,7 +521,7 @@ public class OperationalProgramMappingService {
                         excursion.setExcursionName(entry.getTitle());
                         excursion.setStartTime(startTime);
                         excursion.setPlannedReturnTime(endTime);
-                        excursion.setMeetingPoint(meetingPoint != null ? meetingPoint : "Port Terminal Gate");
+                        excursion.setMeetingPoint(meetingPoint);
                         excursion.setSupplier(supplier);
                         excursion.setMinimumParticipants(minParticipants != null ? minParticipants : 1);
                         excursion.setMaximumCapacity(maxCapacity);

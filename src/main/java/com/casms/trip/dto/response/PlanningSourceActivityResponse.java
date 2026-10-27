@@ -1,5 +1,6 @@
 package com.casms.trip.dto.response;
 
+import com.casms.activity.enums.OnboardActivityCategory;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -29,7 +30,7 @@ public class PlanningSourceActivityResponse {
     private String activityName;
 
     @Schema(description = "Mã phân loại danh mục hoạt động", example = "SPORTS_WELLNESS")
-    private com.casms.activity.enums.OnboardActivityCategory category;
+    private OnboardActivityCategory category;
 
     @Schema(description = "Tên hiển thị danh mục tiếng Việt", example = "Thể thao & Sức khỏe")
     private String categoryName;

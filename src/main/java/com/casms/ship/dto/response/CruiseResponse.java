@@ -69,6 +69,9 @@ public class CruiseResponse {
     @Schema(description = "Số revision của Cruise phục vụ optimistic concurrency control", example = "1")
     private Long revision;
 
+    @Schema(description = "Revision của phiên bản nguồn tại thời điểm materialize", example = "1")
+    private Long sourceVersionRevision;
+
     @Schema(description = "Thời điểm dừng mở bán (nếu có)")
     private Instant stoppedAt;
 
@@ -89,6 +92,33 @@ public class CruiseResponse {
 
     @Schema(description = "Trạng thái đang bị dừng bán hay không")
     private boolean saleStopped;
+
+    @Schema(description = "Phạm vi mở bán: WHOLE_CRUISE, CABIN_ONLY, SELECTED_PACKAGES")
+    private String saleScope;
+
+    @Schema(description = "Thời điểm mở bán")
+    private Instant openedForSaleAt;
+
+    @Schema(description = "Tài khoản thực hiện mở bán")
+    private String openedForSaleByUsername;
+
+    @Schema(description = "Định danh sự kiện mở bán (Idempotent Event Identity)")
+    private String saleEventIdentity;
+
+    @Schema(description = "Thời điểm khởi hành thực tế")
+    private Instant actualDepartureDatetime;
+
+    @Schema(description = "Thời điểm hoàn tất thực tế")
+    private Instant actualReturnDatetime;
+
+    @Schema(description = "Người dùng thực hiện xác nhận khởi hành")
+    private String departureActorUsername;
+
+    @Schema(description = "Người dùng thực hiện xác nhận hoàn tất đóng chuyến")
+    private String completionActorUsername;
+
+    @Schema(description = "Ghi chú đóng chuyến và quyết toán")
+    private String closureNotes;
 
     @Schema(description = "Thời điểm tạo")
     private Instant createdAt;

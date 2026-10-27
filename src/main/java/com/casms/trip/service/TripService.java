@@ -17,11 +17,13 @@ import com.casms.trip.enums.TripDayManageAction;
 import com.casms.trip.enums.TripDurationGroup;
 import com.casms.trip.enums.TripScheduleVersionStatus;
 import com.casms.trip.enums.TripStatus;
+import com.casms.activity.repository.ShoreExcursionRepository;
 import com.casms.trip.repository.TripPlanDayRepository;
 import com.casms.trip.repository.TripRepository;
 import com.casms.trip.repository.TripScheduleVersionRepository;
 import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
+import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -51,9 +53,9 @@ public class TripService {
     private final AuditService auditService;
     private AuditRepository auditRepository;
 
-    @org.springframework.beans.factory.annotation.Autowired(required = false)
-    @lombok.Setter
-    private com.casms.activity.repository.ShoreExcursionRepository shoreExcursionRepository;
+    @Autowired(required = false)
+    @Setter
+    private ShoreExcursionRepository shoreExcursionRepository;
 
     public TripService(TripRepository tripRepository,
                        TripScheduleVersionRepository versionRepository,
@@ -240,8 +242,8 @@ public class TripService {
 
         // BE-11.2 / E33: Validate scope change against existing stops in all versions
         boolean scopeChanged = (request.getPlannedScope() != null && !request.getPlannedScope().equalsIgnoreCase(trip.getPlannedScope()))
-                || (request.getCountryCodes() != null && !java.util.Objects.equals(request.getCountryCodes(), trip.getCountryCodes()))
-                || (request.getDomesticRegions() != null && !java.util.Objects.equals(request.getDomesticRegions(), trip.getDomesticRegions()));
+                || (request.getCountryCodes() != null && !Objects.equals(request.getCountryCodes(), trip.getCountryCodes()))
+                || (request.getDomesticRegions() != null && !Objects.equals(request.getDomesticRegions(), trip.getDomesticRegions()));
 
         if (scopeChanged) {
             String targetScope = request.getPlannedScope() != null ? request.getPlannedScope() : trip.getPlannedScope();
@@ -249,7 +251,7 @@ public class TripService {
             List<String> targetRegions = request.getDomesticRegions() != null ? request.getDomesticRegions() : trip.getDomesticRegions();
 
             List<TripScheduleVersion> versions = versionRepository.findByTrip_TripIdOrderByVersionNumberAsc(trip.getTripId());
-            List<String> invalidPortViolations = new java.util.ArrayList<>();
+            List<String> invalidPortViolations = new ArrayList<>();
             for (TripScheduleVersion v : versions) {
                 if (v.getStops() != null) {
                     for (TripPlanStop stop : v.getStops()) {

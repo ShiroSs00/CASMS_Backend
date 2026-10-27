@@ -7,9 +7,11 @@ import com.casms.trip.dto.request.TripDayManageRequest;
 import com.casms.trip.dto.response.TripDayManageResponse;
 import com.casms.trip.enums.TripDurationGroup;
 import com.casms.trip.dto.request.ScheduleVersionCreateRequest;
+import com.casms.trip.dto.request.TripArchiveRequest;
 import com.casms.trip.dto.request.TripCreateRequest;
 import com.casms.trip.dto.request.TripDraftPatchRequest;
 import com.casms.trip.dto.request.TripUpdateRequest;
+import com.casms.trip.dto.request.VersionCancelRequest;
 import com.casms.trip.dto.response.TripDetailResponse;
 import com.casms.trip.dto.response.TripScheduleVersionDetailResponse;
 import com.casms.trip.dto.response.TripScheduleVersionSummaryResponse;
@@ -174,7 +176,7 @@ public class TripController {
     @PostMapping("/{tripId}/archive")
     public ApiResponse<TripDetailResponse> archiveTrip(
             @Parameter(description = "ID của Trip", required = true) @PathVariable UUID tripId,
-            @RequestBody(required = false) com.casms.trip.dto.request.TripArchiveRequest request,
+            @RequestBody(required = false) TripArchiveRequest request,
             @AuthenticationPrincipal CasmsPrincipal principal) {
         UUID actorId = principal != null ? principal.getUserId() : null;
         return ApiResponse.success("Archived Trip successfully", tripService.archiveTrip(tripId, request, actorId));
@@ -186,7 +188,7 @@ public class TripController {
     public ApiResponse<TripScheduleVersionDetailResponse> cancelDraft(
             @Parameter(description = "ID của Trip", required = true) @PathVariable UUID tripId,
             @Parameter(description = "Số thứ tự phiên bản", required = true) @PathVariable Integer versionNumber,
-            @RequestBody(required = false) com.casms.trip.dto.request.VersionCancelRequest request,
+            @RequestBody(required = false) VersionCancelRequest request,
             @AuthenticationPrincipal CasmsPrincipal principal) {
         UUID actorId = principal != null ? principal.getUserId() : null;
         return ApiResponse.success("Cancelled version draft successfully",

@@ -1,5 +1,6 @@
 package com.casms.trip.dto.request;
 
+import com.casms.activity.enums.OnboardActivityCategory;
 import com.casms.trip.enums.TripPlanEntryKind;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -34,7 +35,7 @@ public class TripPlanEntryDraftDto {
     private UUID sourceActivityId;
 
     @Schema(description = "Phân loại danh mục hoạt động trên tàu (nếu kind == ONBOARD_ACTIVITY)", example = "SPORTS_WELLNESS")
-    private com.casms.activity.enums.OnboardActivityCategory category;
+    private OnboardActivityCategory category;
 
     @Schema(description = "ID tour tham quan nguồn được chọn từ danh mục (nếu kind == SHORE_EXCURSION)")
     private UUID sourceExcursionId;

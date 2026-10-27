@@ -2,6 +2,7 @@ package com.casms.booking.dto.response;
 
 import com.casms.booking.enums.BookingContractStatus;
 import com.casms.booking.enums.BookingStatus;
+import com.casms.booking.enums.PaymentPlan;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Getter;
 import lombok.Setter;
@@ -89,7 +90,7 @@ public class BookingDetailResponse {
     private String cancellationReason;
 
     @Schema(description = "Hình thức thanh toán khách đã chọn", example = "DEPOSIT")
-    private com.casms.booking.enums.PaymentPlan paymentPlan;
+    private PaymentPlan paymentPlan;
 
     @Schema(description = "Lộ trình các đợt thanh toán theo hình thức đã chọn")
     private List<InstallmentResponse> installments;

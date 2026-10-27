@@ -1,5 +1,6 @@
 package com.casms.trip.dto.response;
 
+import com.casms.activity.enums.OnboardActivityCategory;
 import com.casms.trip.enums.TripPlanEntryKind;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -63,7 +64,7 @@ public class TripPlanEntryResponse {
     private String referenceShipName;
 
     @Schema(description = "Phân loại danh mục hoạt động trên tàu", example = "SPORTS_WELLNESS")
-    private com.casms.activity.enums.OnboardActivityCategory category;
+    private OnboardActivityCategory category;
 
     @Schema(description = "Tên hiển thị danh mục tiếng Việt", example = "Thể thao & Sức khỏe")
     private String categoryName;

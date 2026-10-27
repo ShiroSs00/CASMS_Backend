@@ -1,5 +1,6 @@
 package com.casms.ship.util;
 
+import com.casms.common.exception.BusinessException;
 import com.casms.ship.dto.response.TimeZoneOptionResponse;
 import lombok.extern.slf4j.Slf4j;
 
@@ -19,6 +20,12 @@ import java.util.stream.Collectors;
 public final class PortTimeZoneHelper {
 
     private PortTimeZoneHelper() {}
+
+    /**
+     * Múi giờ chuẩn trên tàu (Ship Base Timezone) cố định Asia/Ho_Chi_Minh (G06 / BE-04).
+     */
+    public static final String SHIP_TIME_ZONE_ID = "Asia/Ho_Chi_Minh";
+    public static final ZoneId SHIP_TIME_ZONE = ZoneId.of(SHIP_TIME_ZONE_ID);
 
     /**
      * Bản đồ ánh xạ mặc định mã quốc gia (ISO 3166-1 alpha-2) sang múi giờ IANA chuẩn.
@@ -110,12 +117,12 @@ public final class PortTimeZoneHelper {
      */
     public static ZoneId resolveZone(String timeZoneId) {
         if (timeZoneId == null || timeZoneId.isBlank()) {
-            throw new com.casms.common.exception.BusinessException("MISSING_PORT_TIME_ZONE", "Múi giờ của cảng không được để trống.");
+            throw new BusinessException("MISSING_PORT_TIME_ZONE", "Múi giờ của cảng không được để trống.");
         }
         try {
             return ZoneId.of(timeZoneId.trim());
         } catch (Exception e) {
-            throw new com.casms.common.exception.BusinessException("INVALID_PORT_TIME_ZONE", "Múi giờ cảng không hợp lệ theo chuẩn IANA: " + timeZoneId);
+            throw new BusinessException("INVALID_PORT_TIME_ZONE", "Múi giờ cảng không hợp lệ theo chuẩn IANA: " + timeZoneId);
         }
     }
 

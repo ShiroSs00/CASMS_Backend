@@ -52,6 +52,12 @@ public class Itinerary {
     @Column(name = "approved_at")
     private Instant approvedAt;
 
+    @Column(name = "approval_inherited")
+    private Boolean approvalInherited = false;
+
+    @Column(name = "content_modified_after_materialization")
+    private Boolean contentModifiedAfterMaterialization = false;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "created_by_user_id")
     private User createdByUser;

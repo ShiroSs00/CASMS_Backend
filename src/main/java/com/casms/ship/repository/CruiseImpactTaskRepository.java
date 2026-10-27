@@ -22,6 +22,8 @@ public interface CruiseImpactTaskRepository extends JpaRepository<CruiseImpactTa
 
     List<CruiseImpactTask> findByCruise_CruiseIdAndEventIdentity(UUID cruiseId, String eventIdentity);
 
+    List<CruiseImpactTask> findByCruiseCruiseIdAndCategory(UUID cruiseId, String category);
+
     boolean existsByTaskCode(String taskCode);
 
     long countByCruiseCruiseIdAndStatus(UUID cruiseId, String status);

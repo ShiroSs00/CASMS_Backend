@@ -4,6 +4,7 @@ import com.casms.ship.enums.ItineraryDayType;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
@@ -21,7 +22,7 @@ public class ItineraryDayResponse {
     private Integer dayNumber;
 
     @Schema(description = "Ngày", example = "2026-01-15")
-    private java.time.LocalDate date;
+    private LocalDate date;
 
     @Schema(description = "Loại ngày", example = "PORT_DAY")
     private ItineraryDayType dayType;

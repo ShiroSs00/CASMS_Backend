@@ -15,7 +15,7 @@ import org.springframework.stereotype.Component;
 @Component
 public class AuditAspect {
 
-    @Around("@annotation(com.casms.audit.Auditable)")
+    @Around("@annotation(Auditable)")
     public Object audit(ProceedingJoinPoint pjp) throws Throwable {
         log.debug("Audit: {}", pjp.getSignature());
         return pjp.proceed();

@@ -4,6 +4,7 @@ import com.casms.activity.repository.OnboardActivityRepository;
 import com.casms.activity.repository.ShoreExcursionRepository;
 import com.casms.booking.repository.BookingPassengerRepository;
 import com.casms.booking.repository.BookingRepository;
+import com.casms.booking.repository.CabinAssignmentRepository;
 import com.casms.common.exception.BusinessException;
 import com.casms.common.exception.ResourceNotFoundException;
 import com.casms.identity.entity.User;
@@ -14,10 +15,12 @@ import com.casms.ship.dto.response.CruiseImpactTaskResponse;
 import com.casms.ship.entity.Cruise;
 import com.casms.ship.entity.CruiseImpactTask;
 import com.casms.ship.entity.Ship;
+import com.casms.ship.enums.CabinType;
 import com.casms.ship.enums.ShipStatus;
 import com.casms.ship.repository.CabinRepository;
 import com.casms.ship.repository.CruiseImpactTaskRepository;
 import com.casms.ship.repository.CruiseRepository;
+import com.casms.ship.repository.CruiseTourPackageRepository;
 import com.casms.ship.repository.DeckRepository;
 import com.casms.ship.repository.ShipRepository;
 import lombok.RequiredArgsConstructor;
@@ -45,9 +48,11 @@ public class CruiseImpactAssessmentService {
     private final CabinRepository cabinRepository;
     private final BookingRepository bookingRepository;
     private final BookingPassengerRepository bookingPassengerRepository;
+    private final CabinAssignmentRepository cabinAssignmentRepository;
     private final OnboardActivityRepository onboardActivityRepository;
     private final ShoreExcursionRepository shoreExcursionRepository;
     private final CruiseImpactTaskRepository cruiseImpactTaskRepository;
+    private final CruiseTourPackageRepository cruiseTourPackageRepository;
     private final UserRepository userRepository;
 
     @Transactional(readOnly = true)
@@ -104,7 +109,11 @@ public class CruiseImpactAssessmentService {
             Ship newShip = shipRepository.findById(newShipId)
                     .orElseThrow(() -> new ResourceNotFoundException("Ship", newShipId));
 
-            if (newShip.getStatus() != ShipStatus.ACTIVE) {
+            if (newShip.getStatus() == ShipStatus.MAINTENANCE) {
+                blockers.add("Tàu mới đang trong trạng thái bảo trì (MAINTENANCE)");
+            } else if (newShip.getStatus() == ShipStatus.INACTIVE) {
+                blockers.add("Tàu mới đang không hoạt động (INACTIVE)");
+            } else if (newShip.getStatus() != ShipStatus.ACTIVE) {
                 blockers.add("Tàu mới không ở trạng thái ACTIVE (hiện tại: " + newShip.getStatus() + ")");
             }
 
@@ -118,6 +127,21 @@ public class CruiseImpactAssessmentService {
             if (newShip.getTotalCapacity() < bookedPassengers) {
                 blockers.add(String.format("Sức chứa tàu mới (%d) nhỏ hơn số khách đã đặt (%d)",
                         newShip.getTotalCapacity(), bookedPassengers));
+            }
+
+            // BE-05: Kiểm tra chi tiết cấu hình phòng (Cabin Configuration) theo từng hạng phòng đã đặt
+            for (CabinType type : CabinType.values()) {
+                long bookedSlotsForType = cabinAssignmentRepository.countActiveAssignmentsByCabinTypeAndCruise(type, cruiseId);
+                if (bookedSlotsForType > 0) {
+                    Long newShipCapacityForType = cabinRepository.sumCapacityByShipIdAndCabinType(newShipId, type);
+                    if (newShipCapacityForType == null) {
+                        newShipCapacityForType = 0L;
+                    }
+                    if (newShipCapacityForType < bookedSlotsForType) {
+                        blockers.add(String.format("Tàu mới không đủ sức chứa cho hạng phòng %s (đã xếp chỗ: %d, sức chứa tàu mới: %d)",
+                                type.name(), bookedSlotsForType, newShipCapacityForType));
+                    }
+                }
             }
 
             long decks = deckRepository.countByShipShipId(newShipId);
@@ -196,6 +220,9 @@ public class CruiseImpactAssessmentService {
         }
 
         boolean canProceed = blockers.isEmpty();
+        long affectedCabins = shipImpacted ? cabinAssignmentRepository.countActiveAssignmentsByCruiseId(cruiseId) : 0L;
+        long affectedPackages = cruiseTourPackageRepository.countByCruise_CruiseIdAndActiveTrue(cruiseId);
+        long requiredNotifications = (scheduleImpacted || shipImpacted) ? affectedBookings : 0L;
 
         return CruiseChangeImpactResponse.builder()
                 .cruiseId(cruiseId)
@@ -207,6 +234,9 @@ public class CruiseImpactAssessmentService {
                 .affectedBookingsCount(affectedBookings)
                 .affectedActivitiesCount(affectedActivities)
                 .affectedExcursionsCount(affectedExcursions)
+                .affectedCabinsCount(affectedCabins)
+                .affectedPackagesCount(affectedPackages)
+                .requiredNotificationsCount(requiredNotifications)
                 .blockers(blockers)
                 .warnings(warnings)
                 .generatedTasks(tasks)

@@ -12,6 +12,8 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -20,6 +22,8 @@ public interface BookingRepository extends JpaRepository<Booking, UUID>, JpaSpec
     boolean existsByCruiseCruiseId(UUID cruiseId);
     long countByCruiseCruiseId(UUID cruiseId);
     long countByCruiseCruiseIdAndBookingStatus(UUID cruiseId, BookingStatus status);
+    List<Booking> findByCruiseCruiseId(UUID cruiseId);
+    List<Booking> findByCruiseCruiseIdAndBookingStatusNot(UUID cruiseId, BookingStatus status);
     boolean existsByBookingReference(String bookingReference);
     Optional<Booking> findByBookingReference(String bookingReference);
 
@@ -27,6 +31,10 @@ public interface BookingRepository extends JpaRepository<Booking, UUID>, JpaSpec
     @Query("select b from Booking b where b.bookingId = :bookingId")
     Optional<Booking> findByIdForUpdate(@Param("bookingId") UUID bookingId);
     Page<Booking> findByBookedByUserUserId(UUID userId, Pageable pageable);
+
+    @Query("SELECT b FROM Booking b WHERE b.bookingStatus = com.casms.booking.enums.BookingStatus.Draft " +
+           "AND b.holdExpiresAt IS NOT NULL AND b.holdExpiresAt < :cutoffTime")
+    List<Booking> findExpiredHoldBookings(@Param("cutoffTime") Instant cutoffTime);
 
     default Page<Booking> searchBookings(UUID cruiseId,
                                          BookingStatus status,

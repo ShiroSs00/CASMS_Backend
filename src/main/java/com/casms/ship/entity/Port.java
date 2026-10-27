@@ -8,6 +8,7 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.UUID;
 
@@ -36,10 +37,10 @@ public class Port {
     private String timeZoneId;
 
     @Column(name = "latitude", precision = 9, scale = 6)
-    private java.math.BigDecimal latitude;
+    private BigDecimal latitude;
 
     @Column(name = "longitude", precision = 9, scale = 6)
-    private java.math.BigDecimal longitude;
+    private BigDecimal longitude;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "location_type", length = 20)

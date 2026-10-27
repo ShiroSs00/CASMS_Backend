@@ -14,5 +14,8 @@ import java.util.UUID;
 @AllArgsConstructor
 public class CruiseOpenSaleRequest {
     private Long expectedRevision;
+    private String saleScope; // WHOLE_CRUISE, CABIN_ONLY, SELECTED_PACKAGES
     private List<UUID> packageIds;
+    private String fingerprint;
+    private String eventIdentity;
 }

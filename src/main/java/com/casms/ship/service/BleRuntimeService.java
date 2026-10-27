@@ -2,6 +2,7 @@ package com.casms.ship.service;
 
 import com.casms.common.exception.BusinessException;
 import com.casms.common.exception.ResourceNotFoundException;
+import com.casms.identity.enums.PassengerBleIdentityStatus;
 import com.casms.identity.repository.PassengerBleIdentityRepository;
 import com.casms.ship.dto.request.BleReadingRequest;
 import com.casms.ship.dto.response.BleAnchorResponse;
@@ -26,6 +27,8 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
@@ -120,8 +123,8 @@ public class BleRuntimeService {
         var receivers = devices.findByShipShipId(shipId).stream().filter(d -> d.getDeviceType() == LocationDeviceType.BLE_RECEIVER
                 && d.getStatus() == LocationDeviceStatus.ACTIVE && d.getInstalledAt() != null && d.getDeck() != null
                 && d.getModelPositionX() != null && d.getModelPositionY() != null && d.getModelPositionZ() != null).toList();
-        var active = identities.findByCruiseCruiseIdAndStatusOrderByAssignedAtDesc(cruiseId, com.casms.identity.enums.PassengerBleIdentityStatus.ACTIVE);
-        var grouped = new java.util.HashMap<String, List<LocationRecord>>();
+        var active = identities.findByCruiseCruiseIdAndStatusOrderByAssignedAtDesc(cruiseId, PassengerBleIdentityStatus.ACTIVE);
+        var grouped = new HashMap<String, List<LocationRecord>>();
         if (!active.isEmpty() && !receivers.isEmpty()) for (var record : records.findByShipShipIdAndRecordedAtBetweenOrderByRecordedAtAsc(shipId, now.minusSeconds(60), now)) {
             if (record.getBleIdentifier() != null && record.getRssiDbm() != null) grouped.computeIfAbsent(record.getDevice().getLocationDeviceId() + ":" + record.getBleIdentifier(), key -> new ArrayList<>()).add(record);
         }
@@ -131,7 +134,7 @@ public class BleRuntimeService {
             for (var receiver : receivers) {
                 var latest = grouped.getOrDefault(receiver.getLocationDeviceId() + ":" + identity.getBleIdentifier(), List.of()).stream()
                         .filter(r -> !r.getRecordedAt().isBefore(identity.getAssignedAt()) && (cruise.getDepartureDatetime() == null || !r.getRecordedAt().isBefore(cruise.getDepartureDatetime())))
-                        .sorted(java.util.Comparator.comparing(LocationRecord::getRecordedAt).reversed()).limit(7).toList();
+                        .sorted(Comparator.comparing(LocationRecord::getRecordedAt).reversed()).limit(7).toList();
                 if (latest.isEmpty()) continue;
                 var candidate = snapshotFrom(cruiseId, receiver, latest, now);
                 boolean live = candidate.proximity().status().equals("LIVE");

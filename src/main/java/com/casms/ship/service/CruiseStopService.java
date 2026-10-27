@@ -17,15 +17,24 @@ import com.casms.ship.enums.ItineraryDayType;
 import com.casms.ship.enums.ItineraryStatus;
 import com.casms.ship.enums.PortStatus;
 import com.casms.ship.repository.CruiseStopRepository;
+import com.casms.activity.entity.ShoreExcursion;
+import com.casms.activity.repository.ShoreExcursionRepository;
+import com.casms.ship.dto.request.CruisePortCoordinationRequest;
+import com.casms.ship.entity.Cruise;
 import com.casms.ship.repository.DestinationRepository;
 import com.casms.ship.repository.ItineraryDayRepository;
 import com.casms.ship.repository.ItineraryRepository;
 import com.casms.ship.repository.PortRepository;
+import com.casms.ship.util.PortTimeZoneHelper;
+import com.casms.trip.service.CountryScopeValidator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -42,10 +51,10 @@ public class CruiseStopService {
     private final PortRepository portRepository;
     private final DestinationRepository destinationRepository;
 
-    @org.springframework.beans.factory.annotation.Autowired(required = false)
-    private com.casms.activity.repository.ShoreExcursionRepository shoreExcursionRepository;
+    @Autowired(required = false)
+    private ShoreExcursionRepository shoreExcursionRepository;
 
-    public void setShoreExcursionRepository(com.casms.activity.repository.ShoreExcursionRepository repo) {
+    public void setShoreExcursionRepository(ShoreExcursionRepository repo) {
         this.shoreExcursionRepository = repo;
     }
 
@@ -457,7 +466,7 @@ public class CruiseStopService {
         Instant start = stop.getActualArrival() != null ? stop.getActualArrival() : stop.getPlannedArrival();
         Instant end = stop.getActualDeparture() != null ? stop.getActualDeparture() : stop.getPlannedDeparture();
         
-        return java.time.Duration.between(start, end).toMinutes();
+        return Duration.between(start, end).toMinutes();
     }
 
     @Transactional(readOnly = true)
@@ -481,8 +490,8 @@ public class CruiseStopService {
             return;
         }
         Instant effectiveDeadline = allAboard != null ? allAboard : departure;
-        List<com.casms.activity.entity.ShoreExcursion> excursions = shoreExcursionRepository.findByCruiseStop_CruiseStopId(stop.getCruiseStopId());
-        for (com.casms.activity.entity.ShoreExcursion exc : excursions) {
+        List<ShoreExcursion> excursions = shoreExcursionRepository.findByCruiseStop_CruiseStopId(stop.getCruiseStopId());
+        for (ShoreExcursion exc : excursions) {
             if (exc.getStartTime() != null && arrival != null && exc.getStartTime().isBefore(arrival)) {
                 throw new BusinessException("EXCURSION_OUTSIDE_PORT_WINDOW",
                         String.format("Không thể điều chỉnh giờ cảng vì tour bờ '%s' (mã: %s) bắt đầu (%s) trước khi tàu cập cảng (%s).",
@@ -502,10 +511,10 @@ public class CruiseStopService {
      */
     private void validatePortCountryScope(Port port, Itinerary itinerary) {
         if (itinerary == null || itinerary.getCruise() == null) return;
-        com.casms.ship.entity.Cruise cruise = itinerary.getCruise();
+        Cruise cruise = itinerary.getCruise();
         if (cruise.getSourceTrip() == null) return; // no scope constraint
 
-        com.casms.trip.service.CountryScopeValidator.validatePort(port, cruise.getSourceTrip(), "Cảng ghé");
+        CountryScopeValidator.validatePort(port, cruise.getSourceTrip(), "Cảng ghé");
     }
 
     private CruiseStopResponse mapToResponse(CruiseStop stop) {
@@ -521,15 +530,15 @@ public class CruiseStopService {
         if (stop.getPort() != null) {
             String portTz = stop.getPort().getTimeZoneId();
             res.setPortTimeZoneId(portTz);
-            res.setPortUtcOffset(com.casms.ship.util.PortTimeZoneHelper.calculateUtcOffset(portTz));
-            res.setFormattedPortTimeZone(com.casms.ship.util.PortTimeZoneHelper.formatTimeZoneDisplay(portTz));
+            res.setPortUtcOffset(PortTimeZoneHelper.calculateUtcOffset(portTz));
+            res.setFormattedPortTimeZone(PortTimeZoneHelper.formatTimeZoneDisplay(portTz));
         }
 
         if (stop.getArrivalItineraryDay() != null) {
             String shipTz = stop.getArrivalItineraryDay().getShipTimeZoneId();
             res.setShipTimeZoneId(shipTz);
-            res.setShipUtcOffset(com.casms.ship.util.PortTimeZoneHelper.calculateUtcOffset(shipTz));
-            res.setFormattedShipTimeZone(com.casms.ship.util.PortTimeZoneHelper.formatTimeZoneDisplay(shipTz));
+            res.setShipUtcOffset(PortTimeZoneHelper.calculateUtcOffset(shipTz));
+            res.setFormattedShipTimeZone(PortTimeZoneHelper.formatTimeZoneDisplay(shipTz));
         }
         
         if (stop.getDestination() != null) {
@@ -555,7 +564,76 @@ public class CruiseStopService {
         res.setPortContactEmail(stop.getPortContactEmail());
         res.setPortContactResponsibility(stop.getPortContactResponsibility());
         res.setNotes(stop.getNotes());
+        res.setCoordinationStatus(stop.getCoordinationStatus());
+        res.setCoordinationDeadline(stop.getCoordinationDeadline());
+        res.setDossierReference(stop.getDossierReference());
+        res.setOfficialClearanceReference(stop.getOfficialClearanceReference());
+        res.setClearanceAuthority(stop.getClearanceAuthority());
+        res.setSequenceChangeReason(stop.getSequenceChangeReason());
         return res;
+    }
+
+    /**
+     * BE-20: Cập nhật hồ sơ và trạng thái phối hợp cảng (Port Coordination)
+     */
+    @Transactional
+    public CruiseStopResponse updatePortCoordination(UUID cruiseStopId, CruisePortCoordinationRequest request) {
+        CruiseStop stop = cruiseStopRepository.findById(cruiseStopId)
+                .orElseThrow(() -> new ResourceNotFoundException("CruiseStop", cruiseStopId));
+
+        if (request.getPortContactName() != null) stop.setPortContactName(request.getPortContactName());
+        if (request.getPortContactRole() != null) stop.setPortContactRole(request.getPortContactRole());
+        if (request.getPortContactPhone() != null) stop.setPortContactPhone(request.getPortContactPhone());
+        if (request.getPortContactEmail() != null) stop.setPortContactEmail(request.getPortContactEmail());
+        if (request.getPortContactResponsibility() != null) stop.setPortContactResponsibility(request.getPortContactResponsibility());
+        if (request.getCoordinationStatus() != null && !request.getCoordinationStatus().isBlank()) {
+            stop.setCoordinationStatus(request.getCoordinationStatus().trim().toUpperCase());
+        }
+        if (request.getCoordinationDeadline() != null) stop.setCoordinationDeadline(request.getCoordinationDeadline());
+        if (request.getDossierReference() != null) stop.setDossierReference(request.getDossierReference());
+        if (request.getNotes() != null) stop.setNotes(request.getNotes());
+
+        stop = cruiseStopRepository.save(stop);
+        log.info("Updated port coordination for cruise stop: {}, status: {}", cruiseStopId, stop.getCoordinationStatus());
+        return mapToResponse(stop);
+    }
+
+    /**
+     * BE-20: Ghi nhận mã tham chiếu giấy phép chính thức từ cơ quan chức năng (External Verified Clearance Reference)
+     * TUYỆT ĐỐI không CASMS tự phát hành official clearance; chỉ lưu reference xác thực khi có tích hợp chính thức.
+     */
+    @Transactional
+    public CruiseStopResponse recordOfficialClearanceReference(UUID cruiseStopId, String clearanceReference, String authority) {
+        if (clearanceReference == null || clearanceReference.isBlank()) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "CLEARANCE_REF_REQUIRED",
+                    "Mã tham chiếu giấy phép cảng chính thức (Clearance Reference) là bắt buộc.");
+        }
+        CruiseStop stop = cruiseStopRepository.findById(cruiseStopId)
+                .orElseThrow(() -> new ResourceNotFoundException("CruiseStop", cruiseStopId));
+
+        stop.setOfficialClearanceReference(clearanceReference.trim());
+        if (authority != null && !authority.isBlank()) {
+            stop.setClearanceAuthority(authority.trim());
+        }
+        stop = cruiseStopRepository.save(stop);
+        log.info("Recorded official clearance reference for cruise stop {}: {} by {}", cruiseStopId, clearanceReference, authority);
+        return mapToResponse(stop);
+    }
+
+    /**
+     * BE-20: Sắp xếp lại thứ tự điểm dừng kèm lý do đảo cảng bắt buộc
+     */
+    @Transactional
+    public CruiseStopResponse reorderWithReason(UUID cruiseStopId, Integer newStopOrder, String reason) {
+        if (reason == null || reason.isBlank()) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "REORDER_REASON_REQUIRED",
+                    "Cần cung cấp lý do khi thay đổi hoặc đảo thứ tự điểm dừng cảng.");
+        }
+        CruiseStop stop = cruiseStopRepository.findById(cruiseStopId)
+                .orElseThrow(() -> new ResourceNotFoundException("CruiseStop", cruiseStopId));
+        stop.setSequenceChangeReason(reason.trim());
+        cruiseStopRepository.save(stop);
+        return reorder(cruiseStopId, newStopOrder);
     }
 
     private void validateCruiseStopInvariants(UUID currentStopId, Integer stopOrder, UUID portId, String portName,

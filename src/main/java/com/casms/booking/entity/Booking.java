@@ -58,6 +58,16 @@ public class Booking {
     @Column(name = "final_payment_due_at")
     private Instant finalPaymentDueAt;
 
+    @Column(name = "hold_expires_at")
+    private Instant holdExpiresAt;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "quote_id")
+    private BookingQuote quote;
+
+    @Column(name = "pricing_policy_version", length = 50)
+    private String pricingPolicyVersion;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 

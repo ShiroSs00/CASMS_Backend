@@ -23,6 +23,7 @@ import com.casms.ship.repository.CruiseRepository;
 import com.casms.ship.repository.CruiseStopRepository;
 import com.casms.ship.repository.ItineraryDayRepository;
 import com.casms.ship.repository.ItineraryRepository;
+import com.casms.ship.repository.PortRepository;
 import com.casms.ship.util.PortTimeZoneHelper;
 import com.casms.trip.entity.Trip;
 import com.casms.trip.entity.TripPlanDay;
@@ -39,6 +40,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -60,7 +62,7 @@ public class ScheduleMaterializationService {
     private final ItineraryDayRepository itineraryDayRepository;
     private final CruiseStopRepository cruiseStopRepository;
     private final CruiseRepository cruiseRepository;
-    private final com.casms.ship.repository.PortRepository portRepository;
+    private final PortRepository portRepository;
     private final OperationalProgramMappingService operationalProgramMappingService;
     private final OnboardActivityRepository onboardActivityRepository;
     private final ShoreExcursionRepository shoreExcursionRepository;
@@ -115,11 +117,14 @@ public class ScheduleMaterializationService {
         // 1. Tính toán trước toàn bộ lịch
         CruiseSchedulePreviewResponse projection = computeProjectedSchedule(version, cruise.getDepartureDatetime());
 
-        // 2. Cập nhật ngày kết thúc chuyến đi nếu chưa chính xác
+        // 2. Cập nhật ngày kết thúc chuyến đi và khóa sourceVersionRevision
         if (projection.getReturnDatetime() != null) {
             cruise.setReturnDatetime(projection.getReturnDatetime());
-            cruiseRepository.save(cruise);
         }
+        if (version.getRevision() != null) {
+            cruise.setSourceVersionRevision(version.getRevision());
+        }
+        cruiseRepository.save(cruise);
 
         // 3. Xóa Itinerary cũ nếu có dở dang (idempotent overwrite draft)
         itineraryRepository.findByCruiseCruiseId(cruise.getCruiseId()).ifPresent(existing -> {
@@ -141,6 +146,9 @@ public class ScheduleMaterializationService {
         itinerary.setEndDate(endDate);
         itinerary.setItineraryType(trip.getTripType() != null ? trip.getTripType() : ItineraryType.ROUND_TRIP);
         itinerary.setStatus(ItineraryStatus.DRAFT);
+        // BE-02: Kế thừa phê duyệt từ TripScheduleVersion PUBLISHED nếu nội dung không đổi
+        itinerary.setApprovalInherited(version.getStatus() == TripScheduleVersionStatus.PUBLISHED);
+        itinerary.setContentModifiedAfterMaterialization(false);
         itinerary = itineraryRepository.save(itinerary);
 
         // 5. Tạo ItineraryDay
@@ -394,7 +402,8 @@ public class ScheduleMaterializationService {
             throw new BusinessException("MISSING_DEPARTURE_STOP", "Phiên bản lịch trình nguồn không có điểm dừng khởi hành.");
         }
 
-        ZoneId shipZone = PortTimeZoneHelper.resolveZone(firstStop.getPort().getTimeZoneId());
+        // BE-04 / G06: Giờ cơ sở tàu (Ship Base Timezone) luôn là Asia/Ho_Chi_Minh
+        ZoneId shipZone = PortTimeZoneHelper.SHIP_TIME_ZONE;
         LocalDate day1Date = departureDatetime.atZone(shipZone).toLocalDate();
 
         int totalDays = trip.getDurationDays() != null ? trip.getDurationDays() : Math.max(1, planDays.size());
@@ -566,7 +575,7 @@ public class ScheduleMaterializationService {
         if (!projectedStops.isEmpty()) {
             returnDatetime = projectedStops.get(projectedStops.size() - 1).getPlannedDeparture();
         } else {
-            returnDatetime = departureDatetime.plus(java.time.Duration.ofDays(totalDays));
+            returnDatetime = departureDatetime.plus(Duration.ofDays(totalDays));
         }
 
         return CruiseSchedulePreviewResponse.builder()

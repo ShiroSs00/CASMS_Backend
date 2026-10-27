@@ -62,6 +62,8 @@ public class RolePermissionInitializer implements CommandLineRunner {
                 Permission.CRUISE_COMPLETE,
                 Permission.CRUISE_CANCEL,
                 Permission.CRUISE_STATUS_CHANGE,
+                Permission.CRUISE_PREPARATION_READ,
+                Permission.CRUISE_PREPARATION_SUBMIT,
 
                 Permission.ITINERARY_CREATE,
                 Permission.ITINERARY_READ,
@@ -188,6 +190,8 @@ public class RolePermissionInitializer implements CommandLineRunner {
                 Permission.REGULATION_READ,
 
                 Permission.REPORT_GENERATE,
+                Permission.CRUISE_PREPARATION_READ,
+                Permission.CRUISE_PREPARATION_SUBMIT,
 
                 Permission.CRUISE_READ,
                 Permission.CRUISE_MANIFEST_READ,
@@ -230,6 +234,12 @@ public class RolePermissionInitializer implements CommandLineRunner {
                 Permission.CRUISE_START,
                 Permission.CRUISE_COMPLETE,
                 Permission.CRUISE_STATUS_CHANGE,
+                Permission.CRUISE_OPEN_SALE,
+                Permission.CRUISE_STOP_SALE,
+                Permission.CRUISE_RESUME_SALE,
+                Permission.CRUISE_PREPARATION_READ,
+                Permission.CRUISE_PREPARATION_SUBMIT,
+                Permission.CRUISE_PREPARATION_CONFIRM,
 
                 Permission.ITINERARY_READ,
                 Permission.ITINERARY_DAY_READ,

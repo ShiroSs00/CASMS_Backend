@@ -34,6 +34,7 @@ import org.springframework.data.domain.PageRequest;
 
 import java.time.Instant;
 import java.time.LocalTime;
+import java.time.temporal.ChronoUnit;
 import java.util.*;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -73,7 +74,7 @@ public class CruiseDraftAndMaterializationPostgresIntegrationTest {
         testActor = userRepository.save(testActor);
 
         portHph = new Port();
-        portHph.setPortCode("VN-HP" + UUID.randomUUID().toString().substring(0, 4));
+        portHph.setPortCode("VN-HP" + UUID.randomUUID().toString().replace("-", "").substring(0, 10));
         portHph.setPortName("Cảng Hải Phòng Test");
         portHph.setCountryCode("VN");
         portHph.setTimeZoneId("Asia/Ho_Chi_Minh");
@@ -81,7 +82,7 @@ public class CruiseDraftAndMaterializationPostgresIntegrationTest {
         portHph = portRepository.save(portHph);
 
         portDan = new Port();
-        portDan.setPortCode("VN-DA" + UUID.randomUUID().toString().substring(0, 4));
+        portDan.setPortCode("VN-DA" + UUID.randomUUID().toString().replace("-", "").substring(0, 10));
         portDan.setPortName("Cảng Đà Nẵng Test");
         portDan.setCountryCode("VN");
         portDan.setTimeZoneId("Asia/Ho_Chi_Minh");
@@ -438,5 +439,109 @@ public class CruiseDraftAndMaterializationPostgresIntegrationTest {
 
         Itinerary itin = itineraryRepository.findByCruiseCruiseId(created.getCruiseId()).orElseThrow();
         assertEquals(ItineraryStatus.DRAFT, itin.getStatus(), "Itinerary status phải duy trì DRAFT, không được tự ý sang OPEN_FOR_SALE");
+    }
+
+    @Test
+    @DisplayName("BE-02 & BE-03 / G04: Tạo Cruise từ sourceVersion tự động suy luận returnDatetime và cảng, khóa thời lượng")
+    void test_BE02_and_BE03_createCruise_autoDerivesDurationAndPorts_locksDuration() {
+        TripScheduleVersion version = createPublishedTripVersion("TR-BE03-" + UUID.randomUUID().toString().substring(0, 4), "DOMESTIC");
+        Instant departure = Instant.parse("2026-12-15T01:00:00Z");
+
+        CruiseCreateRequest req = new CruiseCreateRequest();
+        req.setCruiseName("Hành Trình Khóa Thời Lượng Tự Động");
+        req.setDepartureDatetime(departure);
+        // Không truyền returnDatetime, departurePortId, returnPortId (G04)
+        req.setSourceVersionId(version.getVersionId());
+        req.setShipId(testShip.getShipId());
+
+        CruiseResponse created = cruiseService.create(req);
+        assertNotNull(created);
+        assertEquals(CruiseStatus.DRAFT, created.getStatus());
+        assertEquals(departure, created.getDepartureDatetime());
+        assertNotNull(created.getReturnDatetime(), "Return datetime phải được tự động tính toán từ lịch nguồn");
+        assertEquals(portHph.getPortId(), created.getDeparturePortId(), "Cảng đi phải tự động lấy từ điểm dừng 1");
+        assertEquals(portDan.getPortId(), created.getReturnPortId(), "Cảng về phải tự động lấy từ điểm dừng cuối");
+
+        // Kiểm tra Itinerary đã được sinh ra khớp với số ngày của nguồn
+        Optional<Itinerary> itinOpt = itineraryRepository.findByCruiseCruiseId(created.getCruiseId());
+        assertTrue(itinOpt.isPresent());
+        List<ItineraryDay> days = itineraryDayRepository.findByItineraryItineraryIdOrderByDayNumberAsc(itinOpt.get().getItineraryId());
+        assertEquals(3, days.size(), "Hải trình phải có đúng 3 ngày theo nguồn");
+    }
+
+    @Test
+    @DisplayName("BE-02 / G01: Tạo Cruise từ phiên bản chưa PUBLISHED ném VERSION_NOT_PUBLISHED")
+    void test_BE02_createCruise_rejectsNonPublishedVersion() {
+        Trip trip = new Trip();
+        trip.setTripCode("TR-UNPUB-" + UUID.randomUUID().toString().substring(0, 4));
+        trip.setName("Trip Chưa Duyệt");
+        trip.setStatus(TripStatus.READY);
+        trip.setPlannedScope("DOMESTIC");
+        trip.setDurationDays(2);
+        trip.setDurationNights(1);
+        trip.setDurationGroup(TripDurationGroup.SHORT);
+        trip = tripRepository.save(trip);
+
+        TripScheduleVersion unpubVersion = new TripScheduleVersion();
+        unpubVersion.setTrip(trip);
+        unpubVersion.setVersionNumber(1);
+        unpubVersion.setRevision(1L);
+        unpubVersion.setStatus(TripScheduleVersionStatus.DRAFT);
+        unpubVersion = versionRepository.save(unpubVersion);
+
+        CruiseCreateRequest req = new CruiseCreateRequest();
+        req.setCruiseName("Cruise Invalid Source");
+        req.setDepartureDatetime(Instant.parse("2026-12-20T01:00:00Z"));
+        req.setSourceVersionId(unpubVersion.getVersionId());
+
+        BusinessException ex = assertThrows(BusinessException.class, () -> cruiseService.create(req));
+        assertEquals("VERSION_NOT_PUBLISHED", ex.getCode());
+    }
+
+    @Test
+    @DisplayName("BE-03 / G04: Client truyền returnDatetime sai lệch sẽ bị khóa theo projection nguồn")
+    void test_BE03_createCruise_locksDuration_whenClientPassesTamperedReturnDate() {
+        TripScheduleVersion version = createPublishedTripVersion("TR-TAMP-" + UUID.randomUUID().toString().substring(0, 4), "DOMESTIC");
+        Instant departure = Instant.parse("2026-12-10T01:00:00Z");
+        Instant tamperedReturn = departure.plus(10, ChronoUnit.DAYS); // Client cố tình gửi 10 ngày thay vì 3 ngày nguồn
+
+        CruiseCreateRequest req = new CruiseCreateRequest();
+        req.setCruiseName("Cruise Tampered Return Test");
+        req.setDepartureDatetime(departure);
+        req.setReturnDatetime(tamperedReturn);
+        req.setSourceVersionId(version.getVersionId());
+
+        CruiseResponse created = cruiseService.create(req);
+        assertNotNull(created);
+        assertNotEquals(tamperedReturn, created.getReturnDatetime(), "Return datetime bị làm giả phải bị từ chối/ghi đè theo nguồn");
+        // Thời lượng phải được khóa chính xác theo projection nguồn
+        CruiseSchedulePreviewResponse projection = scheduleMaterializationService.previewSchedule(version.getVersionId(), departure);
+        assertEquals(projection.getReturnDatetime(), created.getReturnDatetime(), "Return datetime phải bị khóa khớp với projection nguồn");
+    }
+
+    @Test
+    @DisplayName("BE-03: Cập nhật draft cruise dời ngày khởi hành phải khóa và dời ngày kết thúc tương ứng")
+    void test_BE03_updateDraft_locksDuration_whenShiftingDeparture() {
+        TripScheduleVersion version = createPublishedTripVersion("TR-SHIFT-" + UUID.randomUUID().toString().substring(0, 4), "DOMESTIC");
+        Instant departure = Instant.parse("2026-12-01T01:00:00Z");
+
+        CruiseCreateRequest req = new CruiseCreateRequest();
+        req.setCruiseName("Cruise Shifting Test");
+        req.setDepartureDatetime(departure);
+        req.setSourceVersionId(version.getVersionId());
+
+        CruiseResponse created = cruiseService.create(req);
+        long originalDuration = created.getReturnDatetime().toEpochMilli() - created.getDepartureDatetime().toEpochMilli();
+
+        // Dời departure thêm 5 ngày
+        Instant newDep = departure.plus(5, ChronoUnit.DAYS);
+        CruiseUpdateDraftRequest updateReq = new CruiseUpdateDraftRequest();
+        updateReq.setDepartureDatetime(newDep);
+        updateReq.setExpectedRevision(created.getRevision());
+
+        CruiseResponse updated = cruiseService.updateDraft(created.getCruiseId(), updateReq);
+        assertEquals(newDep, updated.getDepartureDatetime());
+        long newDuration = updated.getReturnDatetime().toEpochMilli() - updated.getDepartureDatetime().toEpochMilli();
+        assertEquals(originalDuration, newDuration, "Thời lượng chuyến đi từ nguồn phải được giữ nguyên không đổi khi dời lịch");
     }
 }
