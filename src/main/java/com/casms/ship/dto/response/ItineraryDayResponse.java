@@ -1,6 +1,7 @@
 package com.casms.ship.dto.response;
 
 import com.casms.ship.enums.ItineraryDayType;
+import com.casms.ship.enums.ItineraryDayRole;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
@@ -26,6 +27,9 @@ public class ItineraryDayResponse {
 
     @Schema(description = "Loại ngày", example = "PORT_DAY")
     private ItineraryDayType dayType;
+
+    @Schema(description = "Vai trò ngày: DEPARTURE, REGULAR, ARRIVAL, DEPARTURE_AND_ARRIVAL; BE xác định theo vị trí ngày")
+    private ItineraryDayRole dayRole;
 
     @Schema(description = "Múi giờ tàu", example = "Asia/Ho_Chi_Minh")
     private String shipTimeZoneId;

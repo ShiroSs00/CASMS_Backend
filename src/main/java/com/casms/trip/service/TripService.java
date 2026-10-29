@@ -1,6 +1,8 @@
 package com.casms.trip.service;
 
 import com.casms.audit.AuditService;
+import com.casms.ship.enums.ItineraryDayType;
+import com.casms.ship.enums.ItineraryDayRole;
 import com.casms.common.exception.BusinessException;
 import com.casms.common.exception.ResourceNotFoundException;
 import com.casms.common.service.BusinessCodeGenerator;
@@ -153,7 +155,7 @@ public class TripService {
             TripPlanDay day = new TripPlanDay();
             day.setVersion(v1);
             day.setDayNumber(i);
-            day.setDayType(null); // Unset in draft
+            day.setDayType(i == durationDays ? ItineraryDayType.PORT_DAY : null);
             day.setShipTimeZoneId("Asia/Ho_Chi_Minh");
             day.setTitle("Ngày " + i);
             days.add(day);
@@ -410,6 +412,7 @@ public class TripService {
                     .filter(v -> v.getStatus() == TripScheduleVersionStatus.DRAFT)
                     .collect(Collectors.toList());
 
+            trip.setDurationDays(newDayNumber);
             for (TripScheduleVersion draftVer : draftVersions) {
                 TripPlanDay day = new TripPlanDay();
                 day.setVersion(draftVer);
@@ -418,6 +421,10 @@ public class TripService {
                 day.setShipTimeZoneId("Asia/Ho_Chi_Minh");
                 day.setTitle("Ngày " + newDayNumber);
                 draftVer.getDays().add(day);
+                for (TripPlanDay plannedDay : draftVer.getDays()) {
+                    plannedDay.setDayRole(ItineraryDayRole.forDay(plannedDay.getDayNumber(), newDayNumber));
+                    if (plannedDay.getDayNumber() == newDayNumber) plannedDay.setDayType(ItineraryDayType.PORT_DAY);
+                }
                 draftVer = versionRepository.save(draftVer);
                 versionRepository.flush();
             }
@@ -473,6 +480,7 @@ public class TripService {
                     .filter(v -> v.getStatus() == TripScheduleVersionStatus.DRAFT)
                     .collect(Collectors.toList());
 
+            trip.setDurationDays(newDayNumber);
             for (TripScheduleVersion draftVer : draftVersions) {
                 if (!draftVer.getVersionId().equals(versionId)) {
                     boolean otherHasEntries = draftVer.getEntries().stream()
@@ -516,6 +524,10 @@ public class TripService {
                     }
                 }
 
+                for (TripPlanDay plannedDay : draftVer.getDays()) {
+                    plannedDay.setDayRole(ItineraryDayRole.forDay(plannedDay.getDayNumber(), newDayNumber));
+                    if (plannedDay.getDayNumber() == newDayNumber) plannedDay.setDayType(ItineraryDayType.PORT_DAY);
+                }
                 draftVer = versionRepository.save(draftVer);
                 versionRepository.flush();
             }
@@ -602,6 +614,8 @@ public class TripService {
                 newDay.setVersion(newVer);
                 newDay.setDayNumber(oldDay.getDayNumber());
                 newDay.setDayType(oldDay.getDayType());
+                newDay.setDeparturePort(oldDay.getDeparturePort());
+                newDay.setPlannedDepartureTime(oldDay.getPlannedDepartureTime());
                 newDay.setShipTimeZoneId(oldDay.getShipTimeZoneId());
                 newDay.setTitle(oldDay.getTitle());
                 newDay.setDescription(oldDay.getDescription());
@@ -674,6 +688,7 @@ public class TripService {
             newVer.setDays(days);
         }
 
+        newVer.getDays().stream().filter(d -> d.getDayRole().isEnding()).forEach(d -> d.setDayType(ItineraryDayType.PORT_DAY));
         newVer = versionRepository.save(newVer);
         newTrip.getVersions().add(newVer);
 
@@ -744,6 +759,8 @@ public class TripService {
                 newDay.setVersion(newVer);
                 newDay.setDayNumber(oldDay.getDayNumber());
                 newDay.setDayType(oldDay.getDayType());
+                newDay.setDeparturePort(oldDay.getDeparturePort());
+                newDay.setPlannedDepartureTime(oldDay.getPlannedDepartureTime());
                 newDay.setShipTimeZoneId(oldDay.getShipTimeZoneId());
                 newDay.setTitle(oldDay.getTitle());
                 newDay.setDescription(oldDay.getDescription());
@@ -816,6 +833,7 @@ public class TripService {
             newVer.setDays(days);
         }
 
+        newVer.getDays().stream().filter(d -> d.getDayRole().isEnding()).forEach(d -> d.setDayType(ItineraryDayType.PORT_DAY));
         newVer = versionRepository.save(newVer);
         auditService.record(actorId, "CREATE_SCHEDULE_VERSION", "TripScheduleVersion", newVer.getVersionId(),
                 "SUCCESS", "Created Version " + newVer.getVersionNumber() + " for Trip " + trip.getTripCode());
@@ -1064,6 +1082,10 @@ public class TripService {
             dayRes.setDayId(d.getDayId());
             dayRes.setDayNumber(d.getDayNumber());
             dayRes.setDayType(d.getDayType());
+            dayRes.setDayRole(d.getDayRole());
+            dayRes.setDeparturePortId(d.getDeparturePort() == null ? null : d.getDeparturePort().getPortId());
+            dayRes.setDeparturePortName(d.getDeparturePort() == null ? null : d.getDeparturePort().getPortName());
+            dayRes.setPlannedDepartureTime(d.getPlannedDepartureTime());
             dayRes.setShipTimeZoneId(d.getShipTimeZoneId());
             dayRes.setTitle(d.getTitle());
             dayRes.setDescription(d.getDescription());
