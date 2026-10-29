@@ -1,6 +1,6 @@
 # PUT /decks/{deckId}/services/{serviceId}
 
-Deck persistence change reviewed against implementation on 2026-10-29. Paths are relative to `/api`.
+CASMS-90 reviewed against implementation on 2026-10-29. Paths are relative to `/api`; optional `shipId` scopes the physical deck.
 
 No request body. Uses an existing catalogue service only. Does not change model state, create a service, or enable sales. Deck row lock serializes retries and concurrent assignments; the unique pair constraint is the database backstop.
 
@@ -18,12 +18,20 @@ sequenceDiagram
         Security-->>Client: Denied by filter or method security
     else Authorized request
         Security->>Controller: assign with bound parameters
-        Controller->>Service: service.assign()
+        Note over Controller: Invalid path or query UUID returns 400 before service call
+        Controller->>Service: assign(deckId, serviceId, shipId)
         Note over Service,DB: Transaction begins
-        Service->>Repository: DeckRepository.findByIdForUpdate and ServiceRepository.findByIdForUpdate
-        Repository->>DB: SELECT deck and service FOR UPDATE
+        Service->>Repository: DeckRepository.findByIdForUpdate
+        Repository->>DB: SELECT deck FOR UPDATE
+        opt Explicit shipId supplied
+            Service->>Repository: ShipRepository.existsById(shipId)
+            Repository->>DB: SELECT ship existence
+            Service->>Service: Compare deck owning ship with requested shipId, reject mismatch with 404
+        end
+        Service->>Repository: ServiceRepository.findByIdForUpdate
+        Repository->>DB: SELECT existing catalogue service FOR UPDATE
         DB-->>Repository: Existing parent rows or no row
-        alt Deck or service missing
+        alt Deck, requested ship or service missing, or deck outside ship scope
             Service-->>Controller: ResourceNotFoundException, rollback, HTTP 404
         else Parents exist
             Service->>Repository: findByDeckDeckIdAndServiceServiceId

@@ -34,7 +34,10 @@ sequenceDiagram
         API-->>Client: Deck UUIDs and metadata
         Client->>Security: PUT deck services serviceId, DECK_READ and SERVICE_UPDATE
         Security->>API: assign
-        API->>Assignment: assign(deckId, serviceId)
+        API->>Assignment: assign(deckId, serviceId, optional shipId)
+        opt Client supplies shipId
+            Assignment->>DB: Check Ship exists and deck belongs to it, else 404 without assignment writes
+        end
         Assignment->>Repository: Lock Deck and existing Service, resolve pair
         Repository->>DB: Read or insert unique DeckServiceAssignment, commit
         API-->>Client: 200 assignment DTO
@@ -45,7 +48,7 @@ sequenceDiagram
         end
         Client->>Security: GET deck services, DECK_READ and SERVICE_READ
         Security->>API: list
-        API->>Assignment: list(deckId)
+        API->>Assignment: list(deckId, optional shipId), validate supplied ship scope
         Assignment->>Repository: Read assignments with service data
         Repository->>DB: Read-only query
         API-->>Client: 200 assignments preserved across reimport

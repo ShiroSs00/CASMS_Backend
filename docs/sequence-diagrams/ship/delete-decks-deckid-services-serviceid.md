@@ -1,6 +1,6 @@
 # DELETE /decks/{deckId}/services/{serviceId}
 
-Deck persistence change reviewed against implementation on 2026-10-29. Paths are relative to `/api`.
+CASMS-90 reviewed against implementation on 2026-10-29. Paths are relative to `/api`; optional `shipId` scopes the physical deck.
 
 Idempotent when the assignment is absent and both parents still exist.
 
@@ -18,11 +18,19 @@ sequenceDiagram
         Security-->>Client: Denied by filter or method security
     else Authorized request
         Security->>Controller: unassign with bound parameters
-        Controller->>Service: service.unassign()
+        Note over Controller: Invalid path or query UUID returns 400 before service call
+        Controller->>Service: unassign(deckId, serviceId, shipId)
         Note over Service,DB: Transaction begins
-        Service->>Repository: DeckRepository.findByIdForUpdate and ServiceRepository.existsById
-        Repository->>DB: Lock deck and check service existence
-        alt Parent missing
+        Service->>Repository: DeckRepository.findByIdForUpdate
+        Repository->>DB: SELECT deck FOR UPDATE
+        opt Explicit shipId supplied
+            Service->>Repository: ShipRepository.existsById(shipId)
+            Repository->>DB: SELECT ship existence
+            Service->>Service: Compare deck owning ship with requested shipId, reject mismatch with 404
+        end
+        Service->>Repository: ServiceRepository.findByIdForUpdate
+        Repository->>DB: SELECT existing service FOR UPDATE
+        alt Parent missing or deck outside requested ship
             Service-->>Controller: ResourceNotFoundException, rollback, HTTP 404
         else Parents exist
             Service->>Repository: findByDeckDeckIdAndServiceServiceId
