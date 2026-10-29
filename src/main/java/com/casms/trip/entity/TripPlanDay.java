@@ -1,6 +1,9 @@
 package com.casms.trip.entity;
 
 import com.casms.ship.enums.ItineraryDayType;
+import com.casms.ship.entity.Port;
+import java.time.LocalTime;
+import com.casms.ship.enums.ItineraryDayRole;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
@@ -31,6 +34,28 @@ public class TripPlanDay {
     @Enumerated(EnumType.STRING)
     @Column(name = "day_type", length = 50)
     private ItineraryDayType dayType;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "departure_port_id")
+    private Port departurePort;
+
+    @Column(name = "planned_departure_time")
+    private LocalTime plannedDepartureTime;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "day_role", nullable = false, length = 40)
+    private ItineraryDayRole dayRole = ItineraryDayRole.REGULAR;
+
+    public ItineraryDayRole getDayRole() {
+        if (dayNumber == null || version == null) return dayRole;
+        if (version.getTrip() == null || version.getTrip().getDurationDays() == null) return dayRole;
+        return ItineraryDayRole.forDay(dayNumber, version.getTrip().getDurationDays());
+    }
+
+    @PrePersist
+    @PreUpdate
+    private void synchronizeDayRole() { dayRole = getDayRole(); }
+
 
     @Column(name = "ship_time_zone_id", nullable = false, length = 100)
     private String shipTimeZoneId = "Asia/Ho_Chi_Minh";

@@ -1,6 +1,7 @@
 package com.casms.ship.entity;
 
 import com.casms.ship.enums.ItineraryDayType;
+import com.casms.ship.enums.ItineraryDayRole;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
@@ -39,6 +40,21 @@ public class ItineraryDay {
     @Enumerated(EnumType.STRING)
     @Column(name = "day_type", nullable = false)
     private ItineraryDayType dayType;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "day_role", nullable = false, length = 40)
+    private ItineraryDayRole dayRole = ItineraryDayRole.REGULAR;
+
+    public ItineraryDayRole getDayRole() {
+        if (dayNumber == null || itinerary == null) return dayRole;
+        if (itinerary.getStartDate() == null || itinerary.getEndDate() == null) return dayRole;
+        return ItineraryDayRole.forDay(dayNumber, Math.toIntExact(java.time.temporal.ChronoUnit.DAYS.between(itinerary.getStartDate(), itinerary.getEndDate()) + 1));
+    }
+
+    @PrePersist
+    @PreUpdate
+    private void synchronizeDayRole() { dayRole = getDayRole(); }
+
 
     @Column(name = "ship_time_zone_id", length = 100)
     private String shipTimeZoneId;

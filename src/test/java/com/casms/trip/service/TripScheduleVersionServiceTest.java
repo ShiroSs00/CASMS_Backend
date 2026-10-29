@@ -7,6 +7,7 @@ import com.casms.ship.entity.Port;
 import com.casms.ship.enums.CruiseStopArrivalMethod;
 import com.casms.ship.enums.CruiseStopCallType;
 import com.casms.ship.enums.ItineraryDayType;
+import com.casms.ship.enums.ItineraryDayRole;
 import com.casms.ship.enums.PortLocationType;
 import com.casms.ship.enums.PortStatus;
 import com.casms.ship.repository.DestinationRepository;
@@ -564,4 +565,106 @@ class TripScheduleVersionServiceTest {
         assertEquals("SAVE_DRAFT", history.get(0).getAction());
         assertEquals(creatorId, history.get(0).getActorUserId());
     }
+    @Test
+    void seaDepartureWithArrivalPortDoesNotRequireAnEmbarkationStop() {
+        version.getDays().getFirst().setDeparturePort(samplePort);
+        version.getDays().getFirst().setPlannedDepartureTime(LocalTime.of(8, 15));
+        version.getDays().get(0).setDayType(ItineraryDayType.SEA_DAY);
+        version.getDays().get(1).setDayType(ItineraryDayType.PORT_DAY);
+        TripPlanStop arrival = new TripPlanStop();
+        arrival.setClientKey("arrival"); arrival.setVersion(version); arrival.setPort(samplePort);
+        arrival.setStopOrder(1); arrival.setArrivalDayNumber(2); arrival.setDepartureDayNumber(2);
+        arrival.setPlannedArrivalTime(LocalTime.of(8, 0)); arrival.setPlannedDepartureTime(LocalTime.of(9, 0));
+        arrival.setIsDisembarkation(true);
+        version.getStops().add(arrival);
+        assertTrue(versionService.validateVersionInternal(version).isEmpty());
+        assertEquals(ItineraryDayRole.DEPARTURE, versionService.mapToDayResponse(version.getDays().get(0)).getDayRole());
+        assertEquals(ItineraryDayRole.ARRIVAL, versionService.mapToDayResponse(version.getDays().get(1)).getDayRole());
+    }
+
+    @Test
+    void saveRejectsSeaOnFinalDayAndForgedDayRole() {
+        when(versionRepository.findById(version.getVersionId())).thenReturn(Optional.of(version));
+        ScheduleDraftSaveRequest request = new ScheduleDraftSaveRequest(); request.setExpectedRevision(1L);
+        TripPlanDayDraftDto first = new TripPlanDayDraftDto(); first.setDayNumber(1); first.setDayType(ItineraryDayType.SEA_DAY);
+        TripPlanDayDraftDto last = new TripPlanDayDraftDto(); last.setDayNumber(2); last.setDayType(ItineraryDayType.SEA_DAY);
+        request.setDays(List.of(first, last));
+        assertEquals("END_DAY_REQUIRES_PORT", assertThrows(BusinessException.class,
+                () -> versionService.saveDraftById(version.getVersionId(), request, creatorId)).getCode());
+        last.setDayType(ItineraryDayType.PORT_DAY); first.setDayRole(ItineraryDayRole.ARRIVAL);
+        assertEquals("INVALID_DAY_ROLE", assertThrows(BusinessException.class,
+                () -> versionService.saveDraftById(version.getVersionId(), request, creatorId)).getCode());
+        verify(versionRepository, never()).save(any());
+    }
+
+    @Test
+    void saveAndReadKeepDepartureRoleSeparateFromSeaState() {
+        when(portRepository.findById(samplePort.getPortId())).thenReturn(Optional.of(samplePort));
+        when(versionRepository.findById(version.getVersionId())).thenReturn(Optional.of(version));
+        when(versionRepository.save(any(TripScheduleVersion.class))).thenAnswer(inv -> inv.getArgument(0));
+        ScheduleDraftSaveRequest request = new ScheduleDraftSaveRequest(); request.setExpectedRevision(1L);
+        TripPlanDayDraftDto first = new TripPlanDayDraftDto(); first.setDayNumber(1);
+        first.setDayType(ItineraryDayType.SEA_DAY); first.setDayRole(ItineraryDayRole.DEPARTURE);
+        first.setDeparturePortId(samplePort.getPortId()); first.setPlannedDepartureTime(LocalTime.of(8, 15, 30));
+        TripPlanDayDraftDto last = new TripPlanDayDraftDto(); last.setDayNumber(2);
+        last.setDayType(ItineraryDayType.PORT_DAY); last.setDayRole(ItineraryDayRole.ARRIVAL);
+        request.setDays(List.of(first, last));
+        var response = versionService.saveDraftById(version.getVersionId(), request, creatorId);
+        assertEquals(ItineraryDayType.SEA_DAY, response.getDays().get(0).getDayType());
+        assertEquals(ItineraryDayRole.DEPARTURE, response.getDays().get(0).getDayRole());
+        assertEquals(ItineraryDayType.PORT_DAY, response.getDays().get(1).getDayType());
+        assertEquals(ItineraryDayRole.ARRIVAL, response.getDays().get(1).getDayRole());
+        assertEquals(samplePort.getPortId(), response.getDays().get(0).getDeparturePortId());
+        assertEquals(LocalTime.of(8, 15, 30), response.getDays().get(0).getPlannedDepartureTime());
+    }
+
+    @Test
+    void oneDayTripHasBothRolesAndStillRequiresPortState() {
+        trip.setDurationDays(1);
+        version.getDays().removeLast();
+        version.getDays().getFirst().setDayType(ItineraryDayType.SEA_DAY);
+        assertEquals(ItineraryDayRole.DEPARTURE_AND_ARRIVAL, version.getDays().getFirst().getDayRole());
+        assertTrue(versionService.validateVersionInternal(version).stream().anyMatch(v -> "END_DAY_REQUIRES_PORT".equals(v.getCode())));
+    }
+
+    @Test
+    void departurePortAndClockAreRequiredForSeaAndPortStates() {
+        for (ItineraryDayType type : ItineraryDayType.values()) {
+            version.getDays().getFirst().setDayType(type);
+            var violations = versionService.validateVersionInternal(version);
+            assertTrue(violations.stream().anyMatch(v -> "DEPARTURE_PORT_REQUIRED".equals(v.getCode())));
+            assertTrue(violations.stream().anyMatch(v -> "DEPARTURE_TIME_REQUIRED".equals(v.getCode())));
+        }
+    }
+
+    @Test
+    void saveRejectsDepartureDetailsOutsideDayOne() {
+        when(versionRepository.findById(version.getVersionId())).thenReturn(Optional.of(version));
+        ScheduleDraftSaveRequest request = new ScheduleDraftSaveRequest(); request.setExpectedRevision(1L);
+        TripPlanDayDraftDto first = new TripPlanDayDraftDto(); first.setDayNumber(1); first.setDayType(ItineraryDayType.SEA_DAY);
+        TripPlanDayDraftDto last = new TripPlanDayDraftDto(); last.setDayNumber(2); last.setDayType(ItineraryDayType.PORT_DAY);
+        last.setDeparturePortId(samplePort.getPortId()); last.setPlannedDepartureTime(LocalTime.NOON);
+        request.setDays(List.of(first, last));
+        assertEquals("DEPARTURE_DETAILS_ONLY_DAY_ONE", assertThrows(BusinessException.class,
+                () -> versionService.saveDraftById(version.getVersionId(), request, creatorId)).getCode());
+        verify(versionRepository, never()).save(any());
+    }
+
+    @Test
+    void departurePortMetadataIsIndependentOfShoreCalls() {
+        version.getDays().getFirst().setDayType(ItineraryDayType.PORT_DAY);
+        version.getDays().getFirst().setDeparturePort(samplePort);
+        version.getDays().getFirst().setPlannedDepartureTime(LocalTime.of(8, 15));
+        version.getDays().getLast().setDayType(ItineraryDayType.PORT_DAY);
+        for (int number = 1; number <= 2; number++) {
+            TripPlanStop stop = new TripPlanStop(); stop.setClientKey("call-" + number); stop.setVersion(version);
+            stop.setPort(samplePort); stop.setStopOrder(number); stop.setArrivalDayNumber(number); stop.setDepartureDayNumber(number);
+            stop.setPlannedArrivalTime(LocalTime.of(9, 0)); stop.setPlannedDepartureTime(LocalTime.of(10, 0));
+            stop.setIsDisembarkation(number == 2); version.getStops().add(stop);
+        }
+        assertTrue(versionService.validateVersionInternal(version).isEmpty());
+        versionService.syncTripTypeFromStops(version);
+        assertEquals(com.casms.ship.enums.ItineraryType.ROUND_TRIP, trip.getTripType());
+    }
+
 }

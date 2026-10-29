@@ -17,6 +17,7 @@ import com.casms.ship.enums.CruiseStopArrivalMethod;
 import com.casms.ship.enums.CruiseStopCallType;
 import com.casms.ship.enums.CruiseStopStatus;
 import com.casms.ship.enums.ItineraryDayType;
+import com.casms.ship.enums.ItineraryDayRole;
 import com.casms.ship.enums.ItineraryStatus;
 import com.casms.ship.enums.ItineraryType;
 import com.casms.ship.repository.CruiseRepository;
@@ -344,6 +345,7 @@ public class ScheduleMaterializationService {
                     .dayNumber(d.getDayNumber())
                     .calendarDate(d.getDate())
                     .dayType(d.getDayType())
+                    .dayRole(d.getDayRole())
                     .title(d.getDescription())
                     .shipTimeZoneId(d.getShipTimeZoneId())
                     .stops(stopDtos)
@@ -395,9 +397,16 @@ public class ScheduleMaterializationService {
         TripPlanStop firstStop = planStops.isEmpty() ? null : planStops.get(0);
         TripPlanStop lastStop = planStops.isEmpty() ? null : planStops.get(planStops.size() - 1);
 
+        boolean startsAtSea = planDays.stream().anyMatch(day -> Integer.valueOf(1).equals(day.getDayNumber())
+                && day.getDayType() == ItineraryDayType.SEA_DAY);
         if (firstStop == null || firstStop.getPort() == null) {
             throw new BusinessException("MISSING_DEPARTURE_STOP", "Phiên bản lịch trình nguồn không có điểm dừng khởi hành.");
         }
+
+        TripPlanDay departureDay = planDays.stream().filter(day -> Integer.valueOf(1).equals(day.getDayNumber())).findFirst().orElse(null);
+        Port departurePort = departureDay != null && departureDay.getDeparturePort() != null
+                ? departureDay.getDeparturePort() : startsAtSea ? null : firstStop.getPort();
+        if (departurePort != null) CountryScopeValidator.validatePort(departurePort, trip, "Cảng khởi hành");
 
         // BE-04 / G06: Giờ cơ sở tàu (Ship Base Timezone) luôn là Asia/Ho_Chi_Minh
         ZoneId shipZone = PortTimeZoneHelper.SHIP_TIME_ZONE;
@@ -567,6 +576,7 @@ public class ScheduleMaterializationService {
                     .dayNumber(d)
                     .calendarDate(calDate)
                     .dayType(dayType)
+                    .dayRole(ItineraryDayRole.forDay(d, totalDays))
                     .title(title)
                     .shipTimeZoneId(shipZone.getId())
                     .stops(dayStopsMap.getOrDefault(d, Collections.emptyList()))
@@ -589,9 +599,9 @@ public class ScheduleMaterializationService {
                 .returnDatetime(returnDatetime)
                 .durationDays(trip.getDurationDays())
                 .durationNights(trip.getDurationNights())
-                .departurePortId(firstStop.getPort().getPortId())
-                .departurePortName(firstStop.getPort().getPortName())
-                .departurePortCode(firstStop.getPort().getPortCode())
+                .departurePortId(departurePort == null ? null : departurePort.getPortId())
+                .departurePortName(departurePort == null ? null : departurePort.getPortName())
+                .departurePortCode(departurePort == null ? null : departurePort.getPortCode())
                 .returnPortId(lastStop != null && lastStop.getPort() != null ? lastStop.getPort().getPortId() : null)
                 .returnPortName(lastStop != null && lastStop.getPort() != null ? lastStop.getPort().getPortName() : null)
                 .returnPortCode(lastStop != null && lastStop.getPort() != null ? lastStop.getPort().getPortCode() : null)

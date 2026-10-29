@@ -12,6 +12,7 @@ import com.casms.ship.entity.Port;
 import com.casms.ship.enums.CruiseStopArrivalMethod;
 import com.casms.ship.enums.CruiseStopCallType;
 import com.casms.ship.enums.ItineraryDayType;
+import com.casms.ship.enums.ItineraryDayRole;
 import com.casms.ship.enums.ItineraryType;
 import com.casms.ship.enums.PortStatus;
 import com.casms.ship.repository.DestinationRepository;
@@ -159,6 +160,19 @@ public class TripScheduleVersionService {
             }
         }
 
+        for (TripPlanDayDraftDto dayDto : request.getDays()) {
+            ItineraryDayRole expectedRole = ItineraryDayRole.forDay(dayDto.getDayNumber(), trip.getDurationDays());
+            if (dayDto.getDayRole() != null && dayDto.getDayRole() != expectedRole) {
+                throw new BusinessException(HttpStatus.BAD_REQUEST, "INVALID_DAY_ROLE", "Vai trò ngày không khớp vị trí trong lịch trình.");
+            }
+            if (dayDto.getDayNumber() != 1 && (dayDto.getDeparturePortId() != null || dayDto.getPlannedDepartureTime() != null)) {
+                throw new BusinessException(HttpStatus.BAD_REQUEST, "DEPARTURE_DETAILS_ONLY_DAY_ONE", "Cảng và giờ khởi hành chỉ được cấu hình ở ngày 1.");
+            }
+            if (expectedRole.isEnding() && dayDto.getDayType() == ItineraryDayType.SEA_DAY) {
+                throw new BusinessException(HttpStatus.BAD_REQUEST, "END_DAY_REQUIRES_PORT", "Ngày kết thúc phải chọn cảng trả khách.");
+            }
+        }
+
         // 1. Reconcile Days
         Map<Integer, TripPlanDay> dayMap = version.getDays().stream()
                 .collect(Collectors.toMap(TripPlanDay::getDayNumber, d -> d));
@@ -172,10 +186,23 @@ public class TripScheduleVersionService {
                 version.getDays().add(day);
                 dayMap.put(day.getDayNumber(), day);
             }
-            day.setDayType(dayDto.getDayType());
+            day.setDayRole(ItineraryDayRole.forDay(day.getDayNumber(), trip.getDurationDays()));
+            day.setDayType(day.getDayRole().isEnding() ? ItineraryDayType.PORT_DAY : dayDto.getDayType());
             if (dayDto.getShipTimeZoneId() != null && !dayDto.getShipTimeZoneId().isBlank()) {
                 day.setShipTimeZoneId(dayDto.getShipTimeZoneId().trim());
             }
+            Port departurePort = dayDto.getDeparturePortId() == null ? null : portRepository.findById(dayDto.getDeparturePortId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Port", dayDto.getDeparturePortId()));
+            if (departurePort != null) {
+                if (departurePort.getStatus() != PortStatus.ACTIVE)
+                    throw new BusinessException(HttpStatus.BAD_REQUEST, "INACTIVE_PORT", "Cảng khởi hành không còn hoạt động.");
+                CountryScopeValidator.validatePort(departurePort, trip, "Cảng khởi hành");
+                if (CountryScopeValidator.isDomestic(trip) && trip.getDomesticRegions() != null && !trip.getDomesticRegions().isEmpty()
+                        && !trip.getDomesticRegions().contains(resolveDomesticRegion(departurePort)))
+                    throw new BusinessException(HttpStatus.BAD_REQUEST, "PORT_OUTSIDE_DOMESTIC_REGION", "Cảng khởi hành không thuộc miền đã chọn.");
+            }
+            day.setDeparturePort(departurePort);
+            day.setPlannedDepartureTime(dayDto.getPlannedDepartureTime());
             day.setTitle(dayDto.getTitle());
             day.setDescription(dayDto.getDescription());
         }
@@ -919,6 +946,8 @@ public class TripScheduleVersionService {
             newDay.setVersion(newVersion);
             newDay.setDayNumber(oldDay.getDayNumber());
             newDay.setDayType(oldDay.getDayType());
+                newDay.setDeparturePort(oldDay.getDeparturePort());
+                newDay.setPlannedDepartureTime(oldDay.getPlannedDepartureTime());
             newDay.setShipTimeZoneId(oldDay.getShipTimeZoneId());
             newDay.setTitle(oldDay.getTitle());
             newDay.setDescription(oldDay.getDescription());
@@ -1008,8 +1037,11 @@ public class TripScheduleVersionService {
                 .filter(s -> Boolean.TRUE.equals(s.getIsDisembarkation()))
                 .findFirst().orElse(null);
 
-        if (embarkStop != null && disembarkStop != null && embarkStop.getPort() != null && disembarkStop.getPort() != null) {
-            boolean samePort = Objects.equals(embarkStop.getPort().getPortId(), disembarkStop.getPort().getPortId());
+        Port originPort = version.getDays().stream().filter(d -> Integer.valueOf(1).equals(d.getDayNumber()))
+                .map(TripPlanDay::getDeparturePort).filter(Objects::nonNull).findFirst()
+                .orElse(embarkStop == null ? null : embarkStop.getPort());
+        if (originPort != null && disembarkStop != null && disembarkStop.getPort() != null) {
+            boolean samePort = Objects.equals(originPort.getPortId(), disembarkStop.getPort().getPortId());
             ItineraryType inferredType = samePort ? ItineraryType.ROUND_TRIP : ItineraryType.ONE_WAY;
             if (trip.getTripType() != inferredType) {
                 trip.setTripType(inferredType);
@@ -1053,6 +1085,41 @@ public class TripScheduleVersionService {
                         .actionHint("SELECT_DAY_TYPE")
                         .message("Ngày " + day.getDayNumber() + " chưa được xác định loại ngày (PORT_DAY hoặc SEA_DAY)")
                         .build());
+            }
+        }
+
+        for (TripPlanDay day : days) {
+            if (day.getDayNumber() != null && day.getDayNumber().equals(trip.getDurationDays())
+                    && day.getDayType() != ItineraryDayType.PORT_DAY) {
+                violations.add(PlanViolation.builder().code("END_DAY_REQUIRES_PORT").severity("ERROR")
+                        .entityType("DAY").dayNumber(day.getDayNumber()).field("dayType")
+                        .fieldPath("days[" + day.getDayNumber() + "].dayType").actionHint("SELECT_PORT_DAY")
+                        .message("Ngày kết thúc phải chọn cảng trả khách.").build());
+            }
+        }
+
+        TripPlanDay departureDay = days.stream().filter(d -> Integer.valueOf(1).equals(d.getDayNumber())).findFirst().orElse(null);
+        if (departureDay != null) {
+            if (departureDay.getDeparturePort() == null || departureDay.getDeparturePort().getStatus() != PortStatus.ACTIVE) {
+                violations.add(PlanViolation.builder().code("DEPARTURE_PORT_REQUIRED").severity("ERROR").entityType("DAY")
+                        .dayNumber(1).field("departurePortId").fieldPath("days[1].departurePortId")
+                        .actionHint("SELECT_DEPARTURE_PORT").message("Chọn cảng khởi hành đang hoạt động cho ngày 1, kể cả khi ở trên biển.").build());
+            }
+            if (departureDay.getDeparturePort() != null) {
+                try {
+                    CountryScopeValidator.validatePort(departureDay.getDeparturePort(), trip, "Cảng khởi hành");
+                    if (CountryScopeValidator.isDomestic(trip) && trip.getDomesticRegions() != null && !trip.getDomesticRegions().isEmpty()
+                            && !trip.getDomesticRegions().contains(resolveDomesticRegion(departureDay.getDeparturePort())))
+                        throw new BusinessException("PORT_OUTSIDE_DOMESTIC_REGION", "Cảng khởi hành không thuộc miền đã chọn.");
+                } catch (BusinessException ex) {
+                    violations.add(PlanViolation.builder().code(ex.getCode()).severity("ERROR").entityType("DAY")
+                            .dayNumber(1).field("departurePortId").fieldPath("days[1].departurePortId").message(ex.getMessage()).build());
+                }
+            }
+            if (departureDay.getPlannedDepartureTime() == null) {
+                violations.add(PlanViolation.builder().code("DEPARTURE_TIME_REQUIRED").severity("ERROR").entityType("DAY")
+                        .dayNumber(1).field("plannedDepartureTime").fieldPath("days[1].plannedDepartureTime")
+                        .actionHint("SET_DEPARTURE_TIME").message("Nhập giờ khởi hành dự kiến theo giờ Việt Nam.").build());
             }
         }
 
@@ -1300,7 +1367,9 @@ public class TripScheduleVersionService {
             }
         }
 
-        if (!hasEmbarkation && !stops.isEmpty()) {
+        boolean startsAtSea = days.stream().anyMatch(day -> Integer.valueOf(1).equals(day.getDayNumber())
+                && day.getDayType() == ItineraryDayType.SEA_DAY);
+        if (!hasEmbarkation && !startsAtSea && (departureDay == null || departureDay.getDeparturePort() == null) && !stops.isEmpty()) {
             violations.add(PlanViolation.builder()
                     .code("MISSING_EMBARKATION")
                     .severity("ERROR")
@@ -1334,8 +1403,11 @@ public class TripScheduleVersionService {
                 .filter(s -> Boolean.TRUE.equals(s.getIsDisembarkation()))
                 .findFirst().orElse(null);
 
-        if (embarkStop != null && disembarkStop != null && embarkStop.getPort() != null && disembarkStop.getPort() != null) {
-            boolean samePort = Objects.equals(embarkStop.getPort().getPortId(), disembarkStop.getPort().getPortId());
+        Port originPort = version.getDays().stream().filter(d -> Integer.valueOf(1).equals(d.getDayNumber()))
+                .map(TripPlanDay::getDeparturePort).filter(Objects::nonNull).findFirst()
+                .orElse(embarkStop == null ? null : embarkStop.getPort());
+        if (originPort != null && disembarkStop != null && disembarkStop.getPort() != null) {
+            boolean samePort = Objects.equals(originPort.getPortId(), disembarkStop.getPort().getPortId());
             ItineraryType expectedType = samePort ? ItineraryType.ROUND_TRIP : ItineraryType.ONE_WAY;
             if (trip.getTripType() != null && trip.getTripType() != expectedType) {
                 violations.add(PlanViolation.builder()
@@ -1346,7 +1418,7 @@ public class TripScheduleVersionService {
                         .fieldPath("trip.tripType")
                         .actionHint("MATCH_PORTS_OR_CHANGE_TYPE")
                         .message("Tuyến được lưu là " + trip.getTripType() + " nhưng cảng đón ("
-                                + embarkStop.getPort().getPortCode() + ") và cảng trả ("
+                                + originPort.getPortCode() + ") và cảng trả ("
                                 + disembarkStop.getPort().getPortCode() + ") tương ứng với kiểu tuyến " + expectedType + ".")
                         .build());
             }
@@ -1708,6 +1780,10 @@ public class TripScheduleVersionService {
         res.setDayId(day.getDayId());
         res.setDayNumber(day.getDayNumber());
         res.setDayType(day.getDayType());
+        res.setDayRole(day.getDayRole());
+        res.setDeparturePortId(day.getDeparturePort() == null ? null : day.getDeparturePort().getPortId());
+        res.setDeparturePortName(day.getDeparturePort() == null ? null : day.getDeparturePort().getPortName());
+        res.setPlannedDepartureTime(day.getPlannedDepartureTime());
         res.setShipTimeZoneId(day.getShipTimeZoneId());
         res.setTitle(day.getTitle());
         res.setDescription(day.getDescription());
@@ -1844,7 +1920,11 @@ public class TripScheduleVersionService {
             for (TripPlanDay day : version.getDays()) {
                 sb.append("D(").append(day.getDayNumber()).append(":")
                   .append(day.getDayType()).append(":")
-                  .append(day.getShipTimeZoneId()).append(");");
+                  .append(day.getShipTimeZoneId());
+                if (day.getDeparturePort() != null || day.getPlannedDepartureTime() != null)
+                    sb.append(":departure:").append(day.getDeparturePort() == null ? "" : day.getDeparturePort().getPortId())
+                      .append(":").append(day.getPlannedDepartureTime());
+                sb.append(");");
             }
             for (TripPlanStop stop : version.getStops()) {
                 sb.append("S(").append(stop.getClientKey()).append(",")
@@ -1895,6 +1975,10 @@ public class TripScheduleVersionService {
         TripPlanStop firstStop = stops.isEmpty() ? null : stops.get(0);
         TripPlanStop lastStop = stops.isEmpty() ? null : stops.get(stops.size() - 1);
 
+        Port originPort = v.getDays().stream().filter(day -> Integer.valueOf(1).equals(day.getDayNumber()))
+                .map(TripPlanDay::getDeparturePort).filter(Objects::nonNull).findFirst()
+                .orElse(firstStop == null ? null : firstStop.getPort());
+
         List<String> stopSummaries = stops.stream()
                 .filter(s -> s.getPort() != null)
                 .map(s -> String.format("%s (%s)", s.getPort().getPortName(), s.getPort().getPortCode()))
@@ -1913,9 +1997,9 @@ public class TripScheduleVersionService {
                 .plannedScope(trip != null ? trip.getPlannedScope() : null)
                 .countryCodes(CountryScopeValidator.resolveAllowedCountries(trip))
                 .domesticRegions(trip != null ? trip.getDomesticRegions() : Collections.emptyList())
-                .departurePortId(firstStop != null && firstStop.getPort() != null ? firstStop.getPort().getPortId() : null)
-                .departurePortName(firstStop != null && firstStop.getPort() != null ? firstStop.getPort().getPortName() : null)
-                .departurePortCode(firstStop != null && firstStop.getPort() != null ? firstStop.getPort().getPortCode() : null)
+                .departurePortId(originPort == null ? null : originPort.getPortId())
+                .departurePortName(originPort == null ? null : originPort.getPortName())
+                .departurePortCode(originPort == null ? null : originPort.getPortCode())
                 .returnPortId(lastStop != null && lastStop.getPort() != null ? lastStop.getPort().getPortId() : null)
                 .returnPortName(lastStop != null && lastStop.getPort() != null ? lastStop.getPort().getPortName() : null)
                 .returnPortCode(lastStop != null && lastStop.getPort() != null ? lastStop.getPort().getPortCode() : null)
