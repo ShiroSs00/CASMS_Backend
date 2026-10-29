@@ -67,6 +67,10 @@ public class Cruise {
     @Column(name = "revision", nullable = false)
     private Long revision = 1L;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "preparation_coordinator_id")
+    private User preparationCoordinator;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false)
     private CruiseStatus status;
@@ -125,6 +129,19 @@ public class Cruise {
 
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
+
+    @Column(name = "itinerary_mode", nullable = false)
+    private String itineraryMode = "FIXED";
+    @Column(name = "planned_scope")
+    private String plannedScope;
+    @Column(name = "booking_opens_at")
+    private Instant bookingOpensAt;
+    @Column(name = "booking_closes_at")
+    private Instant bookingClosesAt;
+    @Column(name = "guidance_opens_at")
+    private Instant guidanceOpensAt;
+    @Column(name = "guidance_closes_at")
+    private Instant guidanceClosesAt;
 
     @PrePersist
     protected void onCreate() {

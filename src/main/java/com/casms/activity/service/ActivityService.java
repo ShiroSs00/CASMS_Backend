@@ -42,6 +42,8 @@ public class ActivityService {
     @Transactional(readOnly = true)
     public List<OnboardActivity> listActivities() { return activities.findAll(); }
     @Transactional(readOnly = true)
+    public List<OnboardActivity> listActivitiesForCruise(UUID cruiseId) { return activities.findByCruise_CruiseId(cruiseId); }
+    @Transactional(readOnly = true)
     public OnboardActivity activity(UUID id) { return activities.findById(id).orElseThrow(() -> missing("Activity", id)); }
     @Transactional(readOnly = true)
     public int availableSeats(UUID id){OnboardActivity a=activity(id);if(a.getStatus()!=OnboardActivityStatus.OPEN||!a.getEndTime().isAfter(Instant.now()))return 0;return (int)Math.max(0,a.getCapacity()-occupied(id));}
@@ -51,6 +53,7 @@ public class ActivityService {
     }
 
     public OnboardActivity createActivity(OnboardActivity a, UUID cruiseId, UUID deckId, UUID cabinId) {
+        com.casms.common.util.NewWriteCurrency.requireUsd(a.getCurrencyCode());
         a.setCruise(cruises.findById(cruiseId).orElseThrow(() -> missing("Cruise", cruiseId)));
         a.setActivityCode(businessCodeGenerator.next("AC"));
         if (a.getCurrencyCode() == null || a.getCurrencyCode().isBlank()) {
@@ -70,20 +73,33 @@ public class ActivityService {
     }
 
     public OnboardActivity updateActivity(UUID id, OnboardActivity input, UUID deckId, UUID cabinId) {
-        OnboardActivity a = activity(id);
+        com.casms.common.util.NewWriteCurrency.requireUsd(input.getCurrencyCode());
+        OnboardActivity a = activities.lockActivity(id).orElseThrow(() -> missing("Activity",id));
         if (a.getStatus() != OnboardActivityStatus.PLANNED) throw new IllegalStateException("Only planned activities can be edited");
+        long allocated=occupied(id);
+        if(input.getCapacity()!=null&&input.getCapacity()<allocated)
+            throw new com.casms.common.exception.BusinessException(org.springframework.http.HttpStatus.UNPROCESSABLE_ENTITY,
+                "CAPACITY_BELOW_ALLOCATED","Activity capacity cannot be below reserved participants",
+                java.util.Map.of("fieldPath","capacity","allocatedParticipants",allocated));
+        OnboardActivity venue = new OnboardActivity();
+        venue.setCruise(a.getCruise());
+        resolveDeckAndCabin(venue, deckId, cabinId);
         a.setActivityName(input.getActivityName()); a.setDescription(input.getDescription());
         a.setStartTime(input.getStartTime()); a.setEndTime(input.getEndTime()); a.setLocation(input.getLocation()); a.setCapacity(input.getCapacity());
         a.setPrice(input.getPrice()); a.setCurrencyCode(input.getCurrencyCode());
-        resolveDeckAndCabin(a, deckId, cabinId);
+        a.setDeck(venue.getDeck()); a.setCabin(venue.getCabin());
         validateActivity(a, id);
         return a;
     }
 
     private void resolveDeckAndCabin(OnboardActivity a, UUID deckId, UUID cabinId) {
+        UUID shipId = a.getCruise() != null && a.getCruise().getShip() != null
+                ? a.getCruise().getShip().getShipId() : null;
         if (deckId != null) {
             Deck deck = deckRepository.findById(deckId)
                     .orElseThrow(() -> new EntityNotFoundException("Deck not found: " + deckId));
+            if(shipId == null || deck.getShip() == null || !shipId.equals(deck.getShip().getShipId()))
+                throw venueMismatch("deckId");
             a.setDeck(deck);
         } else {
             a.setDeck(null);
@@ -91,6 +107,11 @@ public class ActivityService {
         if (cabinId != null) {
             Cabin cabin = cabinRepository.findById(cabinId)
                     .orElseThrow(() -> new EntityNotFoundException("Cabin not found: " + cabinId));
+            if(shipId == null || cabin.getShip() == null || !shipId.equals(cabin.getShip().getShipId())
+                    || cabin.getDeck() == null || cabin.getDeck().getShip() == null
+                    || !shipId.equals(cabin.getDeck().getShip().getShipId())
+                    || deckId != null && !deckId.equals(cabin.getDeck().getDeckId()))
+                throw venueMismatch("cabinId");
             a.setCabin(cabin);
             if (a.getDeck() == null && cabin.getDeck() != null) {
                 a.setDeck(cabin.getDeck());
@@ -98,6 +119,11 @@ public class ActivityService {
         } else {
             a.setCabin(null);
         }
+    }
+    private static com.casms.common.exception.BusinessException venueMismatch(String field) {
+        return new com.casms.common.exception.BusinessException(org.springframework.http.HttpStatus.UNPROCESSABLE_ENTITY,
+                "ACTIVITY_VENUE_MISMATCH", "Activity venue must belong to the assigned ship and selected deck",
+                java.util.Map.of("fieldPath",field));
     }
     public void deleteActivity(UUID id) {
         OnboardActivity a = activity(id);
@@ -107,7 +133,7 @@ public class ActivityService {
     public OnboardActivity lifecycle(UUID id, String action) {
         OnboardActivity a = activity(id);
         switch (action) {
-            case "open" -> { if (a.getStatus()!=OnboardActivityStatus.PLANNED) invalid(); a.setStatus(OnboardActivityStatus.OPEN); }
+            case "open" -> { if (a.getStatus()!=OnboardActivityStatus.PLANNED) invalid(); validateActivity(a,id); a.setStatus(OnboardActivityStatus.OPEN); }
             case "close" -> throw new UnsupportedOperationException("OnboardActivity has no CLOSED status; closing registrations cannot be represented without changing the approved schema");
             case "start" -> { if (a.getStatus()!=OnboardActivityStatus.OPEN && a.getStatus()!=OnboardActivityStatus.FULL) invalid(); if (a.getStartTime().isAfter(Instant.now())) invalid(); a.setStatus(OnboardActivityStatus.IN_PROGRESS); }
             case "complete" -> { if (a.getStatus()!=OnboardActivityStatus.IN_PROGRESS) invalid(); a.setStatus(OnboardActivityStatus.COMPLETED); }
@@ -119,6 +145,13 @@ public class ActivityService {
     public void validateActivity(OnboardActivity a, UUID exclude) {
         if (a.getActivityCode()==null || a.getActivityCode().isBlank() || a.getActivityName()==null || a.getActivityName().isBlank()) throw new IllegalArgumentException("Activity code and name are required");
         if (a.getStartTime()==null || a.getEndTime()==null || !a.getEndTime().isAfter(a.getStartTime())) throw new IllegalArgumentException("Activity end must be after start");
+        if(a.getCruise()!=null) {
+            var departure=a.getCruise().getDepartureDatetime();var end=a.getCruise().getReturnDatetime();
+            if(departure==null||end==null||a.getStartTime().isBefore(departure)||a.getEndTime().isAfter(end))
+                throw new com.casms.common.exception.BusinessException(org.springframework.http.HttpStatus.UNPROCESSABLE_ENTITY,
+                    "ACTIVITY_OUTSIDE_CRUISE","Activity must fit the Cruise schedule",
+                    java.util.Map.of("fieldPath",departure==null||a.getStartTime().isBefore(departure)?"startTime":"endTime"));
+        }
         if (a.getCapacity()==null || a.getCapacity()<1) throw new IllegalArgumentException("Capacity must be positive");
         if (a.getPrice()!=null && (a.getPrice().signum()<0 || a.getCurrencyCode()==null || a.getCurrencyCode().isBlank())) throw new IllegalArgumentException("A non-negative price requires a currency");
         activities.findByActivityCode(a.getActivityCode()).filter(x -> !x.getOnboardActivityId().equals(exclude)).ifPresent(x -> { throw new IllegalArgumentException("Activity code already exists"); });

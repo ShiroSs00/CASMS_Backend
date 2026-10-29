@@ -35,6 +35,10 @@ public class BookingCreateRequest {
     @Schema(description = "ID của báo giá đã được cấp (nếu có, dùng để khóa giá và chính sách thanh toán)", example = "11111111-2222-3333-4444-555555555555")
     private UUID quoteId;
 
+    @Schema(description = "Thông tin xác thực báo giá của khách chưa đăng nhập; chỉ dùng cho báo giá khách vãng lai")
+    @Size(max = 100)
+    private String quoteGuestToken;
+
     @Schema(description = "Ghi chú thêm về đơn đặt chỗ", example = "Yêu cầu bữa ăn chay nếu có")
     @Size(max = 500, message = "Notes must not exceed 500 characters")
     private String notes;

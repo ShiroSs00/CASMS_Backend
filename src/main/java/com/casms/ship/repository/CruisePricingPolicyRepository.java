@@ -10,7 +10,8 @@ import java.util.UUID;
 
 @Repository
 public interface CruisePricingPolicyRepository extends JpaRepository<CruisePricingPolicy, UUID> {
-    Optional<CruisePricingPolicy> findByCruise_CruiseId(UUID cruiseId);
+    @org.springframework.data.jpa.repository.Query(value="SELECT * FROM \"CruisePricingPolicy\" WHERE cruise_id=:cruiseId ORDER BY policy_number DESC LIMIT 1",nativeQuery=true)
+    Optional<CruisePricingPolicy> findByCruise_CruiseId(@org.springframework.data.repository.query.Param("cruiseId") UUID cruiseId);
     Optional<CruisePricingPolicy> findByCruise_CruiseIdAndStatus(UUID cruiseId, PricingPolicyStatus status);
     boolean existsByCruise_CruiseIdAndStatus(UUID cruiseId, PricingPolicyStatus status);
     boolean existsByCruise_CruiseId(UUID cruiseId);

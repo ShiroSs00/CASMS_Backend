@@ -125,4 +125,6 @@ public class CruiseResponse {
 
     @Schema(description = "Thời điểm cập nhật gần nhất")
     private Instant updatedAt;
+    private String itineraryMode;
+    private String plannedScope;
 }

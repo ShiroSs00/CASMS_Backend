@@ -144,6 +144,7 @@ public class CruiseService {
     private final OperationalIssueRepository operationalIssueRepository;
     private final CruiseAuditService cruiseAuditService;
     private final CruisePackageService cruisePackageService;
+    private final CruiseMainflowService mainflow;
 
     @Transactional
     public CruiseResponse create(CruiseCreateRequest request) {
@@ -166,8 +167,8 @@ public class CruiseService {
             if (sourceVersion.getTrip() != null && sourceVersion.getTrip().getStatus() == TripStatus.ARCHIVED) {
                 throw new BusinessException("TRIP_ARCHIVED", "Trip nguồn đã bị ARCHIVED hoặc không tồn tại.");
             }
-            if (request.getExpectedSourceVersionRevision() != null && !Objects.equals(request.getExpectedSourceVersionRevision(), sourceVersion.getRevision())) {
-                throw new BusinessException("STALE_PREVIEW",
+            if (request.getExpectedSourceVersionRevision() == null || !Objects.equals(request.getExpectedSourceVersionRevision(), sourceVersion.getRevision())) {
+                throw new BusinessException(HttpStatus.CONFLICT, "STALE_PREVIEW",
                         String.format("Phiên bản nguồn đã thay đổi (revision hiện tại: %d, revision preview: %d). Vui lòng tải lại preview trước khi tạo.",
                                 sourceVersion.getRevision(), request.getExpectedSourceVersionRevision()));
             }
@@ -239,12 +240,22 @@ public class CruiseService {
         Cruise cruise = new Cruise();
         cruise.setCruiseCode(cruiseCode);
         cruise.setCruiseName(request.getCruiseName());
+        var creatingAuth=org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+        if(creatingAuth!=null&&creatingAuth.getPrincipal() instanceof com.casms.security.principal.CasmsPrincipal creator
+                &&creator.hasRole(com.casms.identity.enums.Role.CRUISE_MANAGER))
+            cruise.setPreparationCoordinator(creator.getUser());
         cruise.setShip(ship);
         cruise.setCruiseType(cruiseType);
         cruise.setDepartureDatetime(request.getDepartureDatetime());
         cruise.setReturnDatetime(request.getReturnDatetime());
         cruise.setDeparturePort(departurePort);
         cruise.setReturnPort(returnPort);
+        String mode = request.getItineraryMode();
+        if (mode == null) mode = "FIXED";
+        if (!Set.of("FIXED", "CUSTOM").contains(mode))
+            throw new BusinessException(HttpStatus.UNPROCESSABLE_ENTITY, "INVALID_ITINERARY_MODE", "Invalid itinerary mode");
+        cruise.setItineraryMode(mode);
+        cruise.setPlannedScope(sourceVersion != null ? sourceVersion.getTrip().getPlannedScope() : request.getPlannedScope());
         cruise.setStatus(CruiseStatus.DRAFT);
         if (sourceVersion != null) {
             cruise.setSourceVersion(sourceVersion);
@@ -261,6 +272,7 @@ public class CruiseService {
         if (sourceVersion != null) {
             scheduleMaterializationService.materializeSchedule(cruise, sourceVersion);
         }
+        cruisePreparationService.initializeSections(cruise);
         return mapToResponse(cruise);
     }
 
@@ -930,13 +942,7 @@ public class CruiseService {
 
         Optional<Itinerary> itineraryOpt = itineraryRepository.findByCruiseCruiseId(cruiseId);
         boolean itineraryConfigured = itineraryOpt.isPresent();
-        boolean itineraryApproved = itineraryConfigured && (
-                itineraryOpt.get().getStatus() == ItineraryStatus.APPROVED ||
-                itineraryOpt.get().getStatus() == ItineraryStatus.OPEN_FOR_SALE ||
-                itineraryOpt.get().getStatus() == ItineraryStatus.ACTIVE ||
-                itineraryOpt.get().getStatus() == ItineraryStatus.SUSPENDED ||
-                (Boolean.TRUE.equals(itineraryOpt.get().getApprovalInherited()) && !Boolean.TRUE.equals(itineraryOpt.get().getContentModifiedAfterMaterialization()))
-        );
+        boolean itineraryApproved = itineraryConfigured && mainflow.isPlanApproved(cruiseId);
         if (!itineraryConfigured) {
             issues.add("Chuyến đi chưa được liên kết hải trình (Itinerary)");
             blockers.add("ITINERARY_MISSING");
@@ -955,24 +961,21 @@ public class CruiseService {
                     .remediationOperation("POST")
                     .build());
         } else if (!itineraryApproved) {
-            boolean modified = Boolean.TRUE.equals(itineraryOpt.get().getContentModifiedAfterMaterialization());
-            String msg = modified
-                    ? "Hải trình của chuyến đi đã bị chỉnh sửa nội dung sau khi khởi tạo từ nguồn và cần được thẩm định/phê duyệt lại"
-                    : "Hải trình của chuyến đi chưa được phê duyệt hoặc mở bán (Trạng thái hiện tại: " + itineraryOpt.get().getStatus() + ")";
+            String msg = "Kế hoạch khởi hành chưa được OPS phê duyệt";
             issues.add(msg);
-            blockers.add("ITINERARY_NOT_APPROVED");
+            blockers.add("PLAN_APPROVAL_REQUIRED");
             details.add(ReadinessIssueDetail.builder()
-                    .code("ITINERARY_NOT_APPROVED")
-                    .targetType("ITINERARY")
-                    .targetId(itineraryOpt.get().getItineraryId())
+                    .code("PLAN_APPROVAL_REQUIRED")
+                    .targetType("CRUISE")
+                    .targetId(cruiseId)
                     .scope("CRUISE")
                     .severity(ReadinessSeverity.BLOCKER)
                     .message(msg)
-                    .evidence("Itinerary.status=" + itineraryOpt.get().getStatus() + ", modified=" + modified)
+                    .evidence("CruisePlanReview.status is not APPROVED")
                     .ownerRole("OPERATIONS_MANAGER")
-                    .allowedAction("Phê duyệt hải trình sang APPROVED qua /api/itineraries/" + itineraryOpt.get().getItineraryId() + "/approve")
+                    .allowedAction("Xét duyệt kế hoạch khởi hành")
                     .requiredPermission(Permission.ITINERARY_APPROVE.name())
-                    .remediationUrl("/api/itineraries/" + itineraryOpt.get().getItineraryId() + "/approve")
+                    .remediationUrl("/api/cruise-plans/" + cruiseId + "/approve")
                     .remediationOperation("POST")
                     .build());
         }
@@ -1121,7 +1124,7 @@ public class CruiseService {
         response.setShipConfigurationValid(shipConfigValid);
         response.setScheduleValid(scheduleValid);
         response.setPortsActive(portsActive);
-        response.setItineraryConfigured(itineraryApproved);
+        response.setItineraryConfigured(itineraryConfigured);
         response.setStaffAssigned(staffAssigned);
         response.setCaptainAssigned(captainAssigned);
         response.setStaffConflicts(staffConflicts);
@@ -1351,6 +1354,8 @@ public class CruiseService {
             res.setReturnPortName(cruise.getReturnPort().getPortName());
         }
         res.setStatus(cruise.getStatus());
+        res.setItineraryMode(cruise.getItineraryMode());
+        res.setPlannedScope(cruise.getPlannedScope());
         // D01 / C15: Source trip/version traceability
         if (cruise.getSourceTrip() != null) {
             res.setSourceTripId(cruise.getSourceTrip().getTripId());
@@ -1564,6 +1569,8 @@ public class CruiseService {
         List<String> issues = new ArrayList<>();
         List<ReadinessIssueDetail> details = new ArrayList<>();
         boolean hasInfrastructureError = false;
+        if (!mainflow.isReady(cruiseId)) { blockers.add("READY_CONFIRMATION_REQUIRED"); issues.add("OPS Ready confirmation required"); }
+        blockers.addAll(mainflow.commercialBlockers(cruiseId));
 
         // 1. Evaluate operational readiness for visibility (BE-08: do NOT copy departure/operational blockers to sale gate)
         CruiseReadinessResponse opReadiness = validateOperationalReadiness(cruiseId);
@@ -1658,29 +1665,24 @@ public class CruiseService {
                     .build());
         }
 
-        // 4. Core Sale Gates: Approved Itinerary (hoặc kế thừa từ Trip published)
+        // 4. Whole CruisePlan approval; source publication never inherits approval.
         Optional<Itinerary> itineraryOpt = itineraryRepository.findByCruiseCruiseId(cruiseId);
-        boolean itineraryApproved = itineraryOpt.isPresent() && (
-                itineraryOpt.get().getStatus() == ItineraryStatus.APPROVED
-                || itineraryOpt.get().getStatus() == ItineraryStatus.OPEN_FOR_SALE
-                || itineraryOpt.get().getStatus() == ItineraryStatus.ACTIVE
-                || (Boolean.TRUE.equals(itineraryOpt.get().getApprovalInherited()) && itineraryOpt.get().getStatus() != ItineraryStatus.REJECTED)
-        );
+        boolean itineraryApproved = itineraryOpt.isPresent() && mainflow.isPlanApproved(cruiseId);
         if (!itineraryApproved) {
-            blockers.add("ITINERARY_NOT_APPROVED");
-            issues.add("Chuyến đi chưa có hải trình (Itinerary) được phê duyệt");
+            blockers.add("PLAN_APPROVAL_REQUIRED");
+            issues.add("Kế hoạch khởi hành chưa được OPS phê duyệt");
             details.add(ReadinessIssueDetail.builder()
-                    .code("ITINERARY_NOT_APPROVED")
+                    .code("PLAN_APPROVAL_REQUIRED")
                     .targetType("CRUISE")
                     .targetId(cruiseId)
                     .scope("WHOLE_CRUISE")
                     .severity(ReadinessSeverity.BLOCKER)
-                    .message("Hải trình chưa được phê duyệt hoặc kế thừa phê duyệt từ Trip")
-                    .evidence("Itinerary status: " + (itineraryOpt.map(i -> i.getStatus().name()).orElse("NONE")))
+                    .message("Kế hoạch khởi hành chưa được OPS phê duyệt")
+                    .evidence("CruisePlanReview.status is not APPROVED")
                     .ownerRole("OPERATIONS_MANAGER")
-                    .allowedAction("Phê duyệt hải trình chuyến đi")
+                    .allowedAction("Xét duyệt kế hoạch khởi hành")
                     .requiredPermission(Permission.ITINERARY_APPROVE.name())
-                    .remediationUrl("/api/itineraries/" + (itineraryOpt.map(i -> i.getItineraryId().toString()).orElse(cruiseId.toString())) + "/approve")
+                    .remediationUrl("/api/cruise-plans/" + cruiseId + "/approve")
                     .remediationOperation("POST")
                     .build());
         }
@@ -2135,7 +2137,8 @@ public class CruiseService {
                 packageDigest.toString(), pricingConfigured, pricingPolicyVersion != null ? pricingPolicyVersion : "NONE",
                 remaining, supplierDigest.toString(),
                 blockers.size(), warnings.size(), hasInfrastructureError);
-        String fingerprint = generateFingerprint(rawState);
+        String fingerprint = generateFingerprint(rawState + ":SCOPE:" + effectiveScope + ":SELECTED:" +
+                (requestedPackageIds == null ? "[]" : requestedPackageIds.stream().map(UUID::toString).sorted().toList()));
 
         return CruiseSaleReadinessResponse.builder()
                 .cruiseId(cruiseId)
@@ -2241,6 +2244,8 @@ public class CruiseService {
         Cruise cruise = cruiseRepository.findByIdForUpdate(cruiseId)
                 .orElseThrow(() -> new ResourceNotFoundException("Cruise", cruiseId));
 
+        mainflow.requireReady(cruiseId);
+
         if (request == null) {
             throw new BusinessException(HttpStatus.BAD_REQUEST, "REQUEST_REQUIRED", "Yêu cầu mở bán không được để trống");
         }
@@ -2271,7 +2276,7 @@ public class CruiseService {
         Set<UUID> requestedPackageIds = Collections.emptySet();
         if ("SELECTED_PACKAGES".equals(scope)) {
             if (request.getPackageIds() == null || request.getPackageIds().isEmpty()) {
-                throw new BusinessException(HttpStatus.BAD_REQUEST, "EMPTY_PACKAGE_SELECTION",
+                throw new BusinessException(HttpStatus.UNPROCESSABLE_ENTITY, "EMPTY_PACKAGE_SELECTION",
                         "Danh sách packageIds không được để trống khi scope là SELECTED_PACKAGES");
             }
             requestedPackageIds = new HashSet<>(request.getPackageIds());
@@ -2509,6 +2514,8 @@ public class CruiseService {
         Cruise cruise = cruiseRepository.findByIdForUpdate(cruiseId)
                 .orElseThrow(() -> new ResourceNotFoundException("Cruise", cruiseId));
 
+        mainflow.requireReady(cruiseId);
+        if(!mainflow.commercialBlockers(cruiseId).isEmpty())throw new BusinessException(HttpStatus.CONFLICT,"PRICING_POLICY_APPROVAL_REQUIRED","Current USD pricing revision requires OPS approval");
         if (request != null && request.getExpectedRevision() != null && !request.getExpectedRevision().equals(cruise.getRevision())) {
             throw new BusinessException(HttpStatus.CONFLICT, "STALE_REVISION",
                     "Revision của Cruise không khớp (expected: " + request.getExpectedRevision() + ", current: " + cruise.getRevision() + ")");
@@ -2612,7 +2619,7 @@ public class CruiseService {
         Optional<CruisePricingPolicy> policyOpt = cruisePricingPolicyRepository.findByCruise_CruiseId(cruiseId)
                 .filter(p -> p.getStatus() == PricingPolicyStatus.APPROVED);
 
-        boolean sellable = isPublished && isItineraryOpen && !isStopped && isDepartureFuture && hasInventory && policyOpt.isPresent();
+        boolean sellable = isPublished && isItineraryOpen && !isStopped && isDepartureFuture && hasInventory && policyOpt.isPresent() && cruise.getOpenedForSaleAt() != null && mainflow.isReady(cruiseId) && mainflow.isBookingWindowOpen(cruiseId) && mainflow.commercialBlockers(cruiseId).isEmpty();
 
         String saleState;
         if (cruise.getStatus() == CruiseStatus.DRAFT) {
@@ -2623,7 +2630,7 @@ public class CruiseService {
             saleState = "DEPARTED";
         } else if (isStopped) {
             saleState = "STOPPED";
-        } else if (!isItineraryOpen || policyOpt.isEmpty()) {
+        } else if (!isItineraryOpen || policyOpt.isEmpty() || cruise.getOpenedForSaleAt() == null || !mainflow.isReady(cruiseId) || !mainflow.isBookingWindowOpen(cruiseId) || !mainflow.commercialBlockers(cruiseId).isEmpty()) {
             saleState = "NOT_YET_OPEN";
         } else if (!hasInventory || totalAvailableCabinCapacity == 0) {
             saleState = "SOLD_OUT";
@@ -2632,10 +2639,10 @@ public class CruiseService {
         }
 
         CruisePricingPolicy policy = policyOpt.orElse(null);
-        String currency = policy != null ? policy.getCurrency() : "USD";
+        String currency = policy != null ? policy.getCurrency() : null;
         String policyVersion = policy != null ? policy.getPolicyVersion() : null;
 
-        BigDecimal depositPercentage = policy != null ? policy.getDepositPercentage() : BigDecimal.valueOf(0.30);
+        BigDecimal depositPercentage = policy != null ? policy.getDepositPercentage() : null;
         if (depositPercentage != null && depositPercentage.compareTo(BigDecimal.ONE) > 0) {
             depositPercentage = depositPercentage.divide(BigDecimal.valueOf(100), 4, RoundingMode.HALF_UP);
         }

@@ -23,7 +23,7 @@ public class PaymentCreateRequest {
     @DecimalMin(value = "0.01", message = "Amount must be strictly positive")
     private BigDecimal requestedAmount;
 
-    private String currency = "VND";
+    private String currency = "USD";
 
     @NotNull(message = "Payment method is required")
     private PaymentMethod paymentMethod;

@@ -487,8 +487,9 @@ public class CruiseController {
     @PreAuthorize("hasAnyAuthority('CRUISE_READ', 'CRUISE_VALIDATE')")
     @GetMapping("/{cruiseId}/sale-readiness")
     public ApiResponse<CruiseSaleReadinessResponse> getSaleReadiness(
-            @PathVariable UUID cruiseId) {
-        return ApiResponse.success(service.validateSaleReadiness(cruiseId));
+            @PathVariable UUID cruiseId, @RequestParam(defaultValue = "WHOLE_CRUISE") String saleScope,
+            @RequestParam(required = false) java.util.Set<UUID> selectedPackageIds) {
+        return ApiResponse.success(service.validateSaleReadiness(cruiseId, saleScope, selectedPackageIds));
     }
 
     @Operation(summary = "Đánh giá điều kiện khởi hành của chuyến đi (Departure Readiness Gate - BE-08)", description = "Kiểm tra toàn diện điều kiện khởi hành bao gồm thuyền trưởng, nhân sự, và 5 phân hệ chuẩn bị liên phòng ban")

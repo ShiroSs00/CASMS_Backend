@@ -20,6 +20,14 @@ public class CruisePricingPolicyResponse {
 
     @Schema(description = "ID chính sách giá")
     private UUID pricingPolicyId;
+    private int policyNumber;
+    private long revision;
+    private UUID submittedBy;
+    private Instant submittedAt;
+    private UUID reviewedBy;
+    private Instant reviewedAt;
+    private String decisionReason;
+    private String snapshotHash;
 
     @Schema(description = "ID chuyến đi")
     private UUID cruiseId;

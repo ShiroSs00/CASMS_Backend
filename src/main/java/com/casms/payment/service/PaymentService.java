@@ -83,6 +83,7 @@ public class PaymentService {
         }
 
         // 2. Validate booking existence and status
+        com.casms.common.util.NewWriteCurrency.requireUsd(request.getCurrency());
         Booking booking = bookingRepository.findById(request.getBookingId())
                 .orElseThrow(() -> new ResourceNotFoundException("Booking not found with id: " + request.getBookingId()));
 

@@ -29,6 +29,23 @@ public class CruisePreparationController {
 
     private final CruisePreparationService preparationService;
 
+    public record CoordinatorRequest(@jakarta.validation.constraints.NotNull UUID coordinatorUserId,@jakarta.validation.constraints.NotNull Long expectedRevision){}
+    @PutMapping("/coordinator")
+    @PreAuthorize("hasRole('OPERATIONS_MANAGER') and hasAuthority('CRUISE_STAFF_ASSIGN')")
+    public ApiResponse<CruisePreparationResponse> assignCoordinator(@PathVariable UUID cruiseId,@Valid @RequestBody CoordinatorRequest request,@AuthenticationPrincipal CasmsPrincipal principal){
+        return ApiResponse.success(preparationService.assignCoordinator(cruiseId,request.coordinatorUserId(),request.expectedRevision(),principal.getUserId()));
+    }
+    @GetMapping("/coordinator-candidates")
+    @PreAuthorize("hasRole('OPERATIONS_MANAGER') and hasAuthority('CRUISE_STAFF_ASSIGN')")
+    public ApiResponse<java.util.List<java.util.Map<String,Object>>> coordinatorCandidates(@PathVariable UUID cruiseId,@AuthenticationPrincipal CasmsPrincipal principal){
+        return ApiResponse.success(preparationService.coordinatorCandidates(cruiseId,principal));
+    }
+    @GetMapping("/events")
+    @PreAuthorize("hasAuthority('CRUISE_PREPARATION_READ')")
+    public ApiResponse<java.util.List<java.util.Map<String,Object>>> events(@PathVariable UUID cruiseId,@AuthenticationPrincipal CasmsPrincipal principal){
+        return ApiResponse.success(preparationService.events(cruiseId,principal));
+    }
+
     @Operation(summary = "Xem báo cáo chuẩn bị liên phòng ban", description = "Truy xuất danh sách các phân hệ chuẩn bị, trạng thái công việc và bằng chứng")
     @PreAuthorize("hasAuthority('CRUISE_PREPARATION_READ')")
     @GetMapping
@@ -38,8 +55,8 @@ public class CruisePreparationController {
         return ApiResponse.success(preparationService.getPreparationDashboard(cruiseId, principal));
     }
 
-    @Operation(summary = "Nộp bằng chứng chuẩn bị của phân hệ", description = "Trưởng bộ phận nộp bằng chứng/kết quả chuẩn bị của phân hệ để xin ký nhận")
-    @PreAuthorize("hasAuthority('CRUISE_PREPARATION_SUBMIT')")
+    @Operation(summary = "Gửi hồ sơ chuẩn bị", description = "CRM tổng hợp và gửi cả năm nhóm; ownerRole giữ trách nhiệm dữ liệu chuyên môn")
+    @PreAuthorize("hasRole('CRUISE_MANAGER') and hasAuthority('CRUISE_PREPARATION_SUBMIT')")
     @PostMapping("/{sectionCode}/submit")
     public ApiResponse<CruisePreparationSectionResponse> submitSection(
             @Parameter(description = "ID chuyến đi", required = true) @PathVariable UUID cruiseId,
@@ -55,7 +72,7 @@ public class CruisePreparationController {
     }
 
     @Operation(summary = "Phê duyệt ký nhận phân hệ chuẩn bị", description = "Ban Vận hành xác nhận ký nhận (Sign-off) đạt yêu cầu cho phân hệ")
-    @PreAuthorize("hasAuthority('CRUISE_PREPARATION_CONFIRM')")
+    @PreAuthorize("hasRole('OPERATIONS_MANAGER') and hasAuthority('CRUISE_PREPARATION_CONFIRM')")
     @PostMapping("/{sectionCode}/confirm")
     public ApiResponse<CruisePreparationSectionResponse> confirmSection(
             @Parameter(description = "ID chuyến đi", required = true) @PathVariable UUID cruiseId,
@@ -69,7 +86,7 @@ public class CruisePreparationController {
     }
 
     @Operation(summary = "Trả lại yêu cầu bổ sung bằng chứng", description = "Ban Vận hành trả lại phân hệ kèm lý do yêu cầu bộ phận liên quan bổ sung")
-    @PreAuthorize("hasAuthority('CRUISE_PREPARATION_CONFIRM')")
+    @PreAuthorize("hasRole('OPERATIONS_MANAGER') and hasAuthority('CRUISE_PREPARATION_CONFIRM')")
     @PostMapping("/{sectionCode}/return")
     public ApiResponse<CruisePreparationSectionResponse> returnSection(
             @Parameter(description = "ID chuyến đi", required = true) @PathVariable UUID cruiseId,

@@ -84,6 +84,13 @@ public class OperationalProgramMappingService {
                     .build();
         }
 
+        // A Cruise copy owns its operational edits. Re-sync must never restore source
+        // values over CRM changes; initial materialization calls mapOperationalPrograms directly.
+        if (onboardActivityRepository.countByCruise_CruiseId(cruiseId) > 0
+                || shoreExcursionRepository.countByCruiseId(cruiseId) > 0) {
+            throw new com.casms.common.exception.BusinessException(org.springframework.http.HttpStatus.CONFLICT,
+                    "PROGRAMS_ALREADY_MATERIALIZED", "Operational programs already belong to this Cruise copy");
+        }
         return mapOperationalPrograms(cruise, cruise.getSourceVersion());
     }
 
@@ -134,12 +141,16 @@ public class OperationalProgramMappingService {
             List<String> itemWarnings = new ArrayList<>();
             StringBuilder requiredData = new StringBuilder();
 
-            LocalDate startDate = baseDate.plusDays(Math.max(0, entry.getStartDayNumber() != null ? entry.getStartDayNumber() - 1 : 0));
-            LocalDate endDate = baseDate.plusDays(Math.max(0, entry.getEndDayNumber() != null ? entry.getEndDayNumber() - 1 : 0));
-            LocalTime startTimeVal = entry.getPlannedStartTime() != null ? entry.getPlannedStartTime() : LocalTime.of(8, 0);
-            LocalTime endTimeVal = entry.getPlannedEndTime() != null ? entry.getPlannedEndTime() : startTimeVal.plusHours(2);
-            Instant startTime = startDate.atTime(startTimeVal).atZone(shipZone).toInstant();
-            Instant endTime = endDate.atTime(endTimeVal).atZone(shipZone).toInstant();
+            LocalDate startDate = entry.getStartDayNumber()!=null&&entry.getStartDayNumber()>0?baseDate.plusDays(entry.getStartDayNumber()-1):null;
+            LocalDate endDate = entry.getEndDayNumber()!=null&&entry.getEndDayNumber()>0?baseDate.plusDays(entry.getEndDayNumber()-1):null;
+            LocalTime startTimeVal = entry.getPlannedStartTime();
+            LocalTime endTimeVal = entry.getPlannedEndTime();
+            if ((entry.getKind()==TripPlanEntryKind.ONBOARD_ACTIVITY||entry.getKind()==TripPlanEntryKind.SHORE_EXCURSION)
+                    && (startDate==null||endDate==null||startTimeVal==null||endTimeVal==null)) {
+                throw new com.casms.common.exception.BusinessException("SOURCE_PROGRAM_SCHEDULE_REQUIRED","Source program dates and times must be explicit");
+            }
+            Instant startTime = startDate!=null&&startTimeVal!=null?PortTimeZoneHelper.strictLocalInstant(startDate.atTime(startTimeVal),shipZone):null;
+            Instant endTime = endDate!=null&&endTimeVal!=null?PortTimeZoneHelper.strictLocalInstant(endDate.atTime(endTimeVal),shipZone):null;
 
             try {
                 // BE-R04 / D03: Tách bạch rõ rệt giữa SERVING_WINDOW, ONBOARD_ACTIVITY, SHORE_EXCURSION
@@ -164,7 +175,7 @@ public class OperationalProgramMappingService {
 
                 } else if (entry.getKind() == TripPlanEntryKind.ONBOARD_ACTIVITY) {
                     // 2. Hoạt động trên tàu (ONBOARD_ACTIVITY): Có yêu cầu/hỗ trợ đăng ký
-                    String activityCode = generateCode("OA", cruise.getCruiseCode(), entry.getClientKey(), entry.getEntryId());
+                    String activityCode = generateCode("OA", cruise.getCruiseId(), entry.getEntryId());
 
                     // Kiểm tra tính tương thích của boong/phòng thuộc tàu đã gán
                     Deck deck = null;
@@ -198,13 +209,6 @@ public class OperationalProgramMappingService {
                     }
 
                     Optional<OnboardActivity> existingOpt = onboardActivityRepository.findByActivityCode(activityCode);
-                    if (existingOpt.isEmpty()) {
-                        // Secondary idempotent deduplication check to prevent duplicate activity on retry
-                        List<OnboardActivity> cruiseActivities = onboardActivityRepository.findByCruise_CruiseId(cruise.getCruiseId());
-                        existingOpt = cruiseActivities.stream()
-                                .filter(a -> a.getActivityName().equalsIgnoreCase(entry.getTitle()))
-                                .findFirst();
-                    }
 
                     UUID activityId;
                     String status;
@@ -226,7 +230,7 @@ public class OperationalProgramMappingService {
                         } else {
                             // Cập nhật an toàn chỉ thời gian và vị trí, bảo toàn các trường đã cập nhật thủ công
                             existing.setActivityName(entry.getTitle());
-                            existing.setCategory(entry.getCategory() != null ? entry.getCategory() : OnboardActivityCategory.ENTERTAINMENT);
+                            existing.setCategory(entry.getCategory());
                             existing.setDescription(entry.getNotes());
                             existing.setStartTime(startTime);
                             existing.setEndTime(endTime);
@@ -243,7 +247,7 @@ public class OperationalProgramMappingService {
                                 requiredData.append("Cần cấu hình giá và loại tiền tệ; ");
                                 incomplete = true;
                                 action = "CONFIGURE_PRICING";
-                            } else if (existing.getPrice().compareTo(BigDecimal.ZERO) > 0 && existing.getCurrencyCode() == null) {
+                            } else if (existing.getCurrencyCode() == null || existing.getCurrencyCode().isBlank()) {
                                 itemWarnings.add("Hoạt động có giá nhưng chưa có mã tiền tệ");
                                 requiredData.append("Cần cấu hình mã tiền tệ; ");
                                 incomplete = true;
@@ -264,7 +268,7 @@ public class OperationalProgramMappingService {
                         activity.setCruise(cruise);
                         activity.setActivityCode(activityCode);
                         activity.setActivityName(entry.getTitle());
-                        activity.setCategory(entry.getCategory() != null ? entry.getCategory() : OnboardActivityCategory.ENTERTAINMENT);
+                        activity.setCategory(entry.getCategory());
                         activity.setDescription(entry.getNotes());
                         activity.setStartTime(startTime);
                         activity.setEndTime(endTime);
@@ -291,7 +295,7 @@ public class OperationalProgramMappingService {
                         if (actCapacity != null && actCapacity > 0) {
                             activity.setCapacity(actCapacity);
                         } else {
-                            activity.setCapacity(30);
+                            activity.setCapacity(null);
                             itemWarnings.add("Chưa có cấu hình sức chứa từ nguồn (thiếu định biên)");
                             requiredData.append("Cần cấu hình sức chứa; ");
                             incomplete = true;
@@ -309,7 +313,8 @@ public class OperationalProgramMappingService {
                         } else if (actPrice.compareTo(BigDecimal.ZERO) == 0) {
                             // Giá 0 thật (hoạt động miễn phí / bao gồm)
                             activity.setPrice(BigDecimal.ZERO);
-                            activity.setCurrencyCode(actCurrency != null ? actCurrency : "VND");
+                            activity.setCurrencyCode(actCurrency != null && !actCurrency.isBlank() ? actCurrency.trim() : null);
+                            if(activity.getCurrencyCode()==null){incomplete=true;requiredData.append("PROGRAM_CURRENCY_REQUIRED; ");if("READY".equals(action))action="CONFIGURE_PRICING";}
                         } else {
                             // Hoạt động có phí
                             activity.setPrice(actPrice);
@@ -408,11 +413,8 @@ public class OperationalProgramMappingService {
                         Port stopPort = portRepository.findById(matchedStop.getPort().getPortId()).orElse(null);
                         if (stopPort != null && stopPort.getTimeZoneId() != null) {
                             ZoneId excursionZone = PortTimeZoneHelper.resolveZone(stopPort.getTimeZoneId());
-                            LocalDate stopDate = matchedStop.getPlannedArrival() != null
-                                    ? matchedStop.getPlannedArrival().atZone(excursionZone).toLocalDate()
-                                    : startDate;
-                            startTime = stopDate.atTime(startTimeVal).atZone(excursionZone).toInstant();
-                            endTime = stopDate.atTime(endTimeVal).atZone(excursionZone).toInstant();
+                            startTime = PortTimeZoneHelper.strictLocalInstant(startDate.atTime(startTimeVal),excursionZone);
+                            endTime = PortTimeZoneHelper.strictLocalInstant(endDate.atTime(endTimeVal),excursionZone);
                         }
                     }
 
@@ -452,7 +454,7 @@ public class OperationalProgramMappingService {
                         }
                     }
 
-                    String excursionCode = generateCode("EX", cruise.getCruiseCode(), entry.getClientKey(), entry.getEntryId());
+                    String excursionCode = generateCode("EX", cruise.getCruiseId(), entry.getEntryId());
 
                     if (supplier == null) {
                         String supMsg = "Chưa có nhà cung cấp (Supplier) được phân công cho tour bờ: " + entry.getTitle();
@@ -542,13 +544,6 @@ public class OperationalProgramMappingService {
                     }
 
                     Optional<ShoreExcursion> existingOpt = shoreExcursionRepository.findByExcursionCode(excursionCode);
-                    if (existingOpt.isEmpty()) {
-                        // Secondary idempotent deduplication check to prevent duplicate excursion on retry
-                        List<ShoreExcursion> stopExcursions = shoreExcursionRepository.findByCruiseStop_CruiseStopId(matchedStop.getCruiseStopId());
-                        existingOpt = stopExcursions.stream()
-                                .filter(e -> e.getExcursionName().equalsIgnoreCase(entry.getTitle()))
-                                .findFirst();
-                    }
 
                     UUID excursionId;
                     String status;
@@ -652,7 +647,8 @@ public class OperationalProgramMappingService {
                         } else if (price.compareTo(BigDecimal.ZERO) == 0) {
                             // Miễn phí thật
                             excursion.setPrice(BigDecimal.ZERO);
-                            excursion.setCurrencyCode(currencyCode != null ? currencyCode : "VND");
+                            excursion.setCurrencyCode(currencyCode != null && !currencyCode.isBlank() ? currencyCode.trim() : null);
+                            if(excursion.getCurrencyCode()==null){incomplete=true;requiredData.append("PROGRAM_CURRENCY_REQUIRED; ");if("READY".equals(action))action="CONFIGURE_PRICING";}
                         } else {
                             // Tour có phí
                             excursion.setPrice(price);
@@ -724,17 +720,11 @@ public class OperationalProgramMappingService {
                 .build();
     }
 
-    private String generateCode(String prefix, String cruiseCode, String clientKey, UUID entryId) {
-        String safeCruise = (cruiseCode != null && !cruiseCode.isBlank()) ? cruiseCode : "CRUISE";
-        String safeKey = (clientKey != null && !clientKey.isBlank()) ? clientKey.replaceAll("[^a-zA-Z0-9_-]", "") : "";
-        String base = prefix + "-" + safeCruise + "-" + safeKey;
-        if (base.length() <= 50) {
-            return base;
-        }
-        String hash = Integer.toHexString(Objects.hash(safeCruise, clientKey, entryId));
-        int maxPrefixLen = 50 - 1 - hash.length();
-        String truncated = base.substring(0, Math.min(base.length(), maxPrefixLen));
-        return truncated + "-" + hash;
+    private String generateCode(String prefix, UUID cruiseId, UUID entryId) {
+        // Identity is the copied source occurrence, never its title or a sanitized client key.
+        // Existing Cruise copies are protected by the resync guard; no historical codes are rewritten.
+        String identity = Objects.requireNonNull(cruiseId) + ":" + Objects.requireNonNull(entryId);
+        return prefix + "-" + UUID.nameUUIDFromBytes(identity.getBytes(java.nio.charset.StandardCharsets.UTF_8));
     }
 }
 

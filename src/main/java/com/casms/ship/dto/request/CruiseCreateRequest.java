@@ -41,4 +41,6 @@ public class CruiseCreateRequest {
 
     @Schema(description = "(Tùy chọn) Revision của phiên bản nguồn tại thời điểm preview, dùng để phát hiện stale preview", example = "1")
     private Long expectedSourceVersionRevision;
+    private String itineraryMode;
+    private String plannedScope;
 }

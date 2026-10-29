@@ -53,6 +53,7 @@ public class ServicepackageService {
         if(s.getServiceId()==null) s.setServiceCode(businessCodeGenerator.next("SV"));
         if(s.getServiceName()==null||s.getServiceName().isBlank()) throw new IllegalArgumentException("Service code and name are required");
         if(s.getCurrencyCode()==null||s.getCurrencyCode().isBlank()) s.setCurrencyCode("USD");
+        com.casms.common.util.NewWriteCurrency.requireUsd(s.getCurrencyCode());
         if(s.getPrice()==null) s.setPrice(BigDecimal.ZERO);
         if(s.getPrice().signum()<0) throw new IllegalArgumentException("Non-negative service price requires currency");
         if(s.getCapacity()!=null&&s.getCapacity()<1) throw new IllegalArgumentException("Capacity must be positive");
@@ -75,6 +76,7 @@ public class ServicepackageService {
         if(p.getProductId()==null) p.setProductCode(businessCodeGenerator.next("PR"));
         if(p.getProductName()==null||p.getProductName().isBlank()) throw new IllegalArgumentException("Product code and name are required");
         if(p.getCurrencyCode()==null||p.getCurrencyCode().isBlank()) p.setCurrencyCode("USD");
+        com.casms.common.util.NewWriteCurrency.requireUsd(p.getCurrencyCode());
         if(p.getUnitPrice()==null||p.getUnitPrice().signum()<0) throw new IllegalArgumentException("Product requires a non-negative price and currency");
         if(productRepo.existsByProductCodeAndProductIdNot(p.getProductCode(),p.getProductId()==null?new UUID(0,0):p.getProductId())) throw new IllegalArgumentException("Product code already exists");
         if(p.getStatus()==null)p.setStatus(ProductStatus.ACTIVE); return productRepo.save(p);
@@ -89,6 +91,7 @@ public class ServicepackageService {
         if(p.getTourPackageId()==null) p.setPackageCode(businessCodeGenerator.next("PK"));
         if(p.getPackageName()==null||p.getPackageName().isBlank())throw new IllegalArgumentException("Package code and name are required");
         if(p.getCurrencyCode()==null||p.getCurrencyCode().isBlank()) p.setCurrencyCode("USD");
+        com.casms.common.util.NewWriteCurrency.requireUsd(p.getCurrencyCode());
         if(p.getPrice()==null||p.getPrice().signum()<0)throw new IllegalArgumentException("Package requires non-negative price and currency");
         if(p.getStartDate()!=null&&p.getEndDate()!=null&&p.getEndDate().isBefore(p.getStartDate()))throw new IllegalArgumentException("Package end date precedes start date");
         if(packageRepo.existsByPackageCodeAndTourPackageIdNot(p.getPackageCode(),p.getTourPackageId()==null?new UUID(0,0):p.getTourPackageId()))throw new IllegalArgumentException("Package code already exists");

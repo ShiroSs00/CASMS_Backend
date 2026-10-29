@@ -133,6 +133,8 @@ public class BookingService {
     /**
      * Tra cứu danh sách các phòng còn trống trên tàu của chuyến đi để khách hàng tự chọn.
      */
+    private final com.casms.ship.service.CruiseMainflowService mainflow;
+
     @Transactional(readOnly = true)
     public List<AvailableCabinResponse> getAvailableCabins(UUID cruiseId, UUID deckId, CabinType cabinType, Integer minCapacity) {
         return findAvailableCabins(cruiseId, deckId, cabinType, minCapacity, false);
@@ -147,7 +149,8 @@ public class BookingService {
     private List<AvailableCabinResponse> findAvailableCabins(UUID cruiseId, UUID deckId, CabinType cabinType,
             Integer minCapacity, boolean includeModelPlacement) {
         Cruise cruise = getCruise(cruiseId);
-        if (cruise.getStatus() != CruiseStatus.PUBLISHED) {
+        mainflow.requireBookable(cruiseId);
+        if (cruise.getOpenedForSaleAt() == null || cruise.getStatus() != CruiseStatus.PUBLISHED) {
             throw new BusinessException(HttpStatus.CONFLICT, "CRUISE_NOT_OPEN_FOR_SALE",
                     "Chuyến đi chưa được công bố mở bán (Trạng thái: " + cruise.getStatus() + ")");
         }
@@ -327,7 +330,8 @@ public class BookingService {
         // 1. Kiểm tra Chuyến đi (Cruise)
         Cruise cruise = cruiseRepository.findByIdForUpdate(request.getCruiseId())
                 .orElseThrow(() -> new ResourceNotFoundException("Cruise", request.getCruiseId()));
-        if (cruise.getStatus() != CruiseStatus.PUBLISHED) {
+        mainflow.requireBookable(cruise.getCruiseId());
+        if (cruise.getOpenedForSaleAt() == null || cruise.getStatus() != CruiseStatus.PUBLISHED) {
             throw new BusinessException("INVALID_CRUISE_STATUS", "Bookings can only be created for PUBLISHED cruises (Current: " + cruise.getStatus() + ")");
         }
         // BE-08B / BE-R00: Gating - Check if itinerary exists and is OPEN_FOR_SALE
@@ -451,6 +455,11 @@ public class BookingService {
                     throw new BusinessException(HttpStatus.FORBIDDEN, "QUOTE_OWNERSHIP_MISMATCH",
                             "Không thể sử dụng báo giá của tài khoản người dùng khác");
                 }
+            } else if (!isStaff && (validatedQuote.getGuestToken() == null || validatedQuote.getGuestToken().isBlank() || request.getQuoteGuestToken() == null
+                    || !java.security.MessageDigest.isEqual(request.getQuoteGuestToken().getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                    java.util.Objects.toString(validatedQuote.getGuestToken(), "").getBytes(java.nio.charset.StandardCharsets.UTF_8)))) {
+                throw new BusinessException(HttpStatus.FORBIDDEN, "QUOTE_OWNERSHIP_MISMATCH",
+                        "Không thể sử dụng báo giá của khách vãng lai khác");
             }
 
             // BE-H03: Verify exact line-by-line selection against quote snapshot
@@ -1407,7 +1416,8 @@ public class BookingService {
         Cruise cruise = cruiseRepository.findById(request.getCruiseId())
                 .orElseThrow(() -> new ResourceNotFoundException("Cruise", request.getCruiseId()));
 
-        if (cruise.getStatus() != CruiseStatus.PUBLISHED) {
+        mainflow.requireBookable(cruise.getCruiseId());
+        if (cruise.getOpenedForSaleAt() == null || cruise.getStatus() != CruiseStatus.PUBLISHED) {
             throw new BusinessException(HttpStatus.UNPROCESSABLE_ENTITY, "INVALID_CRUISE_STATUS",
                     "Chỉ có thể tạo báo giá cho chuyến đi đã phát hành (PUBLISHED). Trạng thái hiện tại: " + cruise.getStatus());
         }
@@ -1688,7 +1698,8 @@ public class BookingService {
         BookingQuote quote = bookingQuoteRepository.findById(quoteId)
                 .orElseThrow(() -> new ResourceNotFoundException("BookingQuote", quoteId));
 
-        boolean isStaff = principal != null && (principal.hasAuthority("BOOKING_READ") || principal.hasAuthority("ROLE_ADMIN"));
+        boolean isStaff = principal != null && principal.isStaff()
+                && (principal.hasAuthority("BOOKING_READ") || principal.hasAuthority("ROLE_ADMIN"));
 
         if (quote.getUser() != null) {
             boolean isOwner = principal != null && quote.getUser().getUserId().equals(principal.getUserId());

@@ -40,6 +40,83 @@ public class CruisePreparationService {
     private final ShoreExcursionRepository shoreExcursionRepository;
     private final ServiceScheduleRepository serviceScheduleRepository;
     private final OnboardActivityRepository onboardActivityRepository;
+    private final com.casms.identity.repository.UserRepository userRepository;
+    private final org.springframework.jdbc.core.JdbcTemplate jdbc;
+    private final com.fasterxml.jackson.databind.ObjectMapper mapper;
+
+    private CasmsPrincipal currentActor(){
+        var auth=org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+        return auth!=null&&auth.getPrincipal() instanceof CasmsPrincipal p?p:null;
+    }
+    private boolean permitted(CasmsPrincipal actor,boolean submit){
+        return actor!=null&&actor.hasRole(submit?com.casms.identity.enums.Role.CRUISE_MANAGER:com.casms.identity.enums.Role.OPERATIONS_MANAGER)
+                &&actor.hasAuthority(submit?"CRUISE_PREPARATION_SUBMIT":"CRUISE_PREPARATION_CONFIRM");
+    }
+    private boolean submissionScope(Cruise cruise,CasmsPrincipal actor){
+        return permitted(actor,true)&&cruise.getPreparationCoordinator()!=null
+                &&actor.getUserId().equals(cruise.getPreparationCoordinator().getUserId());
+    }
+    private List<String> allowedActions(CruisePreparationSection section,List<PreparationCheckItemDto> checks){
+        var actor=currentActor();var actions=new ArrayList<String>();
+        if(submissionScope(section.getCruise(),actor)&&Set.of("NOT_STARTED","IN_PROGRESS","RETURNED").contains(section.getStatus()))actions.add("SUBMIT");
+        if(permitted(actor,false)){
+            if("SUBMITTED".equals(section.getStatus())&&!actor.getUserId().equals(section.getSubmittedByUserId())
+                    &&checks.stream().noneMatch(i->Boolean.TRUE.equals(i.getRequired())&&!i.isReady()))actions.add("CONFIRM");
+            if(Set.of("SUBMITTED","CONFIRMED").contains(section.getStatus()))actions.add("RETURN");
+        }
+        return actions;
+    }
+    private Cruise lockedCruise(UUID id){return cruiseRepository.findByIdForUpdate(id).orElseThrow(()->new ResourceNotFoundException("Cruise",id));}
+    @Transactional(readOnly=true)
+    public List<Map<String,Object>> coordinatorCandidates(UUID cruiseId,CasmsPrincipal principal){
+        var actor=currentActor();
+        if(actor==null||principal==null||!actor.getUserId().equals(principal.getUserId())||!actor.hasRole(com.casms.identity.enums.Role.OPERATIONS_MANAGER)||!actor.hasAuthority("CRUISE_STAFF_ASSIGN"))
+            throw new BusinessException(HttpStatus.FORBIDDEN,"PREPARATION_ACTION_FORBIDDEN","OPS coordinator assignment permission required");
+        cruiseRepository.findById(cruiseId).orElseThrow(()->new ResourceNotFoundException("Cruise",cruiseId));
+        return jdbc.queryForList("SELECT u.user_id AS id,u.username AS name FROM \"User\" u WHERE u.status='ACTIVE' AND EXISTS(SELECT 1 FROM \"UserRole\" r WHERE r.user_id=u.user_id AND r.role='CRUISE_MANAGER') ORDER BY u.username,u.user_id");
+    }
+    @Transactional(readOnly=true)
+    public List<Map<String,Object>> events(UUID cruiseId,CasmsPrincipal principal){
+        var actor=currentActor();
+        if(actor==null||principal==null||!actor.getUserId().equals(principal.getUserId())||!actor.hasAuthority("CRUISE_PREPARATION_READ"))
+            throw new BusinessException(HttpStatus.FORBIDDEN,"PREPARATION_ACTION_FORBIDDEN","Preparation read permission required");
+        cruiseRepository.findById(cruiseId).orElseThrow(()->new ResourceNotFoundException("Cruise",cruiseId));
+        return jdbc.queryForList("SELECT event_id AS \"eventId\",section_code AS \"sectionCode\",revision,action,actor_id AS \"actorId\",occurred_at AS \"occurredAt\",reason FROM \"CruisePreparationEvent\" WHERE cruise_id=? ORDER BY occurred_at,event_id",cruiseId);
+    }
+    private void event(Cruise cruise,String section,Long revision,String action,UUID actor,String reason,Object snapshot){
+        try{jdbc.update("INSERT INTO \"CruisePreparationEvent\"(event_id,cruise_id,section_code,revision,action,actor_id,reason,snapshot) VALUES(?,?,?,?,?,?,?,?::jsonb)",
+                UUID.randomUUID(),cruise.getCruiseId(),section,revision,action,actor,reason,mapper.writeValueAsString(snapshot));}
+        catch(com.fasterxml.jackson.core.JsonProcessingException ex){throw new IllegalStateException(ex);}
+    }
+    @Transactional
+    public CruisePreparationResponse assignCoordinator(UUID cruiseId,UUID coordinatorId,Long expectedRevision,UUID actorId){
+        var actor=currentActor();
+        if(actor==null||!Objects.equals(actorId,actor.getUserId())||!actor.hasRole(com.casms.identity.enums.Role.OPERATIONS_MANAGER)||!actor.hasAuthority("CRUISE_STAFF_ASSIGN"))
+            throw new BusinessException(HttpStatus.FORBIDDEN,"PREPARATION_ACTION_FORBIDDEN","Only OPS may assign preparation coordinator");
+        Cruise cruise=lockedCruise(cruiseId);
+        if(expectedRevision==null||!expectedRevision.equals(cruise.getRevision()))throw new BusinessException(HttpStatus.CONFLICT,"STALE_REVISION","Cruise revision changed");
+        var coordinator=userRepository.findById(coordinatorId).orElseThrow(()->new ResourceNotFoundException("User",coordinatorId));
+        if(!coordinator.hasRole(com.casms.identity.enums.Role.CRUISE_MANAGER)||coordinator.getStatus()!=com.casms.identity.enums.UserStatus.ACTIVE)
+            throw new BusinessException(HttpStatus.UNPROCESSABLE_ENTITY,"PREPARATION_COORDINATOR_INVALID","Coordinator must be an active CRM");
+        if(cruise.getPreparationCoordinator()!=null&&coordinatorId.equals(cruise.getPreparationCoordinator().getUserId()))return getPreparationDashboard(cruiseId,actor);
+        UUID previous=cruise.getPreparationCoordinator()==null?null:cruise.getPreparationCoordinator().getUserId();
+        cruise.setPreparationCoordinator(coordinator);cruiseRepository.saveAndFlush(cruise);
+        var snapshot=new LinkedHashMap<String,Object>();snapshot.put("previousCoordinatorId",previous);snapshot.put("coordinatorId",coordinatorId);
+        event(cruise,null,cruise.getRevision(),"ASSIGN_COORDINATOR",actorId,null,snapshot);
+        return getPreparationDashboard(cruiseId,actor);
+    }
+
+    private CasmsPrincipal requireActor(UUID actorId, boolean submission) {
+        var authentication=org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+        if(authentication==null||!(authentication.getPrincipal() instanceof CasmsPrincipal principal)
+                ||actorId==null||!actorId.equals(principal.getUserId()))
+            throw new BusinessException(HttpStatus.UNAUTHORIZED,"AUTH_REQUIRED","Authenticated preparation actor required");
+        String permission=submission?"CRUISE_PREPARATION_SUBMIT":"CRUISE_PREPARATION_CONFIRM";
+        var role=submission?com.casms.identity.enums.Role.CRUISE_MANAGER:com.casms.identity.enums.Role.OPERATIONS_MANAGER;
+        if(!principal.hasRole(role)||!principal.hasAuthority(permission))
+            throw new BusinessException(HttpStatus.FORBIDDEN,"PREPARATION_ACTION_FORBIDDEN","Preparation role and effective permission required");
+        return principal;
+    }
 
     private static final List<SectionTemplate> TEMPLATES = List.of(
             new SectionTemplate("TECHNICAL_NAUTICAL", "Kỹ thuật Hàng hải & Tàu", "SHIP_MANAGER"),
@@ -51,31 +128,33 @@ public class CruisePreparationService {
 
     private record SectionTemplate(String code, String name, String ownerRole) {}
 
-    @Transactional
+    @Transactional(readOnly = true)
     public CruisePreparationResponse getPreparationDashboard(UUID cruiseId) {
         return getPreparationDashboard(cruiseId, null);
     }
 
-    @Transactional
+    @Transactional(readOnly = true)
     public CruisePreparationResponse getPreparationDashboard(UUID cruiseId, CasmsPrincipal principal) {
         Cruise cruise = cruiseRepository.findById(cruiseId)
                 .orElseThrow(() -> new ResourceNotFoundException("Cruise", cruiseId));
 
-        ensureSectionsInitialized(cruise);
 
         List<CruisePreparationSection> sections = preparationSectionRepository.findByCruiseCruiseIdOrderBySectionCodeAsc(cruiseId);
         List<CruisePreparationSectionResponse> sectionResponses = new ArrayList<>();
 
-        boolean allConfirmed = true;
+        boolean allConfirmed = sections.size() == TEMPLATES.size();
         for (CruisePreparationSection section : sections) {
             if (!"CONFIRMED".equalsIgnoreCase(section.getStatus())) {
                 allConfirmed = false;
             }
             List<PreparationCheckItemDto> checkItems = computeCheckItems(cruise, section.getSectionCode());
+            if(checkItems.stream().anyMatch(i->Boolean.TRUE.equals(i.getRequired())&&!i.isReady()))allConfirmed=false;
             sectionResponses.add(CruisePreparationSectionResponse.builder()
                     .sectionCode(section.getSectionCode())
                     .sectionName(section.getSectionName())
                     .ownerRole(section.getOwnerRole())
+                    .submitterRole("CRUISE_MANAGER")
+                    .allowedActions(allowedActions(section,checkItems))
                     .status(section.getStatus())
                     .evidence(section.getEvidence())
                     .notes(section.getNotes())
@@ -86,13 +165,14 @@ public class CruisePreparationService {
                     .confirmedAt(section.getConfirmedAt())
                     .returnReason(section.getReturnReason())
                     .returnedAt(section.getReturnedAt())
+                    .returnedByUserId(section.getReturnedByUserId())
                     .revision(section.getRevision())
                     .checkItems(checkItems)
                     .build());
         }
 
         String overallStatus = allConfirmed ? "CONFIRMED" :
-                (sectionResponses.stream().allMatch(s -> "SUBMITTED".equals(s.getStatus()) || "CONFIRMED".equals(s.getStatus()))
+                (sections.size()==TEMPLATES.size()&&sectionResponses.stream().allMatch(s -> "SUBMITTED".equals(s.getStatus()) || "CONFIRMED".equals(s.getStatus()))
                         ? "READY_FOR_SIGNOFF" : "INCOMPLETE");
 
         return CruisePreparationResponse.builder()
@@ -100,6 +180,10 @@ public class CruisePreparationService {
                 .cruiseCode(cruise.getCruiseCode())
                 .cruiseName(cruise.getCruiseName())
                 .cruiseStatus(cruise.getStatus().name())
+                .coordinatorUserId(cruise.getPreparationCoordinator()==null?null:cruise.getPreparationCoordinator().getUserId())
+                .coordinatorUsername(cruise.getPreparationCoordinator()==null?null:cruise.getPreparationCoordinator().getUsername())
+                .cruiseRevision(cruise.getRevision())
+                .canAssignCoordinator(principal!=null&&principal.hasRole(com.casms.identity.enums.Role.OPERATIONS_MANAGER)&&principal.hasAuthority("CRUISE_STAFF_ASSIGN"))
                 .overallStatus(overallStatus)
                 .allConfirmed(allConfirmed)
                 .sections(sectionResponses)
@@ -108,26 +192,32 @@ public class CruisePreparationService {
     }
 
     @Transactional
+    public void initializeSections(Cruise cruise) {
+        ensureSectionsInitialized(cruise);
+    }
+
+    @Transactional
     public CruisePreparationSectionResponse submitSection(UUID cruiseId, String sectionCode,
                                                          CruisePreparationSubmitRequest request,
                                                          UUID actorId, Set<String> roles) {
+        var actor=requireActor(actorId,true);
+        Cruise cruise=lockedCruise(cruiseId);
+        if(!submissionScope(cruise,actor))throw new BusinessException(HttpStatus.FORBIDDEN,"PREPARATION_CRUISE_SCOPE_FORBIDDEN","CRM is not assigned preparation coordinator for this Cruise");
         CruisePreparationSection section = preparationSectionRepository
                 .findByCruiseCruiseIdAndSectionCodeForUpdate(cruiseId, sectionCode)
                 .orElseThrow(() -> new ResourceNotFoundException("CruisePreparationSection", sectionCode));
 
-        if (request.getExpectedRevision() != null && !request.getExpectedRevision().equals(section.getRevision())) {
+        if (request == null || request.getExpectedRevision() == null || !request.getExpectedRevision().equals(section.getRevision())) {
             throw new BusinessException(HttpStatus.CONFLICT, "STALE_REVISION",
                     String.format("Phân hệ chuẩn bị đã bị cập nhật (revision hiện tại: %d, mong đợi: %d)",
-                            section.getRevision(), request.getExpectedRevision()));
+                            section.getRevision(), request != null ? request.getExpectedRevision() : null));
         }
 
-        // Kiểm tra phân quyền theo vai trò phụ trách phân hệ
-        if (roles != null && !roles.isEmpty() && !roles.contains("ADMIN") && !roles.contains("OPERATIONS_MANAGER")
-                && !roles.contains(section.getOwnerRole())) {
-            throw new BusinessException(HttpStatus.FORBIDDEN, "FORBIDDEN_SECTION_OWNERSHIP",
-                    String.format("Chỉ vai trò phụ trách %s mới có quyền nộp xác nhận cho phân hệ %s",
-                            section.getOwnerRole(), section.getSectionName()));
-        }
+        // ownerRole supplies professional data; CRM alone submits every section.
+        if(request.getEvidence()==null||request.getEvidence().isBlank())
+            throw new BusinessException(HttpStatus.UNPROCESSABLE_ENTITY,"PREPARATION_EVIDENCE_REQUIRED","Preparation evidence required");
+        if("SUBMITTED".equalsIgnoreCase(section.getStatus()))
+            throw new BusinessException(HttpStatus.CONFLICT,"SECTION_ALREADY_SUBMITTED","Preparation section already submitted");
 
         if ("CONFIRMED".equalsIgnoreCase(section.getStatus())) {
             throw new BusinessException("SECTION_ALREADY_CONFIRMED", "Phân hệ này đã được phê duyệt xác nhận (CONFIRMED)");
@@ -142,8 +232,13 @@ public class CruisePreparationService {
         section.setSubmittedAt(Instant.now());
         section.setReturnReason(null);
         section.setReturnedAt(null);
+        section.setReturnedByUserId(null);
+        section.setConfirmedByUserId(null);
+        section.setConfirmedByUsername(null);
+        section.setConfirmedAt(null);
 
-        section = preparationSectionRepository.save(section);
+        section = preparationSectionRepository.saveAndFlush(section);
+        event(cruise,sectionCode,section.getRevision(),"SUBMIT",actorId,null,mapToResponse(section,computeCheckItems(cruise,sectionCode)));
         log.info("Submitted preparation section {} for cruise {} by user {}", sectionCode, cruiseId, actorId);
         return mapToResponse(section, computeCheckItems(section.getCruise(), sectionCode));
     }
@@ -152,14 +247,16 @@ public class CruisePreparationService {
     public CruisePreparationSectionResponse confirmSection(UUID cruiseId, String sectionCode,
                                                           CruisePreparationConfirmRequest request,
                                                           UUID actorId, String actorUsername) {
+        CasmsPrincipal actor=requireActor(actorId,false);
+        lockedCruise(cruiseId);
         CruisePreparationSection section = preparationSectionRepository
                 .findByCruiseCruiseIdAndSectionCodeForUpdate(cruiseId, sectionCode)
                 .orElseThrow(() -> new ResourceNotFoundException("CruisePreparationSection", sectionCode));
 
-        if (request != null && request.getExpectedRevision() != null && !request.getExpectedRevision().equals(section.getRevision())) {
+        if (request == null || request.getExpectedRevision() == null || !request.getExpectedRevision().equals(section.getRevision())) {
             throw new BusinessException(HttpStatus.CONFLICT, "STALE_REVISION",
                     String.format("Phân hệ chuẩn bị đã bị cập nhật (revision hiện tại: %d, mong đợi: %d)",
-                            section.getRevision(), request.getExpectedRevision()));
+                            section.getRevision(), request != null ? request.getExpectedRevision() : null));
         }
 
         if (!"SUBMITTED".equalsIgnoreCase(section.getStatus())) {
@@ -186,14 +283,15 @@ public class CruisePreparationService {
 
         section.setStatus("CONFIRMED");
         section.setConfirmedByUserId(actorId);
-        section.setConfirmedByUsername(actorUsername);
+        section.setConfirmedByUsername(actor.getUsername());
         section.setConfirmedAt(Instant.now());
         if (request != null && request.getNotes() != null) {
             String existingNotes = section.getNotes() != null ? section.getNotes() + " | " : "";
             section.setNotes(existingNotes + "Xác nhận: " + request.getNotes());
         }
 
-        section = preparationSectionRepository.save(section);
+        section = preparationSectionRepository.saveAndFlush(section);
+        event(section.getCruise(),sectionCode,section.getRevision(),"CONFIRM",actorId,request.getNotes(),mapToResponse(section,checkItems));
         log.info("Confirmed preparation section {} for cruise {} by user {}", sectionCode, cruiseId, actorUsername);
         return mapToResponse(section, computeCheckItems(section.getCruise(), sectionCode));
     }
@@ -202,15 +300,20 @@ public class CruisePreparationService {
     public CruisePreparationSectionResponse returnSection(UUID cruiseId, String sectionCode,
                                                          CruisePreparationReturnRequest request,
                                                          UUID actorId) {
+        requireActor(actorId,false);
+        lockedCruise(cruiseId);
         CruisePreparationSection section = preparationSectionRepository
                 .findByCruiseCruiseIdAndSectionCodeForUpdate(cruiseId, sectionCode)
                 .orElseThrow(() -> new ResourceNotFoundException("CruisePreparationSection", sectionCode));
 
-        if (request.getExpectedRevision() != null && !request.getExpectedRevision().equals(section.getRevision())) {
+        if (request == null || request.getExpectedRevision() == null || !request.getExpectedRevision().equals(section.getRevision())) {
             throw new BusinessException(HttpStatus.CONFLICT, "STALE_REVISION",
                     String.format("Phân hệ chuẩn bị đã bị cập nhật (revision hiện tại: %d, mong đợi: %d)",
-                            section.getRevision(), request.getExpectedRevision()));
+                            section.getRevision(), request != null ? request.getExpectedRevision() : null));
         }
+
+        if(request.getReason()==null||request.getReason().isBlank())
+            throw new BusinessException(HttpStatus.UNPROCESSABLE_ENTITY,"PREPARATION_RETURN_REASON_REQUIRED","Return reason required");
 
         if (!"SUBMITTED".equalsIgnoreCase(section.getStatus()) && !"CONFIRMED".equalsIgnoreCase(section.getStatus())) {
             throw new BusinessException("INVALID_SECTION_STATUS",
@@ -225,7 +328,8 @@ public class CruisePreparationService {
             section.setNotes(request.getNotes());
         }
 
-        section = preparationSectionRepository.save(section);
+        section = preparationSectionRepository.saveAndFlush(section);
+        event(section.getCruise(),sectionCode,section.getRevision(),"RETURN",actorId,request.getReason(),mapToResponse(section,computeCheckItems(section.getCruise(),sectionCode)));
         log.info("Returned preparation section {} for cruise {} by user {} with reason: {}",
                 sectionCode, cruiseId, actorId, request.getReason());
         return mapToResponse(section, computeCheckItems(section.getCruise(), sectionCode));
@@ -239,7 +343,10 @@ public class CruisePreparationService {
                 section.setStatus("RETURNED");
                 section.setReturnReason("Hủy xác nhận tự động do thay đổi thông tin chuyến đi: " + reason);
                 section.setReturnedAt(Instant.now());
-                preparationSectionRepository.save(section);
+                var actor=currentActor();
+                section.setReturnedByUserId(actor==null?null:actor.getUserId());
+                preparationSectionRepository.saveAndFlush(section);
+                if(actor!=null)event(section.getCruise(),section.getSectionCode(),section.getRevision(),"INVALIDATE",actor.getUserId(),reason,mapToResponse(section,computeCheckItems(section.getCruise(),section.getSectionCode())));
                 log.info("Invalidated confirmation for preparation section {} on cruise {}", section.getSectionCode(), cruiseId);
             }
         }
@@ -367,6 +474,8 @@ public class CruisePreparationService {
                 .sectionCode(section.getSectionCode())
                 .sectionName(section.getSectionName())
                 .ownerRole(section.getOwnerRole())
+                .submitterRole("CRUISE_MANAGER")
+                .allowedActions(allowedActions(section,checkItems))
                 .status(section.getStatus())
                 .evidence(section.getEvidence())
                 .notes(section.getNotes())
@@ -377,6 +486,7 @@ public class CruisePreparationService {
                 .confirmedAt(section.getConfirmedAt())
                 .returnReason(section.getReturnReason())
                 .returnedAt(section.getReturnedAt())
+                .returnedByUserId(section.getReturnedByUserId())
                 .revision(section.getRevision())
                 .checkItems(checkItems)
                 .build();

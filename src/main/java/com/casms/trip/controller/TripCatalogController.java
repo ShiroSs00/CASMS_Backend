@@ -357,6 +357,12 @@ public class TripCatalogController {
         }
         List<Cabin> cabins;
         if (deckId != null) {
+            if(shipId != null) {
+                Deck deck=deckRepository.findById(deckId).orElseThrow(()->new jakarta.persistence.EntityNotFoundException("Deck not found"));
+                if(deck.getShip()==null || !shipId.equals(deck.getShip().getShipId()))
+                    throw new com.casms.common.exception.BusinessException(org.springframework.http.HttpStatus.UNPROCESSABLE_ENTITY,
+                        "ACTIVITY_VENUE_MISMATCH","Deck does not belong to requested ship",java.util.Map.of("fieldPath","deckId"));
+            }
             cabins = cabinRepository.findByDeckDeckId(deckId);
         } else if (shipId != null) {
             cabins = cabinRepository.findByShipShipIdOrderByDeckDeckNumberAscCabinNumberAsc(shipId);
@@ -367,6 +373,7 @@ public class TripCatalogController {
         String kw = keyword != null ? keyword.trim().toLowerCase() : null;
 
         List<PlanningSourceCabinResponse> result = cabins.stream()
+                .filter(c -> shipId == null || c.getShip()!=null && shipId.equals(c.getShip().getShipId()))
                 .filter(c -> kw == null || (c.getCabinNumber() != null && c.getCabinNumber().toLowerCase().contains(kw))
                         || (c.getLocationCode() != null && c.getLocationCode().toLowerCase().contains(kw)))
                 .map(c -> {
