@@ -101,6 +101,7 @@ public class ShipModelImportService {
                 // model elevation are model-managed and may change between versions.
                 deck.setDeckName(name);
                 deck.setModelPositionY(elevation);
+                deck.setModelMetadataJson(json(source));
                 deck = decks.save(deck);
                 resolvedDecks.put(id, deck);
                 saveMapping(model, id, name, ShipModelObjectType.DECK, deck, null, source,
@@ -112,14 +113,32 @@ public class ShipModelImportService {
             }
         }
 
-        // Service levels (-1 and 0 in the supplied assets) are model-only and violate
-        // the business Deck invariant (positive numbered passenger decks).
+        // Persist technical levels as physical Deck rows too. Model areas/services are deliberately ignored.
         for (JsonNode source : manifest.path("serviceDecks")) {
             String id = source.path("id").asText("");
             try {
                 if (id.isBlank() || !deckIds.add(id)) throw new ObjectImportException("INVALID_DECK_ID", "Service deck identifier is missing or duplicated");
-                saveMapping(model, id, source.path("name").asText(id), ShipModelObjectType.DECK, null, null,
-                        source, 0.0, source.path("elevationMetres").asDouble(0.0), 0.0, null, null, null);
+                int number = requiredInt(source, "number");
+                String name = requiredText(source, "name");
+                double elevation = requiredDouble(source, "elevationMetres");
+                JsonNode extras = glbNodes.get(id).path("extras");
+                if (number > 0) throw new ObjectImportException("INVALID_DECK_NUMBER", "Service levels must have non-positive deck numbers");
+                if (number != requiredInt(extras, "deckNumber") || !name.equals(requiredText(extras, "deckName"))
+                        || Math.abs(elevation - requiredDouble(extras, "elevation")) > 0.01) {
+                    throw new ObjectImportException("MANIFEST_GLB_MISMATCH", "Service deck metadata differs between the GLB and manifest");
+                }
+                Deck deck = decks.findByShipShipIdAndDeckNumber(shipId, number).orElseGet(Deck::new);
+                if (deck.getDeckId() == null) {
+                    deck.setShip(ship); deck.setDeckNumber(number); deck.setServiceLevel(true);
+                    deck.setPriceMultiplier(BigDecimal.ONE);
+                } else if (!deck.isServiceLevel()) {
+                    throw new ObjectImportException("DECK_TYPE_CONFLICT", "An existing deck has a different level classification");
+                }
+                deck.setDeckName(name); deck.setModelPositionY(elevation); deck.setModelMetadataJson(json(source));
+                deck = decks.save(deck);
+                saveMapping(model, id, name, ShipModelObjectType.DECK, deck, null,
+                        source, 0.0, elevation, 0.0, null, null, null);
+                job.setDecksImported(job.getDecksImported() + 1);
                 job.setObjectsSucceeded(job.getObjectsSucceeded() + 1);
             } catch (ObjectImportException ex) {
                 recordIssue(job, id, "DECK", ex.code, ex.getMessage());

@@ -107,7 +107,7 @@ public class ShipService {
             if (request.getTotalDecks() < 1) {
                 throw new BusinessException("INVALID_TOTAL_DECKS", "Total decks must be greater than zero");
             }
-            long configuredDeckCount = deckRepository.countByShipShipId(shipId);
+            long configuredDeckCount = deckRepository.countByShipShipIdAndServiceLevelFalse(shipId);
             if (request.getTotalDecks() < configuredDeckCount) {
                 throw new BusinessException("TOTAL_DECKS_BELOW_CONFIGURED_DECK",
                         "Total decks cannot be lower than the number of configured business decks");
@@ -218,7 +218,7 @@ public class ShipService {
         Ship ship = getShipById(shipId);
         // Basic entity validation is handled by DB constraints.
         // Example check: totalDecks vs actual registered decks in DB
-        long actualDecks = deckRepository.countByShipShipId(shipId);
+        long actualDecks = deckRepository.countByShipShipIdAndServiceLevelFalse(shipId);
         if (actualDecks > ship.getTotalDecks()) {
             throw new BusinessException("SHIP_VALIDATION_FAILED", "Actual configured decks exceed ship's total deck limit");
         }

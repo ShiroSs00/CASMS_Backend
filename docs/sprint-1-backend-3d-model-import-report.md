@@ -1,5 +1,7 @@
 # Sprint 1 Backend: 3D Ship Model Import Audit
 
+**Historical report.** The 2026-10-29 deck-only follow-up supersedes the model-only service-level design below: all valid deck levels are now persisted as Deck rows, and services are assigned manually through a separate API. See [current behavior and migration V66](DECK_IMPORT_AND_SERVICE_ASSIGNMENTS.md). Earlier test results and counts below describe the earlier implementation.
+
 **Date:** 2026-10-23
 **Repository:** `CASMS_Backend`
 **Base / working branch:** `main` → `feature/CASMS-86-3d-ship-model-import`

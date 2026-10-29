@@ -185,7 +185,7 @@ public class ShipModelService {
         Map<UUID, ShipModelObject> deckNodes = new HashMap<>();
         for (ShipModelObject object : modelObjects) {
             if (object.getCabin() != null) cabinNodes.put(object.getCabin().getCabinId(), object);
-            if (object.getDeck() != null) deckNodes.put(object.getDeck().getDeckId(), object);
+            if (object.getDeck() != null && object.getObjectType() == ShipModelObjectType.DECK) deckNodes.put(object.getDeck().getDeckId(), object);
         }
         List<Deck> shipDecks = decks.findByShipShipIdOrderByDeckNumber(shipId);
         List<Cabin> shipCabins = cabins.findByShipShipIdOrderByDeckDeckNumberAscCabinNumberAsc(shipId);
@@ -218,19 +218,20 @@ public class ShipModelService {
                             vector(d.getModelRotationX(), d.getModelRotationY(), d.getModelRotationZ()), d.getTxPowerDbm(),
                             d.getPathLossExponent(), Boolean.TRUE.equals(d.getCalibrated()), d.getModelNodeKey(), d.getInstalledAt(), d.getLastSeenAt()))
                     .toList();
-            String code = "DECK_%02d".formatted(deck.getDeckNumber());
+            String code = deck.isServiceLevel() ? "SERVICE_" + deck.getDeckNumber() : "DECK_%02d".formatted(deck.getDeckNumber());
             ShipModelObject mapping = deckNodes.get(deck.getDeckId());
             Ship3dConfigurationResponse.Vector3 position = preferVector(mapping, true,
                     deck.getModelPositionX(), deck.getModelPositionY(), deck.getModelPositionZ());
             return new Ship3dConfigurationResponse.Deck(deck.getDeckId(), code, deck.getDeckName(), deck.getDeckNumber(),
                     mapping == null ? code : mapping.getNodeKey(),
                     position == null ? null : position.y(), position,
-                    preferVector(mapping, false, deck.getModelRotationX(), deck.getModelRotationY(), deck.getModelRotationZ()), rooms, anchors, false);
+                    preferVector(mapping, false, deck.getModelRotationX(), deck.getModelRotationY(), deck.getModelRotationZ()), rooms, anchors, deck.isServiceLevel());
         }).collect(java.util.stream.Collectors.toCollection(ArrayList::new));
         modelObjects.stream()
                 .filter(object -> object.getObjectType() == ShipModelObjectType.DECK && object.getDeck() == null)
                 .map(this::serviceLevelResponse)
                 .filter(Objects::nonNull)
+                .filter(level -> deckData.stream().noneMatch(deck -> Objects.equals(deck.deckNumber(), level.deckNumber())))
                 .sorted(Comparator.comparing(Ship3dConfigurationResponse.Deck::deckNumber))
                 .forEach(deckData::add);
         return new Ship3dConfigurationResponse(ship.getShipId(), ship.getShipCode(), ship.getShipName(),

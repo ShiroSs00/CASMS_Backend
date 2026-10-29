@@ -1,5 +1,11 @@
 # Ship model API backend
 
+## Cập nhật import deck và gắn dịch vụ ngày 29 tháng 10 năm 2026
+
+Import hiện lưu cả passenger deck và service deck (ví dụ tầng -1, 0) thành bản ghi `Deck` có UUID thật. Các API danh sách deck trả thêm `serviceLevel` và `modelMetadataJson`; `decksImported` tính cả hai loại tầng. Object dịch vụ và khu vực trong mô hình được bỏ qua, không tự tạo Service.
+
+Gắn dịch vụ đã có bằng `PUT /api/decks/{deckId}/services/{serviceId}` (không có body), xem bằng `GET /api/decks/{deckId}/services`, gỡ bằng `DELETE /api/decks/{deckId}/services/{serviceId}`. Đọc cần `DECK_READ` và `SERVICE_READ`; ghi cần `DECK_READ` và `SERVICE_UPDATE`. Liên kết được giữ khi import lại. Xem [hợp đồng chi tiết và migration V66](DECK_IMPORT_AND_SERVICE_ASSIGNMENTS.md).
+
 Tài liệu mô tả các API backend quản lý model tàu và mapping với dữ liệu CASMS. Response tiếp tục dùng envelope `ApiResponse` (`success`, `data`); các route được gắn tiền tố `/api` từ `server.servlet.context-path`.
 
 ## API

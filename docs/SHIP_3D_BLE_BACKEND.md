@@ -1,5 +1,7 @@
 # CASMS ship 3D and BLE backend
 
+Current deck import and manual service-assignment behavior is documented in [Deck import and manual service assignments](DECK_IMPORT_AND_SERVICE_ASSIGNMENTS.md). Technical levels now have real Deck UUIDs; service objects in the model are ignored. This follow-up does not change BLE permissions or tracking behavior described below.
+
 ## Audit and data mapping
 
 The demo in `Demo BLE.rar` contains a React/Three.js viewer, a Python Bleak scanner and a small .NET proximity service. Its actual protocol is one laptop BLE receiver accepting advertisements from one iPhone and reporting RSSI. It applies a median plus EWMA filter and a one-meter calibration, then estimates distance. The viewer projects that range along a user-selected path. The demo explicitly says that one receiver cannot determine passenger x/y or deck; the path position is illustrative.
