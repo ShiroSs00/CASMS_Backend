@@ -186,7 +186,7 @@ public class ShipModelAssetService {
                 throw new ResponseStatusException(HttpStatus.CONFLICT,
                         "Manifest passengerCapacity is lower than the configured cabin capacity");
             }
-            long configuredDeckCount = decks.countByShipShipId(ship.getShipId());
+            long configuredDeckCount = decks.countByShipShipIdAndServiceLevelFalse(ship.getShipId());
             if (deckCount < configuredDeckCount) {
                 throw new ResponseStatusException(HttpStatus.CONFLICT,
                         "Manifest deckCount is lower than the configured business deck count");

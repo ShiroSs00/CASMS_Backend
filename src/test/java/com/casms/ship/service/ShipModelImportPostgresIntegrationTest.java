@@ -67,31 +67,150 @@ class ShipModelImportPostgresIntegrationTest {
     @Autowired ShipModelObjectRepository objects;
     @Autowired UserRepository users;
     @Autowired JwtService jwt;
+    @Autowired com.casms.servicepackage.repository.ServiceRepository catalogueServices;
+    @Autowired org.flywaydb.core.Flyway flyway;
 
     private final List<UUID> testShipIds = new ArrayList<>();
     private final List<UUID> testUserIds = new ArrayList<>();
     private final Set<String> uploadedBundles = new LinkedHashSet<>();
     private final List<Path> tempArchives = new ArrayList<>();
+    private final List<UUID> testServiceIds = new ArrayList<>();
+
+    @Test
+    void importsEveryDeckIgnoresModelServicesAndSupportsManualAssignments() throws Exception {
+        Ship ship = createShip(1);
+        String manager = token(Role.SHIP_MANAGER);
+        String serviceManager = token(Role.ACTIVITY_SERVICE_MANAGER);
+        String key = uniqueKey("all-decks");
+        long serviceCount = catalogueServices.count();
+        upload(key, "v1", bundleWithServiceDeck(key, "v1", "M-001"), manager);
+        UUID modelId = register(ship.getShipId(), key, "v1", manager);
+        JsonNode result = importJob(ship.getShipId(), modelId, manager).path("data");
+        assertEquals("SUCCEEDED", result.path("status").asText());
+        assertEquals(2, result.path("decksImported").asInt());
+        assertEquals(3, result.path("totalObjects").asInt());
+        assertEquals(serviceCount, catalogueServices.count(), "model venue names must not create catalogue services");
+        Deck serviceDeck = decks.findByShipShipIdAndDeckNumber(ship.getShipId(), 0).orElseThrow();
+        assertTrue(serviceDeck.isServiceLevel());
+        assertEquals(-2.0, serviceDeck.getModelPositionY());
+        assertEquals("mini-d00", mapper.readTree(serviceDeck.getModelMetadataJson()).path("id").asText());
+        assertEquals(1, decks.countByShipShipIdAndServiceLevelFalse(ship.getShipId()));
+        assertEquals(2, decks.countByShipShipId(ship.getShipId()));
+        assertEquals(3, objects.findByShipModelShipModelId(modelId).size());
+        mockMvc.perform(post("/ships/{shipId}/validate", ship.getShipId()).header("Authorization", "Bearer " + manager))
+                .andExpect(status().isOk());
+        mockMvc.perform(get("/decks/by-ship/{shipId}", ship.getShipId()).header("Authorization", "Bearer " + manager))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.totalElements").value(2));
+        mockMvc.perform(post("/cabins").header("Authorization", "Bearer " + manager)
+                        .contentType(MediaType.APPLICATION_JSON).content(mapper.writeValueAsBytes(Map.of(
+                                "deckId", serviceDeck.getDeckId(), "cabinNumber", "C00", "cabinType", "INTERIOR", "capacity", 2))))
+                .andExpect(status().isUnprocessableEntity()).andExpect(jsonPath("$.code").value("CABIN_PASSENGER_DECK_REQUIRED"));
+        mockMvc.perform(get("/ships/{shipId}/models/{modelId}/deck-mappings", ship.getShipId(), modelId)
+                        .header("Authorization", "Bearer " + manager))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data", hasSize(2)));
+        var catalogue = new com.casms.servicepackage.entity.Service();
+        catalogue.setServiceCode("IT-SV-" + UUID.randomUUID().toString().substring(0, 12));
+        catalogue.setServiceName("Manual restaurant"); catalogue.setServiceType("DINING");
+        catalogue.setStatus(com.casms.servicepackage.enums.ServiceStatus.ACTIVE);
+        catalogue = catalogueServices.saveAndFlush(catalogue);
+        UUID serviceId = catalogue.getServiceId(); testServiceIds.add(serviceId);
+        MvcResult assigned = mockMvc.perform(put("/decks/{deckId}/services/{serviceId}", serviceDeck.getDeckId(), serviceId)
+                        .header("Authorization", "Bearer " + serviceManager))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.serviceId").value(serviceId.toString())).andReturn();
+        String assignment = mapper.readTree(assigned.getResponse().getContentAsByteArray()).path("data").path("assignmentId").asText();
+        mockMvc.perform(put("/decks/{deckId}/services/{serviceId}", serviceDeck.getDeckId(), serviceId)
+                        .header("Authorization", "Bearer " + serviceManager))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.assignmentId").value(assignment));
+        // Reimport does not duplicate decks or erase manual service assignments.
+        importJob(ship.getShipId(), modelId, manager);
+        assertEquals(serviceDeck.getDeckId(), decks.findByShipShipIdAndDeckNumber(ship.getShipId(), 0).orElseThrow().getDeckId());
+        mockMvc.perform(get("/decks/{deckId}/services", serviceDeck.getDeckId()).header("Authorization", "Bearer " + serviceManager))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data", hasSize(1)));
+        upload(key, "v2", bundleWithServiceDeck(key, "v2", "M-001"), manager);
+        UUID nextModel = register(ship.getShipId(), key, "v2", manager);
+        assertEquals("SUCCEEDED", importJob(ship.getShipId(), nextModel, manager).path("data").path("status").asText());
+        assertEquals(2, decks.countByShipShipId(ship.getShipId()));
+        mockMvc.perform(get("/decks/{deckId}/services", serviceDeck.getDeckId()).header("Authorization", "Bearer " + serviceManager))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data[0].assignmentId").value(assignment));
+        mockMvc.perform(put("/decks/{deckId}/services/{serviceId}", serviceDeck.getDeckId(), serviceId)
+                        .header("Authorization", "Bearer " + manager)).andExpect(status().isForbidden());
+        mockMvc.perform(put("/decks/{deckId}/services/{serviceId}", UUID.randomUUID(), serviceId)
+                        .header("Authorization", "Bearer " + serviceManager)).andExpect(status().isNotFound());
+        mockMvc.perform(put("/decks/{deckId}/services/{serviceId}", serviceDeck.getDeckId(), UUID.randomUUID())
+                        .header("Authorization", "Bearer " + serviceManager)).andExpect(status().isNotFound());
+        // All physical levels appear once, with usable UUIDs in the configuration.
+        mockMvc.perform(post("/ships/{shipId}/models/{modelId}/activate", ship.getShipId(), modelId)
+                        .header("Authorization", "Bearer " + manager)).andExpect(status().isOk());
+        JsonNode config = mapper.readTree(mockMvc.perform(get("/ships/{shipId}/3d-configuration", ship.getShipId())
+                        .header("Authorization", "Bearer " + manager)).andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsByteArray()).path("data").path("decks");
+        assertEquals(2, config.size());
+        assertTrue(java.util.stream.StreamSupport.stream(config.spliterator(), false)
+                .anyMatch(d -> d.path("serviceLevel").asBoolean() && serviceDeck.getDeckId().toString().equals(d.path("deckId").asText())));
+        for (int i=0; i<2; i++) mockMvc.perform(delete("/decks/{deckId}/services/{serviceId}", serviceDeck.getDeckId(), serviceId)
+                        .header("Authorization", "Bearer " + serviceManager)).andExpect(status().isNoContent());
+        assertTrue(catalogueServices.existsById(serviceId));
+        flyway.validate();
+    }
+
+    @Test
+    void serviceDeckWritesRollbackWhenCabinPersistenceFails() throws Exception {
+        Ship ship = createShip(1); String manager = token(Role.SHIP_MANAGER);
+        String key = uniqueKey("deck-rollback");
+        upload(key, "v1", bundleWithServiceDeck(key, "v1", "CABIN-NUM-TOO-LONG"), manager);
+        UUID modelId = register(ship.getShipId(), key, "v1", manager);
+        mockMvc.perform(post("/ships/{shipId}/models/{modelId}/imports", ship.getShipId(), modelId)
+                        .header("Authorization", "Bearer " + manager)).andExpect(status().isConflict());
+        assertEquals(0, decks.countByShipShipId(ship.getShipId()));
+        assertEquals(0, objects.findByShipModelShipModelId(modelId).size());
+        assertEquals(com.casms.ship.enums.ModelImportStatus.FAILED,
+                jobs.findByShipModelShipModelIdOrderByStartedAtDesc(modelId).getFirst().getStatus());
+    }
+
+    @Test
+    void concurrentManualAssignmentsHaveOneDatabaseIdentity() throws Exception {
+        Ship ship = createShip(1); String manager = token(Role.SHIP_MANAGER);
+        String serviceManager = token(Role.ACTIVITY_SERVICE_MANAGER); String key = uniqueKey("deck-link");
+        upload(key, "v1", bundleWithServiceDeck(key, "v1", "M-001"), manager);
+        UUID model = register(ship.getShipId(), key, "v1", manager); importJob(ship.getShipId(), model, manager);
+        UUID deck = decks.findByShipShipIdAndDeckNumber(ship.getShipId(), 0).orElseThrow().getDeckId();
+        var service = new com.casms.servicepackage.entity.Service();
+        service.setServiceCode("IT-SV-" + UUID.randomUUID().toString().substring(0,12));
+        service.setServiceName("Manual gym"); service.setServiceType("FITNESS");
+        service.setStatus(com.casms.servicepackage.enums.ServiceStatus.INACTIVE);
+        UUID serviceId = catalogueServices.saveAndFlush(service).getServiceId(); testServiceIds.add(serviceId);
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+            java.util.concurrent.Callable<String> assign = () -> mapper.readTree(mockMvc.perform(
+                    put("/decks/{deckId}/services/{serviceId}", deck, serviceId).header("Authorization", "Bearer " + serviceManager))
+                    .andExpect(status().isOk()).andReturn().getResponse().getContentAsByteArray())
+                    .path("data").path("assignmentId").asText();
+            var first = executor.submit(assign); var second = executor.submit(assign);
+            assertEquals(first.get(), second.get());
+        } finally { executor.shutdownNow(); }
+        assertEquals(1, jdbc.queryForObject("SELECT count(*) FROM \"DeckServiceAssignment\" WHERE deck_id=? AND service_id=?",
+                Integer.class, deck, serviceId));
+    }
 
     @Test
     void shipDeckCabinReadAndReadinessRoutesRequireTheirPermissions() throws Exception {
         Ship ship = createShip(2);
         String shipManager = token(Role.SHIP_MANAGER);
-        String adminWithoutShipRead = token(Role.ADMIN);
+        String staffWithoutShipRead = token(Role.FINANCE_OFFICER);
 
         mockMvc.perform(get("/ships/{shipId}", ship.getShipId()).header("Authorization", "Bearer " + shipManager))
                 .andExpect(status().isOk());
-        mockMvc.perform(get("/ships/{shipId}", ship.getShipId()).header("Authorization", "Bearer " + adminWithoutShipRead))
+        mockMvc.perform(get("/ships/{shipId}", ship.getShipId()).header("Authorization", "Bearer " + staffWithoutShipRead))
                 .andExpect(status().isForbidden());
 
         mockMvc.perform(get("/decks/by-ship/{shipId}", ship.getShipId()).header("Authorization", "Bearer " + shipManager))
                 .andExpect(status().isOk());
-        mockMvc.perform(get("/decks/by-ship/{shipId}", ship.getShipId()).header("Authorization", "Bearer " + adminWithoutShipRead))
+        mockMvc.perform(get("/decks/by-ship/{shipId}", ship.getShipId()).header("Authorization", "Bearer " + staffWithoutShipRead))
                 .andExpect(status().isForbidden());
 
         mockMvc.perform(get("/cabins/by-ship/{shipId}", ship.getShipId()).header("Authorization", "Bearer " + shipManager))
                 .andExpect(status().isOk());
-        mockMvc.perform(get("/cabins/by-ship/{shipId}", ship.getShipId()).header("Authorization", "Bearer " + adminWithoutShipRead))
+        mockMvc.perform(get("/cabins/by-ship/{shipId}", ship.getShipId()).header("Authorization", "Bearer " + staffWithoutShipRead))
                 .andExpect(status().isForbidden());
 
         mockMvc.perform(get("/ships/{shipId}/readiness-assessment", ship.getShipId())
@@ -101,7 +220,7 @@ class ShipModelImportPostgresIntegrationTest {
                 .andExpect(jsonPath("$.data.deckCount").value(0))
                 .andExpect(jsonPath("$.data.cabinCount").value(0));
         mockMvc.perform(get("/ships/{shipId}/readiness-assessment", ship.getShipId())
-                        .header("Authorization", "Bearer " + adminWithoutShipRead))
+                        .header("Authorization", "Bearer " + staffWithoutShipRead))
                 .andExpect(status().isForbidden());
     }
 
@@ -127,12 +246,12 @@ class ShipModelImportPostgresIntegrationTest {
             assertEquals("SUCCEEDED", first.path("data").path("status").asText());
             UUID firstJobId = UUID.fromString(first.path("data").path("jobId").asText());
             assertEquals(303, first.path("data").path("totalObjects").asInt());
-            assertEquals(10, first.path("data").path("decksImported").asInt());
+            assertEquals(12, first.path("data").path("decksImported").asInt());
             assertEquals(291, first.path("data").path("cabinsImported").asInt());
             assertEquals(303, first.path("data").path("objectsSucceeded").asInt());
             assertEquals(0, first.path("data").path("objectsFailed").asInt());
 
-            assertEquals(10, decks.countByShipShipId(ship.getShipId()));
+            assertEquals(12, decks.countByShipShipId(ship.getShipId()));
             assertEquals(291, cabins.countByShipShipId(ship.getShipId()));
             assertEquals(303, objects.findByShipModelShipModelId(modelId).size());
             assertEquals(291L, objects.findByShipModelShipModelId(modelId).stream().filter(o -> o.getCabin() != null).count());
@@ -161,7 +280,7 @@ class ShipModelImportPostgresIntegrationTest {
             JsonNode retry = importJob(ship.getShipId(), modelId, token);
             assertEquals("SUCCEEDED", retry.path("data").path("status").asText());
             assertEquals(303, retry.path("data").path("objectsSucceeded").asInt());
-            assertEquals(10, decks.countByShipShipId(ship.getShipId()));
+            assertEquals(12, decks.countByShipShipId(ship.getShipId()));
             assertEquals(291, cabins.countByShipShipId(ship.getShipId()));
             assertEquals(303, objects.findByShipModelShipModelId(modelId).size());
             mockMvc.perform(get("/ships/{shipId}/models/{modelId}/imports", ship.getShipId(), modelId)
@@ -178,7 +297,7 @@ class ShipModelImportPostgresIntegrationTest {
             mockMvc.perform(post("/ships/{shipId}/models/{modelId}/imports", ship.getShipId(), modelId)
                             .header("Authorization", "Bearer " + passengerToken))
                     .andExpect(status().isForbidden());
-            String noShipReadToken = token(Role.ADMIN);
+            String noShipReadToken = token(Role.FINANCE_OFFICER);
             mockMvc.perform(get("/ships/{shipId}/imports/{jobId}", ship.getShipId(), firstJobId)
                             .header("Authorization", "Bearer " + noShipReadToken))
                     .andExpect(status().isForbidden());
@@ -215,7 +334,7 @@ class ShipModelImportPostgresIntegrationTest {
         UUID rollbackModel = register(ship.getShipId(), rollbackKey, rollbackVersion, token);
         MvcResult rollbackResponse = mockMvc.perform(post("/ships/{shipId}/models/{modelId}/imports", ship.getShipId(), rollbackModel)
                         .header("Authorization", "Bearer " + token)).andReturn();
-        assertEquals(500, rollbackResponse.getResponse().getStatus(), rollbackResponse.getResponse().getContentAsString());
+        assertEquals(409, rollbackResponse.getResponse().getStatus(), rollbackResponse.getResponse().getContentAsString());
         var failedJobEntity = jobs.findByShipModelShipModelIdOrderByStartedAtDesc(rollbackModel).get(0);
         UUID failedJob = failedJobEntity.getModelImportJobId();
         assertEquals("FAILED", failedJobEntity.getStatus().name());
@@ -411,6 +530,7 @@ class ShipModelImportPostgresIntegrationTest {
             jdbc.update("DELETE FROM \"ShipModelAssetBlob\" WHERE model_key = ? AND asset_version = ?", identity[0], identity[1]);
         }
         for (UUID shipId : testShipIds) {
+            jdbc.update("DELETE FROM \"DeckServiceAssignment\" WHERE deck_id IN (SELECT deck_id FROM \"Deck\" WHERE ship_id = ?)", shipId);
             jdbc.update("DELETE FROM \"ShipModelObject\" WHERE ship_model_id IN (SELECT ship_model_id FROM \"ShipModel\" WHERE ship_id = ?)", shipId);
             jdbc.update("DELETE FROM \"ModelImportJob\" WHERE ship_model_id IN (SELECT ship_model_id FROM \"ShipModel\" WHERE ship_id = ?)", shipId);
             jdbc.update("DELETE FROM \"Cabin\" WHERE ship_id = ?", shipId);
@@ -422,6 +542,7 @@ class ShipModelImportPostgresIntegrationTest {
             jdbc.update("DELETE FROM \"UserRole\" WHERE user_id = ?", userId);
             jdbc.update("DELETE FROM \"User\" WHERE user_id = ?", userId);
         }
+        testServiceIds.forEach(catalogueServices::deleteById);
         for (Path archive : tempArchives) {
             try { Files.deleteIfExists(archive); } catch (IOException ignored) { }
         }
@@ -602,6 +723,42 @@ class ShipModelImportPostgresIntegrationTest {
         }
         tempArchives.add(archive);
         return archive;
+    }
+
+    private Path bundleWithServiceDeck(String key, String version, String cabinNumber) throws Exception {
+        Path original = smallBundle(key, version, "OCEAN_VIEW", cabinNumber, true);
+        Map<String, byte[]> entries = new LinkedHashMap<>();
+        try (var zip = new java.util.zip.ZipInputStream(Files.newInputStream(original))) {
+            java.util.zip.ZipEntry entry;
+            while ((entry=zip.getNextEntry()) != null) {
+                String name=entry.getName().substring((ASSET_PREFIX+key+"/"+version+"/").length());
+                entries.put(name, zip.readAllBytes());
+            }
+        }
+        var manifest = (com.fasterxml.jackson.databind.node.ObjectNode)mapper.readTree(entries.get("manifest.json"));
+        manifest.putArray("serviceDecks").add(mapper.valueToTree(Map.of("id","mini-d00", "number",0,
+                "name","Technical Deck", "elevationMetres",-2.0, "asset","services/service_00.glb", "cabinIds",List.of())));
+        // Deliberately insufficient catalogue metadata: this must be ignored, not guessed or created.
+        manifest.putArray("areas").add(mapper.valueToTree(Map.of("id","area-restaurant", "name","Unconfigured restaurant", "deckId","mini-d00")));
+        byte[] source=entries.get("ship.glb");
+        int jsonLength=ByteBuffer.wrap(source).order(ByteOrder.LITTLE_ENDIAN).getInt(12);
+        var gltf=(com.fasterxml.jackson.databind.node.ObjectNode)mapper.readTree(Arrays.copyOfRange(source,20,20+jsonLength));
+        var nodes=(com.fasterxml.jackson.databind.node.ArrayNode)gltf.path("nodes");
+        nodes.add(mapper.valueToTree(Map.of("name","SERVICE_00","extras",Map.of("entityType","serviceDeck",
+                "modelId","mini-d00","deckNumber",0,"deckName","Technical Deck","elevation",-2.0))));
+        nodes.add(mapper.valueToTree(Map.of("name","Unconfigured restaurant","extras",Map.of("entityType","service","modelId","area-restaurant"))));
+        byte[] updatedGlb=glb(mapper.writeValueAsBytes(gltf));
+        entries.put("manifest.json",mapper.writeValueAsBytes(manifest));
+        entries.put("ship.glb",updatedGlb); entries.put("exterior.glb",updatedGlb);
+        entries.put("services/service_00.glb",updatedGlb);
+        Map<String,String> checksums=new LinkedHashMap<>();
+        for(var e:entries.entrySet()) if(!e.getKey().equals("checksums.json")) checksums.put(e.getKey(),sha256(e.getValue()));
+        entries.put("checksums.json",mapper.writeValueAsBytes(checksums));
+        Path result=Files.createTempFile("casms-service-deck-", ".zip");tempArchives.add(result);
+        try(var zip=new ZipOutputStream(Files.newOutputStream(result))) {
+            for(var e:entries.entrySet()) {zip.putNextEntry(new ZipEntry(ASSET_PREFIX+key+"/"+version+"/"+e.getKey()));zip.write(e.getValue());zip.closeEntry();}
+        }
+        return result;
     }
 
     private static byte[] glb(byte[] json) throws IOException {

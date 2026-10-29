@@ -109,6 +109,9 @@ public class DeckService {
         }
 
         if (request.getDeckNumber() != null && !request.getDeckNumber().equals(deck.getDeckNumber())) {
+            if (deck.isServiceLevel()) {
+                throw new BusinessException("DECK_MODEL_FIELDS_IMMUTABLE", "Service deck numbering is managed by model import");
+            }
             if (request.getDeckNumber() < 1) {
                 throw new BusinessException("INVALID_DECK_NUMBER", "Deck number must be at least 1");
             }
@@ -165,7 +168,10 @@ public class DeckService {
     @Transactional(readOnly = true)
     public void validateDeck(UUID deckId) {
         Deck deck = getDeckById(deckId);
-        if (deck.getDeckNumber() > deck.getShip().getTotalDecks()) {
+        int limit = deck.getShip().getDeckNumberLimit() == null
+                ? deck.getShip().getTotalDecks() : deck.getShip().getDeckNumberLimit();
+        if ((!deck.isServiceLevel() && (deck.getDeckNumber() < 1 || deck.getDeckNumber() > limit))
+                || (deck.isServiceLevel() && deck.getDeckNumber() > 0)) {
             throw new BusinessException("INVALID_DECK_NUMBER", "Deck number violates ship limit constraint");
         }
     }
@@ -200,6 +206,8 @@ public class DeckService {
         res.setShipId(deck.getShip().getShipId());
         res.setDeckNumber(deck.getDeckNumber());
         res.setDeckName(deck.getDeckName());
+        res.setServiceLevel(deck.isServiceLevel());
+        res.setModelMetadataJson(deck.getModelMetadataJson());
         res.setPriceMultiplier(deck.getPriceMultiplier() != null ? deck.getPriceMultiplier() : BigDecimal.valueOf(1.00));
         res.setModelPositionX(deck.getModelPositionX());
         res.setModelPositionY(deck.getModelPositionY());

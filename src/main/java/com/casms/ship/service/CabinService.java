@@ -40,6 +40,9 @@ public class CabinService {
     public CabinSummaryResponse create(CabinCreateRequest request) {
         Deck deck = deckRepository.findById(request.getDeckId())
                 .orElseThrow(() -> new ResourceNotFoundException("Deck", request.getDeckId()));
+        if (deck.isServiceLevel()) {
+            throw new BusinessException("CABIN_PASSENGER_DECK_REQUIRED", "Cabins require a positive passenger deck");
+        }
 
         Ship ship;
         if (request.getShipId() != null) {

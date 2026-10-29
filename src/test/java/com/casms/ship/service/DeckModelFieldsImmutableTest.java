@@ -42,4 +42,26 @@ class DeckModelFieldsImmutableTest {
         assertEquals("DECK_MODEL_FIELDS_IMMUTABLE", error.getCode());
         verify(decks, never()).save(deck);
     }
+
+    @Test
+    void technicalDeckCannotBeRenumberedThroughBusinessCrud() {
+        UUID id = UUID.randomUUID(); Deck deck = new Deck();
+        deck.setDeckId(id); deck.setDeckNumber(0); deck.setServiceLevel(true);
+        when(decks.findById(id)).thenReturn(Optional.of(deck));
+        DeckUpdateRequest request = new DeckUpdateRequest(); request.setDeckNumber(1);
+        assertEquals("DECK_MODEL_FIELDS_IMMUTABLE", assertThrows(BusinessException.class,
+                () -> service.update(id, request)).getCode());
+        verify(decks, never()).save(deck);
+    }
+
+    @Test
+    void validationUsesNumberLimitRatherThanDeckCountAndAcceptsTechnicalLevels() {
+        UUID id = UUID.randomUUID(); Deck deck = new Deck();
+        var ship = new com.casms.ship.entity.Ship(); ship.setTotalDecks(13); ship.setDeckNumberLimit(14);
+        deck.setShip(ship); deck.setDeckNumber(14);
+        when(decks.findById(id)).thenReturn(Optional.of(deck));
+        org.junit.jupiter.api.Assertions.assertDoesNotThrow(() -> service.validateDeck(id));
+        deck.setDeckNumber(-1); deck.setServiceLevel(true);
+        org.junit.jupiter.api.Assertions.assertDoesNotThrow(() -> service.validateDeck(id));
+    }
 }

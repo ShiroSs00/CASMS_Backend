@@ -33,6 +33,12 @@ public class Deck {
     @Column(name = "deck_name", length = 50)
     private String deckName;
 
+    @Column(name = "service_level", nullable = false)
+    private boolean serviceLevel;
+
+    @Column(name = "model_metadata_json", columnDefinition = "text")
+    private String modelMetadataJson;
+
     @Column(name = "model_position_x")
     private Double modelPositionX;
     @Column(name = "model_position_y")

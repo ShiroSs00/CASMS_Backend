@@ -22,6 +22,9 @@ public class DeckResponse {
     @Schema(description = "Tên hiển thị của tầng", example = "Promenade Deck")
     private String deckName;
 
+    private boolean serviceLevel;
+    private String modelMetadataJson;
+
     @Schema(description = "Hệ số giá tầng boong (mặc định 1.00)", example = "1.15")
     private BigDecimal priceMultiplier;
 
