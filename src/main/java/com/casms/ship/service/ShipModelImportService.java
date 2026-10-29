@@ -66,9 +66,37 @@ public class ShipModelImportService {
         JsonNode glb = assets.glbDocument(model.getModelKey(), model.getAssetVersion(), glbPath);
         Map<String, JsonNode> glbNodes = indexAndValidateNodes(manifest, glb);
         validateManifestBusinessIdentities(manifest);
+        Map<String, JsonNode> areaSources = new LinkedHashMap<>();
+        Map<String, Integer> areaNodes = new LinkedHashMap<>();
+        Set<String> businessServiceIds = new HashSet<>();
+        for (int i = 0; i < glb.path("nodes").size(); i++) {
+            JsonNode node = glb.path("nodes").get(i);
+            String id = node.path("extras").path("modelId").asText("");
+            if ("service".equals(node.path("extras").path("entityType").asText())) businessServiceIds.add(id);
+            if (!"area".equals(node.path("extras").path("entityType").asText())) continue;
+            if (id.isBlank() || id.length() > 200 || glbNodes.containsKey(id) || areaNodes.putIfAbsent(id, i) != null)
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Physical area node has a missing, duplicate or conflicting identity");
+        }
+        if (manifest.has("areas") && !manifest.path("areas").isArray())
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Manifest areas must be an array");
+        for (JsonNode area : manifest.path("areas")) {
+            String id = area.path("id").asText("");
+            // Only physical `area` nodes are imported; business `service` nodes remain ignored.
+            if (!areaNodes.containsKey(id)) {
+                if (!id.isBlank() && businessServiceIds.contains(id)) continue;
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Manifest physical area has no matching GLB area node: " + id);
+            }
+            if (areaSources.putIfAbsent(id, area) != null)
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Duplicate physical area in manifest");
+        }
+        if (!areaNodes.keySet().equals(areaSources.keySet()))
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Physical GLB areas require corresponding manifest metadata");
+        ModelAreaGeometry areaGeometry;
+        try { areaGeometry = areaSources.isEmpty() ? null : new ModelAreaGeometry(glb); }
+        catch (IllegalArgumentException ex) { throw new ResponseStatusException(HttpStatus.BAD_REQUEST, ex.getMessage(), ex); }
 
         ModelImportJob job = jobs.findById(jobId).orElseThrow(() -> new IllegalStateException("Import job disappeared"));
-        int total = manifest.path("decks").size() + manifest.path("serviceDecks").size() + manifest.path("cabins").size();
+        int total = manifest.path("decks").size() + manifest.path("serviceDecks").size() + manifest.path("cabins").size() + areaSources.size();
         job.setTotalObjects(total);
 
         Ship ship = model.getShip();
@@ -113,7 +141,7 @@ public class ShipModelImportService {
             }
         }
 
-        // Persist technical levels as physical Deck rows too. Model areas/services are deliberately ignored.
+        // Persist technical levels as physical Deck rows; catalogue services remain independent.
         for (JsonNode source : manifest.path("serviceDecks")) {
             String id = source.path("id").asText("");
             try {
@@ -136,6 +164,7 @@ public class ShipModelImportService {
                 }
                 deck.setDeckName(name); deck.setModelPositionY(elevation); deck.setModelMetadataJson(json(source));
                 deck = decks.save(deck);
+                resolvedDecks.put(id, deck);
                 saveMapping(model, id, name, ShipModelObjectType.DECK, deck, null,
                         source, 0.0, elevation, 0.0, null, null, null);
                 job.setDecksImported(job.getDecksImported() + 1);
@@ -213,6 +242,41 @@ public class ShipModelImportService {
             }
         }
 
+        for (var entry : areaSources.entrySet()) {
+            String id = entry.getKey();
+            JsonNode source = entry.getValue();
+            try {
+                String name = requiredText(source, "name");
+                String kind = requiredText(source, "kind");
+                if (name.length() > 200) throw new ObjectImportException("INVALID_AREA_NAME", "Area name exceeds 200 characters");
+                Deck deck = resolvedDecks.get(requiredText(source, "deckId"));
+                if (deck == null) throw new ObjectImportException("UNKNOWN_DECK", "Area refers to a deck that was not imported");
+                int index = areaNodes.get(id);
+                JsonNode node = glb.path("nodes").get(index), extras = node.path("extras");
+                if (!name.equals(extras.path("areaName").asText()) || !kind.equals(extras.path("areaKind").asText())
+                        || requiredInt(extras, "deckNumber") != deck.getDeckNumber()
+                        || (source.has("deckNumber") && requiredInt(source, "deckNumber") != deck.getDeckNumber()))
+                    throw new ObjectImportException("MANIFEST_GLB_MISMATCH", "Area name, kind or deck differs between manifest and GLB");
+                double[] size = vector(source.path("size"), "area_size", 3);
+                for (double dimension : size) if (dimension <= 0)
+                    throw new ObjectImportException("INVALID_AREA_SIZE", "Area dimensions must be positive");
+                double[] world = areaGeometry.world(index);
+                double[] scale = ModelAreaGeometry.scale(world), rotation = ModelAreaGeometry.rotation(world, scale);
+                var metadata = (com.fasterxml.jackson.databind.node.ObjectNode) source.deepCopy();
+                metadata.set("gltfNode", node);
+                metadata.set("worldMatrix", mapper.valueToTree(world));
+                metadata.put("sourceNodeIndex", index);
+                ShipModelObject object = saveMapping(model, id, name, ShipModelObjectType.FACILITY, deck, null,
+                        metadata, world[12], world[13], world[14], size[0], size[1], size[2]);
+                object.setScaleX(scale[0]); object.setScaleY(scale[1]); object.setScaleZ(scale[2]);
+                object.setRotationX(rotation == null ? null : rotation[0]);
+                object.setRotationY(rotation == null ? null : rotation[1]);
+                object.setRotationZ(rotation == null ? null : rotation[2]);
+                job.setObjectsSucceeded(job.getObjectsSucceeded() + 1);
+            } catch (ObjectImportException ex) { recordIssue(job, id, "FACILITY", ex.code, ex.getMessage()); }
+              catch (IllegalArgumentException ex) { recordIssue(job, id, "FACILITY", "INVALID_AREA_TRANSFORM", ex.getMessage()); }
+        }
+
         job.setFinishedAt(Instant.now());
         job.setStatus(job.getObjectsFailed() == 0 ? ModelImportStatus.SUCCEEDED
                 : job.getObjectsSucceeded() == 0 ? ModelImportStatus.FAILED : ModelImportStatus.PARTIAL);
@@ -241,7 +305,7 @@ public class ShipModelImportService {
         return jobs.findByShipModelShipModelIdOrderByStartedAtDesc(modelId).stream().map(ShipModelImportService::response).toList();
     }
 
-    private void saveMapping(ShipModel model, String id, String name, ShipModelObjectType type, Deck deck, Cabin cabin,
+    private ShipModelObject saveMapping(ShipModel model, String id, String name, ShipModelObjectType type, Deck deck, Cabin cabin,
                              JsonNode metadata, double x, double y, double z, Double sx, Double sy, Double sz) {
         ShipModelObject object = objects.findByShipModelShipModelIdAndNodeKey(model.getShipModelId(), id)
                 .orElseGet(ShipModelObject::new);
@@ -267,7 +331,7 @@ public class ShipModelImportService {
         object.setScaleY(1.0);
         object.setScaleZ(1.0);
         object.setMetadataJson(json(metadata));
-        objects.save(object);
+        return objects.save(object);
     }
 
     private void recordIssue(ModelImportJob job, String id, String type, String code, String message) {

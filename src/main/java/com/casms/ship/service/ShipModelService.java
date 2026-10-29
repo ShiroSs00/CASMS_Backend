@@ -225,7 +225,10 @@ public class ShipModelService {
             return new Ship3dConfigurationResponse.Deck(deck.getDeckId(), code, deck.getDeckName(), deck.getDeckNumber(),
                     mapping == null ? code : mapping.getNodeKey(),
                     position == null ? null : position.y(), position,
-                    preferVector(mapping, false, deck.getModelRotationX(), deck.getModelRotationY(), deck.getModelRotationZ()), rooms, anchors, deck.isServiceLevel());
+                    preferVector(mapping, false, deck.getModelRotationX(), deck.getModelRotationY(), deck.getModelRotationZ()), rooms, anchors, deck.isServiceLevel(),
+                    modelObjects.stream().filter(o -> o.getObjectType() == ShipModelObjectType.FACILITY
+                                    && o.getDeck() != null && o.getDeck().getDeckId().equals(deck.getDeckId()))
+                            .sorted(Comparator.comparing(ShipModelObject::getNodeKey)).map(this::facilityResponse).toList());
         }).collect(java.util.stream.Collectors.toCollection(ArrayList::new));
         modelObjects.stream()
                 .filter(object -> object.getObjectType() == ShipModelObjectType.DECK && object.getDeck() == null)
@@ -275,10 +278,30 @@ public class ShipModelService {
             Ship3dConfigurationResponse.Vector3 rotation = vector(object.getRotationX(), object.getRotationY(), object.getRotationZ());
             return new Ship3dConfigurationResponse.Deck(null, "SERVICE_" + number, name, number,
                     object.getNodeKey(), position == null ? metadata.path("elevationMetres").asDouble() : position.y(),
-                    position, rotation, List.of(), List.of(), true);
+                    position, rotation, List.of(), List.of(), true, List.of());
         } catch (Exception ignored) {
             return null;
         }
+    }
+
+    private Ship3dConfigurationResponse.Facility facilityResponse(ShipModelObject object) {
+        String kind = null;
+        Ship3dConfigurationResponse.Vector3 dimensions = null;
+        if (object.getMetadataJson() != null) try {
+            var metadata = objectMapper.readTree(object.getMetadataJson());
+            if (metadata != null) {
+                kind = metadata.path("kind").isTextual() ? metadata.path("kind").asText() : null;
+                var size = metadata.path("size");
+                if (size.isArray() && size.size() == 3 && size.get(0).isNumber() && size.get(1).isNumber() && size.get(2).isNumber())
+                    dimensions = vector(size.get(0).asDouble(), size.get(1).asDouble(), size.get(2).asDouble());
+            }
+        } catch (com.fasterxml.jackson.core.JsonProcessingException ignored) {
+            // Legacy/manual mappings may have opaque metadata; preserve the object and raw metadata.
+        }
+        return new Ship3dConfigurationResponse.Facility(object.getShipModelObjectId(), object.getNodeKey(), object.getDisplayName(), kind,
+                object.getDeck().getDeckId(), vector(object.getPositionX(), object.getPositionY(), object.getPositionZ()),
+                vector(object.getRotationX(), object.getRotationY(), object.getRotationZ()),
+                vector(object.getScaleX(), object.getScaleY(), object.getScaleZ()), dimensions, object.getMetadataJson());
     }
 
     private static void validateVector(Ship3dConfigurationResponse.Vector3 value, String field, boolean required) {

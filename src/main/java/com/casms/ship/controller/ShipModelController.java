@@ -46,7 +46,8 @@ public class ShipModelController {
     private final ShipModelAssetService assetService;
     private final ShipModelImportService importService;
 
-    @Operation(summary = "Import deck and cabin metadata from a registered model manifest")
+    @Operation(summary = "Import physical decks, cabins and areas from a registered model manifest",
+            description = "Physical area nodes are stored as FACILITY mappings linked to decks, including spatial metadata. Business service nodes do not create catalogue services or deck-service assignments.")
     @PreAuthorize("hasAuthority('SHIP_UPDATE')")
     @PostMapping("/ships/{shipId}/models/{modelId}/imports")
     @ResponseStatus(HttpStatus.CREATED)
@@ -225,7 +226,8 @@ public class ShipModelController {
         return ApiResponse.success("Model object mapping deleted", null);
     }
 
-    @Operation(summary = "Get complete ship, model, deck, cabin and BLE anchor configuration for 3D clients")
+    @Operation(summary = "Get ship, model, deck, cabin, facility and BLE anchor configuration for 3D clients",
+            description = "Each deck includes physical facilities with transforms, dimensions and original model metadata. Catalogue services are managed separately.")
     @PreAuthorize("hasAuthority('SHIP_CONFIGURATION_READ')")
     @GetMapping("/ships/{shipId}/3d-configuration")
     public ApiResponse<Ship3dConfigurationResponse> configuration(@PathVariable UUID shipId) {

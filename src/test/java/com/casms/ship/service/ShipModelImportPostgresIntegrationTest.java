@@ -77,6 +77,80 @@ class ShipModelImportPostgresIntegrationTest {
     private final List<UUID> testServiceIds = new ArrayList<>();
 
     @Test
+    void physicalAreasPersistAsFacilitiesAndReadBackWithoutCreatingServices() throws Exception {
+        Ship ship=createShip(1);String token=token(Role.SHIP_MANAGER);String key=uniqueKey("physical-areas");
+        long definitions=catalogueServices.count();
+        upload(key,"v1",bundleWithPhysicalAreas(key,"v1","valid"),token);
+        UUID model=register(ship.getShipId(),key,"v1",token);
+        JsonNode job=importJob(ship.getShipId(),model,token).path("data");
+        assertEquals("SUCCEEDED",job.path("status").asText());assertEquals(5,job.path("totalObjects").asInt());
+        assertEquals(5,job.path("objectsSucceeded").asInt());
+        var all=objects.findByShipModelShipModelId(model);
+        var facilities=all.stream().filter(o->o.getObjectType()==com.casms.ship.enums.ShipModelObjectType.FACILITY).toList();
+        assertEquals(2,facilities.size());assertEquals(1,cabins.countByShipShipId(ship.getShipId()));
+        for(var facility:facilities) {
+            assertNull(facility.getCabin());assertNotNull(facility.getDeck());
+            Deck physicalDeck = decks.findById(facility.getDeck().getDeckId()).orElseThrow();
+            assertEquals(ship.getShipId(),physicalDeck.getShip().getShipId());
+            var metadata=mapper.readTree(facility.getMetadataJson());
+            assertEquals(3,metadata.path("size").size());assertEquals(16,metadata.path("worldMatrix").size());
+            assertEquals("area",metadata.path("gltfNode").path("extras").path("entityType").asText());
+        }
+        var gym=facilities.stream().filter(o->o.getNodeKey().equals("physical-gym")).findFirst().orElseThrow();
+        assertTrue(decks.findById(gym.getDeck().getDeckId()).orElseThrow().isServiceLevel());assertEquals(3.0,gym.getPositionX(),1e-9);
+        assertEquals(Math.PI/2,gym.getRotationY(),1e-9);assertEquals(2.0,gym.getScaleX(),1e-9);
+        Set<UUID> ids=new HashSet<>();facilities.forEach(f->ids.add(f.getShipModelObjectId()));
+        importJob(ship.getShipId(),model,token);
+        assertEquals(ids,objects.findByShipModelShipModelId(model).stream().filter(o->o.getObjectType()==com.casms.ship.enums.ShipModelObjectType.FACILITY).map(com.casms.ship.entity.ShipModelObject::getShipModelObjectId).collect(java.util.stream.Collectors.toSet()));
+        assertEquals(definitions,catalogueServices.count());
+        mockMvc.perform(get("/ships/{shipId}/models/{modelId}/objects",ship.getShipId(),model).header("Authorization","Bearer "+token))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data",hasSize(5)));
+        mockMvc.perform(post("/ships/{shipId}/models/{modelId}/activate",ship.getShipId(),model).header("Authorization","Bearer "+token)).andExpect(status().isOk());
+        JsonNode config=mapper.readTree(mockMvc.perform(get("/ships/{shipId}/3d-configuration",ship.getShipId()).header("Authorization","Bearer "+token)).andExpect(status().isOk()).andReturn().getResponse().getContentAsByteArray()).path("data");
+        int count=0;
+        for(JsonNode d:config.path("decks"))for(JsonNode f:d.path("facilities")) {
+            count++;assertEquals(d.path("deckId").asText(),f.path("deckId").asText());assertTrue(f.path("dimensions").path("x").asDouble()>0);
+        }
+        assertEquals(2,count);
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings={"unknown-deck","invalid-size","invalid-transform"})
+    void invalidAreaRecordsAnIssueWithoutCreatingFalseCabins(String mode) throws Exception {
+        Ship ship=createShip(1);String token=token(Role.SHIP_MANAGER);String key=uniqueKey("area-partial");
+        upload(key,"v1",bundleWithPhysicalAreas(key,"v1",mode),token);UUID model=register(ship.getShipId(),key,"v1",token);
+        JsonNode result=importJob(ship.getShipId(),model,token).path("data");
+        assertEquals("PARTIAL",result.path("status").asText());assertEquals(1,result.path("objectsFailed").asInt());
+        assertEquals(4,result.path("objectsSucceeded").asInt());assertEquals(1,cabins.countByShipShipId(ship.getShipId()));
+        assertEquals(1,objects.findByShipModelShipModelId(model).stream().filter(o->o.getObjectType()==com.casms.ship.enums.ShipModelObjectType.FACILITY).count());
+        mockMvc.perform(get("/ships/{shipId}/imports/{jobId}/issues",ship.getShipId(),UUID.fromString(result.path("jobId").asText())).header("Authorization","Bearer "+token))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data[0].objectType").value("FACILITY"));
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings={"duplicate-node","missing-node"})
+    void ambiguousPhysicalStructureFailsBeforeWritingDecks(String mode) throws Exception {
+        Ship ship=createShip(1);String token=token(Role.SHIP_MANAGER);String key=uniqueKey("area-identity");
+        upload(key,"v1",bundleWithPhysicalAreas(key,"v1",mode),token);UUID model=register(ship.getShipId(),key,"v1",token);
+        mockMvc.perform(post("/ships/{shipId}/models/{modelId}/imports",ship.getShipId(),model).header("Authorization","Bearer "+token)).andExpect(status().isBadRequest());
+        assertEquals(0,decks.countByShipShipId(ship.getShipId()));assertEquals(0,objects.findByShipModelShipModelId(model).size());
+    }
+
+    @Test
+    void databaseFailureDuringAreaPersistenceRollsBackAllImportedStructure() throws Exception {
+        Ship ship=createShip(1);String token=token(Role.SHIP_MANAGER);String key=uniqueKey("area-rollback");
+        upload(key,"v1",bundleWithPhysicalAreas(key,"v1","valid"),token);UUID model=register(ship.getShipId(),key,"v1",token);
+        String trigger="it_area_"+UUID.randomUUID().toString().replace("-","");
+        jdbc.execute("CREATE FUNCTION "+trigger+"() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'injected physical area persistence failure'; END; $$");
+        try {
+            jdbc.execute("CREATE TRIGGER "+trigger+" BEFORE INSERT ON \"ShipModelObject\" FOR EACH ROW WHEN (NEW.ship_model_id='"+model+"'::uuid AND NEW.node_key='physical-lounge') EXECUTE FUNCTION "+trigger+"()");
+            mockMvc.perform(post("/ships/{shipId}/models/{modelId}/imports",ship.getShipId(),model).header("Authorization","Bearer "+token)).andExpect(status().is5xxServerError());
+            assertEquals(0,objects.findByShipModelShipModelId(model).size());assertEquals(0,decks.countByShipShipId(ship.getShipId()));assertEquals(0,cabins.countByShipShipId(ship.getShipId()));
+            assertEquals(com.casms.ship.enums.ModelImportStatus.FAILED,jobs.findByShipModelShipModelIdOrderByStartedAtDesc(model).getFirst().getStatus());
+        } finally {jdbc.execute("DROP TRIGGER IF EXISTS "+trigger+" ON \"ShipModelObject\"");jdbc.execute("DROP FUNCTION "+trigger+"()");}
+    }
+
+    @Test
     void importsEveryDeckIgnoresModelServicesAndSupportsManualAssignments() throws Exception {
         Ship ship = createShip(1);
         String manager = token(Role.SHIP_MANAGER);
@@ -245,15 +319,17 @@ class ShipModelImportPostgresIntegrationTest {
             JsonNode first = importJob(ship.getShipId(), modelId, token);
             assertEquals("SUCCEEDED", first.path("data").path("status").asText());
             UUID firstJobId = UUID.fromString(first.path("data").path("jobId").asText());
-            assertEquals(303, first.path("data").path("totalObjects").asInt());
+            assertEquals(367, first.path("data").path("totalObjects").asInt());
             assertEquals(12, first.path("data").path("decksImported").asInt());
             assertEquals(291, first.path("data").path("cabinsImported").asInt());
-            assertEquals(303, first.path("data").path("objectsSucceeded").asInt());
+            assertEquals(367, first.path("data").path("objectsSucceeded").asInt());
             assertEquals(0, first.path("data").path("objectsFailed").asInt());
 
             assertEquals(12, decks.countByShipShipId(ship.getShipId()));
             assertEquals(291, cabins.countByShipShipId(ship.getShipId()));
-            assertEquals(303, objects.findByShipModelShipModelId(modelId).size());
+            assertEquals(367, objects.findByShipModelShipModelId(modelId).size());
+            assertEquals(64, objects.findByShipModelShipModelId(modelId).stream()
+                    .filter(o -> o.getObjectType() == com.casms.ship.enums.ShipModelObjectType.FACILITY && o.getDeck() != null && o.getCabin() == null).count());
             assertEquals(291L, objects.findByShipModelShipModelId(modelId).stream().filter(o -> o.getCabin() != null).count());
 
             mockMvc.perform(get("/ships/{shipId}/models/{modelId}/imports", ship.getShipId(), modelId)
@@ -264,7 +340,7 @@ class ShipModelImportPostgresIntegrationTest {
                     .andExpect(status().isOk()).andExpect(jsonPath("$.data", hasSize(0)));
             mockMvc.perform(get("/ships/{shipId}/models/{modelId}/objects", ship.getShipId(), modelId)
                             .header("Authorization", "Bearer " + token))
-                    .andExpect(status().isOk()).andExpect(jsonPath("$.data", hasSize(303)));
+                    .andExpect(status().isOk()).andExpect(jsonPath("$.data", hasSize(367)));
 
             Ship otherShip = createShip(10);
             mockMvc.perform(get("/ships/{shipId}/imports/{jobId}", otherShip.getShipId(), firstJobId)
@@ -279,10 +355,10 @@ class ShipModelImportPostgresIntegrationTest {
 
             JsonNode retry = importJob(ship.getShipId(), modelId, token);
             assertEquals("SUCCEEDED", retry.path("data").path("status").asText());
-            assertEquals(303, retry.path("data").path("objectsSucceeded").asInt());
+            assertEquals(367, retry.path("data").path("objectsSucceeded").asInt());
             assertEquals(12, decks.countByShipShipId(ship.getShipId()));
             assertEquals(291, cabins.countByShipShipId(ship.getShipId()));
-            assertEquals(303, objects.findByShipModelShipModelId(modelId).size());
+            assertEquals(367, objects.findByShipModelShipModelId(modelId).size());
             mockMvc.perform(get("/ships/{shipId}/models/{modelId}/imports", ship.getShipId(), modelId)
                             .header("Authorization", "Bearer " + token))
                     .andExpect(status().isOk()).andExpect(jsonPath("$.data", hasSize(2)));
@@ -757,6 +833,56 @@ class ShipModelImportPostgresIntegrationTest {
         Path result=Files.createTempFile("casms-service-deck-", ".zip");tempArchives.add(result);
         try(var zip=new ZipOutputStream(Files.newOutputStream(result))) {
             for(var e:entries.entrySet()) {zip.putNextEntry(new ZipEntry(ASSET_PREFIX+key+"/"+version+"/"+e.getKey()));zip.write(e.getValue());zip.closeEntry();}
+        }
+        return result;
+    }
+
+    private Path bundleWithPhysicalAreas(String key, String version, String mode) throws Exception {
+        Path original = bundleWithServiceDeck(key, version, "M-001");
+        Map<String, byte[]> entries = new LinkedHashMap<>();
+        String prefix = ASSET_PREFIX + key + "/" + version + "/";
+        try (var zip = new java.util.zip.ZipInputStream(Files.newInputStream(original))) {
+            java.util.zip.ZipEntry entry;
+            while ((entry = zip.getNextEntry()) != null) entries.put(entry.getName().substring(prefix.length()), zip.readAllBytes());
+        }
+        var manifest = (com.fasterxml.jackson.databind.node.ObjectNode) mapper.readTree(entries.get("manifest.json"));
+        var areas = (com.fasterxml.jackson.databind.node.ArrayNode) manifest.path("areas");
+        var gym = mapper.valueToTree(Map.of("id", "physical-gym", "name", "Gym", "kind", "gym",
+                "deckId", mode.equals("unknown-deck") ? "unknown" : "mini-d00", "deckNumber", 0,
+                "size", mode.equals("invalid-size") ? List.of(-4, 3, 5) : List.of(4, 3, 5),
+                "center", List.of(3, -1, 2), "components", List.of(Map.of("name", "Gym equipment"))));
+        areas.add(gym);
+        areas.add(mapper.valueToTree(Map.of("id", "physical-lounge", "name", "Lounge", "kind", "lounge",
+                "deckId", "mini-d01", "deckNumber", 1, "size", List.of(6, 3, 4))));
+        byte[] source = entries.get("ship.glb");
+        int jsonLength = ByteBuffer.wrap(source).order(ByteOrder.LITTLE_ENDIAN).getInt(12);
+        var gltf = (com.fasterxml.jackson.databind.node.ObjectNode) mapper.readTree(Arrays.copyOfRange(source, 20, 20 + jsonLength));
+        var nodes = (com.fasterxml.jackson.databind.node.ArrayNode) gltf.path("nodes");
+        JsonNode gymNode = mapper.valueToTree(Map.of("name", "Gym", "translation", List.of(3, -1, 2),
+                "rotation", mode.equals("invalid-transform") ? List.of(0, 0, 0, 0) : List.of(0, Math.sqrt(.5), 0, Math.sqrt(.5)),
+                "scale", List.of(2, 1, 1), "extras", Map.of("entityType", "area", "modelId", "physical-gym",
+                        "areaName", "Gym", "areaKind", "gym", "deckNumber", 0)));
+        if (!mode.equals("missing-node")) nodes.add(gymNode);
+        if (mode.equals("duplicate-node")) nodes.add(gymNode.deepCopy());
+        nodes.add(mapper.valueToTree(Map.of("name", "Lounge", "translation", List.of(5, 1, 3),
+                "extras", Map.of("entityType", "area", "modelId", "physical-lounge", "areaName", "Lounge",
+                        "areaKind", "lounge", "deckNumber", 1))));
+        byte[] updatedGlb = glb(mapper.writeValueAsBytes(gltf));
+        entries.put("manifest.json", mapper.writeValueAsBytes(manifest));
+        entries.put("ship.glb", updatedGlb);
+        entries.put("exterior.glb", updatedGlb);
+        entries.put("services/service_00.glb", updatedGlb);
+        Map<String, String> checksums = new LinkedHashMap<>();
+        for (var e : entries.entrySet()) if (!e.getKey().equals("checksums.json")) checksums.put(e.getKey(), sha256(e.getValue()));
+        entries.put("checksums.json", mapper.writeValueAsBytes(checksums));
+        Path result = Files.createTempFile("casms-physical-areas-", ".zip");
+        tempArchives.add(result);
+        try (var zip = new ZipOutputStream(Files.newOutputStream(result))) {
+            for (var e : entries.entrySet()) {
+                zip.putNextEntry(new ZipEntry(prefix + e.getKey()));
+                zip.write(e.getValue());
+                zip.closeEntry();
+            }
         }
         return result;
     }

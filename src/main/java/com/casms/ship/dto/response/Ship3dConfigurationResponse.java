@@ -13,7 +13,9 @@ public record Ship3dConfigurationResponse(UUID shipId, String shipCode, String s
     public record Vector3(Double x, Double y, Double z) {}
     public record Deck(UUID deckId, String code, String name, Integer deckNumber,
             String modelNodeKey, Double elevation, Vector3 position, Vector3 rotation, List<Room> rooms,
-            List<Anchor> bleAnchors, boolean serviceLevel) {}
+            List<Anchor> bleAnchors, boolean serviceLevel, List<Facility> facilities) {}
+    public record Facility(UUID objectId, String modelNodeKey, String name, String kind, UUID deckId,
+            Vector3 position, Vector3 rotation, Vector3 scale, Vector3 dimensions, String metadataJson) {}
     public record Room(UUID roomId, String code, CabinType type, UUID deckId,
             Vector3 position, Vector3 rotation, Vector3 dimensions, String modelNodeKey) {}
     public record Anchor(UUID anchorId, String code, String name, String identifier,
