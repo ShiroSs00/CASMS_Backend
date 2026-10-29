@@ -52,10 +52,7 @@ public class ItineraryDayService {
             throw new BusinessException("DUPLICATE_DAY_NUMBER", "Day number already exists in this itinerary");
         }
 
-        LocalDate date = request.getDate();
-        if (date == null) {
-            date = itinerary.getStartDate() != null ? itinerary.getStartDate().plusDays(dayNumber - 1) : LocalDate.now();
-        }
+        LocalDate date = ItineraryCalendar.day(itinerary, dayNumber, request.getDate());
         if (itineraryDayRepository.existsByItineraryItineraryIdAndDate(itinerary.getItineraryId(), date)) {
             throw new BusinessException("DUPLICATE_DATE", "Date already exists in this itinerary");
         }
@@ -107,6 +104,9 @@ public class ItineraryDayService {
         if (itinerary.getStatus() != ItineraryStatus.DRAFT) {
             throw new BusinessException("ITINERARY_NOT_EDITABLE", "Cannot update days in itinerary with status: " + itinerary.getStatus() + ". Only DRAFT itineraries can be modified.");
         }
+
+        ItineraryCalendar.day(itinerary, request.getDayNumber() == null ? day.getDayNumber() : request.getDayNumber(),
+                request.getDate() == null ? day.getDate() : request.getDate());
 
         if (request.getDayNumber() != null && !request.getDayNumber().equals(day.getDayNumber())) {
             if (itineraryDayRepository.existsByItineraryItineraryIdAndDayNumber(itinerary.getItineraryId(), request.getDayNumber())) {
@@ -189,7 +189,7 @@ public class ItineraryDayService {
         if (day.getItinerary().getStatus() != ItineraryStatus.DRAFT) {
             throw new BusinessException("ITINERARY_NOT_EDITABLE", "Cannot modify date in itinerary with status: " + day.getItinerary().getStatus());
         }
-        day.setDate(date);
+        day.setDate(ItineraryCalendar.day(day.getItinerary(), day.getDayNumber(), date));
         day = itineraryDayRepository.save(day);
         return mapToResponse(day);
     }

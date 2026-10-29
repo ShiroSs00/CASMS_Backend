@@ -133,8 +133,8 @@ public class ScheduleMaterializationService {
         }
 
         // 4. Tạo Itinerary mới
-        LocalDate startDate = projection.getDays().isEmpty() ? LocalDate.now() : projection.getDays().get(0).getCalendarDate();
-        LocalDate endDate = projection.getDays().isEmpty() ? startDate : projection.getDays().get(projection.getDays().size() - 1).getCalendarDate();
+        LocalDate startDate = ItineraryCalendar.start(cruise);
+        LocalDate endDate = ItineraryCalendar.end(cruise);
 
         Itinerary itinerary = new Itinerary();
         itinerary.setCruise(cruise);
@@ -548,6 +548,9 @@ public class ScheduleMaterializationService {
             dayEntriesMap.computeIfAbsent(startDay, k -> new ArrayList<>()).add(entryDto);
         }
 
+        Instant projectedReturn = projectedStops.getLast().getPlannedDeparture();
+        if(!projectedReturn.isAfter(departureDatetime))throw new BusinessException("INVALID_SCHEDULE","Return must be after departure");
+        totalDays = Math.toIntExact(java.time.temporal.ChronoUnit.DAYS.between(day1Date,projectedReturn.atZone(shipZone).toLocalDate())+1);
         List<CruiseSchedulePreviewResponse.ProjectedDayDto> projectedDays = new ArrayList<>();
         for (int d = 1; d <= totalDays; d++) {
             final int dayIndex = d;
@@ -572,12 +575,7 @@ public class ScheduleMaterializationService {
         }
 
         // Tính toán returnDatetime
-        Instant returnDatetime;
-        if (!projectedStops.isEmpty()) {
-            returnDatetime = projectedStops.get(projectedStops.size() - 1).getPlannedDeparture();
-        } else {
-            returnDatetime = departureDatetime.plus(Duration.ofDays(totalDays));
-        }
+        Instant returnDatetime = projectedReturn;
 
         return CruiseSchedulePreviewResponse.builder()
                 .materialized(false)

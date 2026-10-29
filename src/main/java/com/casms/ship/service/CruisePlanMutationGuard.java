@@ -35,7 +35,7 @@ public class CruisePlanMutationGuard {
         Map.entry("CruisePricingPolicyService",Set.of("savePricingPolicy")),
         Map.entry("CruisePackageService",Set.of("assignPackage","removePackage")),
         Map.entry("OperationalProgramMappingService",Set.of("syncProgramsForCruise")),
-        Map.entry("ServiceScheduleManagementService",Set.of("create")),
+        Map.entry("ServiceScheduleManagementService",Set.of("create","update","remove")),
         Map.entry("ServicepackageService",Set.of("savePackage","addPackageService","updatePackageService","removePackageService","addPackageActivity","updatePackageActivity","removePackageActivity","addPackageExcursion","updatePackageExcursion","removePackageExcursion"))
     );
     @Around("execution(public * com.casms.ship.service.*.*(..)) || execution(public * com.casms.activity.service.*.*(..)) || execution(public * com.casms.servicepackage.service.ServicepackageService.*(..)) || execution(public * com.casms.servicepackage.service.ServiceScheduleManagementService.*(..))")

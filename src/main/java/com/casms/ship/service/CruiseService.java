@@ -306,6 +306,19 @@ public class CruiseService {
         return cruiseRepository.findAll(spec, pageable).map(this::mapToResponse);
     }
 
+    /** Filter before pagination so totals and later pages never include closed sale records. */
+    @Transactional(readOnly = true)
+    public Page<CruiseResponse> listOpenForSale(UUID shipId, Boolean unassigned, CruiseCruiseType cruiseType,
+                                               UUID sourceTripId, UUID sourceVersionId, Pageable pageable) {
+        List<CruiseResponse> open = list(CruiseStatus.PUBLISHED, shipId, unassigned, cruiseType,
+                sourceTripId, sourceVersionId, Pageable.unpaged(pageable.getSort())).stream()
+                .filter(c -> "OPEN_FOR_SALE".equals(getPublicSellability(c.getCruiseId()).getSaleState())).toList();
+        if (pageable.isUnpaged()) return new org.springframework.data.domain.PageImpl<>(open);
+        int start = (int) Math.min(pageable.getOffset(), open.size());
+        int end = (int) Math.min((long) start + pageable.getPageSize(), open.size());
+        return new org.springframework.data.domain.PageImpl<>(open.subList(start, end), pageable, open.size());
+    }
+
     // Overloads for backward compat
     @Transactional(readOnly = true)
     public Page<CruiseResponse> list(CruiseStatus status, UUID shipId, CruiseCruiseType cruiseType,
@@ -2847,6 +2860,11 @@ public class CruiseService {
 
     // Helper: Đồng bộ dời thời gian của ItineraryDay, CruiseStop, OnboardActivity, ShoreExcursion
     private void shiftScheduleAndPrograms(Cruise cruise, Instant oldDep, Instant newDep) {
+        itineraryRepository.findByCruiseCruiseId(cruise.getCruiseId()).ifPresent(itinerary -> {
+            itinerary.setStartDate(ItineraryCalendar.start(cruise));
+            itinerary.setEndDate(ItineraryCalendar.end(cruise));
+            itineraryRepository.save(itinerary);
+        });
         if (oldDep == null || newDep == null || oldDep.equals(newDep)) {
             return;
         }

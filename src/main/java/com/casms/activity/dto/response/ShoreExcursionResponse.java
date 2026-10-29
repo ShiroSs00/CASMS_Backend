@@ -39,7 +39,7 @@ public record ShoreExcursionResponse(
 
         return new ShoreExcursionResponse(
                 excursion.getShoreExcursionId(),
-                excursion.getCruiseStop().getCruiseStopId(),
+                excursion.getCruiseStop() == null ? null : excursion.getCruiseStop().getCruiseStopId(),
                 excursion.getExcursionCode(),
                 excursion.getExcursionName(),
                 excursion.getSupplier().getSupplierId(),
