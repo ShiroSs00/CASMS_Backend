@@ -29,6 +29,11 @@ public class CruisePreparationResponse {
     @Schema(description = "Trạng thái chuyến đi hiện tại (DRAFT, PUBLISHED, ...)", example = "DRAFT")
     private String cruiseStatus;
 
+    private UUID coordinatorUserId;
+    private String coordinatorUsername;
+    private Long cruiseRevision;
+    private boolean canAssignCoordinator;
+
     @Schema(description = "Trạng thái chuẩn bị tổng thể (INCOMPLETE, READY_FOR_SIGNOFF, CONFIRMED)", example = "INCOMPLETE")
     private String overallStatus;
 

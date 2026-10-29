@@ -47,6 +47,8 @@ public class CruisePackageService {
     private final TourPackageExcursionRepository tourPackageExcursionRepository;
     private final BookingPassengerRepository bookingPassengerRepository;
 
+    private final CruiseMainflowService mainflow;
+
     @Transactional
     public CruiseTourPackageResponse assignPackage(UUID cruiseId, CruiseTourPackageRequest request) {
         log.info("Assigning package {} to cruise {}", request.getTourPackageId(), cruiseId);
@@ -83,6 +85,8 @@ public class CruisePackageService {
      */
     @Transactional
     public CruiseTourPackageResponse activatePackage(UUID cruiseId, UUID tourPackageId) {
+        mainflow.requireReady(cruiseId);
+        if(!mainflow.commercialBlockers(cruiseId).isEmpty())throw new BusinessException(HttpStatus.CONFLICT,"PRICING_POLICY_APPROVAL_REQUIRED","Current USD pricing revision requires OPS approval");
         Cruise cruise = cruiseRepository.findById(cruiseId)
                 .orElseThrow(() -> new ResourceNotFoundException("Cruise", cruiseId));
 

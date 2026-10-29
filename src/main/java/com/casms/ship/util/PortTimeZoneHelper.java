@@ -243,4 +243,11 @@ public final class PortTimeZoneHelper {
                 || id.startsWith("Africa/")
                 || id.equals("UTC");
     }
+    /** Never silently shift a DST gap or guess one side of an ambiguous port-local time. */
+    public static Instant strictLocalInstant(java.time.LocalDateTime local, ZoneId zone) {
+        var offsets=zone.getRules().getValidOffsets(local);
+        if(offsets.size()!=1)throw new BusinessException(org.springframework.http.HttpStatus.UNPROCESSABLE_ENTITY,
+                "PORT_LOCAL_TIME_UNRESOLVED","Port-local time is missing or ambiguous at a timezone transition");
+        return local.toInstant(offsets.getFirst());
+    }
 }

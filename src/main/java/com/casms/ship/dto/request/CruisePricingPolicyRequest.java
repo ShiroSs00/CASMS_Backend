@@ -74,7 +74,12 @@ public class CruisePricingPolicyRequest {
             example = "Hủy trước 30 ngày hoàn 100%; hủy 14-29 ngày hoàn 50%; dưới 14 ngày không hoàn tiền.")
     private String cancellationPolicy;
 
-    @Builder.Default
-    @Schema(description = "Tự động duyệt chính sách nếu người thực hiện có quyền phê duyệt", example = "true")
-    private Boolean autoApprove = false;
+    @Min(0)
+    private Long expectedRevision;
+
+    /** Retired input is rejected instead of silently enabling approval. */
+    @com.fasterxml.jackson.annotation.JsonProperty("autoApprove")
+    public void rejectAutoApprove(Boolean ignored) {
+        if(Boolean.TRUE.equals(ignored))throw new IllegalArgumentException("AUTO_APPROVAL_RETIRED");
+    }
 }

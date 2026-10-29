@@ -40,10 +40,20 @@ public class IdempotencyService {
         }
 
         String trimmedKey = idempotencyKey.trim();
-        String requestHash = computeHash(payload != null ? payload.toString() : "");
+        String requestHash = computeHash(canonicalJson(payload));
 
         IdempotencyReservationService.ReservationResult reservation =
                 reservationService.reserveKey(actorId, operation, trimmedKey, requestHash);
+
+        // Preserve replay of older records whose DTO had a stable textual representation.
+        // New records always use canonical JSON; never weaken the payload-conflict check.
+        if(reservation.getStatus()==IdempotencyReservationService.ReservationStatus.CONFLICT){
+            String legacyHash=computeHash(payload!=null?payload.toString():"");
+            if(!legacyHash.equals(requestHash)){
+                var legacy=reservationService.reserveKey(actorId,operation,trimmedKey,legacyHash);
+                if(legacy.getStatus()!=IdempotencyReservationService.ReservationStatus.CONFLICT){reservation=legacy;requestHash=legacyHash;}
+            }
+        }
 
         if (reservation.getStatus() == IdempotencyReservationService.ReservationStatus.CONFLICT) {
             throw new BusinessException(HttpStatus.CONFLICT, "IDEMPOTENCY_CONFLICT",
@@ -160,6 +170,18 @@ public class IdempotencyService {
         return null;
     }
 
+    private String canonicalJson(Object payload) {
+        try{return objectMapper.writeValueAsString(sortedJson(objectMapper.valueToTree(payload)));}
+        catch(Exception ex){throw new BusinessException(HttpStatus.BAD_REQUEST,"IDEMPOTENCY_PAYLOAD_INVALID","Request cannot be fingerprinted");}
+    }
+    private com.fasterxml.jackson.databind.JsonNode sortedJson(com.fasterxml.jackson.databind.JsonNode node){
+        if(node.isObject()){
+            var result=objectMapper.createObjectNode();var fields=new java.util.TreeSet<String>();node.fieldNames().forEachRemaining(fields::add);
+            fields.forEach(key->result.set(key,sortedJson(node.get(key))));return result;
+        }
+        if(node.isArray()){var result=objectMapper.createArrayNode();node.forEach(value->result.add(sortedJson(value)));return result;}
+        return node;
+    }
     private String computeHash(String input) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");

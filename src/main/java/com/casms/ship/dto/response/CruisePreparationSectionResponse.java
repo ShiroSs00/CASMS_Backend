@@ -26,6 +26,12 @@ public class CruisePreparationSectionResponse {
     @Schema(description = "Vai trò phụ trách phân hệ", example = "SHIP_MANAGER")
     private String ownerRole;
 
+    @Schema(description = "Vai trò tổng hợp và gửi hồ sơ; khác ownerRole chuyên môn")
+    private String submitterRole;
+
+    @Schema(description = "Thao tác được phép cho actor và phạm vi Cruise hiện tại")
+    private List<String> allowedActions;
+
     @Schema(description = "Trạng thái phân hệ (NOT_STARTED, IN_PROGRESS, SUBMITTED, CONFIRMED, RETURNED)", example = "IN_PROGRESS")
     private String status;
 
@@ -55,6 +61,7 @@ public class CruisePreparationSectionResponse {
 
     @Schema(description = "Thời điểm trả lại")
     private Instant returnedAt;
+    private UUID returnedByUserId;
 
     @Schema(description = "Số revision phục vụ kiểm soát xung đột", example = "1")
     private Long revision;

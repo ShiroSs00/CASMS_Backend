@@ -59,7 +59,7 @@ public class OnboardActivity {
     @JoinColumn(name = "cabin_id")
     private Cabin cabin;
 
-    @Column(name = "capacity", nullable = false)
+    @Column(name = "capacity")
     private Integer capacity;
 
     @Column(name = "price", precision = 19, scale = 4)

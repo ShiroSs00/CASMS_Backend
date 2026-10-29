@@ -70,6 +70,15 @@ public class TripScheduleVersionController {
         return ApiResponse.success(versionService.validateVersion(versionId));
     }
 
+    @PreAuthorize("hasAuthority('TRIP_PLAN_WRITE') and hasAuthority('CRUISE_CREATE')")
+    @PostMapping("/{versionId}/finalize")
+    public ApiResponse<TripScheduleVersionDetailResponse> finalizeTemplate(
+            @PathVariable UUID versionId, @RequestBody ActionRevisionRequest request,
+            @AuthenticationPrincipal CasmsPrincipal principal) {
+        return ApiResponse.success(versionService.finalizeVersion(versionId, request.getExpectedRevision(),
+                principal != null ? principal.getUserId() : null));
+    }
+
     @Operation(summary = "Gửi phê duyệt phiên bản", description = "Chuyển trạng thái từ DRAFT sang IN_REVIEW sau khi qua khâu thẩm định tự động.")
     @PreAuthorize("hasAuthority('TRIP_PLAN_SUBMIT')")
     @PostMapping("/{versionId}/submit")

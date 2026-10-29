@@ -127,13 +127,10 @@ public class ScheduleMaterializationService {
         cruiseRepository.save(cruise);
 
         // 3. Xóa Itinerary cũ nếu có dở dang (idempotent overwrite draft)
-        itineraryRepository.findByCruiseCruiseId(cruise.getCruiseId()).ifPresent(existing -> {
-            log.info("Overwriting existing draft itinerary {} for cruise {}", existing.getItineraryId(), cruise.getCruiseId());
-            cruiseStopRepository.deleteByItineraryItineraryId(existing.getItineraryId());
-            cruiseStopRepository.flush();
-            itineraryRepository.delete(existing);
-            itineraryRepository.flush();
-        });
+        if (itineraryRepository.findByCruiseCruiseId(cruise.getCruiseId()).isPresent()) {
+            throw new BusinessException("ITINERARY_ALREADY_MATERIALIZED",
+                    "Existing cruise itinerary must not be overwritten by source materialization");
+        }
 
         // 4. Tạo Itinerary mới
         LocalDate startDate = projection.getDays().isEmpty() ? LocalDate.now() : projection.getDays().get(0).getCalendarDate();
@@ -147,7 +144,7 @@ public class ScheduleMaterializationService {
         itinerary.setItineraryType(trip.getTripType() != null ? trip.getTripType() : ItineraryType.ROUND_TRIP);
         itinerary.setStatus(ItineraryStatus.DRAFT);
         // BE-02: Kế thừa phê duyệt từ TripScheduleVersion PUBLISHED nếu nội dung không đổi
-        itinerary.setApprovalInherited(version.getStatus() == TripScheduleVersionStatus.PUBLISHED);
+        itinerary.setApprovalInherited(false);
         itinerary.setContentModifiedAfterMaterialization(false);
         itinerary = itineraryRepository.save(itinerary);
 
@@ -430,12 +427,14 @@ public class ScheduleMaterializationService {
             LocalDate arrDate = day1Date.plusDays(arrDayNum - 1);
             LocalDate depDate = day1Date.plusDays(depDayNum - 1);
 
+            if(stop.getPlannedArrivalTime()==null||stop.getPlannedDepartureTime()==null)
+                throw new BusinessException("PORT_CALL_TIME_REQUIRED","Source port-call times required");
             Instant plannedArr = stop.getPlannedArrivalTime() != null
-                    ? LocalDateTime.of(arrDate, stop.getPlannedArrivalTime()).atZone(portZone).toInstant()
+                    ? PortTimeZoneHelper.strictLocalInstant(LocalDateTime.of(arrDate, stop.getPlannedArrivalTime()), portZone)
                     : departureDatetime;
 
             Instant plannedDep = stop.getPlannedDepartureTime() != null
-                    ? LocalDateTime.of(depDate, stop.getPlannedDepartureTime()).atZone(portZone).toInstant()
+                    ? PortTimeZoneHelper.strictLocalInstant(LocalDateTime.of(depDate, stop.getPlannedDepartureTime()), portZone)
                     : plannedArr.plusSeconds(3600);
 
             if (plannedDep.isBefore(plannedArr) || plannedDep.equals(plannedArr)) {
@@ -445,9 +444,11 @@ public class ScheduleMaterializationService {
             }
 
             Instant allAboard = stop.getAllAboardTime() != null
-                    ? LocalDateTime.of(depDate, stop.getAllAboardTime()).atZone(portZone).toInstant()
+                    ? PortTimeZoneHelper.strictLocalInstant(LocalDateTime.of(day1Date.plusDays((stop.getAllAboardDayNumber() != null ? stop.getAllAboardDayNumber() : depDayNum) - 1), stop.getAllAboardTime()), portZone)
                     : plannedDep;
 
+            if(allAboard.isBefore(plannedArr)||allAboard.isAfter(plannedDep))
+                throw new BusinessException("INVALID_ALL_ABOARD_TIME","All-aboard must be inside the actual port-call window");
             CruiseSchedulePreviewResponse.ProjectedStopDto stopDto = CruiseSchedulePreviewResponse.ProjectedStopDto.builder()
                     .sourceStopId(stop.getStopId())
                     .stopOrder(stop.getStopOrder())
@@ -525,10 +526,10 @@ public class ScheduleMaterializationService {
             }
 
             Instant startInst = entry.getPlannedStartTime() != null
-                    ? LocalDateTime.of(startCal, entry.getPlannedStartTime()).atZone(entryZone).toInstant()
+                    ? PortTimeZoneHelper.strictLocalInstant(LocalDateTime.of(startCal, entry.getPlannedStartTime()), entryZone)
                     : null;
             Instant endInst = entry.getPlannedEndTime() != null
-                    ? LocalDateTime.of(endCal, entry.getPlannedEndTime()).atZone(entryZone).toInstant()
+                    ? PortTimeZoneHelper.strictLocalInstant(LocalDateTime.of(endCal, entry.getPlannedEndTime()), entryZone)
                     : null;
 
             Integer stopOrder = entry.getStop() != null ? entry.getStop().getStopOrder() : null;

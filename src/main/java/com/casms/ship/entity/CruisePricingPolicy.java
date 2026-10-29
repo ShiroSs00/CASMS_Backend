@@ -20,8 +20,7 @@ import java.util.UUID;
 @NoArgsConstructor
 @AllArgsConstructor
 @Entity
-@Table(name = "\"CruisePricingPolicy\"",
-       uniqueConstraints = @UniqueConstraint(columnNames = {"cruise_id"}))
+@Table(name = "\"CruisePricingPolicy\"")
 public class CruisePricingPolicy {
 
     @Id
@@ -29,9 +28,21 @@ public class CruisePricingPolicy {
     @Column(name = "pricing_policy_id")
     private UUID pricingPolicyId;
 
-    @OneToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "cruise_id")
     private Cruise cruise;
+
+    @Column(name="policy_number",nullable=false)
+    @Builder.Default private int policyNumber=1;
+    @Column(name="revision",nullable=false)
+    @Builder.Default private long revision=0;
+    @Column(name="submitted_by") private UUID submittedBy;
+    @Column(name="submitted_at") private Instant submittedAt;
+    @Column(name="reviewed_by") private UUID reviewedBy;
+    @Column(name="reviewed_at") private Instant reviewedAt;
+    @Column(name="decision_reason") private String decisionReason;
+    @Column(name="submitted_snapshot") private String submittedSnapshot;
+    @Column(name="snapshot_hash") private String snapshotHash;
 
     @Builder.Default
     @Column(name = "policy_version", nullable = false, length = 50)

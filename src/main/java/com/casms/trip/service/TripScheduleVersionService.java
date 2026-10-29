@@ -558,53 +558,7 @@ public class TripScheduleVersionService {
     }
 
     private TripScheduleVersionDetailResponse executeSubmitForReview(TripScheduleVersion version, Long expectedRevision, UUID actorId) {
-        if (version.getTrip().getStatus() == TripStatus.ARCHIVED) {
-            throw new BusinessException(HttpStatus.CONFLICT, "TRIP_ARCHIVED",
-                    "Không thể gửi duyệt phiên bản của Trip đã được lưu trữ (ARCHIVED)");
-        }
-
-        if (version.getStatus() != TripScheduleVersionStatus.DRAFT) {
-            throw new BusinessException(HttpStatus.CONFLICT, "INVALID_STATUS",
-                    "Chỉ có thể gửi phê duyệt phiên bản đang ở trạng thái DRAFT");
-        }
-
-        if (expectedRevision != null && !expectedRevision.equals(version.getRevision())) {
-            throw new BusinessException(HttpStatus.CONFLICT, "STALE_REVISION",
-                    "Revision của phiên bản không khớp (expected: " + expectedRevision + ", current: " + version.getRevision() + ")");
-        }
-
-        List<PlanViolation> violations = validateVersionInternal(version);
-        List<PlanViolation> errorViolations = violations.stream()
-                .filter(v -> "ERROR".equalsIgnoreCase(v.getSeverity()))
-                .collect(Collectors.toList());
-        if (!errorViolations.isEmpty()) {
-            PlanViolation first = errorViolations.get(0);
-            throw new BusinessException(HttpStatus.UNPROCESSABLE_ENTITY, first.getCode(), first.getMessage(),
-                    Map.of("violations", errorViolations));
-        }
-
-        User submitter = null;
-        if (actorId != null) {
-            submitter = userRepository.findById(actorId).orElse(null);
-        }
-
-        version.setStatus(TripScheduleVersionStatus.IN_REVIEW);
-        version.setSubmitter(submitter);
-        version.setSubmittedRevision(version.getRevision());
-        version.setSubmittedAt(Instant.now());
-        version.setRejectionReason(null);
-
-        version = versionRepository.save(version);
-        versionRepository.flush();
-        log.info("Submitted Trip {} Version {} for review by user {}",
-                version.getTrip().getTripCode(), version.getVersionNumber(), actorId);
-
-        if (auditService != null) {
-            auditService.record(actorId, "SUBMIT", "TripScheduleVersion", version.getVersionId(),
-                    "SUCCESS", "Submitted version for review");
-        }
-
-        return mapToDetailResponse(version);
+        throw new BusinessException(HttpStatus.GONE, "TEMPLATE_REVIEW_RETIRED", "CRM finalizes templates without OPS review");
     }
 
     @Transactional
@@ -756,45 +710,28 @@ public class TripScheduleVersionService {
         return mapToDetailResponse(version);
     }
 
-    @Transactional
+    @Deprecated
     public TripScheduleVersionDetailResponse publishVersion(UUID tripId, Integer versionNumber, UUID actorId) {
-        TripScheduleVersion version = getVersion(tripId, versionNumber);
-        return executePublishVersion(version, null, actorId);
+        throw new BusinessException(HttpStatus.GONE, "TEMPLATE_REVIEW_RETIRED", "Use CRM template finalization");
     }
 
-    @Transactional
+    @Deprecated
     public TripScheduleVersionDetailResponse publishVersionById(UUID versionId, Long expectedRevision, UUID actorId) {
+        throw new BusinessException(HttpStatus.GONE, "TEMPLATE_REVIEW_RETIRED", "Use CRM template finalization");
+    }
+
+    /** CRM finalizes its own template. This is never OPS approval of a Cruise Plan. */
+    @Transactional
+    public TripScheduleVersionDetailResponse finalizeVersion(UUID versionId, Long expectedRevision, UUID actorId) {
         TripScheduleVersion version = versionRepository.findById(versionId)
                 .orElseThrow(() -> new ResourceNotFoundException("TripScheduleVersion", versionId));
-        return executePublishVersion(version, expectedRevision, actorId);
-    }
-
-    private TripScheduleVersionDetailResponse executePublishVersion(TripScheduleVersion version, Long expectedRevision, UUID actorId) {
-        if (version.getTrip().getStatus() == TripStatus.ARCHIVED) {
-            throw new BusinessException(HttpStatus.CONFLICT, "TRIP_ARCHIVED",
-                    "Không thể xuất bản phiên bản của Trip đã được lưu trữ (ARCHIVED)");
-        }
-
-        if (version.getStatus() != TripScheduleVersionStatus.IN_REVIEW) {
-            throw new BusinessException(HttpStatus.CONFLICT, "INVALID_STATUS",
-                    "Chỉ có thể phê duyệt xuất bản phiên bản đang ở trạng thái IN_REVIEW.");
-        }
-
-        if (expectedRevision != null && !expectedRevision.equals(version.getRevision())) {
-            throw new BusinessException(HttpStatus.CONFLICT, "STALE_REVISION",
-                    "Revision của phiên bản không khớp (expected: " + expectedRevision + ", current: " + version.getRevision() + ")");
-        }
-
-        // Maker-Checker enforcement: Approver must NOT be creator or submitter
-        UUID creatorId = version.getTrip().getCreatedByUser() != null ? version.getTrip().getCreatedByUser().getUserId() : null;
-        UUID submitterId = version.getSubmitter() != null ? version.getSubmitter().getUserId() : null;
-
-        if (actorId != null && (actorId.equals(creatorId) || actorId.equals(submitterId))) {
-            throw new BusinessException(HttpStatus.FORBIDDEN, "SELF_APPROVAL_FORBIDDEN",
-                    "Người phê duyệt xuất bản (" + actorId + ") phải khác người tạo Trip (" + creatorId
-                            + ") và người gửi duyệt (" + submitterId + ")");
-        }
-
+        if (actorId == null) throw new BusinessException(HttpStatus.UNAUTHORIZED, "AUTH_REQUIRED", "Authentication required");
+        if (version.getTrip().getStatus() == TripStatus.ARCHIVED)
+            throw new BusinessException(HttpStatus.CONFLICT, "TRIP_ARCHIVED", "Archived template cannot be finalized");
+        if (expectedRevision == null || !expectedRevision.equals(version.getRevision()))
+            throw new BusinessException(HttpStatus.CONFLICT, "STALE_REVISION", "Expected revision is required and must match");
+        if (version.getStatus() != TripScheduleVersionStatus.DRAFT)
+            throw new BusinessException(HttpStatus.CONFLICT, "VERSION_FROZEN", "Only draft templates can be finalized; withdraw legacy review first");
         // Revalidate in transaction
         List<PlanViolation> violations = validateVersionInternal(version);
         List<PlanViolation> errorViolations = violations.stream()
@@ -812,6 +749,7 @@ public class TripScheduleVersionService {
             approver = userRepository.findById(actorId).orElse(null);
         }
 
+        version.setContentHash(computeContentHash(version));
         version.setStatus(TripScheduleVersionStatus.PUBLISHED);
         version.setPublishedBy(approver);
         version.setPublishedAt(Instant.now());
@@ -828,7 +766,7 @@ public class TripScheduleVersionService {
                 version.getTrip().getTripCode(), version.getVersionNumber(), actorId);
 
         if (auditService != null) {
-            auditService.record(actorId, "PUBLISH", "TripScheduleVersion", version.getVersionId(),
+            auditService.record(actorId, "FINALIZE", "TripScheduleVersion", version.getVersionId(),
                     "SUCCESS", "Published version " + version.getVersionNumber());
         }
 
