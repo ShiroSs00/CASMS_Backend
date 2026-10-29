@@ -9,6 +9,7 @@ import com.casms.ship.entity.CruiseStop;
 import com.casms.ship.entity.Itinerary;
 import com.casms.ship.entity.ItineraryDay;
 import com.casms.ship.enums.ItineraryDayType;
+import com.casms.ship.enums.ItineraryDayRole;
 import com.casms.ship.enums.ItineraryStatus;
 import com.casms.ship.repository.ItineraryDayRepository;
 import com.casms.ship.repository.ItineraryRepository;
@@ -72,6 +73,7 @@ public class ItineraryDayService {
         day.setItinerary(itinerary);
         day.setDayNumber(dayNumber);
         day.setDate(date);
+        requireDayType(day, dayType);
         day.setDayType(dayType);
         day.setShipTimeZoneId(tz);
         day.setDescription(request.getDescription());
@@ -122,6 +124,7 @@ public class ItineraryDayService {
             day.setDate(request.getDate());
         }
 
+        requireDayType(day, request.getDayType() == null ? day.getDayType() : request.getDayType());
         if (request.getDayType() != null) {
             day.setDayType(request.getDayType());
         }
@@ -164,6 +167,7 @@ public class ItineraryDayService {
         if (day.getItinerary().getStatus() != ItineraryStatus.DRAFT) {
             throw new BusinessException("ITINERARY_NOT_EDITABLE", "Cannot modify day type in itinerary with status: " + day.getItinerary().getStatus());
         }
+        requireDayType(day, dayType);
         day.setDayType(dayType);
         day = itineraryDayRepository.save(day);
         return mapToResponse(day);
@@ -250,7 +254,7 @@ public class ItineraryDayService {
                 day.setShipTimeZoneId(currentShipTz);
             } else {
                 // Ngày tàu di chuyển trên biển giữa các nước: Duy trì múi giờ tàu hiện tại
-                day.setDayType(ItineraryDayType.SEA_DAY);
+                day.setDayType(day.getDayRole().isEnding() ? ItineraryDayType.PORT_DAY : ItineraryDayType.SEA_DAY);
                 if (day.getShipTimeZoneId() == null || !PortTimeZoneHelper.isValidTimeZoneId(day.getShipTimeZoneId())) {
                     day.setShipTimeZoneId(currentShipTz);
                 } else {
@@ -261,6 +265,11 @@ public class ItineraryDayService {
 
         days = itineraryDayRepository.saveAll(days);
         return days.stream().map(this::mapToResponse).collect(Collectors.toList());
+    }
+
+    private void requireDayType(ItineraryDay day, ItineraryDayType type) {
+        if (day.getDayRole().isEnding() && type != ItineraryDayType.PORT_DAY)
+            throw new BusinessException("END_DAY_REQUIRES_PORT", "Ngày kết thúc phải chọn cảng trả khách.");
     }
 
     private ItineraryDay getDayById(UUID itineraryDayId) {
@@ -275,6 +284,7 @@ public class ItineraryDayService {
         res.setDayNumber(day.getDayNumber());
         res.setDate(day.getDate());
         res.setDayType(day.getDayType());
+        res.setDayRole(day.getDayRole());
         res.setShipTimeZoneId(day.getShipTimeZoneId());
         if (day.getShipTimeZoneId() != null) {
             res.setShipUtcOffset(PortTimeZoneHelper.calculateUtcOffset(day.getShipTimeZoneId()));

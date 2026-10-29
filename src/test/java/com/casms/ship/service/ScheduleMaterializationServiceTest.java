@@ -292,4 +292,32 @@ class ScheduleMaterializationServiceTest {
         assertEquals(stop1.getCruiseStopId(), res.getDays().get(0).getStops().get(0).getCruiseStopId());
         assertEquals(testVersion.getStops().get(0).getStopId(), res.getDays().get(0).getStops().get(0).getSourceStopId());
     }
+    @Test
+    void seaDepartureProjectionKeepsRoleAndDoesNotInventDeparturePort() {
+        testVersion.getDays().get(0).setDayType(ItineraryDayType.SEA_DAY);
+        testVersion.getStops().removeFirst();
+        testVersion.getStops().getFirst().setIsDisembarkation(true);
+        when(tripScheduleVersionRepository.findById(testVersion.getVersionId())).thenReturn(Optional.of(testVersion));
+        var response = materializationService.previewSchedule(testVersion.getVersionId(), departureTime);
+        assertEquals(ItineraryDayRole.DEPARTURE, response.getDays().getFirst().getDayRole());
+        assertEquals(ItineraryDayType.SEA_DAY, response.getDays().getFirst().getDayType());
+        assertTrue(response.getDays().getFirst().getStops().isEmpty());
+        assertEquals(ItineraryDayRole.ARRIVAL, response.getDays().getLast().getDayRole());
+        assertNull(response.getDeparturePortId());
+        assertEquals(portDan.getPortId(), response.getReturnPortId());
+    }
+
+    @Test
+    void seaDepartureUsesExplicitOriginWithoutCreatingAPortCall() {
+        testVersion.getDays().getFirst().setDayType(ItineraryDayType.SEA_DAY);
+        testVersion.getDays().getFirst().setDeparturePort(portHph);
+        testVersion.getDays().getFirst().setPlannedDepartureTime(LocalTime.of(8, 15));
+        testVersion.getStops().removeFirst();
+        when(tripScheduleVersionRepository.findById(testVersion.getVersionId())).thenReturn(Optional.of(testVersion));
+        var response = materializationService.previewSchedule(testVersion.getVersionId(), departureTime);
+        assertEquals(portHph.getPortId(), response.getDeparturePortId());
+        assertTrue(response.getDays().getFirst().getStops().isEmpty());
+        assertEquals(ItineraryDayType.SEA_DAY, response.getDays().getFirst().getDayType());
+    }
+
 }

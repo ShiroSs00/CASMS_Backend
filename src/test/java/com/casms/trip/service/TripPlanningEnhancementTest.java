@@ -1471,7 +1471,7 @@ public class TripPlanningEnhancementTest {
 
         com.casms.trip.dto.request.TripPlanDayDraftDto dayDto = new com.casms.trip.dto.request.TripPlanDayDraftDto();
         dayDto.setDayNumber(1);
-        dayDto.setDayType(ItineraryDayType.SEA_DAY);
+        dayDto.setDayType(ItineraryDayType.PORT_DAY); // One-day trip also ends here.
         saveReq.setDays(List.of(dayDto));
         saveReq.setStops(new ArrayList<>());
         saveReq.setEntries(List.of(entryDto));
@@ -1553,7 +1553,7 @@ public class TripPlanningEnhancementTest {
 
         com.casms.trip.dto.request.TripPlanDayDraftDto dayDto = new com.casms.trip.dto.request.TripPlanDayDraftDto();
         dayDto.setDayNumber(1);
-        dayDto.setDayType(ItineraryDayType.SEA_DAY);
+        dayDto.setDayType(ItineraryDayType.PORT_DAY); // One-day trip also ends here.
         saveReq.setDays(List.of(dayDto));
         saveReq.setStops(new ArrayList<>());
         saveReq.setEntries(List.of(entryDto));

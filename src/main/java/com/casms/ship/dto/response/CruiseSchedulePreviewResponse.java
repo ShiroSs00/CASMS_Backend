@@ -4,6 +4,7 @@ import com.casms.activity.enums.OnboardActivityCategory;
 import com.casms.ship.enums.CruiseStopArrivalMethod;
 import com.casms.ship.enums.CruiseStopCallType;
 import com.casms.ship.enums.ItineraryDayType;
+import com.casms.ship.enums.ItineraryDayRole;
 import com.casms.trip.enums.TripPlanEntryKind;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.AllArgsConstructor;
@@ -101,8 +102,10 @@ public class CruiseSchedulePreviewResponse {
         @Schema(description = "Ngày dương lịch thực tế (YYYY-MM-DD)", example = "2026-11-01")
         private LocalDate calendarDate;
 
-        @Schema(description = "Loại ngày (EMBARKATION_DAY, SEA_DAY, PORT_DAY, DISEMBARKATION_DAY)")
+        @Schema(description = "Trạng thái ngày (SEA_DAY hoặc PORT_DAY); vai trò khởi hành/kết thúc nằm ở dayRole")
         private ItineraryDayType dayType;
+
+        private ItineraryDayRole dayRole;
 
         @Schema(description = "Tiêu đề ngày")
         private String title;
