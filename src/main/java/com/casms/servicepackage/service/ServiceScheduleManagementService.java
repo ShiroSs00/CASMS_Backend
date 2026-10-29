@@ -26,6 +26,7 @@ public class ServiceScheduleManagementService {
     private final CruiseStopRepository stops;
     private final SupplierRepository suppliers;
     private final org.springframework.jdbc.core.JdbcTemplate jdbc;
+    private final ShipServiceAvailability shipServices;
 
     public ServiceSchedule create(UUID serviceId, UUID cruiseId, UUID cruiseStopId, UUID supplierId,
                                   Instant startsAt, Instant endsAt, String location, Integer capacity) {
@@ -75,6 +76,8 @@ public class ServiceScheduleManagementService {
             cruise = stopCruise;
         }
         var supplier = supplierId == null ? null : suppliers.findById(supplierId).orElseThrow(() -> missing("Supplier", supplierId));
+        if (cruise == null) throw new IllegalArgumentException("A cruise or cruise stop is required to assign a service");
+        shipServices.requireService(cruise.getCruiseId(), serviceId);
         if (supplier != null && (supplier.getStatus() != SupplierStatus.ACTIVE
                 || supplier.getVerificationStatus() != SupplierVerificationStatus.VERIFIED))
             throw new IllegalStateException("Service schedule supplier must be active and verified");

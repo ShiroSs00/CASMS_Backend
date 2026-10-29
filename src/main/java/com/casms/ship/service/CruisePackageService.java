@@ -48,6 +48,7 @@ public class CruisePackageService {
     private final BookingPassengerRepository bookingPassengerRepository;
 
     private final CruiseMainflowService mainflow;
+    private final com.casms.servicepackage.service.ShipServiceAvailability shipServices;
 
     @Transactional
     public CruiseTourPackageResponse assignPackage(UUID cruiseId, CruiseTourPackageRequest request) {
@@ -62,6 +63,8 @@ public class CruisePackageService {
         if (tourPackage.getStatus() != TourPackageStatus.ACTIVE) {
             throw new BusinessException("PACKAGE_INACTIVE", "Cannot assign inactive tour package to cruise");
         }
+
+        shipServices.requirePackage(cruiseId, tourPackage.getTourPackageId());
 
         if (cruiseTourPackageRepository.existsByCruise_CruiseIdAndTourPackage_TourPackageId(cruiseId, tourPackage.getTourPackageId())) {
             throw new BusinessException("DUPLICATE_PACKAGE_ASSIGNMENT", "Package is already assigned to this cruise");
@@ -115,6 +118,7 @@ public class CruisePackageService {
     /**
      * BE-H14: Revalidate toàn diện điều kiện mở bán của gói tour đối với Cruise
      */
+    @Transactional
     public void validatePackageSaleScopeGate(Cruise cruise, CruiseTourPackage ctp) {
         if (cruise.getStatus() == CruiseStatus.CANCELLED || cruise.getStatus() == CruiseStatus.COMPLETED) {
             throw new BusinessException(HttpStatus.UNPROCESSABLE_ENTITY, "CRUISE_INVALID_STATUS",
@@ -125,6 +129,7 @@ public class CruisePackageService {
         if (pkg == null) {
             throw new BusinessException(HttpStatus.UNPROCESSABLE_ENTITY, "PACKAGE_NOT_FOUND", "Không tìm thấy thông tin gói tour");
         }
+        shipServices.requirePackage(cruise.getCruiseId(), pkg.getTourPackageId());
         if (pkg.getStatus() != TourPackageStatus.ACTIVE) {
             throw new BusinessException(HttpStatus.UNPROCESSABLE_ENTITY, "PACKAGE_NOT_SALE_READY",
                     "Không thể mở bán lại gói tour đang không ở trạng thái ACTIVE (hiện tại: " + pkg.getStatus() + ")");

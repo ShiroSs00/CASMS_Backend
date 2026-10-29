@@ -344,7 +344,7 @@ public class CruiseController {
     // ==================== CRUISE TOUR PACKAGES ====================
 
     @Operation(summary = "Gán gói dịch vụ du lịch (Tour Package) vào chuyến đi", description = "Mở bán gói dịch vụ cho du khách tham gia chuyến đi này")
-    @PreAuthorize("hasAuthority('TOUR_PACKAGE_ASSIGN')")
+    @PreAuthorize("hasRole('CRUISE_MANAGER') and hasAuthority('CRUISE_UPDATE_DRAFT')")
     @PostMapping("/{cruiseId}/packages")
     public ApiResponse<CruiseTourPackageResponse> assignPackage(
             @Parameter(description = "ID chuyến đi", required = true) @PathVariable UUID cruiseId,
@@ -361,7 +361,7 @@ public class CruiseController {
     }
 
     @Operation(summary = "Gỡ gói dịch vụ khỏi chuyến đi", description = "Ngừng mở bán gói dịch vụ trên chuyến đi")
-    @PreAuthorize("hasAuthority('TOUR_PACKAGE_ASSIGN')")
+    @PreAuthorize("hasRole('CRUISE_MANAGER') and hasAuthority('CRUISE_UPDATE_DRAFT')")
     @DeleteMapping("/{cruiseId}/packages/{packageId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public ApiResponse<Void> removePackage(
