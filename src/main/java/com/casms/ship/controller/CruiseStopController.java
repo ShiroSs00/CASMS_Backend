@@ -1,11 +1,14 @@
 package com.casms.ship.controller;
 
 import com.casms.common.response.ApiResponse;
+import com.casms.ship.dto.request.CruisePortCoordinationRequest;
 import com.casms.ship.dto.request.CruiseStopCreateRequest;
 import com.casms.ship.dto.request.CruiseStopUpdateRequest;
 import com.casms.ship.dto.response.CruiseStopResponse;
 import com.casms.ship.enums.CruiseStopStatus;
 import com.casms.ship.service.CruiseStopService;
+import com.casms.security.principal.CasmsPrincipal;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -36,7 +39,7 @@ public class CruiseStopController {
     }
 
     @Operation(summary = "Danh sách điểm dừng theo lịch trình", description = "Lấy danh sách tất cả điểm dừng trong một lịch trình (đã sắp xếp theo thứ tự)")
-    @PreAuthorize("permitAll()")
+    @PreAuthorize("hasAnyAuthority('CRUISE_STOP_READ', 'CRUISE_READ', 'ITINERARY_READ')")
     @GetMapping("/by-itinerary/{itineraryId}")
     public ApiResponse<List<CruiseStopResponse>> listByItinerary(
             @Parameter(description = "ID của lịch trình", required = true) @PathVariable UUID itineraryId) {
@@ -44,7 +47,7 @@ public class CruiseStopController {
     }
 
     @Operation(summary = "Chi tiết điểm dừng", description = "Lấy thông tin chi tiết của một điểm dừng theo ID")
-    @PreAuthorize("permitAll()")
+    @PreAuthorize("hasAnyAuthority('CRUISE_STOP_READ', 'CRUISE_READ', 'ITINERARY_READ')")
     @GetMapping("/{cruiseStopId}")
     public ApiResponse<CruiseStopResponse> detail(
             @Parameter(description = "ID của điểm dừng", required = true) @PathVariable UUID cruiseStopId) {
@@ -58,6 +61,30 @@ public class CruiseStopController {
             @Parameter(description = "ID của điểm dừng", required = true) @PathVariable UUID cruiseStopId,
             @RequestBody @Valid CruiseStopUpdateRequest request) {
         return ApiResponse.success(service.update(cruiseStopId, request));
+    }
+
+    @Operation(summary = "Cập nhật hồ sơ và trạng thái phối hợp cảng (BE-20 Port Coordination)", description = "Lưu trữ contact port agent, deadline phối hợp, mã hồ sơ và trạng thái xử lý")
+    @PreAuthorize("hasAnyAuthority('CRUISE_STOP_UPDATE', 'CRUISE_UPDATE_DRAFT')")
+    @PatchMapping("/{cruiseStopId}/coordination")
+    public ApiResponse<CruiseStopResponse> updatePortCoordination(
+            @Parameter(description = "ID của điểm dừng", required = true) @PathVariable UUID cruiseStopId,
+            @RequestBody @Valid CruisePortCoordinationRequest request,
+            @AuthenticationPrincipal CasmsPrincipal principal) {
+        UUID actorId = principal != null ? principal.getUserId() : null;
+        return ApiResponse.success(service.updatePortCoordination(cruiseStopId, request, actorId));
+    }
+
+    @Operation(summary = "Ghi nhận mã tham chiếu giấy phép chính thức từ cơ quan chức năng (BE-20 External Clearance Reference)",
+               description = "Lưu trữ mã tham chiếu xác thực từ bên ngoài khi có tích hợp; CASMS tuyệt đối không tự cấp phép rời cảng")
+    @PreAuthorize("hasAnyAuthority('CRUISE_STOP_UPDATE', 'CRUISE_STATUS_CHANGE')")
+    @PostMapping("/{cruiseStopId}/record-clearance-reference")
+    public ApiResponse<CruiseStopResponse> recordClearanceReference(
+            @Parameter(description = "ID của điểm dừng", required = true) @PathVariable UUID cruiseStopId,
+            @Parameter(description = "Mã tham chiếu giấy phép cảng", required = true) @RequestParam String clearanceReference,
+            @Parameter(description = "Tên cơ quan thẩm quyền cấp phép (ví dụ Cảng vụ)", required = false) @RequestParam(required = false) String authority,
+            @AuthenticationPrincipal CasmsPrincipal principal) {
+        UUID actorId = principal != null ? principal.getUserId() : null;
+        return ApiResponse.success(service.recordOfficialClearanceReference(cruiseStopId, clearanceReference, authority, actorId));
     }
 
     @Operation(summary = "Xóa điểm dừng bản nháp", description = "Xóa điểm dừng nếu lịch trình ở trạng thái DRAFT hoặc PENDING_APPROVAL")
@@ -77,6 +104,16 @@ public class CruiseStopController {
             @Parameter(description = "ID của điểm dừng", required = true) @PathVariable UUID cruiseStopId,
             @Parameter(description = "Thứ tự mới", required = true) @RequestParam Integer newStopOrder) {
         return ApiResponse.success(service.reorder(cruiseStopId, newStopOrder));
+    }
+
+    @Operation(summary = "Sắp xếp lại thứ tự điểm dừng kèm lý do đảo cảng (BE-20)", description = "Thay đổi thứ tự lượt ghé và lưu vết lý do đảo hoặc điều chỉnh cảng")
+    @PreAuthorize("hasAuthority('CRUISE_STOP_REORDER')")
+    @PostMapping("/{cruiseStopId}/reorder-with-reason")
+    public ApiResponse<CruiseStopResponse> reorderWithReason(
+            @Parameter(description = "ID của điểm dừng", required = true) @PathVariable UUID cruiseStopId,
+            @Parameter(description = "Thứ tự mới", required = true) @RequestParam Integer newStopOrder,
+            @Parameter(description = "Lý do thay đổi/đảo thứ tự cảng", required = true) @RequestParam String reason) {
+        return ApiResponse.success(service.reorderWithReason(cruiseStopId, newStopOrder, reason));
     }
 
     @Operation(summary = "Đặt thời gian tất cả hành khách lên tàu", description = "Cập nhật thời gian all aboard cho điểm dừng")

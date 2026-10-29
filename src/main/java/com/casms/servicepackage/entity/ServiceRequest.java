@@ -11,6 +11,7 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.UUID;
 
@@ -72,7 +73,7 @@ public class ServiceRequest {
     private ServiceSchedule serviceSchedule;
 
     @Column(name = "unit_price_snapshot", precision = 19, scale = 4)
-    private java.math.BigDecimal unitPriceSnapshot;
+    private BigDecimal unitPriceSnapshot;
 
     @JdbcTypeCode(SqlTypes.CHAR)
     @Column(name = "currency_snapshot", columnDefinition = "char(3)")

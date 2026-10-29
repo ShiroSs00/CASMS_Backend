@@ -7,20 +7,24 @@ import com.casms.identity.entity.Passenger;
 import com.casms.identity.entity.User;
 import com.casms.identity.repository.PassengerRepository;
 import com.casms.identity.repository.UserRepository;
+import com.casms.servicepackage.entity.Service;
 import com.casms.servicepackage.entity.ServiceRequest;
+import com.casms.servicepackage.entity.ServiceSchedule;
 import com.casms.servicepackage.enums.ServiceRequestStatus;
+import com.casms.servicepackage.enums.ServiceStatus;
 import com.casms.servicepackage.repository.ServiceRepository;
 import com.casms.servicepackage.repository.ServiceRequestRepository;
 import com.casms.servicepackage.repository.ServiceScheduleRepository;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
-import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.security.access.AccessDeniedException;
 import java.time.Instant;
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
 
-@Service @RequiredArgsConstructor @Transactional
+@org.springframework.stereotype.Service @RequiredArgsConstructor @Transactional
 public class ServiceRequestService {
  private final ServiceRequestRepository requests;
  private final ServiceRepository services;
@@ -49,7 +53,7 @@ public class ServiceRequestService {
           ServiceRequest request = existing.get();
           assertOwner(request, userId, false);
           if (!request.getService().getServiceId().equals(serviceId)
-                  || !java.util.Objects.equals(request.getServiceSchedule() == null ? null : request.getServiceSchedule().getServiceScheduleId(), scheduleId)
+                  || !Objects.equals(request.getServiceSchedule() == null ? null : request.getServiceSchedule().getServiceScheduleId(), scheduleId)
                   || request.getQuantity() != (quantity == null ? 1 : quantity)) {
               throw new IllegalArgumentException("Idempotency key was already used for a different service request");
           }
@@ -59,11 +63,11 @@ public class ServiceRequestService {
   Passenger passenger=passengers.findByUser_UserId(userId).orElseThrow(()->new IllegalStateException("Authenticated user has no passenger profile"));
   // Serialize capacity checks for this service to prevent concurrent reservations exceeding capacity.
   var s=services.findByIdForUpdate(serviceId).orElseThrow(()->missing("Service",serviceId));
-  if(s.getStatus()!=com.casms.servicepackage.enums.ServiceStatus.ACTIVE) throw new IllegalStateException("Service is not available");
+  if(s.getStatus()!=ServiceStatus.ACTIVE) throw new IllegalStateException("Service is not available");
   int effectiveQuantity = quantity == null ? 1 : quantity;
   if(effectiveQuantity<1)throw new IllegalArgumentException("Quantity must be positive");
   if (scheduleId == null) assertCapacity(s, effectiveQuantity, 0);
-  com.casms.servicepackage.entity.ServiceSchedule schedule = null;
+  ServiceSchedule schedule = null;
   if (scheduleId != null) {
       schedule = schedules.lockById(scheduleId).orElseThrow(() -> missing("Service schedule", scheduleId));
       if (!schedule.getService().getServiceId().equals(serviceId)) throw new IllegalArgumentException("Schedule does not belong to the requested service");
@@ -108,8 +112,8 @@ public class ServiceRequestService {
   }
   return r;
  }
- public void assertOwner(ServiceRequest r, UUID userId, boolean staff){if(staff)return; if(r.getPassenger().getUser()==null||!r.getPassenger().getUser().getUserId().equals(userId))throw new org.springframework.security.access.AccessDeniedException("Service request belongs to another passenger");}
- private void assertCapacity(com.casms.servicepackage.entity.Service service, long requestedQuantity, int existingQuantity) {
+ public void assertOwner(ServiceRequest r, UUID userId, boolean staff){if(staff)return; if(r.getPassenger().getUser()==null||!r.getPassenger().getUser().getUserId().equals(userId))throw new AccessDeniedException("Service request belongs to another passenger");}
+ private void assertCapacity(Service service, long requestedQuantity, int existingQuantity) {
   if (service.getCapacity() == null) return;
   long used = activeQuantity(service.getServiceId()) - existingQuantity;
   if (used + requestedQuantity > service.getCapacity()) {
@@ -119,7 +123,7 @@ public class ServiceRequestService {
  private long activeQuantity(UUID serviceId) {
   return requests.sumActiveQuantity(serviceId, List.of(ServiceRequestStatus.REQUESTED, ServiceRequestStatus.ACCEPTED, ServiceRequestStatus.IN_PROGRESS));
  }
- private void assertSamePassenger(BookingPassenger bp,Passenger passenger){if(!bp.getPassenger().getPassengerId().equals(passenger.getPassengerId()))throw new org.springframework.security.access.AccessDeniedException("Booking passenger does not belong to authenticated passenger");}
+ private void assertSamePassenger(BookingPassenger bp,Passenger passenger){if(!bp.getPassenger().getPassengerId().equals(passenger.getPassengerId()))throw new AccessDeniedException("Booking passenger does not belong to authenticated passenger");}
  private static void invalid(){throw new IllegalStateException("Invalid service request transition");}
  private static EntityNotFoundException missing(String what,UUID id){return new EntityNotFoundException(what+" not found: "+id);}
 }

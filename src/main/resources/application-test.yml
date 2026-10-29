@@ -2,17 +2,18 @@ spring:
   datasource:
     url: jdbc:postgresql://localhost:5432/casms_test?stringtype=unspecified
     username: ${DB_USERNAME:postgres}
-    password: ${DB_PASSWORD:}
+    password: ${DB_PASSWORD:12345}
     hikari:
       data-source-properties:
         stringtype: unspecified
 
   flyway:
-    enabled: false
+    enabled: true
+    clean-disabled: false
 
   jpa:
     hibernate:
-      ddl-auto: create-drop
+      ddl-auto: validate
 
 logging:
   level:

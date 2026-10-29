@@ -30,10 +30,11 @@ public class RolePermissionInitializer implements CommandLineRunner {
     public void initializeRolePermissions() {
         log.info("Initializing role permissions...");
 
-        // ADMIN: identity administration and technical ship/device configuration only.
+        // ADMIN: identity administration, technical configuration and manifest-based ship import.
         saveRolePermission(Role.ADMIN, EnumSet.of(
                 Permission.USER_CREATE, Permission.USER_READ, Permission.USER_UPDATE,
                 Permission.USER_ROLE_ASSIGN, Permission.USER_STATUS_CHANGE,
+                Permission.SHIP_CREATE, Permission.SHIP_READ, Permission.SHIP_UPDATE,
                 Permission.SHIP_MODEL_CREATE, Permission.SHIP_MODEL_READ, Permission.SHIP_MODEL_UPDATE,
                 Permission.SHIP_MODEL_DELETE, Permission.SHIP_MODEL_PUBLISH,
                 Permission.SHIP_MODEL_OBJECT_CREATE, Permission.SHIP_MODEL_OBJECT_UPDATE,
@@ -45,7 +46,7 @@ public class RolePermissionInitializer implements CommandLineRunner {
                 Permission.BLE_TELEMETRY_RECEIVE, Permission.BLE_TELEMETRY_READ
         ));
 
-        // CRUISE_MANAGER: quản lý lịch trình chuyến đi và hải trình (Quản lý lịch trình)
+        // CRUISE_MANAGER = Catalog Itinerary Coordinator (FN-001–027, FN-030–032).
         saveRolePermission(Role.CRUISE_MANAGER, EnumSet.of(
                 Permission.SERVICE_READ, Permission.SERVICE_REQUEST_READ,
                 Permission.CRUISE_CREATE,
@@ -59,8 +60,9 @@ public class RolePermissionInitializer implements CommandLineRunner {
                 Permission.CRUISE_PUBLISH,
                 Permission.CRUISE_START,
                 Permission.CRUISE_COMPLETE,
-                Permission.CRUISE_CANCEL,
                 Permission.CRUISE_STATUS_CHANGE,
+                Permission.CRUISE_PREPARATION_READ,
+                Permission.CRUISE_PREPARATION_SUBMIT,
 
                 Permission.ITINERARY_CREATE,
                 Permission.ITINERARY_READ,
@@ -105,6 +107,16 @@ public class RolePermissionInitializer implements CommandLineRunner {
                 Permission.ITINERARY_CHANGE_READ,
 
                 Permission.REPORT_GENERATE,
+
+                // Trip Planning permissions
+                Permission.TRIP_CREATE,
+                Permission.TRIP_READ,
+                Permission.TRIP_UPDATE,
+                Permission.TRIP_DELETE,
+                Permission.TRIP_SUBMIT,
+                Permission.TRIP_PLAN_WRITE,
+                Permission.TRIP_PLAN_VALIDATE,
+                Permission.TRIP_PLAN_SUBMIT,
 
                 // Cross-module read permissions
                 Permission.SHIP_READ,
@@ -177,6 +189,7 @@ public class RolePermissionInitializer implements CommandLineRunner {
                 Permission.REGULATION_READ,
 
                 Permission.REPORT_GENERATE,
+                Permission.CRUISE_PREPARATION_READ,
 
                 Permission.CRUISE_READ,
                 Permission.CRUISE_MANIFEST_READ,
@@ -216,9 +229,17 @@ public class RolePermissionInitializer implements CommandLineRunner {
                 Permission.CRUISE_READ,
                 Permission.CRUISE_MANIFEST_READ,
                 Permission.CRUISE_VALIDATE,
+                // Catalog FN-053–055: entire-cruise cancellation belongs to Cloud Operations.
+                Permission.CRUISE_CANCEL,
                 Permission.CRUISE_START,
                 Permission.CRUISE_COMPLETE,
                 Permission.CRUISE_STATUS_CHANGE,
+                Permission.CRUISE_OPEN_SALE,
+                Permission.CRUISE_PRICING_APPROVE,
+                Permission.CRUISE_STOP_SALE,
+                Permission.CRUISE_RESUME_SALE,
+                Permission.CRUISE_PREPARATION_READ,
+                Permission.CRUISE_PREPARATION_CONFIRM,
 
                 Permission.ITINERARY_READ,
                 Permission.ITINERARY_DAY_READ,
@@ -274,6 +295,12 @@ public class RolePermissionInitializer implements CommandLineRunner {
 
                 Permission.REPORT_GENERATE,
                 Permission.REPORT_EXPORT,
+
+                // Trip Planning permissions
+                Permission.TRIP_READ,
+                Permission.TRIP_PUBLISH,
+                Permission.TRIP_PLAN_VALIDATE,
+                Permission.TRIP_PLAN_REVIEW,
 
                 // Cross-module
                 Permission.SUPPLIER_CREATE,

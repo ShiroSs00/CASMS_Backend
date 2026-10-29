@@ -6,6 +6,7 @@ import com.casms.ship.dto.request.ShipModelCreateRequest;
 import com.casms.ship.dto.request.ShipModelObjectCreateRequest;
 import com.casms.ship.dto.response.*;
 import com.casms.ship.entity.*;
+import com.casms.ship.enums.LocationDeviceType;
 import com.casms.ship.enums.ShipModelObjectType;
 import com.casms.ship.enums.ShipModelStatus;
 import com.casms.ship.repository.*;
@@ -175,8 +176,10 @@ public class ShipModelService {
     @Transactional(readOnly = true)
     public Ship3dConfigurationResponse configuration(UUID shipId) {
         Ship ship = ships.findById(shipId).orElseThrow(() -> new ResourceNotFoundException("Ship", shipId));
-        ShipModel model = models.findLegacyByShipAndStatus(shipId, ShipModelStatus.READY)
-                .stream().findFirst().orElseThrow(() -> new BusinessException("SHIP_MODEL_NOT_READY", "No ready 3D model has been published for this ship"));
+        ShipModel model = models.findByShipShipIdAndModelKeyIsNotNullAndStatusOrderByCreatedAtDesc(shipId, ShipModelStatus.READY)
+                .stream().findFirst()
+                .or(() -> models.findLegacyByShipAndStatus(shipId, ShipModelStatus.READY).stream().findFirst())
+                .orElseThrow(() -> new BusinessException("SHIP_MODEL_NOT_READY", "No ready 3D model has been published for this ship"));
         List<ShipModelObject> modelObjects = objects.findByShipModelShipModelId(model.getShipModelId());
         Map<UUID, ShipModelObject> cabinNodes = new HashMap<>();
         Map<UUID, ShipModelObject> deckNodes = new HashMap<>();
@@ -187,7 +190,7 @@ public class ShipModelService {
         List<Deck> shipDecks = decks.findByShipShipIdOrderByDeckNumber(shipId);
         List<Cabin> shipCabins = cabins.findByShipShipIdOrderByDeckDeckNumberAscCabinNumberAsc(shipId);
         List<LocationDevice> shipDevices = devices.findByShipShipId(shipId).stream()
-                .filter(d -> d.getDeviceType() == com.casms.ship.enums.LocationDeviceType.BLE_BEACON || d.getDeviceType() == com.casms.ship.enums.LocationDeviceType.BLE_RECEIVER).toList();
+                .filter(d -> d.getDeviceType() == LocationDeviceType.BLE_BEACON || d.getDeviceType() == LocationDeviceType.BLE_RECEIVER).toList();
         Map<UUID, List<Cabin>> cabinsByDeck = new HashMap<>();
         shipCabins.forEach(c -> cabinsByDeck.computeIfAbsent(c.getDeck().getDeckId(), ignored -> new ArrayList<>()).add(c));
         Map<UUID, List<LocationDevice>> anchorsByDeck = new HashMap<>();
@@ -222,8 +225,14 @@ public class ShipModelService {
             return new Ship3dConfigurationResponse.Deck(deck.getDeckId(), code, deck.getDeckName(), deck.getDeckNumber(),
                     mapping == null ? code : mapping.getNodeKey(),
                     position == null ? null : position.y(), position,
-                    preferVector(mapping, false, deck.getModelRotationX(), deck.getModelRotationY(), deck.getModelRotationZ()), rooms, anchors);
-        }).toList();
+                    preferVector(mapping, false, deck.getModelRotationX(), deck.getModelRotationY(), deck.getModelRotationZ()), rooms, anchors, false);
+        }).collect(java.util.stream.Collectors.toCollection(ArrayList::new));
+        modelObjects.stream()
+                .filter(object -> object.getObjectType() == ShipModelObjectType.DECK && object.getDeck() == null)
+                .map(this::serviceLevelResponse)
+                .filter(Objects::nonNull)
+                .sorted(Comparator.comparing(Ship3dConfigurationResponse.Deck::deckNumber))
+                .forEach(deckData::add);
         return new Ship3dConfigurationResponse(ship.getShipId(), ship.getShipCode(), ship.getShipName(),
                 model.getVersion() + ":" + configurationUpdatedAt.toEpochMilli(), configurationUpdatedAt,
                 new Ship3dConfigurationResponse.Model(model.getShipModelId(), model.getFileUri(), model.getFileFormat(),
@@ -234,8 +243,10 @@ public class ShipModelService {
     public void validateConfiguration(UUID shipId) {
         Ship3dConfigurationResponse config = configuration(shipId);
         if (config.decks().isEmpty()) throw new BusinessException("SHIP_CONFIGURATION_MISSING_DECKS", "Add at least one deck before using the 3D configuration");
+        Ship ship = ships.findById(shipId).orElseThrow(() -> new ResourceNotFoundException("Ship", shipId));
+        int deckNumberLimit = ship.getDeckNumberLimit() == null ? ship.getTotalDecks() : ship.getDeckNumberLimit();
         for (var deck : config.decks()) {
-            if (deck.deckNumber() < 1 || deck.deckNumber() > ships.findById(shipId).orElseThrow().getTotalDecks()) {
+            if (!deck.serviceLevel() && (deck.deckNumber() < 1 || deck.deckNumber() > deckNumberLimit)) {
                 throw new BusinessException("SHIP_CONFIGURATION_INVALID_DECK", "A configured deck is outside the ship deck range");
             }
             validateVector(deck.position(), "deck position", false);
@@ -250,6 +261,22 @@ public class ShipModelService {
                 validateVector(anchor.position(), "BLE anchor position", true);
                 validateVector(anchor.rotation(), "BLE anchor rotation", false);
             }
+        }
+    }
+
+    private Ship3dConfigurationResponse.Deck serviceLevelResponse(ShipModelObject object) {
+        try {
+            var metadata = objectMapper.readTree(object.getMetadataJson());
+            int number = metadata.path("number").asInt(Integer.MIN_VALUE);
+            if (number == Integer.MIN_VALUE) return null;
+            String name = metadata.path("name").asText(object.getDisplayName());
+            Ship3dConfigurationResponse.Vector3 position = vector(object.getPositionX(), object.getPositionY(), object.getPositionZ());
+            Ship3dConfigurationResponse.Vector3 rotation = vector(object.getRotationX(), object.getRotationY(), object.getRotationZ());
+            return new Ship3dConfigurationResponse.Deck(null, "SERVICE_" + number, name, number,
+                    object.getNodeKey(), position == null ? metadata.path("elevationMetres").asDouble() : position.y(),
+                    position, rotation, List.of(), List.of(), true);
+        } catch (Exception ignored) {
+            return null;
         }
     }
 

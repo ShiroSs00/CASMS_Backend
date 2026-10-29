@@ -2,8 +2,11 @@ package com.casms.activity.entity;
 
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
+import com.casms.activity.enums.OnboardActivityCategory;
 import com.casms.activity.enums.OnboardActivityStatus;
+import com.casms.ship.entity.Cabin;
 import com.casms.ship.entity.Cruise;
+import com.casms.ship.entity.Deck;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
@@ -29,6 +32,11 @@ public class OnboardActivity {
     @Column(name = "activity_name", nullable = false, length = 200)
     private String activityName;
 
+    /** Phân loại danh mục hoạt động trên tàu (Giải trí, Thể thao, Gia đình, Sự kiện, Lớp học) */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "category", length = 50)
+    private OnboardActivityCategory category;
+
     @Column(name = "description", length = 1000)
     private String description;
 
@@ -41,7 +49,17 @@ public class OnboardActivity {
     @Column(name = "location", length = 250)
     private String location;
 
-    @Column(name = "capacity", nullable = false)
+    /** Tầng (deck) nơi hoạt động diễn ra — ví dụ: Tầng 2, Promenade Deck */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "deck_id")
+    private Deck deck;
+
+    /** Phòng/cabin cụ thể nơi hoạt động diễn ra — ví dụ: phòng Spa 201 */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "cabin_id")
+    private Cabin cabin;
+
+    @Column(name = "capacity")
     private Integer capacity;
 
     @Column(name = "price", precision = 19, scale = 4)
@@ -62,7 +80,7 @@ public class OnboardActivity {
     private Instant updatedAt;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "cruise_id", nullable = false)
+    @JoinColumn(name = "cruise_id")
     private Cruise cruise;
 
     @PrePersist

@@ -4,6 +4,7 @@ import com.casms.ship.enums.ItineraryDayType;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
@@ -21,13 +22,19 @@ public class ItineraryDayResponse {
     private Integer dayNumber;
 
     @Schema(description = "Ngày", example = "2026-01-15")
-    private java.time.LocalDate date;
+    private LocalDate date;
 
     @Schema(description = "Loại ngày", example = "PORT_DAY")
     private ItineraryDayType dayType;
 
     @Schema(description = "Múi giờ tàu", example = "Asia/Ho_Chi_Minh")
     private String shipTimeZoneId;
+
+    @Schema(description = "Độ lệch giờ UTC trên tàu", example = "+07:00")
+    private String shipUtcOffset;
+
+    @Schema(description = "Chuỗi hiển thị múi giờ trên tàu", example = "Asia/Ho_Chi_Minh (UTC+07:00)")
+    private String formattedShipTimeZone;
 
     @Schema(description = "Mô tả ngày", example = "Khám phá Vịnh Hạ Long")
     private String description;

@@ -5,9 +5,14 @@ import com.casms.common.exception.ResourceNotFoundException;
 import com.casms.ship.dto.request.PortCreateRequest;
 import com.casms.ship.dto.request.PortUpdateRequest;
 import com.casms.ship.dto.response.PortResponse;
+import com.casms.ship.dto.response.TimeZoneOptionResponse;
+import com.casms.ship.entity.Destination;
 import com.casms.ship.entity.Port;
+import com.casms.ship.enums.PortLocationType;
 import com.casms.ship.enums.PortStatus;
+import com.casms.ship.repository.DestinationRepository;
 import com.casms.ship.repository.PortRepository;
+import com.casms.ship.util.PortTimeZoneHelper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -25,6 +30,7 @@ import java.util.stream.Collectors;
 public class PortService {
 
     private final PortRepository portRepository;
+    private final DestinationRepository destinationRepository;
 
     @Transactional
     public PortResponse create(PortCreateRequest request) {
@@ -34,13 +40,38 @@ public class PortService {
             throw new BusinessException("PORT_CODE_EXISTS", "Port code already exists: " + request.getPortCode());
         }
 
+        Destination destination = null;
+        if (request.getDestinationId() != null) {
+            destination = destinationRepository.findById(request.getDestinationId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Destination", request.getDestinationId()));
+        }
+
+        String rawCountryCode = request.getCountryCode() != null ? request.getCountryCode().trim().toUpperCase() : null;
+        if (rawCountryCode == null && destination != null) {
+            rawCountryCode = destination.getCountryCode();
+        }
+        final String effectiveCountryCode = rawCountryCode;
+
+        String timeZoneId = request.getTimeZoneId();
+        if (timeZoneId == null || timeZoneId.isBlank()) {
+            timeZoneId = PortTimeZoneHelper.resolveDefaultTimeZoneByCountry(effectiveCountryCode)
+                    .orElseThrow(() -> new BusinessException("TIME_ZONE_REQUIRED",
+                            "Không thể tự động suy luận múi giờ cho quốc gia: " + effectiveCountryCode + ". Vui lòng nhập timeZoneId theo chuẩn IANA."));
+            log.info("Auto-resolved timezone for port {} ({}) -> {}", request.getPortCode(), effectiveCountryCode, timeZoneId);
+        } else if (!PortTimeZoneHelper.isValidTimeZoneId(timeZoneId)) {
+            throw new BusinessException("INVALID_TIME_ZONE", "Múi giờ IANA không hợp lệ: " + timeZoneId);
+        }
+
         Port port = new Port();
         port.setPortCode(request.getPortCode().toUpperCase());
         port.setPortName(request.getPortName());
-        port.setCountryCode(request.getCountryCode().toUpperCase());
-        port.setTimeZoneId(request.getTimeZoneId());
+        port.setCountryCode(effectiveCountryCode);
+        port.setTimeZoneId(timeZoneId);
+        port.setDestination(destination);
+        port.setDescription(request.getDescription());
         port.setLatitude(request.getLatitude());
         port.setLongitude(request.getLongitude());
+        port.setLocationType(request.getLocationType() != null ? request.getLocationType() : PortLocationType.PORT);
         port.setStatus(request.getStatus() != null ? request.getStatus() : PortStatus.ACTIVE);
 
         port = portRepository.save(port);
@@ -49,12 +80,31 @@ public class PortService {
 
     @Transactional(readOnly = true)
     public Page<PortResponse> list(Pageable pageable) {
-        return portRepository.findAll(pageable).map(this::mapToResponse);
+        return list(null, null, null, pageable);
+    }
+
+    @Transactional(readOnly = true)
+    public Page<PortResponse> list(List<String> countryCodes, PortStatus status, String search, Pageable pageable) {
+        List<String> normalizedCountries = (countryCodes != null && !countryCodes.isEmpty())
+                ? countryCodes.stream().filter(c -> c != null && !c.isBlank()).map(c -> c.trim().toUpperCase()).toList()
+                : null;
+        String normalizedSearch = (search != null && !search.isBlank()) ? search.trim() : null;
+        return portRepository.findPortsWithFilters(normalizedCountries, status, normalizedSearch, pageable)
+                .map(this::mapToResponse);
     }
 
     @Transactional(readOnly = true)
     public List<PortResponse> listAllActive() {
-        return portRepository.findAllActivePorts().stream()
+        return listAllActive(null, null);
+    }
+
+    @Transactional(readOnly = true)
+    public List<PortResponse> listAllActive(List<String> countryCodes, String search) {
+        List<String> normalizedCountries = (countryCodes != null && !countryCodes.isEmpty())
+                ? countryCodes.stream().filter(c -> c != null && !c.isBlank()).map(c -> c.trim().toUpperCase()).toList()
+                : null;
+        String normalizedSearch = (search != null && !search.isBlank()) ? search.trim() : null;
+        return portRepository.findActivePortsWithFilters(normalizedCountries, normalizedSearch).stream()
                 .map(this::mapToResponse)
                 .collect(Collectors.toList());
     }
@@ -65,6 +115,30 @@ public class PortService {
         return mapToResponse(port);
     }
 
+    @Transactional(readOnly = true)
+    public List<TimeZoneOptionResponse> listSupportedTimeZones(String search, String countryCode) {
+        return PortTimeZoneHelper.getSupportedTimeZoneOptions(search, countryCode);
+    }
+
+    @Transactional(readOnly = true)
+    public TimeZoneOptionResponse resolveTimeZoneByCountry(String countryCode) {
+        String tzId = PortTimeZoneHelper.resolveDefaultTimeZoneByCountry(countryCode)
+                .orElseThrow(() -> new BusinessException("TIME_ZONE_NOT_FOUND",
+                        "Không tìm thấy múi giờ mặc định cho quốc gia: " + countryCode));
+        String offset = PortTimeZoneHelper.calculateUtcOffset(tzId);
+        String display = PortTimeZoneHelper.formatTimeZoneDisplay(tzId);
+        String localTime = PortTimeZoneHelper.getCurrentLocalTimeIso(tzId);
+
+        return TimeZoneOptionResponse.builder()
+                .timeZoneId(tzId)
+                .displayName(display)
+                .countryCode(countryCode != null ? countryCode.trim().toUpperCase() : null)
+                .utcOffset(offset)
+                .currentLocalTime(localTime)
+                .isRecommended(true)
+                .build();
+    }
+
     @Transactional
     public PortResponse update(UUID portId, PortUpdateRequest request) {
         Port port = getPortById(portId);
@@ -73,7 +147,12 @@ public class PortService {
             port.setPortName(request.getPortName());
         }
         if (request.getDescription() != null) {
-            // Port entity doesn't have description field in current implementation
+            port.setDescription(request.getDescription());
+        }
+        if (request.getDestinationId() != null) {
+            Destination destination = destinationRepository.findById(request.getDestinationId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Destination", request.getDestinationId()));
+            port.setDestination(destination);
         }
         if (request.getLatitude() != null) {
             port.setLatitude(request.getLatitude());
@@ -82,7 +161,13 @@ public class PortService {
             port.setLongitude(request.getLongitude());
         }
         if (request.getTimeZoneId() != null) {
+            if (!PortTimeZoneHelper.isValidTimeZoneId(request.getTimeZoneId())) {
+                throw new BusinessException("INVALID_TIME_ZONE", "Múi giờ IANA không hợp lệ: " + request.getTimeZoneId());
+            }
             port.setTimeZoneId(request.getTimeZoneId());
+        }
+        if (request.getLocationType() != null) {
+            port.setLocationType(request.getLocationType());
         }
 
         port = portRepository.save(port);
@@ -155,10 +240,19 @@ public class PortService {
         res.setPortCode(port.getPortCode());
         res.setPortName(port.getPortName());
         res.setCountryCode(port.getCountryCode());
+        res.setDescription(port.getDescription());
         res.setTimeZoneId(port.getTimeZoneId());
+        res.setUtcOffset(PortTimeZoneHelper.calculateUtcOffset(port.getTimeZoneId()));
+        res.setFormattedTimeZone(PortTimeZoneHelper.formatTimeZoneDisplay(port.getTimeZoneId()));
+        res.setCurrentLocalTime(PortTimeZoneHelper.getCurrentLocalTimeIso(port.getTimeZoneId()));
         res.setLatitude(port.getLatitude());
         res.setLongitude(port.getLongitude());
+        res.setLocationType(port.getLocationType() != null ? port.getLocationType() : PortLocationType.PORT);
         res.setStatus(port.getStatus());
+        if (port.getDestination() != null) {
+            res.setDestinationId(port.getDestination().getDestinationId());
+            res.setDestinationName(port.getDestination().getDestinationName());
+        }
         res.setCreatedAt(port.getCreatedAt());
         res.setUpdatedAt(port.getUpdatedAt());
         return res;

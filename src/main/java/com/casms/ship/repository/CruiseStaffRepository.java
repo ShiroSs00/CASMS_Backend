@@ -22,10 +22,16 @@ public interface CruiseStaffRepository extends JpaRepository<CruiseStaff, UUID> 
 
     boolean existsByCruise_CruiseIdAndUser_UserIdAndStatus(UUID cruiseId, UUID userId, String status);
 
+    boolean existsByCruise_CruiseIdAndRoleInCruiseAndStatus(UUID cruiseId, String roleInCruise, String status);
+
     Optional<CruiseStaff> findFirstByCruise_CruiseIdAndUser_UserIdAndStatusOrderByAssignedAtDesc(
             UUID cruiseId, UUID userId, String status);
 
+    long countByCruise_CruiseIdAndStatus(UUID cruiseId, String status);
+
     void deleteByCruise_CruiseIdAndUser_UserId(UUID cruiseId, UUID userId);
+
+    void deleteByCruise_CruiseId(UUID cruiseId);
 
     @Query("""
         SELECT cs FROM CruiseStaff cs

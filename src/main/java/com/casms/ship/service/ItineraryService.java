@@ -20,12 +20,17 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.http.HttpStatus;
+import org.springframework.security.authentication.AnonymousAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.time.ZoneOffset;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -45,7 +50,7 @@ public class ItineraryService {
         log.info("Creating new itinerary for cruise: {}", request.getCruiseId());
 
         if (creatorUserId == null) {
-            throw new BusinessException(org.springframework.http.HttpStatus.UNAUTHORIZED, "AUTH_REQUIRED", "Creator user ID is required");
+            throw new BusinessException(HttpStatus.UNAUTHORIZED, "AUTH_REQUIRED", "Creator user ID is required");
         }
 
         Cruise cruise = cruiseRepository.findById(request.getCruiseId())
@@ -59,13 +64,15 @@ public class ItineraryService {
                 .orElseThrow(() -> new ResourceNotFoundException("User", creatorUserId));
 
         LocalDate startDate = request.getStartDate() != null ? request.getStartDate()
-                : cruise.getDepartureDatetime().atZone(java.time.ZoneOffset.UTC).toLocalDate();
+                : ItineraryCalendar.start(cruise);
         LocalDate endDate = request.getEndDate() != null ? request.getEndDate()
-                : cruise.getReturnDatetime().atZone(java.time.ZoneOffset.UTC).toLocalDate();
+                : ItineraryCalendar.end(cruise);
 
-        if (!endDate.isAfter(startDate)) {
+        if (endDate.isBefore(startDate)) {
             throw new BusinessException("INVALID_DATE_RANGE", "End date must be after start date");
         }
+
+        ItineraryCalendar.validate(cruise, startDate, endDate);
 
         String name = (request.getItineraryName() != null && !request.getItineraryName().isBlank())
                 ? request.getItineraryName().trim()
@@ -91,14 +98,38 @@ public class ItineraryService {
         return mapToResponse(itinerary);
     }
 
+    private boolean hasInternalStaffRole() {
+        var auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || !auth.isAuthenticated() || auth instanceof AnonymousAuthenticationToken) {
+            return false;
+        }
+        return auth.getAuthorities().stream().anyMatch(a ->
+                a.getAuthority().equals("ITINERARY_READ") ||
+                a.getAuthority().equals("CRUISE_MANAGER") ||
+                a.getAuthority().equals("OPERATIONS_MANAGER") ||
+                a.getAuthority().equals("ADMIN")
+        );
+    }
+
     @Transactional(readOnly = true)
     public Page<ItineraryResponse> list(Pageable pageable) {
+        if (!hasInternalStaffRole()) {
+            return itineraryRepository.findByStatusIn(
+                    List.of(ItineraryStatus.APPROVED, ItineraryStatus.OPEN_FOR_SALE), pageable)
+                    .map(this::mapToResponse);
+        }
         return itineraryRepository.findAll(pageable).map(this::mapToResponse);
     }
 
     @Transactional(readOnly = true)
     public ItineraryResponse detail(UUID itineraryId) {
         Itinerary itinerary = getItineraryById(itineraryId);
+        if (itinerary.getStatus() != ItineraryStatus.APPROVED && itinerary.getStatus() != ItineraryStatus.OPEN_FOR_SALE) {
+            if (!hasInternalStaffRole()) {
+                throw new BusinessException(HttpStatus.FORBIDDEN, "FORBIDDEN",
+                        "Chỉ nhân viên quản lý mới có quyền xem bản nháp hoặc lịch trình chưa phát hành");
+            }
+        }
         return mapToResponse(itinerary);
     }
 
@@ -116,15 +147,20 @@ public class ItineraryService {
         if (request.getStartDate() != null || request.getEndDate() != null) {
             LocalDate newStart = request.getStartDate() != null ? request.getStartDate() : itinerary.getStartDate();
             LocalDate newEnd = request.getEndDate() != null ? request.getEndDate() : itinerary.getEndDate();
-            if (!newEnd.isAfter(newStart)) {
+            if (newEnd.isBefore(newStart)) {
                 throw new BusinessException("INVALID_DATE_RANGE", "End date must be after start date");
             }
+            ItineraryCalendar.validate(itinerary.getCruise(), newStart, newEnd);
             if (request.getStartDate() != null) itinerary.setStartDate(request.getStartDate());
             if (request.getEndDate() != null) itinerary.setEndDate(request.getEndDate());
         }
         if (request.getItineraryType() != null) {
             itinerary.setItineraryType(request.getItineraryType());
         }
+
+        // BE-02: Chỉnh sửa thủ công thu hồi kế thừa phê duyệt và đánh dấu đã bị sửa đổi
+        itinerary.setApprovalInherited(false);
+        itinerary.setContentModifiedAfterMaterialization(true);
 
         itinerary = itineraryRepository.save(itinerary);
         return mapToResponse(itinerary);
@@ -149,36 +185,53 @@ public class ItineraryService {
     @Transactional(readOnly = true)
     public void validateFeasibility(UUID itineraryId) {
         Itinerary itinerary = getItineraryById(itineraryId);
+        ItineraryCalendar.validate(itinerary.getCruise(), itinerary.getStartDate(), itinerary.getEndDate());
 
-        if (!itinerary.getEndDate().isAfter(itinerary.getStartDate())) {
-            throw new BusinessException("INVALID_DATE_RANGE", "End date must be after start date");
+        if (itinerary.getStartDate() == null || itinerary.getEndDate() == null) {
+            throw new BusinessException("INVALID_DATE_RANGE", "Start date and end date must not be null");
+        }
+
+        if (itinerary.getEndDate().isBefore(itinerary.getStartDate())) {
+            throw new BusinessException("INVALID_DATE_RANGE", "End date must not be before start date");
         }
 
         List<ItineraryDay> days = itinerary.getDays();
-        if (days != null && !days.isEmpty()) {
-            days.sort((d1, d2) -> d1.getDayNumber().compareTo(d2.getDayNumber()));
-            
-            for (int i = 0; i < days.size(); i++) {
-                if (days.get(i).getDayNumber() != i + 1) {
-                    throw new BusinessException("INVALID_DAY_SEQUENCE", "Day numbers must be sequential starting from 1");
-                }
-                
-                if (days.get(i).getDate().isBefore(itinerary.getStartDate()) || 
-                    days.get(i).getDate().isAfter(itinerary.getEndDate())) {
-                    throw new BusinessException("DAY_DATE_OUT_OF_RANGE", 
-                        "Day " + days.get(i).getDayNumber() + " date is outside itinerary range");
-                }
+        if (days == null || days.isEmpty()) {
+            throw new BusinessException("EMPTY_ITINERARY_DAYS", "Lịch trình phải có ít nhất một ngày trước khi gửi duyệt hoặc kiểm tra tính khả thi");
+        }
+
+        long expectedDayCount = ChronoUnit.DAYS.between(itinerary.getStartDate(), itinerary.getEndDate()) + 1;
+        if (days.size() != expectedDayCount) {
+            throw new BusinessException("INVALID_DAY_COUNT",
+                    String.format("Số lượng ngày trong lịch trình (%d ngày) không khớp với khoảng thời gian từ %s đến %s (%d ngày)",
+                            days.size(), itinerary.getStartDate(), itinerary.getEndDate(), expectedDayCount));
+        }
+
+        days.sort((d1, d2) -> d1.getDayNumber().compareTo(d2.getDayNumber()));
+
+        for (int i = 0; i < days.size(); i++) {
+            ItineraryCalendar.day(itinerary, days.get(i).getDayNumber(), days.get(i).getDate());
+            if (days.get(i).getDayNumber() != i + 1) {
+                throw new BusinessException("INVALID_DAY_SEQUENCE", "Day numbers must be sequential starting from 1");
+            }
+
+            if (days.get(i).getDate().isBefore(itinerary.getStartDate()) ||
+                days.get(i).getDate().isAfter(itinerary.getEndDate())) {
+                throw new BusinessException("DAY_DATE_OUT_OF_RANGE",
+                    "Day " + days.get(i).getDayNumber() + " date is outside itinerary range");
             }
         }
 
         if (itinerary.getCruise() != null) {
             Cruise cruise = itinerary.getCruise();
-            LocalDate departureDate = cruise.getDepartureDatetime().atZone(ZoneId.systemDefault()).toLocalDate();
-            LocalDate returnDate = cruise.getReturnDatetime().atZone(ZoneId.systemDefault()).toLocalDate();
-            if (itinerary.getStartDate().isBefore(departureDate) ||
-                itinerary.getEndDate().isAfter(returnDate)) {
-                throw new BusinessException("ITINERARY_OUTSIDE_CRUISE_RANGE", 
-                    "Itinerary dates must be within cruise departure and return dates");
+            if (cruise.getDepartureDatetime() != null && cruise.getReturnDatetime() != null) {
+                LocalDate departureDate = cruise.getDepartureDatetime().atZone(ZoneOffset.UTC).toLocalDate();
+                LocalDate returnDate = cruise.getReturnDatetime().atZone(ZoneOffset.UTC).toLocalDate();
+                if (itinerary.getStartDate().isBefore(departureDate) ||
+                    itinerary.getEndDate().isAfter(returnDate)) {
+                    throw new BusinessException("ITINERARY_OUTSIDE_CRUISE_RANGE",
+                        "Itinerary dates must be within cruise departure and return dates");
+                }
             }
         }
     }
@@ -207,12 +260,18 @@ public class ItineraryService {
             throw new BusinessException("INVALID_STATUS", "Only pending approval itineraries can be approved");
         }
 
+        // Maker-Checker: Người tạo không thể tự phê duyệt lịch trình
+        if (itinerary.getCreatedByUser() != null && itinerary.getCreatedByUser().getUserId().equals(approverId)) {
+            throw new BusinessException("SELF_APPROVAL_FORBIDDEN", "Người tạo lịch trình không thể tự phê duyệt lịch trình của chính mình");
+        }
+
         User approver = userRepository.findById(approverId)
                 .orElseThrow(() -> new ResourceNotFoundException("User", approverId));
 
         itinerary.setStatus(ItineraryStatus.APPROVED);
         itinerary.setApprovedByUser(approver);
         itinerary.setApprovedAt(Instant.now());
+        itinerary.setContentModifiedAfterMaterialization(false);
 
         itinerary = itineraryRepository.save(itinerary);
         log.info("Approved itinerary: {}", itinerary.getItineraryId());
@@ -236,6 +295,20 @@ public class ItineraryService {
 
         itinerary = itineraryRepository.save(itinerary);
         log.info("Rejected itinerary: {}", itinerary.getItineraryId());
+        return mapToResponse(itinerary);
+    }
+
+    @Transactional
+    public ItineraryResponse returnToDraft(UUID itineraryId, UUID actorId) {
+        Itinerary itinerary = getItineraryById(itineraryId);
+
+        if (itinerary.getStatus() != ItineraryStatus.REJECTED && itinerary.getStatus() != ItineraryStatus.PENDING_APPROVAL) {
+            throw new BusinessException("INVALID_STATUS", "Chỉ có thể mở lại bản nháp cho lịch trình bị từ chối (REJECTED) hoặc đang chờ duyệt (PENDING_APPROVAL)");
+        }
+
+        itinerary.setStatus(ItineraryStatus.DRAFT);
+        itinerary = itineraryRepository.save(itinerary);
+        log.info("Returned itinerary {} to DRAFT by actor {}", itineraryId, actorId);
         return mapToResponse(itinerary);
     }
 
@@ -355,6 +428,8 @@ public class ItineraryService {
         res.setEndDate(itinerary.getEndDate());
         res.setItineraryType(itinerary.getItineraryType());
         res.setStatus(itinerary.getStatus());
+        res.setApprovalInherited(itinerary.getApprovalInherited());
+        res.setContentModifiedAfterMaterialization(itinerary.getContentModifiedAfterMaterialization());
         res.setApprovedByUserId(itinerary.getApprovedByUser() != null ? itinerary.getApprovedByUser().getUserId() : null);
         res.setApprovedAt(itinerary.getApprovedAt());
         res.setCreatedByUserId(itinerary.getCreatedByUser() != null ? itinerary.getCreatedByUser().getUserId() : null);

@@ -54,9 +54,77 @@ public class CruiseResponse {
     @Schema(description = "Trạng thái chuyến đi (DRAFT, PUBLISHED, IN_PROGRESS, COMPLETED, CANCELLED)", example = "DRAFT")
     private CruiseStatus status;
 
+    @Schema(description = "ID Trip mẫu nguồn (D01)")
+    private UUID sourceTripId;
+
+    @Schema(description = "Mã Trip mẫu nguồn", example = "TP-0001")
+    private String sourceTripCode;
+
+    @Schema(description = "ID phiên bản TripScheduleVersion nguồn (D01)")
+    private UUID sourceVersionId;
+
+    @Schema(description = "Số phiên bản nguồn", example = "2")
+    private Integer sourceVersionNumber;
+
+    @Schema(description = "Số revision của Cruise phục vụ optimistic concurrency control", example = "1")
+    private Long revision;
+
+    @Schema(description = "Revision của phiên bản nguồn tại thời điểm materialize", example = "1")
+    private Long sourceVersionRevision;
+
+    @Schema(description = "Thời điểm dừng mở bán (nếu có)")
+    private Instant stoppedAt;
+
+    @Schema(description = "Tài khoản thực hiện dừng mở bán")
+    private String stoppedByUsername;
+
+    @Schema(description = "Lý do dừng mở bán")
+    private String stopReason;
+
+    @Schema(description = "Bằng chứng/căn cứ dừng mở bán")
+    private String stopEvidence;
+
+    @Schema(description = "Phạm vi dừng bán (CRUISE hoặc PACKAGE)")
+    private String stopScope;
+
+    @Schema(description = "Định danh sự kiện dừng mở bán (Event Identity)")
+    private String stopEventIdentity;
+
+    @Schema(description = "Trạng thái đang bị dừng bán hay không")
+    private boolean saleStopped;
+
+    @Schema(description = "Phạm vi mở bán: WHOLE_CRUISE, CABIN_ONLY, SELECTED_PACKAGES")
+    private String saleScope;
+
+    @Schema(description = "Thời điểm mở bán")
+    private Instant openedForSaleAt;
+
+    @Schema(description = "Tài khoản thực hiện mở bán")
+    private String openedForSaleByUsername;
+
+    @Schema(description = "Định danh sự kiện mở bán (Idempotent Event Identity)")
+    private String saleEventIdentity;
+
+    @Schema(description = "Thời điểm khởi hành thực tế")
+    private Instant actualDepartureDatetime;
+
+    @Schema(description = "Thời điểm hoàn tất thực tế")
+    private Instant actualReturnDatetime;
+
+    @Schema(description = "Người dùng thực hiện xác nhận khởi hành")
+    private String departureActorUsername;
+
+    @Schema(description = "Người dùng thực hiện xác nhận hoàn tất đóng chuyến")
+    private String completionActorUsername;
+
+    @Schema(description = "Ghi chú đóng chuyến và quyết toán")
+    private String closureNotes;
+
     @Schema(description = "Thời điểm tạo")
     private Instant createdAt;
 
     @Schema(description = "Thời điểm cập nhật gần nhất")
     private Instant updatedAt;
+    private String itineraryMode;
+    private String plannedScope;
 }

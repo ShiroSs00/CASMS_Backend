@@ -33,6 +33,9 @@ public class Destination {
     @Column(name = "description", length = 1000)
     private String description;
 
+    @Column(name = "domestic_region", length = 20)
+    private String domesticRegion;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false)
     private DestinationStatus status;

@@ -28,12 +28,12 @@ public class GuidanceSessionController {
     private final GuidanceSessionService guidanceSessionService;
 
     @Operation(summary = "Tạo buổi phổ cập thông tin trước chuyến", description = "Lên lịch buổi hướng dẫn an toàn, cứu sinh hoặc quy định chuyến đi cho hành khách")
-    @PreAuthorize("hasAuthority('CHECKIN_CREATE')")
+    @PreAuthorize("hasRole('OPERATIONS_MANAGER') and hasAuthority('CRUISE_READ')")
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<GuidanceSessionResponse> create(
             @RequestBody @Valid GuidanceSessionCreateRequest request) {
-        return ApiResponse.success("Guidance session created successfully", guidanceSessionService.createSession(request));
+        throw new com.casms.common.exception.BusinessException(HttpStatus.GONE,"GUIDANCE_SCOPED_API_REQUIRED","Use the Cruise-scoped guidance API with window, content and capacity");
     }
 
     @Operation(summary = "Danh sách các buổi phổ cập theo chuyến đi", description = "Lấy tất cả các buổi hướng dẫn được thiết lập cho một chuyến đi cụ thể")

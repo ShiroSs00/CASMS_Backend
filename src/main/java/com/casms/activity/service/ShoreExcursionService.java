@@ -20,6 +20,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -104,7 +105,8 @@ public class ShoreExcursionService {
             UUID id,
             ShoreExcursionRequest request
     ) {
-        ShoreExcursion excursion = getById(id);
+        ShoreExcursion excursion = excursionRepository.lockById(id)
+                .orElseThrow(() -> new EntityNotFoundException("Excursion not found: " + id));
 
         if (excursion.getStatus() != ShoreExcursionStatus.PLANNED
                 && excursion.getStatus() != ShoreExcursionStatus.OPEN
@@ -116,6 +118,11 @@ public class ShoreExcursionService {
             );
         }
 
+        long allocated=countRegisteredParticipants(id);
+        if(request.maximumCapacity()!=null&&request.maximumCapacity()<allocated)
+            throw new com.casms.common.exception.BusinessException(org.springframework.http.HttpStatus.UNPROCESSABLE_ENTITY,
+                "CAPACITY_BELOW_ALLOCATED","Excursion capacity cannot be below reserved participants",
+                java.util.Map.of("fieldPath","maximumCapacity","allocatedParticipants",allocated));
         applyRequest(excursion, request);
         validateExcursion(excursion, id);
 
@@ -142,6 +149,25 @@ public class ShoreExcursionService {
         }
 
         excursionRepository.delete(excursion);
+    }
+
+    /** Commercial configuration keeps the source occurrence, supplier, threshold and timing unchanged. */
+    public ShoreExcursionResponse updateCommercial(UUID id,Integer maximumCapacity,BigDecimal price,String currencyCode) {
+        com.casms.common.util.NewWriteCurrency.requireUsd(currencyCode);
+        ShoreExcursion excursion=excursionRepository.lockById(id)
+            .orElseThrow(()->new EntityNotFoundException("Excursion not found: "+id));
+        if(!List.of(ShoreExcursionStatus.PLANNED,ShoreExcursionStatus.OPEN,ShoreExcursionStatus.FULL,ShoreExcursionStatus.CLOSED).contains(excursion.getStatus()))
+            throw new IllegalStateException("Excursion cannot be commercially edited in its current status");
+        long allocated=countRegisteredParticipants(id);
+        if(maximumCapacity==null||maximumCapacity<1||price==null||price.signum()<0||currencyCode==null||!currencyCode.matches("[A-Z]{3}"))
+            throw new com.casms.common.exception.BusinessException("PROGRAM_PRICE_REQUIRED","Explicit capacity, nonnegative price and currency required");
+        if(maximumCapacity<allocated)
+            throw new com.casms.common.exception.BusinessException(org.springframework.http.HttpStatus.UNPROCESSABLE_ENTITY,
+                "CAPACITY_BELOW_ALLOCATED","Excursion capacity cannot be below reserved participants",
+                java.util.Map.of("fieldPath","maximumCapacity","allocatedParticipants",allocated));
+        excursion.setMaximumCapacity(maximumCapacity);excursion.setPrice(price);excursion.setCurrencyCode(currencyCode);
+        validateExcursion(excursion,id);refreshCapacityStatus(excursion);
+        return toResponse(excursionRepository.save(excursion));
     }
 
     // ==================== VALIDATION ====================
@@ -484,6 +510,7 @@ public class ShoreExcursionService {
                         new EntityNotFoundException("Supplier not found.")
                 );
 
+        com.casms.common.util.NewWriteCurrency.requireUsd(request.currencyCode()==null?"USD":request.currencyCode());
         excursion.setCruiseStop(stop);
         excursion.setSupplier(supplier);
         excursion.setExcursionName(request.excursionName().trim());
@@ -492,7 +519,7 @@ public class ShoreExcursionService {
         excursion.setMeetingPoint(request.meetingPoint().trim());
         excursion.setMinimumParticipants(request.minimumParticipants() == null ? 1 : request.minimumParticipants());
         excursion.setMaximumCapacity(request.maximumCapacity());
-        excursion.setPrice(request.price() == null ? java.math.BigDecimal.ZERO : request.price());
+        excursion.setPrice(request.price() == null ? BigDecimal.ZERO : request.price());
         excursion.setCurrencyCode(
                 (request.currencyCode() == null || request.currencyCode().isBlank())
                         ? "USD"

@@ -32,6 +32,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
@@ -86,9 +87,9 @@ public class ShipModelController {
     @Operation(summary = "Register a versioned asset bundle already stored in PostgreSQL")
     @PreAuthorize("hasAuthority('SHIP_UPDATE')")
     @PostMapping("/ships/{shipId}/models") @ResponseStatus(HttpStatus.CREATED)
-    public ApiResponse<java.util.Map<String, UUID>> create(@PathVariable UUID shipId,
+    public ApiResponse<Map<String, UUID>> create(@PathVariable UUID shipId,
             @Valid @RequestBody ShipModelAssetRegisterRequest request) {
-        return ApiResponse.success(java.util.Map.of("id", assetService.register(shipId, request)));
+        return ApiResponse.success(Map.of("id", assetService.register(shipId, request)));
     }
 
     @Operation(summary = "Create or resolve a Ship from manifest metadata and register the uploaded model version")

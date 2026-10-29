@@ -1,5 +1,6 @@
 package com.casms.booking.dto.request;
 
+import com.casms.booking.enums.PaymentPlan;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotEmpty;
@@ -29,7 +30,14 @@ public class BookingCreateRequest {
     private List<PassengerBookingItemRequest> passengers;
 
     @Schema(description = "Hình thức thanh toán khách chọn: FULL (Toàn bộ 100%), DEPOSIT (Cọc 30%), STAGES (Trả theo 3 giai đoạn)", example = "DEPOSIT", defaultValue = "DEPOSIT")
-    private com.casms.booking.enums.PaymentPlan paymentPlan;
+    private PaymentPlan paymentPlan;
+
+    @Schema(description = "ID của báo giá đã được cấp (nếu có, dùng để khóa giá và chính sách thanh toán)", example = "11111111-2222-3333-4444-555555555555")
+    private UUID quoteId;
+
+    @Schema(description = "Thông tin xác thực báo giá của khách chưa đăng nhập; chỉ dùng cho báo giá khách vãng lai")
+    @Size(max = 100)
+    private String quoteGuestToken;
 
     @Schema(description = "Ghi chú thêm về đơn đặt chỗ", example = "Yêu cầu bữa ăn chay nếu có")
     @Size(max = 500, message = "Notes must not exceed 500 characters")

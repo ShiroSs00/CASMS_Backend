@@ -91,6 +91,10 @@ public class GuidanceSessionService {
     public GuidanceSessionResponse updateStatus(UUID sessionId, GuidanceSessionStatus status) {
         GuidanceSession session = sessionRepository.findById(sessionId)
                 .orElseThrow(() -> new ResourceNotFoundException("Guidance session not found with id: " + sessionId));
+        if(status!=GuidanceSessionStatus.Completed&&status!=GuidanceSessionStatus.Cancelled
+                ||session.getStatus()==GuidanceSessionStatus.Completed||session.getStatus()==GuidanceSessionStatus.Cancelled
+                ||status==GuidanceSessionStatus.Completed&&session.getStatus()!=GuidanceSessionStatus.Published)
+            throw new BusinessException(org.springframework.http.HttpStatus.CONFLICT,"INVALID_GUIDANCE_TRANSITION","Publish through the scoped API before completing; terminal sessions are immutable");
         session.setStatus(status);
         return toResponse(sessionRepository.save(session));
     }

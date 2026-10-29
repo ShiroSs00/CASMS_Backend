@@ -2,11 +2,13 @@ package com.casms.ship.entity;
 
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
+import com.casms.ship.enums.PortLocationType;
 import com.casms.ship.enums.PortStatus;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.UUID;
 
@@ -35,10 +37,14 @@ public class Port {
     private String timeZoneId;
 
     @Column(name = "latitude", precision = 9, scale = 6)
-    private java.math.BigDecimal latitude;
+    private BigDecimal latitude;
 
     @Column(name = "longitude", precision = 9, scale = 6)
-    private java.math.BigDecimal longitude;
+    private BigDecimal longitude;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "location_type", length = 20)
+    private PortLocationType locationType = PortLocationType.PORT;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false)
@@ -50,6 +56,9 @@ public class Port {
 
     @Column(name = "description", length = 1000)
     private String description;
+
+    @Column(name = "domestic_region", length = 20)
+    private String domesticRegion;
 
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;

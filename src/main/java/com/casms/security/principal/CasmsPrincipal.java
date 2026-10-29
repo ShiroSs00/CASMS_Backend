@@ -3,6 +3,7 @@ package com.casms.security.principal;
 import com.casms.identity.entity.User;
 import com.casms.identity.enums.Permission;
 import com.casms.identity.enums.Role;
+import com.casms.identity.enums.UserStatus;
 import com.casms.identity.repository.RolePermissionRepository;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
@@ -64,12 +65,12 @@ public class CasmsPrincipal implements UserDetails {
 
     @Override
     public boolean isAccountNonLocked() {
-        return user.getStatus() != com.casms.identity.enums.UserStatus.LOCKED;
+        return user.getStatus() != UserStatus.LOCKED;
     }
 
     @Override
     public boolean isEnabled() {
-        return user.getStatus() == com.casms.identity.enums.UserStatus.ACTIVE;
+        return user.getStatus() == UserStatus.ACTIVE;
     }
 
     public boolean hasRole(Role role) {
@@ -118,5 +119,13 @@ public class CasmsPrincipal implements UserDetails {
 
     public boolean isStaff() {
         return user.isStaff();
+    }
+
+    public boolean hasAuthority(String authority) {
+        if (authority == null) {
+            return false;
+        }
+        return getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equalsIgnoreCase(authority));
     }
 }

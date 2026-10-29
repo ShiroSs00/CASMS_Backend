@@ -2,10 +2,12 @@ package com.casms.ship.service;
 
 import com.casms.common.exception.BusinessException;
 import com.casms.common.exception.ResourceNotFoundException;
+import com.casms.identity.enums.PassengerBleIdentityStatus;
 import com.casms.identity.repository.PassengerBleIdentityRepository;
 import com.casms.ship.dto.request.BleReadingRequest;
 import com.casms.ship.dto.response.BleAnchorResponse;
 import com.casms.ship.dto.response.BleTrackingResponse;
+import com.casms.ship.dto.response.PassengerTrackingResponse;
 import com.casms.ship.entity.Cruise;
 import com.casms.ship.entity.LocationDevice;
 import com.casms.ship.entity.LocationRecord;
@@ -25,6 +27,8 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
@@ -79,8 +83,11 @@ public class BleRuntimeService {
             throw new ResourceNotFoundException("Active passenger BLE identity", rawIdentifier);
         }
         List<LocationRecord> latest = records.findTop7ByDeviceLocationDeviceIdAndBleIdentifierOrderByRecordedAtDesc(receiverId, identifier);
+        return snapshotFrom(cruiseId, receiver, latest, Instant.now());
+    }
+
+    private BleTrackingResponse snapshotFrom(UUID cruiseId, LocationDevice receiver, List<LocationRecord> latest, Instant now) {
         LocationRecord newest = latest.isEmpty() ? null : latest.getFirst();
-        Instant now = Instant.now();
         String status = newest == null ? "WAITING"
                 : Duration.between(newest.getRecordedAt(), now).compareTo(Duration.ofSeconds(15)) > 0 ? "OFFLINE"
                 : Duration.between(newest.getRecordedAt(), now).compareTo(Duration.ofSeconds(5)) > 0 ? "STALE" : "LIVE";
@@ -104,6 +111,45 @@ public class BleRuntimeService {
                 newest == null ? null : newest.getRecordedAt(), latest.size(), Boolean.TRUE.equals(receiver.getCalibrated()),
                 receiver.getModelUnitsPerMeter(), "RANGE_ONLY_NO_DIRECTION");
         return new BleTrackingResponse(cruiseId, mapped, zone, proximity, "RANGE_ONLY_NO_DIRECTION", "CASMS BLE RSSI observations");
+    }
+
+    @Transactional(readOnly = true)
+    public PassengerTrackingResponse passengerOverview(UUID cruiseId) {
+        Cruise cruise = cruises.findById(cruiseId).orElseThrow(() -> new ResourceNotFoundException("Cruise", cruiseId));
+        if (cruise.getStatus() != CruiseStatus.IN_PROGRESS) throw new BusinessException("CRUISE_NOT_IN_PROGRESS", "Passenger tracking requires a cruise in progress");
+        if (cruise.getShip() == null) throw new BusinessException("CRUISE_HAS_NO_SHIP", "Cruise has no assigned ship");
+        UUID shipId = cruise.getShip().getShipId();
+        Instant now = Instant.now();
+        var receivers = devices.findByShipShipId(shipId).stream().filter(d -> d.getDeviceType() == LocationDeviceType.BLE_RECEIVER
+                && d.getStatus() == LocationDeviceStatus.ACTIVE && d.getInstalledAt() != null && d.getDeck() != null
+                && d.getModelPositionX() != null && d.getModelPositionY() != null && d.getModelPositionZ() != null).toList();
+        var active = identities.findByCruiseCruiseIdAndStatusOrderByAssignedAtDesc(cruiseId, PassengerBleIdentityStatus.ACTIVE);
+        var grouped = new HashMap<String, List<LocationRecord>>();
+        if (!active.isEmpty() && !receivers.isEmpty()) for (var record : records.findByShipShipIdAndRecordedAtBetweenOrderByRecordedAtAsc(shipId, now.minusSeconds(60), now)) {
+            if (record.getBleIdentifier() != null && record.getRssiDbm() != null) grouped.computeIfAbsent(record.getDevice().getLocationDeviceId() + ":" + record.getBleIdentifier(), key -> new ArrayList<>()).add(record);
+        }
+        var passengers = new ArrayList<PassengerTrackingResponse.Passenger>();
+        for (var identity : active) {
+            BleTrackingResponse best = null;
+            for (var receiver : receivers) {
+                var latest = grouped.getOrDefault(receiver.getLocationDeviceId() + ":" + identity.getBleIdentifier(), List.of()).stream()
+                        .filter(r -> !r.getRecordedAt().isBefore(identity.getAssignedAt()) && (cruise.getDepartureDatetime() == null || !r.getRecordedAt().isBefore(cruise.getDepartureDatetime())))
+                        .sorted(Comparator.comparing(LocationRecord::getRecordedAt).reversed()).limit(7).toList();
+                if (latest.isEmpty()) continue;
+                var candidate = snapshotFrom(cruiseId, receiver, latest, now);
+                boolean live = candidate.proximity().status().equals("LIVE");
+                boolean bestLive = best != null && best.proximity().status().equals("LIVE");
+                if (best == null || (live && !bestLive) || (live && bestLive && candidate.proximity().distanceMeters() < best.proximity().distanceMeters())
+                        || (!live && !bestLive && candidate.proximity().lastSeen().isAfter(best.proximity().lastSeen()))) best = candidate;
+            }
+            var bp = identity.getBookingPassenger();
+            String name = bp.getPassenger() == null ? "Hành khách" : bp.getPassenger().getFullName();
+            passengers.add(new PassengerTrackingResponse.Passenger(identity.getPassengerBleIdentityId(), bp.getBookingPassengerId(), name,
+                    identity.getBleIdentifier(), identity.getDeviceName(),
+                    best == null ? "NO_RECENT_SIGNAL" : best.proximity().status(),
+                    best == null ? null : best.receiver(), best == null ? null : best.proximity()));
+        }
+        return new PassengerTrackingResponse(shipId, cruiseId, now, "RANGE_ONLY_NO_DIRECTION", List.copyOf(passengers));
     }
 
     @Transactional

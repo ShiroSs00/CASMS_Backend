@@ -13,17 +13,28 @@ import com.casms.ship.entity.Port;
 import com.casms.ship.enums.CruiseStopArrivalMethod;
 import com.casms.ship.enums.CruiseStopCallType;
 import com.casms.ship.enums.CruiseStopStatus;
+import com.casms.ship.enums.ItineraryDayType;
 import com.casms.ship.enums.ItineraryStatus;
+import com.casms.ship.enums.PortStatus;
 import com.casms.ship.repository.CruiseStopRepository;
+import com.casms.activity.entity.ShoreExcursion;
+import com.casms.activity.repository.ShoreExcursionRepository;
+import com.casms.ship.dto.request.CruisePortCoordinationRequest;
+import com.casms.ship.entity.Cruise;
 import com.casms.ship.repository.DestinationRepository;
 import com.casms.ship.repository.ItineraryDayRepository;
 import com.casms.ship.repository.ItineraryRepository;
 import com.casms.ship.repository.PortRepository;
+import com.casms.ship.util.PortTimeZoneHelper;
+import com.casms.trip.service.CountryScopeValidator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -40,15 +51,30 @@ public class CruiseStopService {
     private final PortRepository portRepository;
     private final DestinationRepository destinationRepository;
 
+    @Autowired(required = false)
+    private ShoreExcursionRepository shoreExcursionRepository;
+
+    @Autowired(required = false)
+    private CruiseAuditService cruiseAuditService;
+
+    public void setShoreExcursionRepository(ShoreExcursionRepository repo) {
+        this.shoreExcursionRepository = repo;
+    }
+
+    public void setCruiseAuditService(CruiseAuditService service) {
+        this.cruiseAuditService = service;
+    }
+
     @Transactional
     public CruiseStopResponse add(CruiseStopCreateRequest request) {
         log.info("Adding new cruise stop to itinerary: {}", request.getItineraryId());
 
-        Itinerary itinerary = itineraryRepository.findById(request.getItineraryId())
+        Itinerary itinerary = itineraryRepository.findByIdForUpdate(request.getItineraryId())
+                .or(() -> itineraryRepository.findById(request.getItineraryId()))
                 .orElseThrow(() -> new ResourceNotFoundException("Itinerary", request.getItineraryId()));
 
-        if (itinerary.getStatus() != ItineraryStatus.DRAFT && itinerary.getStatus() != ItineraryStatus.PENDING_APPROVAL) {
-            throw new BusinessException("ITINERARY_NOT_EDITABLE", "Cannot add stops to itinerary with status: " + itinerary.getStatus());
+        if (itinerary.getStatus() != ItineraryStatus.DRAFT) {
+            throw new BusinessException("ITINERARY_NOT_EDITABLE", "Cannot add stops to itinerary with status: " + itinerary.getStatus() + ". Only DRAFT itineraries can be modified.");
         }
 
         ItineraryDay arrivalDay = itineraryDayRepository.findById(request.getArrivalItineraryDayId())
@@ -69,6 +95,13 @@ public class CruiseStopService {
         Port port = portRepository.findById(request.getPortId())
                 .orElseThrow(() -> new ResourceNotFoundException("Port", request.getPortId()));
 
+        if (port.getStatus() != PortStatus.ACTIVE) {
+            throw new BusinessException("INACTIVE_PORT", "Port " + port.getPortCode() + " is not ACTIVE");
+        }
+
+        // GAP-1 / BE-11.2: country scope write-path validation
+        validatePortCountryScope(port, itinerary);
+
         if (request.getStopOrder() == null) {
             int maxOrder = cruiseStopRepository.findByItineraryItineraryIdOrderByStopOrderAsc(request.getItineraryId())
                     .stream().mapToInt(CruiseStop::getStopOrder).max().orElse(0);
@@ -84,13 +117,17 @@ public class CruiseStopService {
             request.setArrivalMethod(CruiseStopArrivalMethod.BERTH);
         }
         if (request.getAllAboardTime() == null && request.getPlannedDeparture() != null) {
-            request.setAllAboardTime(request.getPlannedDeparture().minus(30, java.time.temporal.ChronoUnit.MINUTES));
+            request.setAllAboardTime(request.getPlannedDeparture());
         }
 
         if (request.getPlannedDeparture().isBefore(request.getPlannedArrival()) || 
             request.getPlannedDeparture().equals(request.getPlannedArrival())) {
             throw new BusinessException("INVALID_TIME_RANGE", "Planned departure must be after planned arrival");
         }
+
+        List<CruiseStop> existingStops = cruiseStopRepository.findByItineraryItineraryIdOrderByStopOrderAsc(request.getItineraryId());
+        validateCruiseStopInvariants(null, request.getStopOrder(), port.getPortId(), port.getPortName(),
+                request.getPlannedArrival(), request.getPlannedDeparture(), existingStops);
 
         Destination destination = null;
         if (request.getDestinationId() != null) {
@@ -126,6 +163,19 @@ public class CruiseStopService {
         stop.setNotes(request.getNotes());
 
         stop = cruiseStopRepository.save(stop);
+
+        // Tự động gán múi giờ tàu cho ngày cập cảng theo múi giờ của cảng
+        if (port.getTimeZoneId() != null) {
+            if (arrivalDay.getDayType() == ItineraryDayType.PORT_DAY || arrivalDay.getShipTimeZoneId() == null) {
+                arrivalDay.setShipTimeZoneId(port.getTimeZoneId());
+                itineraryDayRepository.save(arrivalDay);
+            }
+            if (departureDay.getDayType() == ItineraryDayType.PORT_DAY || departureDay.getShipTimeZoneId() == null) {
+                departureDay.setShipTimeZoneId(port.getTimeZoneId());
+                itineraryDayRepository.save(departureDay);
+            }
+        }
+        markItineraryContentModified(itinerary);
         return mapToResponse(stop);
     }
 
@@ -145,10 +195,14 @@ public class CruiseStopService {
     @Transactional
     public CruiseStopResponse update(UUID cruiseStopId, CruiseStopUpdateRequest request) {
         CruiseStop stop = getStopById(cruiseStopId);
+        UUID itineraryId = stop.getItinerary().getItineraryId();
 
-        Itinerary itinerary = stop.getItinerary();
-        if (itinerary.getStatus() != ItineraryStatus.DRAFT && itinerary.getStatus() != ItineraryStatus.PENDING_APPROVAL) {
-            throw new BusinessException("ITINERARY_NOT_EDITABLE", "Cannot update stops in itinerary with status: " + itinerary.getStatus());
+        Itinerary itinerary = itineraryRepository.findByIdForUpdate(itineraryId)
+                .or(() -> itineraryRepository.findById(itineraryId))
+                .orElse(stop.getItinerary());
+
+        if (itinerary.getStatus() != ItineraryStatus.DRAFT) {
+            throw new BusinessException("ITINERARY_NOT_EDITABLE", "Cannot update stops in itinerary with status: " + itinerary.getStatus() + ". Only DRAFT itineraries can be modified.");
         }
 
         if (request.getItineraryId() != null && !request.getItineraryId().equals(stop.getItinerary().getItineraryId())) {
@@ -177,6 +231,11 @@ public class CruiseStopService {
         if (request.getPortId() != null) {
             Port port = portRepository.findById(request.getPortId())
                     .orElseThrow(() -> new ResourceNotFoundException("Port", request.getPortId()));
+            if (port.getStatus() != PortStatus.ACTIVE) {
+                throw new BusinessException("INACTIVE_PORT", "Port " + port.getPortCode() + " is not ACTIVE");
+            }
+            // GAP-1 / BE-11.2: country scope on port change
+            validatePortCountryScope(port, stop.getItinerary());
             stop.setPort(port);
         }
 
@@ -186,25 +245,29 @@ public class CruiseStopService {
             stop.setDestination(destination);
         }
 
-        if (request.getStopOrder() != null && !request.getStopOrder().equals(stop.getStopOrder())) {
-            if (cruiseStopRepository.existsByItineraryItineraryIdAndStopOrder(stop.getItinerary().getItineraryId(), request.getStopOrder())) {
-                throw new BusinessException("DUPLICATE_STOP_ORDER", "Stop order already exists in this itinerary");
-            }
-            stop.setStopOrder(request.getStopOrder());
+        Instant arrival = request.getPlannedArrival() != null ? request.getPlannedArrival() : stop.getPlannedArrival();
+        Instant departure = request.getPlannedDeparture() != null ? request.getPlannedDeparture() : stop.getPlannedDeparture();
+        if (departure.isBefore(arrival) || departure.equals(arrival)) {
+            throw new BusinessException("INVALID_TIME_RANGE", "Planned departure must be after planned arrival");
         }
+
+        Integer effectiveStopOrder = request.getStopOrder() != null ? request.getStopOrder() : stop.getStopOrder();
+        UUID effectivePortId = stop.getPort() != null ? stop.getPort().getPortId() : null;
+        String effectivePortName = stop.getPort() != null ? stop.getPort().getPortName() : "Unknown";
+
+        List<CruiseStop> existingStops = cruiseStopRepository.findByItineraryItineraryIdOrderByStopOrderAsc(stop.getItinerary().getItineraryId());
+        validateCruiseStopInvariants(stop.getCruiseStopId(), effectiveStopOrder, effectivePortId, effectivePortName,
+                arrival, departure, existingStops);
+
+        // BE-12.3: Validate shore excursions under this stop to ensure shortening stop window does not violate excursion return time (E41)
+        Instant effectiveAllAboard = request.getAllAboardTime() != null ? request.getAllAboardTime() : stop.getAllAboardTime();
+        validateExcursionsUnderStop(stop, arrival, departure, effectiveAllAboard);
 
         if (request.getPlannedArrival() != null) {
             stop.setPlannedArrival(request.getPlannedArrival());
         }
         if (request.getPlannedDeparture() != null) {
             stop.setPlannedDeparture(request.getPlannedDeparture());
-        }
-        if (request.getPlannedArrival() != null || request.getPlannedDeparture() != null) {
-            Instant arrival = request.getPlannedArrival() != null ? request.getPlannedArrival() : stop.getPlannedArrival();
-            Instant departure = request.getPlannedDeparture() != null ? request.getPlannedDeparture() : stop.getPlannedDeparture();
-            if (departure.isBefore(arrival) || departure.equals(arrival)) {
-                throw new BusinessException("INVALID_TIME_RANGE", "Planned departure must be after planned arrival");
-            }
         }
 
         if (request.getCallType() != null) stop.setCallType(request.getCallType());
@@ -223,6 +286,7 @@ public class CruiseStopService {
         if (request.getNotes() != null) stop.setNotes(request.getNotes());
 
         stop = cruiseStopRepository.save(stop);
+        markItineraryContentModified(itinerary);
         return mapToResponse(stop);
     }
 
@@ -231,29 +295,40 @@ public class CruiseStopService {
         CruiseStop stop = getStopById(cruiseStopId);
 
         Itinerary itinerary = stop.getItinerary();
-        if (itinerary.getStatus() != ItineraryStatus.DRAFT && itinerary.getStatus() != ItineraryStatus.PENDING_APPROVAL) {
-            throw new BusinessException("ITINERARY_NOT_EDITABLE", "Cannot remove stops from itinerary with status: " + itinerary.getStatus());
+        if (itinerary.getStatus() != ItineraryStatus.DRAFT) {
+            throw new BusinessException("ITINERARY_NOT_EDITABLE", "Cannot remove stops from itinerary with status: " + itinerary.getStatus() + ". Only DRAFT itineraries can be modified.");
         }
 
         cruiseStopRepository.delete(stop);
+        markItineraryContentModified(itinerary);
         log.info("Removed draft cruise stop: {}", cruiseStopId);
     }
 
     @Transactional
     public CruiseStopResponse reorder(UUID cruiseStopId, Integer newStopOrder) {
         CruiseStop stop = getStopById(cruiseStopId);
+        UUID itineraryId = stop.getItinerary().getItineraryId();
 
-        Itinerary itinerary = stop.getItinerary();
-        if (itinerary.getStatus() != ItineraryStatus.DRAFT && itinerary.getStatus() != ItineraryStatus.PENDING_APPROVAL) {
-            throw new BusinessException("ITINERARY_NOT_EDITABLE", "Cannot reorder stops in itinerary with status: " + itinerary.getStatus());
+        Itinerary itinerary = itineraryRepository.findByIdForUpdate(itineraryId)
+                .or(() -> itineraryRepository.findById(itineraryId))
+                .orElse(stop.getItinerary());
+
+        if (itinerary.getStatus() != ItineraryStatus.DRAFT) {
+            throw new BusinessException("ITINERARY_NOT_EDITABLE", "Cannot reorder stops in itinerary with status: " + itinerary.getStatus() + ". Only DRAFT itineraries can be modified.");
         }
 
         if (newStopOrder != null && !newStopOrder.equals(stop.getStopOrder())) {
             if (cruiseStopRepository.existsByItineraryItineraryIdAndStopOrder(stop.getItinerary().getItineraryId(), newStopOrder)) {
                 throw new BusinessException("DUPLICATE_STOP_ORDER", "Stop order already exists in this itinerary");
             }
+            List<CruiseStop> existingStops = cruiseStopRepository.findByItineraryItineraryIdOrderByStopOrderAsc(stop.getItinerary().getItineraryId());
+            validateCruiseStopInvariants(stop.getCruiseStopId(), newStopOrder,
+                    stop.getPort() != null ? stop.getPort().getPortId() : null,
+                    stop.getPort() != null ? stop.getPort().getPortName() : "Unknown",
+                    stop.getPlannedArrival(), stop.getPlannedDeparture(), existingStops);
             stop.setStopOrder(newStopOrder);
             stop = cruiseStopRepository.save(stop);
+            markItineraryContentModified(itinerary);
         }
 
         return mapToResponse(stop);
@@ -262,6 +337,25 @@ public class CruiseStopService {
     @Transactional
     public CruiseStopResponse setAllAboardTime(UUID cruiseStopId, Instant allAboardTime) {
         CruiseStop stop = getStopById(cruiseStopId);
+        UUID itineraryId = stop.getItinerary().getItineraryId();
+        Itinerary itinerary = itineraryRepository.findByIdForUpdate(itineraryId)
+                .or(() -> itineraryRepository.findById(itineraryId))
+                .orElse(stop.getItinerary());
+
+        if (itinerary.getStatus() != ItineraryStatus.DRAFT) {
+            throw new BusinessException("ITINERARY_NOT_EDITABLE", "Cannot modify stop in itinerary with status: " + itinerary.getStatus());
+        }
+
+        if (allAboardTime != null) {
+            if (stop.getPlannedArrival() != null && allAboardTime.isBefore(stop.getPlannedArrival())) {
+                throw new BusinessException("INVALID_TIME_RANGE", "All aboard time cannot be earlier than planned arrival");
+            }
+            if (stop.getPlannedDeparture() != null && allAboardTime.isAfter(stop.getPlannedDeparture())) {
+                throw new BusinessException("INVALID_TIME_RANGE", "All aboard time cannot be later than planned departure");
+            }
+            validateExcursionsUnderStop(stop, stop.getPlannedArrival(), stop.getPlannedDeparture(), allAboardTime);
+        }
+
         stop.setAllAboardTime(allAboardTime);
         stop = cruiseStopRepository.save(stop);
         return mapToResponse(stop);
@@ -320,26 +414,60 @@ public class CruiseStopService {
     @Transactional
     public CruiseStopResponse setPlannedArrival(UUID cruiseStopId, Instant plannedArrival) {
         CruiseStop stop = getStopById(cruiseStopId);
+        UUID itineraryId = stop.getItinerary().getItineraryId();
+        Itinerary itinerary = itineraryRepository.findByIdForUpdate(itineraryId)
+                .or(() -> itineraryRepository.findById(itineraryId))
+                .orElse(stop.getItinerary());
+
+        if (itinerary.getStatus() != ItineraryStatus.DRAFT) {
+            throw new BusinessException("ITINERARY_NOT_EDITABLE", "Cannot modify stop in itinerary with status: " + itinerary.getStatus());
+        }
         
         if (!plannedArrival.isBefore(stop.getPlannedDeparture())) {
             throw new BusinessException("INVALID_TIME_RANGE", "Planned arrival must be before planned departure");
         }
+
+        List<CruiseStop> existingStops = cruiseStopRepository.findByItineraryItineraryIdOrderByStopOrderAsc(itinerary.getItineraryId());
+        validateCruiseStopInvariants(stop.getCruiseStopId(), stop.getStopOrder(),
+                stop.getPort() != null ? stop.getPort().getPortId() : null,
+                stop.getPort() != null ? stop.getPort().getPortName() : "Unknown",
+                plannedArrival, stop.getPlannedDeparture(), existingStops);
+
+        validateExcursionsUnderStop(stop, plannedArrival, stop.getPlannedDeparture(), stop.getAllAboardTime());
         
         stop.setPlannedArrival(plannedArrival);
         stop = cruiseStopRepository.save(stop);
+        markItineraryContentModified(itinerary);
         return mapToResponse(stop);
     }
 
     @Transactional
     public CruiseStopResponse setPlannedDeparture(UUID cruiseStopId, Instant plannedDeparture) {
         CruiseStop stop = getStopById(cruiseStopId);
+        UUID itineraryId = stop.getItinerary().getItineraryId();
+        Itinerary itinerary = itineraryRepository.findByIdForUpdate(itineraryId)
+                .or(() -> itineraryRepository.findById(itineraryId))
+                .orElse(stop.getItinerary());
+
+        if (itinerary.getStatus() != ItineraryStatus.DRAFT) {
+            throw new BusinessException("ITINERARY_NOT_EDITABLE", "Cannot modify stop in itinerary with status: " + itinerary.getStatus());
+        }
         
         if (!plannedDeparture.isAfter(stop.getPlannedArrival())) {
             throw new BusinessException("INVALID_TIME_RANGE", "Planned departure must be after planned arrival");
         }
+
+        List<CruiseStop> existingStops = cruiseStopRepository.findByItineraryItineraryIdOrderByStopOrderAsc(itinerary.getItineraryId());
+        validateCruiseStopInvariants(stop.getCruiseStopId(), stop.getStopOrder(),
+                stop.getPort() != null ? stop.getPort().getPortId() : null,
+                stop.getPort() != null ? stop.getPort().getPortName() : "Unknown",
+                stop.getPlannedArrival(), plannedDeparture, existingStops);
+
+        validateExcursionsUnderStop(stop, stop.getPlannedArrival(), plannedDeparture, stop.getAllAboardTime());
         
         stop.setPlannedDeparture(plannedDeparture);
         stop = cruiseStopRepository.save(stop);
+        markItineraryContentModified(itinerary);
         return mapToResponse(stop);
     }
 
@@ -350,7 +478,7 @@ public class CruiseStopService {
         Instant start = stop.getActualArrival() != null ? stop.getActualArrival() : stop.getPlannedArrival();
         Instant end = stop.getActualDeparture() != null ? stop.getActualDeparture() : stop.getPlannedDeparture();
         
-        return java.time.Duration.between(start, end).toMinutes();
+        return Duration.between(start, end).toMinutes();
     }
 
     @Transactional(readOnly = true)
@@ -369,6 +497,38 @@ public class CruiseStopService {
                 .orElseThrow(() -> new ResourceNotFoundException("CruiseStop", cruiseStopId));
     }
 
+    private void validateExcursionsUnderStop(CruiseStop stop, Instant arrival, Instant departure, Instant allAboard) {
+        if (shoreExcursionRepository == null || stop == null || stop.getCruiseStopId() == null) {
+            return;
+        }
+        Instant effectiveDeadline = allAboard != null ? allAboard : departure;
+        List<ShoreExcursion> excursions = shoreExcursionRepository.findByCruiseStop_CruiseStopId(stop.getCruiseStopId());
+        for (ShoreExcursion exc : excursions) {
+            if (exc.getStartTime() != null && arrival != null && exc.getStartTime().isBefore(arrival)) {
+                throw new BusinessException("EXCURSION_OUTSIDE_PORT_WINDOW",
+                        String.format("Không thể điều chỉnh giờ cảng vì tour bờ '%s' (mã: %s) bắt đầu (%s) trước khi tàu cập cảng (%s).",
+                                exc.getExcursionName(), exc.getExcursionCode(), exc.getStartTime(), arrival));
+            }
+            if (exc.getPlannedReturnTime() != null && effectiveDeadline != null && exc.getPlannedReturnTime().isAfter(effectiveDeadline)) {
+                throw new BusinessException("EXCURSION_OUTSIDE_PORT_WINDOW",
+                        String.format("Không thể điều chỉnh giờ cảng vì tour bờ '%s' (mã: %s) kết thúc (%s) sau hạn lên tàu / rời cảng (%s).",
+                                exc.getExcursionName(), exc.getExcursionCode(), exc.getPlannedReturnTime(), effectiveDeadline));
+            }
+        }
+    }
+
+    /**
+     * GAP-1 / BE-11.2: Validates that the given port's country code is within the allowed
+     * country scope of the Cruise that owns this Itinerary (derived from sourceTrip via CountryScopeValidator).
+     */
+    private void validatePortCountryScope(Port port, Itinerary itinerary) {
+        if (itinerary == null || itinerary.getCruise() == null) return;
+        Cruise cruise = itinerary.getCruise();
+        if (cruise.getSourceTrip() == null) return; // no scope constraint
+
+        CountryScopeValidator.validatePort(port, cruise.getSourceTrip(), "Cảng ghé");
+    }
+
     private CruiseStopResponse mapToResponse(CruiseStop stop) {
         CruiseStopResponse res = new CruiseStopResponse();
         res.setCruiseStopId(stop.getCruiseStopId());
@@ -378,6 +538,20 @@ public class CruiseStopService {
         res.setPortId(stop.getPort().getPortId());
         res.setPortCode(stop.getPort().getPortCode());
         res.setPortName(stop.getPort().getPortName());
+
+        if (stop.getPort() != null) {
+            String portTz = stop.getPort().getTimeZoneId();
+            res.setPortTimeZoneId(portTz);
+            res.setPortUtcOffset(PortTimeZoneHelper.calculateUtcOffset(portTz));
+            res.setFormattedPortTimeZone(PortTimeZoneHelper.formatTimeZoneDisplay(portTz));
+        }
+
+        if (stop.getArrivalItineraryDay() != null) {
+            String shipTz = stop.getArrivalItineraryDay().getShipTimeZoneId();
+            res.setShipTimeZoneId(shipTz);
+            res.setShipUtcOffset(PortTimeZoneHelper.calculateUtcOffset(shipTz));
+            res.setFormattedShipTimeZone(PortTimeZoneHelper.formatTimeZoneDisplay(shipTz));
+        }
         
         if (stop.getDestination() != null) {
             res.setDestinationId(stop.getDestination().getDestinationId());
@@ -396,12 +570,219 @@ public class CruiseStopService {
         res.setStatus(stop.getStatus());
         res.setCancellationReason(stop.getCancellationReason());
         res.setSubstitutedByStopId(stop.getSubstitutedByStop() != null ? stop.getSubstitutedByStop().getCruiseStopId() : null);
+        res.setPortAgencyName(stop.getPortAgencyName());
+        res.setBerthIdentifier(stop.getBerthIdentifier());
         res.setPortContactName(stop.getPortContactName());
         res.setPortContactRole(stop.getPortContactRole());
         res.setPortContactPhone(stop.getPortContactPhone());
         res.setPortContactEmail(stop.getPortContactEmail());
         res.setPortContactResponsibility(stop.getPortContactResponsibility());
         res.setNotes(stop.getNotes());
+        res.setCoordinationStatus(stop.getCoordinationStatus());
+        res.setCoordinationDeadline(stop.getCoordinationDeadline());
+        res.setDossierReference(stop.getDossierReference());
+        res.setOfficialClearanceReference(stop.getOfficialClearanceReference());
+        res.setClearanceAuthority(stop.getClearanceAuthority());
+        res.setSequenceChangeReason(stop.getSequenceChangeReason());
         return res;
+    }
+
+    /**
+     * BE-20 / BE-H16: Cập nhật hồ sơ và trạng thái phối hợp cảng (Port Coordination)
+     * Trạng thái không giả APPROVED khi chưa có bằng chứng / cơ quan thẩm quyền chính thức.
+     */
+    @Transactional
+    public CruiseStopResponse updatePortCoordination(UUID cruiseStopId, CruisePortCoordinationRequest request) {
+        return updatePortCoordination(cruiseStopId, request, null);
+    }
+
+    @Transactional
+    public CruiseStopResponse updatePortCoordination(UUID cruiseStopId, CruisePortCoordinationRequest request, UUID actorId) {
+        CruiseStop stop = cruiseStopRepository.findById(cruiseStopId)
+                .orElseThrow(() -> new ResourceNotFoundException("CruiseStop", cruiseStopId));
+
+        if (request.getPortAgencyName() != null) stop.setPortAgencyName(request.getPortAgencyName().trim());
+        if (request.getBerthIdentifier() != null) stop.setBerthIdentifier(request.getBerthIdentifier().trim());
+        if (request.getArrivalMethod() != null) stop.setArrivalMethod(request.getArrivalMethod());
+        if (request.getTenderTransferMinutes() != null) stop.setTenderTransferMinutes(request.getTenderTransferMinutes());
+        if (request.getPortContactName() != null) stop.setPortContactName(request.getPortContactName().trim());
+        if (request.getPortContactRole() != null) stop.setPortContactRole(request.getPortContactRole().trim());
+        if (request.getPortContactPhone() != null) stop.setPortContactPhone(request.getPortContactPhone().trim());
+        if (request.getPortContactEmail() != null) stop.setPortContactEmail(request.getPortContactEmail().trim());
+        if (request.getPortContactResponsibility() != null) stop.setPortContactResponsibility(request.getPortContactResponsibility().trim());
+        if (request.getCoordinationDeadline() != null) stop.setCoordinationDeadline(request.getCoordinationDeadline());
+        if (request.getDossierReference() != null) stop.setDossierReference(request.getDossierReference().trim());
+        if (request.getNotes() != null) stop.setNotes(request.getNotes().trim());
+        if (request.getOfficialClearanceReference() != null && !request.getOfficialClearanceReference().isBlank()) {
+            stop.setOfficialClearanceReference(request.getOfficialClearanceReference().trim());
+        }
+        if (request.getClearanceAuthority() != null && !request.getClearanceAuthority().isBlank()) {
+            stop.setClearanceAuthority(request.getClearanceAuthority().trim());
+        }
+
+        // BE-H16: Trạng thái không giả APPROVED khi chưa có bằng chứng / cơ quan thẩm quyền
+        if (request.getCoordinationStatus() != null && !request.getCoordinationStatus().isBlank()) {
+            String targetStatus = request.getCoordinationStatus().trim().toUpperCase();
+            if (java.util.Set.of("APPROVED", "OFFICIALLY_APPROVED", "CONFIRMED_BY_AUTHORITY").contains(targetStatus)) {
+                String ref = stop.getOfficialClearanceReference();
+                String auth = stop.getClearanceAuthority();
+                if (ref == null || ref.isBlank() || auth == null || auth.isBlank()) {
+                    throw new BusinessException(HttpStatus.UNPROCESSABLE_ENTITY, "CLEARANCE_EVIDENCE_REQUIRED",
+                            "Không thể xác lập trạng thái " + targetStatus + " khi chưa có mã tham chiếu giấy phép (officialClearanceReference) và cơ quan thẩm quyền phê duyệt chính thức (clearanceAuthority).");
+                }
+            }
+            stop.setCoordinationStatus(targetStatus);
+        }
+
+        stop = cruiseStopRepository.save(stop);
+        log.info("Updated port coordination for cruise stop: {}, status: {}", cruiseStopId, stop.getCoordinationStatus());
+
+        // Audit Trail
+        if (cruiseAuditService != null && stop.getItinerary() != null && stop.getItinerary().getCruise() != null) {
+            cruiseAuditService.recordEvent(
+                    stop.getItinerary().getCruise(),
+                    "PORT_COORDINATION_UPDATE",
+                    "EVT-PORT-" + stop.getCruiseStopId() + "-" + System.currentTimeMillis(),
+                    actorId,
+                    "PORT_OPERATIONS_COORDINATOR",
+                    "CRUISE_STOP_UPDATE",
+                    "PORT_CALL:" + stop.getCruiseStopId(),
+                    null,
+                    "CoordinationStatus=" + stop.getCoordinationStatus() + ", Berth=" + stop.getBerthIdentifier(),
+                    "Cập nhật hồ sơ phối hợp cảng",
+                    "Agency=" + stop.getPortAgencyName() + ", Dossier=" + stop.getDossierReference() + ", Clearance=" + stop.getOfficialClearanceReference()
+            );
+        }
+
+        return mapToResponse(stop);
+    }
+
+    /**
+     * BE-20 / BE-H16: Ghi nhận mã tham chiếu giấy phép chính thức từ cơ quan chức năng (External Verified Clearance Reference)
+     * TUYỆT ĐỐI không CASMS tự phát hành official clearance; lưu reference xác thực và tách bạch "đã nhập reference" với "cảng vụ duyệt chính thức".
+     */
+    @Transactional
+    public CruiseStopResponse recordOfficialClearanceReference(UUID cruiseStopId, String clearanceReference, String authority) {
+        return recordOfficialClearanceReference(cruiseStopId, clearanceReference, authority, null);
+    }
+
+    @Transactional
+    public CruiseStopResponse recordOfficialClearanceReference(UUID cruiseStopId, String clearanceReference, String authority, UUID actorId) {
+        if (clearanceReference == null || clearanceReference.isBlank()) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "CLEARANCE_REF_REQUIRED",
+                    "Mã tham chiếu giấy phép cảng chính thức (Clearance Reference) là bắt buộc.");
+        }
+        CruiseStop stop = cruiseStopRepository.findById(cruiseStopId)
+                .orElseThrow(() -> new ResourceNotFoundException("CruiseStop", cruiseStopId));
+
+        stop.setOfficialClearanceReference(clearanceReference.trim());
+        if (authority != null && !authority.isBlank()) {
+            stop.setClearanceAuthority(authority.trim());
+        }
+        // “Đã nhập reference” != “cảng vụ duyệt chính thức”
+        // Đặt trạng thái phối hợp là CLEARANCE_RECORDED thay vì giả lập APPROVED
+        if (stop.getCoordinationStatus() == null
+                || "NOT_STARTED".equalsIgnoreCase(stop.getCoordinationStatus())
+                || "SUBMITTED".equalsIgnoreCase(stop.getCoordinationStatus())) {
+            stop.setCoordinationStatus("CLEARANCE_RECORDED");
+        }
+        stop = cruiseStopRepository.save(stop);
+        log.info("Recorded official clearance reference for cruise stop {}: {} by {}", cruiseStopId, clearanceReference, authority);
+
+        // Audit Trail
+        if (cruiseAuditService != null && stop.getItinerary() != null && stop.getItinerary().getCruise() != null) {
+            cruiseAuditService.recordEvent(
+                    stop.getItinerary().getCruise(),
+                    "PORT_CLEARANCE_RECORDED",
+                    "EVT-CLR-" + stop.getCruiseStopId() + "-" + System.currentTimeMillis(),
+                    actorId,
+                    "PORT_OPERATIONS_COORDINATOR",
+                    "CRUISE_STOP_UPDATE",
+                    "PORT_CALL:" + stop.getCruiseStopId(),
+                    null,
+                    "ClearanceRef=" + clearanceReference + ", Authority=" + authority,
+                    "Ghi nhận mã tham chiếu giấy phép cảng",
+                    "ClearanceRef=" + clearanceReference + ", Authority=" + authority
+            );
+        }
+
+        return mapToResponse(stop);
+    }
+
+    /**
+     * BE-20: Sắp xếp lại thứ tự điểm dừng kèm lý do đảo cảng bắt buộc
+     */
+    @Transactional
+    public CruiseStopResponse reorderWithReason(UUID cruiseStopId, Integer newStopOrder, String reason) {
+        if (reason == null || reason.isBlank()) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "REORDER_REASON_REQUIRED",
+                    "Cần cung cấp lý do khi thay đổi hoặc đảo thứ tự điểm dừng cảng.");
+        }
+        CruiseStop stop = cruiseStopRepository.findById(cruiseStopId)
+                .orElseThrow(() -> new ResourceNotFoundException("CruiseStop", cruiseStopId));
+        stop.setSequenceChangeReason(reason.trim());
+        cruiseStopRepository.save(stop);
+        return reorder(cruiseStopId, newStopOrder);
+    }
+
+    private void validateCruiseStopInvariants(UUID currentStopId, Integer stopOrder, UUID portId, String portName,
+                                              Instant arrival, Instant departure, List<CruiseStop> existingStops) {
+        if (arrival == null || departure == null) {
+            return;
+        }
+
+        for (CruiseStop other : existingStops) {
+            if (currentStopId != null && currentStopId.equals(other.getCruiseStopId())) {
+                continue; // Skip self (E40)
+            }
+            Instant otherArr = other.getPlannedArrival();
+            Instant otherDep = other.getPlannedDeparture();
+            if (otherArr == null || otherDep == null) {
+                continue;
+            }
+
+            // BE-12.1: Overlap check: arrA < depB && arrB < depA
+            if (arrival.isBefore(otherDep) && otherArr.isBefore(departure)) {
+                throw new BusinessException("PORT_CALL_OVERLAP",
+                        String.format("Khoảng thời gian ghé cảng %s (%s - %s) bị chồng lấn với lần ghé cảng %s (%s - %s).",
+                                portName, arrival, departure,
+                                other.getPort() != null ? other.getPort().getPortName() : "Unknown", otherArr, otherDep));
+            }
+
+            // BE-12.1 & E37: Boundary check - if arrival == otherDep or otherArr == departure between distinct ports, transit time must be positive
+            boolean isSamePort = portId != null && other.getPort() != null && portId.equals(other.getPort().getPortId());
+            if (!isSamePort) {
+                if (arrival.equals(otherDep) || otherArr.equals(departure)) {
+                    throw new BusinessException("NON_POSITIVE_TRANSIT_TIME",
+                            String.format("Thời gian di chuyển giữa hai cảng khác nhau (%s và %s) phải là số dương (lớn hơn 0).",
+                                    portName, other.getPort() != null ? other.getPort().getPortName() : "Unknown"));
+                }
+            }
+
+            // Sequence check with stopOrder
+            if (stopOrder != null && other.getStopOrder() != null) {
+                if (stopOrder < other.getStopOrder() && !departure.isBefore(otherArr)) {
+                    throw new BusinessException("INVALID_STOP_SEQUENCE_TIME",
+                            String.format("Lần ghé thứ %d (%s) phải kết thúc trước khi lần ghé thứ %d (%s) bắt đầu.",
+                                    stopOrder, portName, other.getStopOrder(), other.getPort() != null ? other.getPort().getPortName() : "Unknown"));
+                }
+                if (stopOrder > other.getStopOrder() && !arrival.isAfter(otherDep)) {
+                    throw new BusinessException("INVALID_STOP_SEQUENCE_TIME",
+                            String.format("Lần ghé thứ %d (%s) phải bắt đầu sau khi lần ghé thứ %d (%s) kết thúc.",
+                                    stopOrder, portName, other.getStopOrder(), other.getPort() != null ? other.getPort().getPortName() : "Unknown"));
+                }
+            }
+        }
+    }
+
+    private void markItineraryContentModified(Itinerary itinerary) {
+        if (itinerary != null) {
+            if (Boolean.TRUE.equals(itinerary.getApprovalInherited()) || !Boolean.TRUE.equals(itinerary.getContentModifiedAfterMaterialization())) {
+                itinerary.setApprovalInherited(false);
+                itinerary.setContentModifiedAfterMaterialization(true);
+                itineraryRepository.save(itinerary);
+                log.info("Itinerary {} content modified after materialization; inherited approval revoked.", itinerary.getItineraryId());
+            }
+        }
     }
 }

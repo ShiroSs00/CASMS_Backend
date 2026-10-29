@@ -13,9 +13,17 @@ public interface CruiseTourPackageRepository extends JpaRepository<CruiseTourPac
 
     List<CruiseTourPackage> findByCruise_CruiseId(UUID cruiseId);
 
+    List<CruiseTourPackage> findByCruise_CruiseIdAndActiveTrue(UUID cruiseId);
+
+    long countByCruise_CruiseIdAndActiveTrue(UUID cruiseId);
+
     Optional<CruiseTourPackage> findByCruise_CruiseIdAndTourPackage_TourPackageId(UUID cruiseId, UUID tourPackageId);
 
     boolean existsByCruise_CruiseIdAndTourPackage_TourPackageId(UUID cruiseId, UUID tourPackageId);
 
+    boolean existsByCruise_CruiseIdAndTourPackage_TourPackageIdAndActiveTrue(UUID cruiseId, UUID tourPackageId);
+
     void deleteByCruise_CruiseIdAndTourPackage_TourPackageId(UUID cruiseId, UUID tourPackageId);
+
+    void deleteByCruise_CruiseId(UUID cruiseId);
 }

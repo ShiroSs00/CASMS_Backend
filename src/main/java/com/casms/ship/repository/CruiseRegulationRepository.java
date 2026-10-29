@@ -22,4 +22,5 @@ public interface CruiseRegulationRepository
     );
 
     boolean existsByRegulation_RegulationId(UUID regulationId);
+    void deleteByCruise_CruiseId(UUID cruiseId);
 }

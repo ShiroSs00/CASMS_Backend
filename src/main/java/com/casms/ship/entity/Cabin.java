@@ -6,6 +6,7 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.UUID;
 
@@ -35,6 +36,10 @@ public class Cabin {
     @Column(name = "cabin_number", nullable = false, length = 10)
     private String cabinNumber;
 
+    /** Tên phòng / tên công năng chuyên biệt (ví dụ: Phòng Massage Đá Nóng VIP, Studio Bếp) */
+    @Column(name = "room_name", length = 150)
+    private String roomName;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "cabin_type", nullable = false)
     private CabinType cabinType;
@@ -47,7 +52,7 @@ public class Cabin {
     private CabinStatus status;
 
     @Column(name = "is_accessible", nullable = false)
-    private Boolean isAccessible;
+    private Boolean isAccessible = false;
 
     @Column(name = "minimum_occupancy", nullable = false)
     private Integer minimumOccupancy = 1;
@@ -59,10 +64,10 @@ public class Cabin {
     private String bedConfiguration;
 
     @Column(name = "area_square_meters", precision = 8, scale = 2)
-    private java.math.BigDecimal areaSquareMeters;
+    private BigDecimal areaSquareMeters;
 
     @Column(name = "balcony_area_square_meters", precision = 8, scale = 2)
-    private java.math.BigDecimal balconyAreaSquareMeters;
+    private BigDecimal balconyAreaSquareMeters;
 
     @Column(name = "location_code", length = 30)
     private String locationCode;

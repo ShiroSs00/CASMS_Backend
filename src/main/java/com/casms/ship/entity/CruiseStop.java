@@ -82,6 +82,12 @@ public class CruiseStop {
     @JoinColumn(name = "substituted_by_stop_id")
     private CruiseStop substitutedByStop;
 
+    @Column(name = "port_agency_name", length = 200)
+    private String portAgencyName;
+
+    @Column(name = "berth_identifier", length = 100)
+    private String berthIdentifier;
+
     @Column(name = "port_contact_name", length = 200)
     private String portContactName;
 
@@ -99,5 +105,24 @@ public class CruiseStop {
 
     @Column(name = "notes", length = 1000)
     private String notes;
+
+    @Column(name = "coordination_status", length = 50)
+    private String coordinationStatus = "NOT_STARTED";
+
+    @Column(name = "coordination_deadline")
+    private Instant coordinationDeadline;
+
+    @Column(name = "dossier_reference", length = 100)
+    private String dossierReference;
+
+    @Column(name = "official_clearance_reference", length = 100)
+    private String officialClearanceReference;
+
+    @Column(name = "clearance_authority", length = 150)
+    private String clearanceAuthority;
+
+    @Column(name = "sequence_change_reason", length = 500)
+    private String sequenceChangeReason;
 }
+
 

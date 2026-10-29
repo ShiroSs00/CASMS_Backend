@@ -1,7 +1,10 @@
 package com.casms.ship.entity;
 
+import com.casms.identity.entity.User;
 import com.casms.ship.enums.CruiseCruiseType;
 import com.casms.ship.enums.CruiseStatus;
+import com.casms.trip.entity.Trip;
+import com.casms.trip.entity.TripScheduleVersion;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
@@ -49,15 +52,96 @@ public class Cruise {
     @JoinColumn(name = "return_port_id", nullable = false)
     private Port returnPort;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "source_trip_id")
+    private Trip sourceTrip;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "source_version_id")
+    private TripScheduleVersion sourceVersion;
+
+    @Column(name = "source_version_revision")
+    private Long sourceVersionRevision;
+
+    @Version
+    @Column(name = "revision", nullable = false)
+    private Long revision = 1L;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "preparation_coordinator_id")
+    private User preparationCoordinator;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false)
     private CruiseStatus status;
+
+    @Column(name = "stopped_at")
+    private Instant stoppedAt;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "stopped_by_user_id")
+    private User stoppedBy;
+
+    @Column(name = "stop_reason", columnDefinition = "TEXT")
+    private String stopReason;
+
+    @Column(name = "stop_evidence", columnDefinition = "TEXT")
+    private String stopEvidence;
+
+    @Column(name = "stop_scope", length = 50)
+    private String stopScope;
+
+    @Column(name = "stop_event_identity", length = 100)
+    private String stopEventIdentity;
+
+    @Column(name = "sale_scope", length = 30)
+    private String saleScope;
+
+    @Column(name = "opened_for_sale_at")
+    private Instant openedForSaleAt;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "opened_for_sale_by")
+    private User openedForSaleBy;
+
+    @Column(name = "sale_event_identity", length = 100)
+    private String saleEventIdentity;
+
+    @Column(name = "actual_departure_datetime")
+    private Instant actualDepartureDatetime;
+
+    @Column(name = "actual_return_datetime")
+    private Instant actualReturnDatetime;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "departure_actor_id")
+    private User departureActor;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "completion_actor_id")
+    private User completionActor;
+
+    @Column(name = "closure_notes", columnDefinition = "TEXT")
+    private String closureNotes;
 
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
+
+    @Column(name = "itinerary_mode", nullable = false)
+    private String itineraryMode = "FIXED";
+    @Column(name = "planned_scope")
+    private String plannedScope;
+    @Column(name = "booking_opens_at")
+    private Instant bookingOpensAt;
+    @Column(name = "booking_closes_at")
+    private Instant bookingClosesAt;
+    @Column(name = "guidance_opens_at")
+    private Instant guidanceOpensAt;
+    @Column(name = "guidance_closes_at")
+    private Instant guidanceClosesAt;
 
     @PrePersist
     protected void onCreate() {

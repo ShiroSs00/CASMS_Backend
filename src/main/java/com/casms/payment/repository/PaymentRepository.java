@@ -1,22 +1,32 @@
 package com.casms.payment.repository;
 
 import com.casms.payment.entity.Payment;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 @Repository
 public interface PaymentRepository extends JpaRepository<Payment, UUID> {
-    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
-    @org.springframework.data.jpa.repository.Query("select p from Payment p where p.paymentId = :paymentId")
-    java.util.Optional<Payment> findByIdForUpdate(@org.springframework.data.repository.query.Param("paymentId") UUID paymentId);
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select p from Payment p where p.paymentId = :paymentId")
+    Optional<Payment> findByIdForUpdate(@Param("paymentId") UUID paymentId);
 
-    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
-    @org.springframework.data.jpa.repository.Query("select p from Payment p left join p.booking b left join p.installment i left join i.booking ib where b.bookingId = :bookingId or ib.bookingId = :bookingId")
-    java.util.List<Payment> findForBooking(@org.springframework.data.repository.query.Param("bookingId") UUID bookingId);
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select p from Payment p left join p.booking b left join p.installment i left join i.booking ib where b.bookingId = :bookingId or ib.bookingId = :bookingId")
+    List<Payment> findForBooking(@Param("bookingId") UUID bookingId);
 
-    java.util.Optional<Payment> findByIdempotencyKey(String idempotencyKey);
+    Optional<Payment> findByIdempotencyKey(String idempotencyKey);
 
-    java.util.List<Payment> findByBooking_BookingId(UUID bookingId);
+    boolean existsByProcessorReferenceAndPaymentIdNot(String processorReference, UUID paymentId);
+
+    boolean existsByInternalReceiptReferenceAndPaymentIdNot(String internalReceiptReference, UUID paymentId);
+
+    List<Payment> findByBooking_BookingId(UUID bookingId);
 }

@@ -5,19 +5,33 @@ import io.swagger.v3.oas.models.OpenAPI;
 import io.swagger.v3.oas.models.info.Contact;
 import io.swagger.v3.oas.models.info.Info;
 import io.swagger.v3.oas.models.info.License;
+import io.swagger.v3.oas.models.media.StringSchema;
 import io.swagger.v3.oas.models.security.SecurityRequirement;
 import io.swagger.v3.oas.models.security.SecurityScheme;
 import io.swagger.v3.oas.models.servers.Server;
 import io.swagger.v3.oas.models.tags.Tag;
 import org.springdoc.core.models.GroupedOpenApi;
+import org.springdoc.core.utils.SpringDocUtils;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
+import java.time.LocalTime;
 import java.util.List;
 
 @Configuration
 public class OpenApiConfig {
+
+    static {
+        SpringDocUtils.getConfig().replaceWithSchema(
+                LocalTime.class,
+                new StringSchema()
+                        .type("string")
+                        .format("time")
+                        .example("14:30:00")
+                        .pattern("^([01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d$")
+        );
+    }
 
     @Value("${server.servlet.context-path:/api}")
     private String contextPath;
@@ -69,6 +83,7 @@ public class OpenApiConfig {
                         new Tag().name("Check-in & Boarding").description("APIs làm thủ tục lên tàu, thẻ định danh và trả phòng"),
                         new Tag().name("Services & Packages").description("APIs quản lý dịch vụ trên tàu và gói dịch vụ tour"),
                         new Tag().name("Finance & Payment").description("APIs quản lý tài khoản chi tiêu, giao dịch, hóa đơn và thanh toán"),
+                        new Tag().name("Trip & Itinerary Planning").description("APIs lập kế hoạch hành trình chuẩn (Trip, Version, Day, Stop, Entry, Catalog)"),
                         new Tag().name("Notifications").description("APIs thông báo hệ thống")
                 ))
                 .addSecurityItem(new SecurityRequirement().addList(securitySchemeName))
@@ -95,6 +110,7 @@ public class OpenApiConfig {
                 .group("2. Đội tàu & Chuyến đi (Fleet & Cruise)")
                 .pathsToMatch(
                         "/cruise/**", "/cruises/**",
+                        "/api/cruise/**", "/api/cruises/**",
                         "/cruise-stops/**", "/cruise-stop/**",
                         "/ship/**", "/ships/**",
                         "/deck/**", "/decks/**",
@@ -105,7 +121,10 @@ public class OpenApiConfig {
                         "/itinerary-days/**", "/itinerary-day/**",
                         "/itinerary-change-history/**",
                         "/operational-regulations/**",
-                        "/operational-issues/**"
+                        "/operational-issues/**",
+                        "/trips/**",
+                        "/trip-schedule-versions/**",
+                        "/trip-planning/**"
                 )
                 .build();
     }
@@ -161,6 +180,18 @@ public class OpenApiConfig {
         return GroupedOpenApi.builder()
                 .group("8. Tài khoản & Thông báo (Identity & Notifications)")
                 .pathsToMatch("/identity/**", "/notification/**", "/auth/**")
+                .build();
+    }
+
+    @Bean
+    public GroupedOpenApi tripPlanningApi() {
+        return GroupedOpenApi.builder()
+                .group("9. Lập kế hoạch hành trình (Trip & Itinerary Planning)")
+                .pathsToMatch(
+                        "/trips/**",
+                        "/trip-schedule-versions/**",
+                        "/trip-planning/**"
+                )
                 .build();
     }
 }

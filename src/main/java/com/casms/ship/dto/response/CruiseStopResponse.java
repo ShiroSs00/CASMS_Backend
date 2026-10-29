@@ -34,6 +34,24 @@ public class CruiseStopResponse {
     @Schema(description = "Tên cảng", example = "Cảng Hải Phòng")
     private String portName;
 
+    @Schema(description = "Múi giờ của cảng", example = "Asia/Tokyo")
+    private String portTimeZoneId;
+
+    @Schema(description = "Độ lệch giờ UTC của cảng", example = "+09:00")
+    private String portUtcOffset;
+
+    @Schema(description = "Chuỗi hiển thị múi giờ cảng", example = "Asia/Tokyo (UTC+09:00)")
+    private String formattedPortTimeZone;
+
+    @Schema(description = "Múi giờ trên tàu", example = "Asia/Singapore")
+    private String shipTimeZoneId;
+
+    @Schema(description = "Độ lệch giờ UTC trên tàu", example = "+08:00")
+    private String shipUtcOffset;
+
+    @Schema(description = "Chuỗi hiển thị múi giờ trên tàu", example = "Asia/Singapore (UTC+08:00)")
+    private String formattedShipTimeZone;
+
     @Schema(description = "ID điểm đến", example = "3fa85f64-5717-4562-b3fc-2c963f66afa6")
     private UUID destinationId;
 
@@ -76,6 +94,12 @@ public class CruiseStopResponse {
     @Schema(description = "ID điểm dừng thay thế", example = "3fa85f64-5717-4562-b3fc-2c963f66afa6")
     private UUID substitutedByStopId;
 
+    @Schema(description = "Tên đại lý cảng / Port Agency", example = "Viconship Hải Phòng")
+    private String portAgencyName;
+
+    @Schema(description = "Vị trí cầu bến neo đậu (Berth)", example = "Berth 03 - Cầu cảng số 3")
+    private String berthIdentifier;
+
     @Schema(description = "Tên liên hệ cảng", example = "Nguyễn Văn A")
     private String portContactName;
 
@@ -93,4 +117,22 @@ public class CruiseStopResponse {
 
     @Schema(description = "Ghi chú", example = "Cần xem xét thời tiết")
     private String notes;
+
+    @Schema(description = "Trạng thái phối hợp cảng (NOT_STARTED, SUBMITTED, IN_COORDINATION, CONFIRMED, REJECTED)", example = "CONFIRMED")
+    private String coordinationStatus;
+
+    @Schema(description = "Hạn chót phối hợp cảng", example = "2026-01-14T12:00:00Z")
+    private Instant coordinationDeadline;
+
+    @Schema(description = "Mã hồ sơ phối hợp cảng", example = "DOS-HPH-2026-01")
+    private String dossierReference;
+
+    @Schema(description = "Mã tham chiếu giấy phép chính thức từ cơ quan quản lý cảng (nếu có tích hợp ngoài)", example = "CLR-VPA-2026-9981")
+    private String officialClearanceReference;
+
+    @Schema(description = "Cơ quan thẩm quyền cấp giấy phép cảng", example = "Cảng vụ Hàng hải Hải Phòng")
+    private String clearanceAuthority;
+
+    @Schema(description = "Lý do thay đổi thứ tự hoặc điều chỉnh lượt ghé", example = "Thời tiết vùng vịnh chuyển xấu, đảo thứ tự cập cảng")
+    private String sequenceChangeReason;
 }

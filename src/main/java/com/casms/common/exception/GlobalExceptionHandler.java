@@ -14,6 +14,11 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.server.ResponseStatusException;
+import org.springframework.dao.OptimisticLockingFailureException;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
+import jakarta.persistence.OptimisticLockException;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -105,6 +110,27 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.error(message, "VALIDATION_FAILED"));
     }
 
+    @ExceptionHandler(org.springframework.http.converter.HttpMessageNotReadableException.class)
+    public ResponseEntity<ApiResponse<Void>> handleHttpMessageNotReadable(org.springframework.http.converter.HttpMessageNotReadableException ex) {
+        log.warn("HTTP message not readable (malformed JSON or invalid format): {}", ex.getMessage());
+        return ResponseEntity.badRequest()
+                .body(ApiResponse.error("Dữ liệu gửi lên không đúng định dạng JSON hoặc trường dữ liệu không hợp lệ", "INVALID_REQUEST_BODY"));
+    }
+
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<ApiResponse<Void>> handleNoResourceFound(NoResourceFoundException ex) {
+        log.warn("Resource/Endpoint not found: {}", ex.getResourcePath());
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(ApiResponse.error("Đường dẫn hoặc tài nguyên không tồn tại: " + ex.getResourcePath(), "RESOURCE_NOT_FOUND"));
+    }
+
+    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<ApiResponse<Void>> handleMethodNotSupported(HttpRequestMethodNotSupportedException ex) {
+        log.warn("HTTP method not supported: {}", ex.getMethod());
+        return ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED)
+                .body(ApiResponse.error("Phương thức HTTP không được hỗ trợ: " + ex.getMethod(), "METHOD_NOT_ALLOWED"));
+    }
+
     @ExceptionHandler(AccessDeniedException.class)
     public ResponseEntity<ApiResponse<Void>> handleAccessDenied(AccessDeniedException ex) {
         log.warn("Access denied: {}", ex.getMessage());
@@ -139,6 +165,35 @@ public class GlobalExceptionHandler {
         log.warn("Method argument type mismatch: {}", msg);
         return ResponseEntity.badRequest()
                 .body(ApiResponse.error(msg, "INVALID_PARAMETER"));
+    }
+
+    @ExceptionHandler({OptimisticLockingFailureException.class, OptimisticLockException.class})
+    public ResponseEntity<ApiResponse<Void>> handleOptimisticLocking(Exception ex) {
+        log.warn("Optimistic lock conflict detected: {}", ex.getMessage());
+        Map<String, Object> details = new HashMap<>();
+        details.put("legacyCode", "OPTIMISTIC_LOCK_CONFLICT");
+        details.put("reason", "Dữ liệu đã bị thay đổi bởi thao tác khác. Vui lòng tải lại trang để lấy revision mới nhất.");
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ApiResponse.error("Dữ liệu đã bị thay đổi bởi thao tác khác (xung đột phiên bản). Vui lòng làm mới và thử lại.",
+                        "STALE_REVISION", details, null));
+    }
+
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<ApiResponse<Void>> handleDataIntegrityViolation(DataIntegrityViolationException ex) {
+        log.warn("Data integrity violation: {}", ex.getMessage());
+        String msg = ex.getMessage() != null ? ex.getMessage() : "Dữ liệu xung đột toàn vẹn dữ liệu";
+        String lower = msg.toLowerCase();
+        if (lower.contains("idempotency") || lower.contains("uq_idempotency")) {
+            return ResponseEntity.status(HttpStatus.CONFLICT)
+                    .body(ApiResponse.error("Yêu cầu trùng lặp với cùng Idempotency-Key đang được xử lý hoặc đã hoàn tất.",
+                            "IDEMPOTENCY_CONFLICT"));
+        }
+        if (lower.contains("unique") || lower.contains("duplicate") || lower.contains("uq_")) {
+            return ResponseEntity.status(HttpStatus.CONFLICT)
+                    .body(ApiResponse.error("Dữ liệu trùng lặp trong hệ thống.", "DUPLICATE_RESOURCE"));
+        }
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ApiResponse.error("Xung đột ràng buộc dữ liệu: " + msg, "DATA_INTEGRITY_VIOLATION"));
     }
 
     @ExceptionHandler(Exception.class)

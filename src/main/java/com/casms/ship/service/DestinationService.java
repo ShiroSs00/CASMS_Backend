@@ -11,6 +11,7 @@ import com.casms.ship.entity.Port;
 import com.casms.ship.enums.DestinationStatus;
 import com.casms.ship.repository.DestinationRepository;
 import com.casms.ship.repository.PortRepository;
+import com.casms.ship.util.PortTimeZoneHelper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -99,9 +100,9 @@ public class DestinationService {
     public List<PortSummaryResponse> listPortsByDestination(UUID destinationId) {
         Destination destination = getDestinationById(destinationId);
 
-        List<Port> ports = destination.getPorts();
-        if (ports == null) {
-            return List.of();
+        List<Port> ports = portRepository.findByDestinationDestinationIdOrderByPortNameAsc(destinationId);
+        if (ports == null || ports.isEmpty()) {
+            ports = destination.getPorts() != null ? destination.getPorts() : List.of();
         }
 
         return ports.stream()
@@ -149,8 +150,12 @@ public class DestinationService {
         res.setUpdatedAt(destination.getUpdatedAt());
 
         // Map ports if available
-        if (destination.getPorts() != null) {
-            res.setPorts(destination.getPorts().stream()
+        List<Port> ports = destination.getPorts();
+        if (ports == null || ports.isEmpty()) {
+            ports = portRepository.findByDestinationDestinationIdOrderByPortNameAsc(destination.getDestinationId());
+        }
+        if (ports != null) {
+            res.setPorts(ports.stream()
                     .map(this::mapPortToSummary)
                     .collect(Collectors.toList()));
         }
@@ -162,6 +167,18 @@ public class DestinationService {
         res.setPortId(port.getPortId());
         res.setPortCode(port.getPortCode());
         res.setPortName(port.getPortName());
+        res.setCountryCode(port.getCountryCode());
+        res.setTimeZoneId(port.getTimeZoneId());
+        res.setUtcOffset(PortTimeZoneHelper.calculateUtcOffset(port.getTimeZoneId()));
+        res.setFormattedTimeZone(PortTimeZoneHelper.formatTimeZoneDisplay(port.getTimeZoneId()));
+        res.setCurrentLocalTime(PortTimeZoneHelper.getCurrentLocalTimeIso(port.getTimeZoneId()));
+        res.setLatitude(port.getLatitude());
+        res.setLongitude(port.getLongitude());
+        res.setStatus(port.getStatus());
+        if (port.getDestination() != null) {
+            res.setDestinationId(port.getDestination().getDestinationId());
+            res.setDestinationName(port.getDestination().getDestinationName());
+        }
         return res;
     }
 }

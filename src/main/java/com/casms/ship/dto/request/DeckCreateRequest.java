@@ -1,9 +1,12 @@
 package com.casms.ship.dto.request;
 
 import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.constraints.DecimalMax;
+import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
 import lombok.Data;
+import java.math.BigDecimal;
 import java.util.UUID;
 
 @Data
@@ -22,9 +25,9 @@ public class DeckCreateRequest {
     private String deckName;
 
     @Schema(description = "Hệ số giá tầng boong (mặc định 1.00, ví dụ 1.15 là +15%)", example = "1.15")
-    @jakarta.validation.constraints.DecimalMin(value = "0.50", message = "Price multiplier must be at least 0.50")
-    @jakarta.validation.constraints.DecimalMax(value = "5.00", message = "Price multiplier cannot exceed 5.00")
-    private java.math.BigDecimal priceMultiplier;
+    @DecimalMin(value = "0.50", message = "Price multiplier must be at least 0.50")
+    @DecimalMax(value = "5.00", message = "Price multiplier cannot exceed 5.00")
+    private BigDecimal priceMultiplier;
 
     private Double modelPositionX;
     private Double modelPositionY;

@@ -67,6 +67,9 @@ public class TourPackage {
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
+    @Column(name="owner_cruise_id")
+    private UUID ownerCruiseId;
+
     @PrePersist
     protected void onCreate() {
         createdAt = Instant.now();

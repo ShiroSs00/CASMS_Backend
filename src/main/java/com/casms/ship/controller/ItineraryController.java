@@ -59,14 +59,14 @@ public class ItineraryController {
     }
 
     @Operation(summary = "Danh sách lịch trình", description = "Lấy danh sách các lịch trình (hỗ trợ phân trang)")
-    @PreAuthorize("permitAll()")
+    @PreAuthorize("hasAnyAuthority('ITINERARY_READ', 'CRUISE_READ')")
     @GetMapping
     public ApiResponse<Page<ItineraryResponse>> list(Pageable pageable) {
         return ApiResponse.success(service.list(pageable));
     }
 
     @Operation(summary = "Chi tiết lịch trình", description = "Lấy thông tin chi tiết của một lịch trình theo ID")
-    @PreAuthorize("permitAll()")
+    @PreAuthorize("hasAnyAuthority('ITINERARY_READ', 'CRUISE_READ')")
     @GetMapping("/{itineraryId}")
     public ApiResponse<ItineraryResponse> detail(
             @Parameter(description = "ID của lịch trình", required = true) @PathVariable UUID itineraryId) {
@@ -134,6 +134,16 @@ public class ItineraryController {
         return ApiResponse.success(service.reject(itineraryId, principal.getUserId(), reason));
     }
 
+    @Operation(summary = "Mở lại bản nháp lịch trình", description = "Chuyển lịch trình từ REJECTED hoặc PENDING_APPROVAL về DRAFT để chỉnh sửa lại")
+    @PreAuthorize("hasAuthority('ITINERARY_UPDATE_DRAFT')")
+    @PostMapping("/{itineraryId}/return-to-draft")
+    public ApiResponse<ItineraryResponse> returnToDraft(
+            @Parameter(description = "ID của lịch trình", required = true) @PathVariable UUID itineraryId,
+            @AuthenticationPrincipal CasmsPrincipal principal) {
+        UUID actorId = principal != null ? principal.getUserId() : null;
+        return ApiResponse.success(service.returnToDraft(itineraryId, actorId));
+    }
+
     @Operation(summary = "Áp dụng thay đổi", description = "Áp dụng thay đổi cho lịch trình đã được phê duyệt")
     @PreAuthorize("hasAuthority('ITINERARY_APPLY_CHANGE')")
     @PostMapping("/{itineraryId}/apply-change")
@@ -178,7 +188,7 @@ public class ItineraryController {
     }
 
     @Operation(summary = "Danh sách ngày trong lịch trình", description = "Lấy danh sách tất cả ngày trong một lịch trình")
-    @PreAuthorize("permitAll()")
+    @PreAuthorize("hasAnyAuthority('ITINERARY_READ', 'CRUISE_READ')")
     @GetMapping("/{itineraryId}/days")
     public ApiResponse<List<ItineraryDayResponse>> listDays(
             @Parameter(description = "ID của lịch trình", required = true) @PathVariable UUID itineraryId) {

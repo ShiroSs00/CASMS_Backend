@@ -1,5 +1,7 @@
 package com.casms.booking.controller;
 
+import com.casms.booking.dto.request.BookingQuoteRequest;
+import com.casms.booking.dto.response.BookingQuoteResponse;
 import com.casms.booking.dto.request.BookingCancelRequest;
 import com.casms.booking.dto.request.BookingContractAcceptRequest;
 import com.casms.booking.dto.request.BookingCreateRequest;
@@ -9,6 +11,7 @@ import com.casms.booking.dto.response.BookingDetailResponse;
 import com.casms.booking.dto.response.BookingSummaryResponse;
 import com.casms.booking.enums.BookingStatus;
 import com.casms.booking.service.BookingService;
+import com.casms.common.exception.BusinessException;
 import com.casms.common.response.ApiResponse;
 import com.casms.security.principal.CasmsPrincipal;
 import com.casms.ship.enums.CabinType;
@@ -25,6 +28,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import com.casms.trip.service.IdempotencyService;
 import java.util.UUID;
 
 @Tag(name = "Booking & Contracts", description = "Quản lý đặt chỗ chuyến đi, hành khách tự chọn phòng và hợp đồng")
@@ -34,6 +38,7 @@ import java.util.UUID;
 public class BookingController {
 
     private final BookingService bookingService;
+    private final IdempotencyService idempotencyService;
 
     @Operation(summary = "Tra cứu phòng trống để tự chọn (Công khai / Khách vãng lai)",
                description = "Tìm kiếm danh sách phòng trống trên tàu của chuyến đi để hành khách xem sơ đồ và tự chọn phòng (Không yêu cầu đăng nhập)")
@@ -46,14 +51,72 @@ public class BookingController {
         return ApiResponse.success(bookingService.getAvailableCabins(cruiseId, deckId, cabinType, minCapacity));
     }
 
-    @Operation(summary = "Tạo đặt chỗ chuyến đi (Hỗ trợ cả khách chưa đăng nhập và đã đăng nhập)",
-               description = "Hành khách tự chọn cabin cụ thể và gói dịch vụ. Nếu chưa đăng nhập, hệ thống tự động liên kết hoặc tạo tài khoản hành khách dựa theo thông tin liên hệ (Email/SĐT).")
+    @Operation(summary = "Tra cứu phòng còn trống kèm node và vị trí trên model 3D",
+            description = "Dùng cabinId trong kết quả để gửi POST /booking; modelNodeKey và transforms dùng để gắn phòng được chọn vào GLB")
+    @GetMapping("/3d-available-cabins")
+    public ApiResponse<List<AvailableCabinResponse>> getThreeDimensionalAvailableCabins(
+            @Parameter(description = "ID chuyến đi", required = true) @RequestParam UUID cruiseId,
+            @Parameter(description = "ID deck (tùy chọn)") @RequestParam(required = false) UUID deckId,
+            @Parameter(description = "Loại cabin (tùy chọn)") @RequestParam(required = false) CabinType cabinType,
+            @Parameter(description = "Sức chứa còn trống tối thiểu") @RequestParam(required = false) Integer minCapacity) {
+        return ApiResponse.success(bookingService.getThreeDimensionalAvailableCabins(cruiseId, deckId, cabinType, minCapacity));
+    }
+
+    @Operation(summary = "Yêu cầu báo giá chính thức (BE-11 Authoritative Quote API)",
+               description = "Tính toán báo giá chi tiết theo chính sách thương mại của chuyến đi, bao gồm cabin, gói tour, phụ phí cảng, thuế và lịch thanh toán. Báo giá có TTL 30 phút.")
+    @PostMapping("/quotes")
+    @ResponseStatus(HttpStatus.CREATED)
+    public ApiResponse<BookingQuoteResponse> createQuote(
+            @RequestBody @Valid BookingQuoteRequest request,
+            @AuthenticationPrincipal CasmsPrincipal principal) {
+        return ApiResponse.success(bookingService.createQuote(request, principal));
+    }
+
+    @Operation(summary = "Tra cứu thông tin báo giá (BE-11 / BE-H02)",
+               description = "Xem chi tiết báo giá và kiểm tra hạn sử dụng của báo giá (Yêu cầu quyền sở hữu hoặc X-Guest-Token đối với khách vãng lai)")
+    @GetMapping("/quotes/{quoteId}")
+    public ApiResponse<BookingQuoteResponse> getQuote(
+            @PathVariable UUID quoteId,
+            @RequestHeader(value = "X-Guest-Token", required = false) String guestTokenHeader,
+            @RequestParam(value = "guestToken", required = false) String guestTokenParam,
+            @AuthenticationPrincipal CasmsPrincipal principal) {
+        String guestToken = (guestTokenHeader != null && !guestTokenHeader.isBlank())
+                ? guestTokenHeader
+                : guestTokenParam;
+        return ApiResponse.success(bookingService.getQuote(quoteId, principal, guestToken));
+    }
+
+    @Operation(summary = "Tạo đặt chỗ chuyến đi (Hỗ trợ cả khách chưa đăng nhập và đã đăng nhập - BE-16 / BE-H03 Idempotency)",
+               description = "Hành khách tự chọn cabin cụ thể và gói dịch vụ. Bắt buộc Idempotency-Key header đối với khách hàng để chống duplicate booking khi mạng chập chờn hoặc retry timeout.")
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<BookingDetailResponse> create(
+            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
             @RequestBody @Valid BookingCreateRequest request,
             @AuthenticationPrincipal CasmsPrincipal principal) {
-        return ApiResponse.success(bookingService.createBooking(request, principal));
+        boolean isStaff = principal != null && (principal.hasAuthority("BOOKING_MANAGE") || principal.hasAuthority("ROLE_ADMIN"));
+        if (!isStaff && (idempotencyKey == null || idempotencyKey.isBlank())) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "IDEMPOTENCY_KEY_REQUIRED",
+                    "Tiêu đề Idempotency-Key là bắt buộc đối với giao dịch đặt vé.");
+        }
+        UUID actorId = principal != null ? principal.getUserId() : null;
+        if (idempotencyKey != null && !idempotencyKey.isBlank()) {
+            BookingDetailResponse response = idempotencyService.execute(
+                    idempotencyKey, actorId, "CREATE_BOOKING", request, BookingDetailResponse.class,
+                    () -> bookingService.createBooking(request, principal));
+            return ApiResponse.success("Booking created successfully", response);
+        }
+        return ApiResponse.success("Booking created successfully", bookingService.createBooking(request, principal));
+    }
+
+    @Operation(summary = "Phục hồi kết quả đặt chỗ sau sự cố mạng / timeout (BE-H03 Recovery Intent)",
+               description = "Truy vấn lại kết quả đặt chỗ bằng Idempotency-Key khi client bị timeout hoặc mất kết nối trước khi nhận được Booking Reference")
+    @GetMapping("/recovery")
+    public ApiResponse<BookingDetailResponse> recoverBooking(
+            @Parameter(description = "Idempotency-Key đã gửi khi tạo đặt chỗ", required = true)
+            @RequestParam String idempotencyKey,
+            @AuthenticationPrincipal CasmsPrincipal principal) {
+        return ApiResponse.success(bookingService.recoverBookingByIdempotencyKey(idempotencyKey, principal));
     }
 
     @Operation(summary = "Tra cứu đơn đặt chỗ cho khách vãng lai",

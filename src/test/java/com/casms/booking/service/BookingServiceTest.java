@@ -38,10 +38,12 @@ import com.casms.servicepackage.repository.TourPackageRepository;
 import com.casms.ship.entity.Cabin;
 import com.casms.ship.entity.Cruise;
 import com.casms.ship.entity.Deck;
+import com.casms.ship.entity.Itinerary;
 import com.casms.ship.entity.Ship;
 import com.casms.ship.enums.CabinStatus;
 import com.casms.ship.enums.CabinType;
 import com.casms.ship.enums.CruiseStatus;
+import com.casms.ship.enums.ItineraryStatus;
 import com.casms.ship.repository.CabinRepository;
 import com.casms.ship.repository.CruiseRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -64,6 +66,13 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
+import org.mockito.Spy;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.casms.ship.repository.CruisePricingPolicyRepository;
+import com.casms.booking.repository.BookingQuoteRepository;
+import com.casms.ship.entity.CruisePricingPolicy;
+import com.casms.ship.enums.PricingPolicyStatus;
+
 @ExtendWith(MockitoExtension.class)
 class BookingServiceTest {
 
@@ -83,6 +92,11 @@ class BookingServiceTest {
     @Mock private RefundRepository refundRepository;
     @Mock private NotificationRepository notificationRepository;
     @Mock private BusinessCodeGenerator businessCodeGenerator;
+    @Mock private com.casms.ship.repository.CruiseTourPackageRepository cruiseTourPackageRepository;
+    @Mock private com.casms.ship.repository.ItineraryRepository itineraryRepository;
+    @Mock private CruisePricingPolicyRepository cruisePricingPolicyRepository;
+    @Mock private BookingQuoteRepository bookingQuoteRepository;
+    @Spy private ObjectMapper objectMapper = new ObjectMapper();
 
     @InjectMocks
     private BookingService bookingService;
@@ -163,9 +177,28 @@ class BookingServiceTest {
         when(userRepository.save(any(User.class))).thenReturn(savedUser);
 
         when(cruiseRepository.findByIdForUpdate(cruiseId)).thenReturn(Optional.of(cruise));
+        Itinerary itinerary = new Itinerary();
+        itinerary.setStatus(ItineraryStatus.OPEN_FOR_SALE);
+        when(itineraryRepository.findByCruiseCruiseId(cruiseId)).thenReturn(Optional.of(itinerary));
         when(bookingPassengerRepository.countActivePassengersByCruiseId(cruiseId)).thenReturn(10L);
         when(cabinRepository.findByIdForUpdate(cabinId)).thenReturn(Optional.of(cabin));
+        when(cabinRepository.sumCapacityByShipIdAndCabinType(any(), any())).thenReturn(50L);
         when(cabinAssignmentRepository.countActiveAssignmentsByCabinAndCruise(cabinId, cruiseId)).thenReturn(0L);
+
+        CruisePricingPolicy policy = new CruisePricingPolicy();
+        policy.setPricingPolicyId(UUID.randomUUID());
+        policy.setCruise(cruise);
+        policy.setStatus(PricingPolicyStatus.APPROVED);
+        policy.setPolicyVersion("PRC-2026.10-V1");
+        policy.setBalconyBaseFare(new BigDecimal("450.00"));
+        policy.setInteriorBaseFare(new BigDecimal("300.00"));
+        policy.setOceanViewBaseFare(new BigDecimal("350.00"));
+        policy.setSuiteBaseFare(new BigDecimal("650.00"));
+        policy.setTaxRate(new BigDecimal("0.1000"));
+        policy.setPortFeePerPassenger(new BigDecimal("25.00"));
+        policy.setDepositPercentage(new BigDecimal("0.3000"));
+        policy.setFinalPaymentDueDays(14);
+        when(cruisePricingPolicyRepository.findByCruise_CruiseId(cruiseId)).thenReturn(Optional.of(policy));
 
         when(bookingRepository.save(any(Booking.class))).thenAnswer(i -> {
             Booking b = i.getArgument(0);
@@ -258,12 +291,87 @@ class BookingServiceTest {
 
         when(userRepository.findByEmail("a@example.com")).thenReturn(Optional.of(new User()));
         when(cruiseRepository.findByIdForUpdate(cruiseId)).thenReturn(Optional.of(cruise));
+        Itinerary itinerary = new Itinerary();
+        itinerary.setStatus(ItineraryStatus.OPEN_FOR_SALE);
+        when(itineraryRepository.findByCruiseCruiseId(cruiseId)).thenReturn(Optional.of(itinerary));
         when(bookingPassengerRepository.countActivePassengersByCruiseId(cruiseId)).thenReturn(0L);
         when(cabinRepository.findByIdForUpdate(cabinId)).thenReturn(Optional.of(cabin));
         when(cabinAssignmentRepository.countActiveAssignmentsByCabinAndCruise(cabinId, cruiseId)).thenReturn(0L);
 
         BusinessException ex = assertThrows(BusinessException.class, () -> bookingService.createBooking(request, null));
         assertEquals("CABIN_OVERCAPACITY", ex.getCode());
+    }
+
+    @Test
+    @DisplayName("Chặn đặt tour khi chuyến đi chưa mở bán thương mại (Itinerary APPROVED nhưng chưa OPEN_FOR_SALE)")
+    void createBooking_cruiseNotOpenForSale_throwsException() {
+        BookingCreateRequest request = new BookingCreateRequest();
+        request.setCruiseId(cruiseId);
+        PassengerBookingItemRequest p = new PassengerBookingItemRequest();
+        p.setFullName("Nguyen Van A");
+        p.setEmail("a@example.com");
+        p.setCabinId(cabinId);
+        request.setPassengers(List.of(p));
+
+        when(userRepository.findByEmail("a@example.com")).thenReturn(Optional.of(new User()));
+        when(cruiseRepository.findByIdForUpdate(cruiseId)).thenReturn(Optional.of(cruise));
+        Itinerary itinerary = new Itinerary();
+        itinerary.setStatus(ItineraryStatus.APPROVED);
+        when(itineraryRepository.findByCruiseCruiseId(cruiseId)).thenReturn(Optional.of(itinerary));
+
+        BusinessException ex = assertThrows(BusinessException.class, () -> bookingService.createBooking(request, null));
+        assertEquals("CRUISE_NOT_OPEN_FOR_SALE", ex.getCode());
+    }
+
+    @Test
+    @DisplayName("Chặn đặt tour khi chuyến đi đang tạm dừng mở bán (SALE_SUSPENDED)")
+    void createBooking_cruiseSuspended_throwsException() {
+        BookingCreateRequest request = new BookingCreateRequest();
+        request.setCruiseId(cruiseId);
+        PassengerBookingItemRequest p = new PassengerBookingItemRequest();
+        p.setFullName("Nguyen Van A");
+        p.setEmail("a@example.com");
+        p.setCabinId(cabinId);
+        request.setPassengers(List.of(p));
+
+        when(userRepository.findByEmail("a@example.com")).thenReturn(Optional.of(new User()));
+        when(cruiseRepository.findByIdForUpdate(cruiseId)).thenReturn(Optional.of(cruise));
+        Itinerary itinerary = new Itinerary();
+        itinerary.setStatus(ItineraryStatus.SUSPENDED);
+        when(itineraryRepository.findByCruiseCruiseId(cruiseId)).thenReturn(Optional.of(itinerary));
+
+        BusinessException ex = assertThrows(BusinessException.class, () -> bookingService.createBooking(request, null));
+        assertEquals("SALE_SUSPENDED", ex.getCode());
+    }
+
+    @Test
+    @DisplayName("Chặn xác nhận booking khi chuyến đi đã bị hủy (CRUISE_CANCELLED)")
+    void confirmBooking_cruiseCancelled_throwsException() {
+        UUID bookingId = UUID.randomUUID();
+        CasmsPrincipal principal = mock(CasmsPrincipal.class);
+        when(principal.getUserId()).thenReturn(UUID.randomUUID());
+        doReturn(List.of(new SimpleGrantedAuthority("BOOKING_CONFIRM"))).when(principal).getAuthorities();
+
+        Booking booking = new Booking();
+        booking.setBookingId(bookingId);
+        booking.setBookingStatus(BookingStatus.Draft);
+        booking.setCruise(cruise);
+        booking.setCurrency("USD");
+        booking.setRequiredDepositAmount(BigDecimal.valueOf(100));
+
+        BookingContract contract = new BookingContract();
+        contract.setStatus(BookingContractStatus.Accepted);
+
+        when(bookingRepository.findByIdForUpdate(bookingId)).thenReturn(Optional.of(booking));
+        when(bookingContractRepository.findByBookingBookingId(bookingId)).thenReturn(Optional.of(contract));
+
+        Cruise cancelledCruise = new Cruise();
+        cancelledCruise.setCruiseId(cruiseId);
+        cancelledCruise.setStatus(CruiseStatus.CANCELLED);
+        when(cruiseRepository.findByIdForUpdate(cruiseId)).thenReturn(Optional.of(cancelledCruise));
+
+        BusinessException ex = assertThrows(BusinessException.class, () -> bookingService.confirm(bookingId, principal));
+        assertEquals("CRUISE_CANCELLED", ex.getCode());
     }
 
     @Test
