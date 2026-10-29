@@ -26,3 +26,6 @@ Thumbs.db
 
 # Large ship model assets are deployed separately
 /model-assets/
+
+# Local documentation is not versioned
+/docs/
