@@ -1,6 +1,6 @@
 # GET /decks/{deckId}/services
 
-Deck persistence change reviewed against implementation on 2026-10-29. Paths are relative to `/api`.
+CASMS-90 reviewed against implementation on 2026-10-29. Paths are relative to `/api`; optional `shipId` scopes the physical deck.
 
 GET `/decks/**` passes the route matcher, but both DECK_READ and SERVICE_READ are still mandatory at method security.
 
@@ -18,13 +18,19 @@ sequenceDiagram
         Security-->>Client: Denied by filter or method security
     else Authorized request
         Security->>Controller: list with bound parameters
-        Controller->>Service: service.list()
+        Note over Controller: Invalid deckId or shipId UUID returns 400 before service call
+        Controller->>Service: list(deckId, shipId)
         Note over Service,DB: Read-only transaction
-        Service->>Repository: DeckRepository.existsById
-        Repository->>DB: SELECT deck existence
-        alt Deck absent
+        Service->>Repository: DeckRepository.findById
+        Repository->>DB: SELECT deck and its owning ship
+        opt Explicit shipId supplied
+            Service->>Repository: ShipRepository.existsById(shipId)
+            Repository->>DB: SELECT ship existence
+            Service->>Service: Compare deck.ship.shipId with requested shipId
+        end
+        alt Deck absent, requested ship absent or deck outside requested ship
             Service-->>Controller: ResourceNotFoundException, HTTP 404
-        else Deck exists
+        else Valid deck and optional ship scope
             Service->>Repository: findByDeckDeckIdOrderByCreatedAtAscAssignmentIdAsc
             Repository->>DB: SELECT assignments with deck, ship and service entity graph
             DB-->>Service: Rows or empty list
