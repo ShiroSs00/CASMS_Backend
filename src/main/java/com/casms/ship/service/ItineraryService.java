@@ -64,13 +64,15 @@ public class ItineraryService {
                 .orElseThrow(() -> new ResourceNotFoundException("User", creatorUserId));
 
         LocalDate startDate = request.getStartDate() != null ? request.getStartDate()
-                : cruise.getDepartureDatetime().atZone(ZoneOffset.UTC).toLocalDate();
+                : ItineraryCalendar.start(cruise);
         LocalDate endDate = request.getEndDate() != null ? request.getEndDate()
-                : cruise.getReturnDatetime().atZone(ZoneOffset.UTC).toLocalDate();
+                : ItineraryCalendar.end(cruise);
 
-        if (!endDate.isAfter(startDate)) {
+        if (endDate.isBefore(startDate)) {
             throw new BusinessException("INVALID_DATE_RANGE", "End date must be after start date");
         }
+
+        ItineraryCalendar.validate(cruise, startDate, endDate);
 
         String name = (request.getItineraryName() != null && !request.getItineraryName().isBlank())
                 ? request.getItineraryName().trim()
@@ -145,9 +147,10 @@ public class ItineraryService {
         if (request.getStartDate() != null || request.getEndDate() != null) {
             LocalDate newStart = request.getStartDate() != null ? request.getStartDate() : itinerary.getStartDate();
             LocalDate newEnd = request.getEndDate() != null ? request.getEndDate() : itinerary.getEndDate();
-            if (!newEnd.isAfter(newStart)) {
+            if (newEnd.isBefore(newStart)) {
                 throw new BusinessException("INVALID_DATE_RANGE", "End date must be after start date");
             }
+            ItineraryCalendar.validate(itinerary.getCruise(), newStart, newEnd);
             if (request.getStartDate() != null) itinerary.setStartDate(request.getStartDate());
             if (request.getEndDate() != null) itinerary.setEndDate(request.getEndDate());
         }
@@ -182,6 +185,7 @@ public class ItineraryService {
     @Transactional(readOnly = true)
     public void validateFeasibility(UUID itineraryId) {
         Itinerary itinerary = getItineraryById(itineraryId);
+        ItineraryCalendar.validate(itinerary.getCruise(), itinerary.getStartDate(), itinerary.getEndDate());
 
         if (itinerary.getStartDate() == null || itinerary.getEndDate() == null) {
             throw new BusinessException("INVALID_DATE_RANGE", "Start date and end date must not be null");
@@ -206,6 +210,7 @@ public class ItineraryService {
         days.sort((d1, d2) -> d1.getDayNumber().compareTo(d2.getDayNumber()));
 
         for (int i = 0; i < days.size(); i++) {
+            ItineraryCalendar.day(itinerary, days.get(i).getDayNumber(), days.get(i).getDate());
             if (days.get(i).getDayNumber() != i + 1) {
                 throw new BusinessException("INVALID_DAY_SEQUENCE", "Day numbers must be sequential starting from 1");
             }

@@ -25,9 +25,32 @@ public class ServiceScheduleManagementService {
     private final CruiseRepository cruises;
     private final CruiseStopRepository stops;
     private final SupplierRepository suppliers;
+    private final org.springframework.jdbc.core.JdbcTemplate jdbc;
 
     public ServiceSchedule create(UUID serviceId, UUID cruiseId, UUID cruiseStopId, UUID supplierId,
                                   Instant startsAt, Instant endsAt, String location, Integer capacity) {
+        return configure(new ServiceSchedule(),serviceId,cruiseId,cruiseStopId,supplierId,startsAt,endsAt,location,capacity);
+    }
+
+    public ServiceSchedule update(UUID serviceId, UUID cruiseId, UUID cruiseStopId, UUID supplierId,
+                                  Instant startsAt, Instant endsAt, String location, Integer capacity, UUID id) {
+        var schedule=editable(id,cruiseId);
+        return configure(schedule,serviceId,cruiseId,cruiseStopId,supplierId,startsAt,endsAt,location,capacity);
+    }
+
+    public void remove(UUID id,UUID cruiseId) { schedules.delete(editable(id,cruiseId)); }
+
+    private ServiceSchedule editable(UUID id,UUID cruiseId) {
+        var schedule=schedules.lockById(id).orElseThrow(()->missing("Service schedule",id));
+        if(schedule.getCruise()==null||!schedule.getCruise().getCruiseId().equals(cruiseId))
+            throw new com.casms.common.exception.BusinessException(org.springframework.http.HttpStatus.FORBIDDEN,"CROSS_CRUISE_SCOPE","Schedule belongs to another Cruise");
+        if(Boolean.TRUE.equals(jdbc.queryForObject("SELECT EXISTS(SELECT 1 FROM \"ServiceRequest\" WHERE service_schedule_id=?)",Boolean.class,id)))
+            throw new com.casms.common.exception.BusinessException(org.springframework.http.HttpStatus.CONFLICT,"SERVICE_WINDOW_HAS_REQUESTS","Khung phục vụ đã có yêu cầu dịch vụ, không thể sửa hoặc xóa trực tiếp.");
+        return schedule;
+    }
+
+    private ServiceSchedule configure(ServiceSchedule schedule,UUID serviceId,UUID cruiseId,UUID cruiseStopId,UUID supplierId,
+                                      Instant startsAt,Instant endsAt,String location,Integer capacity) {
         if (startsAt == null || endsAt == null || !endsAt.isAfter(startsAt))
             throw new IllegalArgumentException("Schedule end time must be after start time");
         if (location == null || location.isBlank() || location.length() > 250)
@@ -37,6 +60,8 @@ public class ServiceScheduleManagementService {
         var service = services.findById(serviceId).orElseThrow(() -> missing("Service", serviceId));
         if (!service.isRequiresSchedule()) throw new IllegalStateException("Service is not configured for scheduled reservations");
         var cruise = cruiseId == null ? null : cruises.findById(cruiseId).orElseThrow(() -> missing("Cruise", cruiseId));
+        if(cruise!=null&&(startsAt.isBefore(cruise.getDepartureDatetime())||endsAt.isAfter(cruise.getReturnDatetime())))
+            throw new IllegalArgumentException("Serving window must fit Cruise departure and return");
         var stop = cruiseStopId == null ? null : stops.findById(cruiseStopId).orElseThrow(() -> missing("Cruise stop", cruiseStopId));
         if (stop != null) {
             var stopCruise = stop.getItinerary().getCruise();
@@ -54,8 +79,7 @@ public class ServiceScheduleManagementService {
                 || supplier.getVerificationStatus() != SupplierVerificationStatus.VERIFIED))
             throw new IllegalStateException("Service schedule supplier must be active and verified");
 
-        ServiceSchedule schedule = new ServiceSchedule();
-        schedule.setScheduleCode("SS-" + UUID.randomUUID().toString().substring(0, 12).toUpperCase());
+        if(schedule.getScheduleCode()==null)schedule.setScheduleCode("SS-" + UUID.randomUUID().toString().substring(0, 12).toUpperCase());
         schedule.setService(service);
         schedule.setCruise(cruise);
         schedule.setCruiseStop(stop);
@@ -65,7 +89,7 @@ public class ServiceScheduleManagementService {
         schedule.setLocation(location.trim());
         schedule.setCapacity(capacity);
         schedule.setStatus("OPEN");
-        schedule.setCreatedAt(Instant.now());
+        if(schedule.getCreatedAt()==null)schedule.setCreatedAt(Instant.now());
         schedule.setUpdatedAt(Instant.now());
         return schedules.save(schedule);
     }

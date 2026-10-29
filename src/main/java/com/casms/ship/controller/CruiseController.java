@@ -121,11 +121,15 @@ public class CruiseController {
             @Parameter(description = "Lọc theo loại chuyến đi (ONE_DAY, MULTI_DAYS)") @RequestParam(required = false) CruiseCruiseType cruiseType,
             @Parameter(description = "Lọc theo ID Trip mẫu nguồn (C15)") @RequestParam(required = false) UUID sourceTripId,
             @Parameter(description = "Lọc theo ID phiên bản TripScheduleVersion nguồn (C15)") @RequestParam(required = false) UUID sourceVersionId,
+            @RequestParam(required = false) String saleState,
             Pageable pageable,
             org.springframework.security.core.Authentication auth) {
         boolean hasCruiseRead = auth != null && auth.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("CRUISE_READ"));
-        CruiseStatus effectiveStatus = hasCruiseRead ? status : CruiseStatus.PUBLISHED;
-        Page<CruiseResponse> page = service.list(effectiveStatus, shipId, unassigned, cruiseType, sourceTripId, sourceVersionId, pageable);
+        validateSaleState(saleState);
+        boolean bookingView = !hasCruiseRead || bookingOnly(auth) || saleState != null;
+        Page<CruiseResponse> page = bookingView
+                ? service.listOpenForSale(shipId, unassigned, cruiseType, sourceTripId, sourceVersionId, pageable)
+                : service.list(status, shipId, unassigned, cruiseType, sourceTripId, sourceVersionId, pageable);
         if (!hasCruiseRead) {
             page = page.map(this::sanitizeForPublic);
         }
@@ -137,16 +141,32 @@ public class CruiseController {
     @GetMapping("/{cruiseId}")
     public ApiResponse<CruiseResponse> detail(
             @Parameter(description = "ID chuyến đi", required = true) @PathVariable UUID cruiseId,
+            @RequestParam(required = false) String saleState,
             org.springframework.security.core.Authentication auth) {
+        validateSaleState(saleState);
         CruiseResponse response = service.detail(cruiseId);
         boolean hasCruiseRead = auth != null && auth.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("CRUISE_READ"));
-        if (!hasCruiseRead && response.getStatus() != CruiseStatus.PUBLISHED) {
-            throw new org.springframework.security.access.AccessDeniedException("Access denied to non-published cruise");
+        if ((!hasCruiseRead || bookingOnly(auth) || saleState != null)
+                && (response.getStatus() != CruiseStatus.PUBLISHED
+                || !"OPEN_FOR_SALE".equals(service.getPublicSellability(cruiseId).getSaleState()))) {
+            throw new org.springframework.security.access.AccessDeniedException("Lần khởi hành chưa mở bán");
         }
         if (!hasCruiseRead) {
             response = sanitizeForPublic(response);
         }
         return ApiResponse.success(response);
+    }
+
+    private void validateSaleState(String saleState) {
+        if (saleState != null && !"OPEN_FOR_SALE".equals(saleState))
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "INVALID_INPUT", "saleState must be OPEN_FOR_SALE");
+    }
+
+    private boolean bookingOnly(org.springframework.security.core.Authentication auth) {
+        if (auth == null) return false;
+        var authorities = auth.getAuthorities().stream().map(a -> a.getAuthority()).toList();
+        return authorities.contains("ROLE_BOOKING_AGENT") && java.util.Collections.disjoint(authorities,
+                List.of("ROLE_ADMIN", "ROLE_CRUISE_MANAGER", "ROLE_OPERATIONS_MANAGER", "ROLE_SHIP_MANAGER", "ROLE_ACTIVITY_SERVICE_MANAGER"));
     }
 
     private CruiseResponse sanitizeForPublic(CruiseResponse res) {

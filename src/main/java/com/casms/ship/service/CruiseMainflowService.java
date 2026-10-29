@@ -110,6 +110,8 @@ public class CruiseMainflowService {
         if(c.get("booking_opens_at")==null||c.get("booking_closes_at")==null)b.add("BOOKING_WINDOW_REQUIRED");
         if(c.get("guidance_opens_at")==null||c.get("guidance_closes_at")==null)b.add("GUIDANCE_WINDOW_REQUIRED");
         if(Boolean.FALSE.equals(jdbc.queryForObject("SELECT EXISTS(SELECT 1 FROM \"ItineraryDay\" d JOIN \"Itinerary\" i USING(itinerary_id) WHERE cruise_id=?)",Boolean.class,id)))b.add("ITINERARY_REQUIRED");
+        if(Boolean.TRUE.equals(jdbc.queryForObject("SELECT EXISTS(SELECT 1 FROM \"Itinerary\" i JOIN \"Cruise\" c USING(cruise_id) WHERE c.cruise_id=? AND (i.start_date<>(c.departure_datetime AT TIME ZONE 'Asia/Ho_Chi_Minh')::date OR i.end_date<>(c.return_datetime AT TIME ZONE 'Asia/Ho_Chi_Minh')::date))",Boolean.class,id)))b.add("ITINERARY_CRUISE_DATES_MISMATCH");
+        if(Boolean.TRUE.equals(jdbc.queryForObject("SELECT EXISTS(SELECT 1 FROM \"Itinerary\" i WHERE i.cruise_id=? AND ((SELECT count(*) FROM \"ItineraryDay\" d WHERE d.itinerary_id=i.itinerary_id)<>i.end_date-i.start_date+1 OR EXISTS(SELECT 1 FROM \"ItineraryDay\" d WHERE d.itinerary_id=i.itinerary_id AND d.date<>i.start_date+d.day_number-1)))",Boolean.class,id)))b.add("ITINERARY_DAY_DATE_MISMATCH");
         if(Boolean.FALSE.equals(jdbc.queryForObject("SELECT EXISTS(SELECT 1 FROM \"CruisePricingPolicy\" WHERE cruise_id=?)",Boolean.class,id)))b.add("PRICING_POLICY_REQUIRED");
         else if(!Boolean.TRUE.equals(jdbc.queryForObject("""
             SELECT EXISTS(SELECT 1 FROM "CruisePricingPolicy" p JOIN "Cruise" c USING(cruise_id)

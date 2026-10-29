@@ -60,7 +60,7 @@ public class CruiseScopedProgramsController {
     }
     @GetMapping("/serving-windows")
     @Transactional(readOnly=true)
-    public ApiResponse<List<Map<String,Object>>> windows(@PathVariable UUID cruiseId){plans.get(cruiseId);return ApiResponse.success(jdbc.queryForList("SELECT s.service_schedule_id AS id,s.service_id AS \"serviceId\",v.service_name AS name,s.starts_at AS \"startsAt\",s.ends_at AS \"endsAt\",s.capacity,s.location FROM \"ServiceSchedule\" s JOIN \"Service\" v USING(service_id) WHERE cruise_id=? ORDER BY starts_at",cruiseId));}
+    public ApiResponse<List<Map<String,Object>>> windows(@PathVariable UUID cruiseId){plans.get(cruiseId);return ApiResponse.success(jdbc.queryForList("SELECT s.service_schedule_id AS id,s.service_id AS \"serviceId\",s.cruise_stop_id AS \"cruiseStopId\",s.supplier_id AS \"supplierId\",v.service_name AS name,s.starts_at AS \"startsAt\",s.ends_at AS \"endsAt\",s.capacity,s.location FROM \"ServiceSchedule\" s JOIN \"Service\" v USING(service_id) WHERE cruise_id=? ORDER BY starts_at",cruiseId));}
     @PostMapping("/serving-windows")
     public ApiResponse<Map<String,Object>> createWindow(@PathVariable UUID cruiseId,@RequestHeader("If-Match") Long expected,@Valid @RequestBody ServingInput input){
         start(cruiseId,expected);if(input.cruiseStopId()!=null)stopScope(cruiseId,input.cruiseStopId());
@@ -69,6 +69,16 @@ public class CruiseScopedProgramsController {
         if(input.startsAt().isBefore(departure)||input.endsAt().isAfter(end))throw new BusinessException(HttpStatus.UNPROCESSABLE_ENTITY,"SERVICE_OUTSIDE_CRUISE","Serving window must fit Cruise");
         var saved=schedules.create(input.serviceId(),cruiseId,input.cruiseStopId(),input.supplierId(),input.startsAt(),input.endsAt(),input.location(),input.capacity());
         finish(cruiseId);return ApiResponse.success(Map.of("id",saved.getServiceScheduleId(),"cruiseId",cruiseId));
+    }
+    @PutMapping("/serving-windows/{id}")
+    public ApiResponse<Map<String,Object>> updateWindow(@PathVariable UUID cruiseId,@PathVariable UUID id,@RequestHeader("If-Match") Long expected,@Valid @RequestBody ServingInput input) {
+        start(cruiseId,expected);if(input.cruiseStopId()!=null)stopScope(cruiseId,input.cruiseStopId());
+        var saved=schedules.update(input.serviceId(),cruiseId,input.cruiseStopId(),input.supplierId(),input.startsAt(),input.endsAt(),input.location(),input.capacity(),id);
+        finish(cruiseId);return ApiResponse.success(Map.of("id",saved.getServiceScheduleId(),"cruiseId",cruiseId));
+    }
+    @DeleteMapping("/serving-windows/{id}")
+    public ApiResponse<Void> removeWindow(@PathVariable UUID cruiseId,@PathVariable UUID id,@RequestHeader("If-Match") Long expected) {
+        start(cruiseId,expected);schedules.remove(id,cruiseId);finish(cruiseId);return ApiResponse.success(null);
     }
     public record PackageInput(@NotBlank String name,String description,@NotNull TourPackageType type,
                                @NotNull @DecimalMin("0") BigDecimal price,@NotBlank @Pattern(regexp="[A-Z]{3}") String currency) {}
@@ -105,6 +115,18 @@ public class CruiseScopedProgramsController {
     @Transactional(readOnly=true)
     public ApiResponse<List<Map<String,Object>>> excursions(@PathVariable UUID cruiseId){plans.get(cruiseId);return ApiResponse.success(jdbc.queryForList("SELECT e.shore_excursion_id AS id,e.excursion_name AS name,e.maximum_capacity AS capacity,e.price,e.currency_code AS currency,e.cruise_stop_id AS \"cruiseStopId\" FROM \"ShoreExcursion\" e JOIN \"CruiseStop\" s USING(cruise_stop_id) JOIN \"Itinerary\" i USING(itinerary_id) WHERE i.cruise_id=? ORDER BY e.start_time",cruiseId));}
     public record ExcursionCommercialInput(@NotNull @Min(1) Integer maximumCapacity,@NotNull @DecimalMin("0") BigDecimal price,@NotBlank @Pattern(regexp="[A-Z]{3}") String currencyCode) {}
+    @GetMapping("/excursions/{id}")
+    @Transactional(readOnly=true)
+    public ApiResponse<ShoreExcursionResponse> excursionDetail(@PathVariable UUID cruiseId,@PathVariable UUID id) {
+        plans.get(cruiseId);excursionScope(cruiseId,id);return ApiResponse.success(excursions.detail(id));
+    }
+    @DeleteMapping("/excursions/{id}")
+    public ApiResponse<Void> removeExcursion(@PathVariable UUID cruiseId,@PathVariable UUID id,@RequestHeader("If-Match") Long expected) {
+        start(cruiseId,expected);excursionScope(cruiseId,id);excursions.deleteDraft(id);finish(cruiseId);return ApiResponse.success(null);
+    }
+    private void excursionScope(UUID cruiseId,UUID id) {
+        scope(Boolean.TRUE.equals(jdbc.queryForObject("SELECT EXISTS(SELECT 1 FROM \"ShoreExcursion\" e JOIN \"CruiseStop\" s USING(cruise_stop_id) JOIN \"Itinerary\" i USING(itinerary_id) WHERE shore_excursion_id=? AND cruise_id=?)",Boolean.class,id,cruiseId)));
+    }
     @PatchMapping("/excursions/{id}/commercial")
     public ApiResponse<ShoreExcursionResponse> commercial(@PathVariable UUID cruiseId,@PathVariable UUID id,@RequestHeader("If-Match") Long expected,@Valid @RequestBody ExcursionCommercialInput input){
         start(cruiseId,expected);
