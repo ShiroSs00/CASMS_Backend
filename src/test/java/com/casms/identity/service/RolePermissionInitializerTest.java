@@ -129,6 +129,9 @@ class RolePermissionInitializerTest {
     void onboardStaff_hasSalesAndServicePermissions_noCatalogOrActivityMutations() {
         Set<Permission> perms = rolePermissionsMap.get(Role.ONBOARD_STAFF);
         assertNotNull(perms);
+        assertTrue(perms.contains(Permission.POS_ACCESS));
+        assertFalse(perms.contains(Permission.POS_MANAGE));
+        assertFalse(perms.contains(Permission.SERVICE_SALE), "Terminal capabilities must not become global employee rights");
 
         // Positive checks: Service execution, POS sales, Attendance, Read activities & excursions
         assertTrue(perms.contains(Permission.SERVICE_READ));
@@ -189,6 +192,8 @@ class RolePermissionInitializerTest {
     void operationsManager_hasSupplierManagementAndOim() {
         Set<Permission> perms = rolePermissionsMap.get(Role.OPERATIONS_MANAGER);
         assertNotNull(perms);
+        assertTrue(perms.contains(Permission.POS_ACCESS));
+        assertTrue(perms.contains(Permission.POS_MANAGE));
 
         assertTrue(perms.contains(Permission.SUPPLIER_CREATE));
         assertTrue(perms.contains(Permission.SUPPLIER_READ));

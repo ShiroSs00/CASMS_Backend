@@ -32,6 +32,7 @@ class ServiceRequestServiceTest {
  @Mock PassengerRepository passengers;
  @Mock UserRepository users;
  @Mock ServiceScheduleRepository schedules;
+ @Mock com.casms.pos.PosLedgerService posLedger;
  @InjectMocks ServiceRequestService service;
 
  @Test void lifecycle_assignStartComplete_setsCompletionTimeAndRejectsRepeat(){
