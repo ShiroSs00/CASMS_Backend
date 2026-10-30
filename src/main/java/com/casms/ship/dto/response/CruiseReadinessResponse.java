@@ -48,6 +48,7 @@ public class CruiseReadinessResponse {
 
     @Schema(description = "Đã phân công Thuyền trưởng (CAPTAIN) hợp lệ cho chuyến đi hay chưa", example = "true")
     private boolean captainAssigned;
+    private boolean onboardStaffAssigned;
 
     @Schema(description = "Tất cả các phân hệ chuẩn bị liên phòng ban (BE-07) đã được ký duyệt xác nhận", example = "true")
     private boolean preparationSectionsConfirmed;

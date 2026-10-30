@@ -14,6 +14,15 @@ import java.util.UUID;
 @Repository
 public interface CruiseStaffRepository extends JpaRepository<CruiseStaff, UUID> {
 
+    String ACTIVE_ONBOARD_SQL = """
+        SELECT EXISTS(SELECT 1 FROM "CruiseStaff" cs JOIN "User" u ON u.user_id=cs.user_id
+          JOIN "UserRole" ur ON ur.user_id=u.user_id
+          WHERE cs.cruise_id=:cruiseId AND cs.status='ACTIVE' AND cs.role_in_cruise='ONBOARD_STAFF'
+          AND u.status='ACTIVE' AND ur.role='ONBOARD_STAFF')
+        """;
+    @Query(value=ACTIVE_ONBOARD_SQL, nativeQuery=true)
+    boolean existsActiveOnboardStaff(@Param("cruiseId") UUID cruiseId);
+
     List<CruiseStaff> findByCruise_CruiseId(UUID cruiseId);
 
     Optional<CruiseStaff> findByCruise_CruiseIdAndUser_UserId(UUID cruiseId, UUID userId);

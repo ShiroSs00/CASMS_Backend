@@ -139,7 +139,15 @@ public class CruisePreparationService {
                 .orElseThrow(() -> new ResourceNotFoundException("Cruise", cruiseId));
 
 
-        List<CruisePreparationSection> sections = preparationSectionRepository.findByCruiseCruiseIdOrderBySectionCodeAsc(cruiseId);
+        // A legacy Cruise can predate preparation records. The read model still exposes the
+        // five standard work areas, with current checks and NOT_STARTED defaults, without writes.
+        List<CruisePreparationSection> sections = new ArrayList<>(preparationSectionRepository.findByCruiseCruiseIdOrderBySectionCodeAsc(cruiseId));
+        Set<String> existingCodes = new HashSet<>();
+        sections.forEach(section -> existingCodes.add(section.getSectionCode()));
+        for (SectionTemplate template : TEMPLATES) {
+            if (!existingCodes.contains(template.code())) sections.add(newSection(cruise, template));
+        }
+        sections.sort(Comparator.comparing(CruisePreparationSection::getSectionCode));
         List<CruisePreparationSectionResponse> sectionResponses = new ArrayList<>();
 
         boolean allConfirmed = sections.size() == TEMPLATES.size();
@@ -203,6 +211,7 @@ public class CruisePreparationService {
         var actor=requireActor(actorId,true);
         Cruise cruise=lockedCruise(cruiseId);
         if(!submissionScope(cruise,actor))throw new BusinessException(HttpStatus.FORBIDDEN,"PREPARATION_CRUISE_SCOPE_FORBIDDEN","CRM is not assigned preparation coordinator for this Cruise");
+        ensureSectionsInitialized(cruise);
         CruisePreparationSection section = preparationSectionRepository
                 .findByCruiseCruiseIdAndSectionCodeForUpdate(cruiseId, sectionCode)
                 .orElseThrow(() -> new ResourceNotFoundException("CruisePreparationSection", sectionCode));
@@ -352,20 +361,27 @@ public class CruisePreparationService {
         }
     }
 
+    private CruisePreparationSection newSection(Cruise cruise, SectionTemplate template) {
+        CruisePreparationSection section = new CruisePreparationSection();
+        section.setCruise(cruise);
+        section.setSectionCode(template.code());
+        section.setSectionName(template.name());
+        section.setOwnerRole(template.ownerRole());
+        section.setStatus("NOT_STARTED");
+        section.setRevision(0L);
+        return section;
+    }
+
     private void ensureSectionsInitialized(Cruise cruise) {
-        if (!preparationSectionRepository.existsByCruiseCruiseId(cruise.getCruiseId())) {
-            for (SectionTemplate tpl : TEMPLATES) {
-                CruisePreparationSection section = new CruisePreparationSection();
-                section.setCruise(cruise);
-                section.setSectionCode(tpl.code());
-                section.setSectionName(tpl.name());
-                section.setOwnerRole(tpl.ownerRole());
-                section.setStatus("NOT_STARTED");
-                section.setRevision(0L);
-                preparationSectionRepository.save(section);
+        Set<String> existingCodes = new HashSet<>();
+        preparationSectionRepository.findByCruiseCruiseIdOrderBySectionCodeAsc(cruise.getCruiseId())
+                .forEach(section -> existingCodes.add(section.getSectionCode()));
+        for (SectionTemplate template : TEMPLATES) {
+            if (!existingCodes.contains(template.code())) {
+                preparationSectionRepository.save(newSection(cruise, template));
             }
-            preparationSectionRepository.flush();
         }
+        preparationSectionRepository.flush();
     }
 
     private List<PreparationCheckItemDto> computeCheckItems(Cruise cruise, String sectionCode) {
@@ -450,18 +466,17 @@ public class CruisePreparationService {
                         .build());
             }
             case "SAFETY_CREW" -> {
-                boolean captainAssigned = cruiseStaffRepository.existsByCruise_CruiseIdAndRoleInCruiseAndStatus(
-                        cruiseId, "CAPTAIN", "ACTIVE");
+                boolean onboardAssigned = cruiseStaffRepository.existsActiveOnboardStaff(cruiseId);
                 long activeCrew = cruiseStaffRepository.countByCruise_CruiseIdAndStatus(cruiseId, "ACTIVE");
-                boolean crewReady = captainAssigned && activeCrew >= 1;
+                boolean crewReady = onboardAssigned && activeCrew >= 1;
                 items.add(PreparationCheckItemDto.builder()
-                        .itemCode("CAPTAIN_ASSIGNED")
-                        .itemName("Phân công Thuyền trưởng & Thuyền viên")
+                        .itemCode("ONBOARD_STAFF_ASSIGNED")
+                        .itemName("Phân công Onboard Staff")
                         .ready(crewReady)
                         .required(true)
                         .state(crewReady ? "PASSED" : "BLOCKED")
-                        .evidence(captainAssigned ? "Thuyền trưởng đã phân công (Tổng thuyền viên hoạt động: " + activeCrew + ")" : "Chưa phân công Thuyền trưởng")
-                        .details("Thuyền trưởng: " + (captainAssigned ? "SẴN SÀNG" : "CHƯA PHÂN CÔNG") + ", Thuyền viên: " + activeCrew)
+                        .evidence(onboardAssigned ? "Onboard Staff đã phân công (Tổng thuyền viên hoạt động: " + activeCrew + ")" : "Chưa phân công Onboard Staff")
+                        .details("Onboard Staff: " + (onboardAssigned ? "SẴN SÀNG" : "CHƯA PHÂN CÔNG") + ", Thuyền viên: " + activeCrew)
                         .build());
             }
             default -> {}

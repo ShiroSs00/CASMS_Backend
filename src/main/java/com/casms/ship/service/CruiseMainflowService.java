@@ -24,6 +24,9 @@ public class CruiseMainflowService {
     private final ObjectMapper mapper;
     private final org.springframework.beans.factory.ObjectProvider<CruiseService> cruiseServices;
 
+    @org.springframework.beans.factory.annotation.Autowired
+    private org.springframework.beans.factory.ObjectProvider<CruisePricingPolicyService> pricingServices;
+
     public record Action(Long expectedRevision, String reason, String fingerprint) {}
     public record Windows(Long expectedRevision, Instant bookingOpensAt, Instant bookingClosesAt,
                           Instant guidanceOpensAt, Instant guidanceClosesAt) {}
@@ -38,7 +41,8 @@ public class CruiseMainflowService {
     public record View(UUID cruiseId, long revision, String planStatus, Long submittedRevision, String cruiseCode, String submittedByName, UUID submittedBy, Instant submittedAt,
                        UUID reviewedBy, Instant reviewedAt, String reason, JsonNode submittedSnapshot,
                        String fingerprint, String readyStatus, UUID readyBy, Instant readyAt,
-                       List<String> planBlockers, List<String> readyBlockers, List<String> allowedActions, Windows windows) {}
+                       List<String> planBlockers, List<String> readyBlockers, List<String> allowedActions, Windows windows, List<ProgramIssue> programIssues) {}
+    public record ProgramIssue(String code,String kind,UUID itemId,String name,Instant startsAt,Instant endsAt,Instant earliestStart,Instant latestEnd,String timeZoneId) {}
 
     private Map<String,Object> cruise(UUID id, boolean lock) {
         List<Map<String,Object>> found = jdbc.queryForList("SELECT * FROM \"Cruise\" WHERE cruise_id=?" + (lock ? " FOR UPDATE" : ""), id);
@@ -103,9 +107,13 @@ public class CruiseMainflowService {
         return hash(evidence.toString());
     }
     private List<String> planBlockers(UUID id, Map<String,Object> c) {
+        return planBlockers(id,c,programIssues(id));
+    }
+    private List<String> planBlockers(UUID id, Map<String,Object> c,List<ProgramIssue> issues) {
         List<String> b=new ArrayList<>();
         if(c.get("ship_id")==null)b.add("SHIP_REQUIRED");
-        if(c.get("source_version_id")==null)b.add("SOURCE_VERSION_REQUIRED");
+        // Source-less legacy Cruises keep their actual schedule; never invent a template link.
+        if(c.get("source_trip_id")!=null&&c.get("source_version_id")==null)b.add("SOURCE_VERSION_REQUIRED");
         if(!Set.of("DOMESTIC","INTERNATIONAL").contains(Objects.toString(c.get("planned_scope"),"")))b.add("SCOPE_COUNTRY_REQUIRED");
         if(c.get("booking_opens_at")==null||c.get("booking_closes_at")==null)b.add("BOOKING_WINDOW_REQUIRED");
         if(c.get("guidance_opens_at")==null||c.get("guidance_closes_at")==null)b.add("GUIDANCE_WINDOW_REQUIRED");
@@ -122,9 +130,26 @@ public class CruiseMainflowService {
                     WHEN 'OCEAN_VIEW' THEN p.ocean_view_base_fare WHEN 'BALCONY' THEN p.balcony_base_fare
                     WHEN 'SUITE' THEN p.suite_base_fare END IS NULL))
             """,Boolean.class,id)))b.add("PRICING_POLICY_CONFIGURATION_REQUIRED");
-        if(Boolean.TRUE.equals(jdbc.queryForObject("SELECT EXISTS(SELECT 1 FROM \"OnboardActivity\" a JOIN \"Cruise\" c USING(cruise_id) WHERE a.cruise_id=? AND a.status<>'CANCELLED' AND (a.capacity IS NULL OR a.capacity<1 OR a.price IS NULL OR a.price<0 OR a.currency_code IS NULL OR trim(a.currency_code)!~'^[A-Z]{3}$' OR a.start_time<c.departure_datetime OR a.end_time>c.return_datetime))",Boolean.class,id)))b.add("ACTIVITY_CONFIGURATION_REQUIRED");
-        if(Boolean.TRUE.equals(jdbc.queryForObject("SELECT EXISTS(SELECT 1 FROM \"ShoreExcursion\" e JOIN \"CruiseStop\" s USING(cruise_stop_id) JOIN \"Itinerary\" i USING(itinerary_id) WHERE i.cruise_id=? AND e.status<>'CANCELLED' AND (e.maximum_capacity<1 OR e.price IS NULL OR e.price<0 OR e.currency_code IS NULL OR trim(e.currency_code)!~'^[A-Z]{3}$' OR e.start_time<s.planned_arrival OR e.planned_return_time>s.planned_departure OR e.planned_return_time>COALESCE(s.all_aboard_time,s.planned_departure)))",Boolean.class,id)))b.add("EXCURSION_CONFIGURATION_REQUIRED");
+        issues.stream().map(ProgramIssue::code).distinct().forEach(b::add);
         return b;
+    }
+    private List<ProgramIssue> programIssues(UUID id) {
+        List<ProgramIssue> issues=new ArrayList<>();
+        var activities=jdbc.queryForList("SELECT a.onboard_activity_id AS id,a.activity_name AS name,a.capacity,a.price,a.currency_code,a.start_time,a.end_time,c.departure_datetime AS earliest,c.return_datetime AS latest,'Asia/Ho_Chi_Minh' AS zone FROM \"OnboardActivity\" a JOIN \"Cruise\" c USING(cruise_id) WHERE a.cruise_id=? AND a.status<>'CANCELLED' ORDER BY a.start_time,a.onboard_activity_id",id);
+        for(var row:activities) collectProgramIssues(issues,row,"ACTIVITY");
+        var excursions=jdbc.queryForList("SELECT e.shore_excursion_id AS id,e.excursion_name AS name,e.maximum_capacity AS capacity,e.price,e.currency_code,e.start_time,e.planned_return_time AS end_time,s.planned_arrival AS earliest,LEAST(s.planned_departure,COALESCE(s.all_aboard_time,s.planned_departure)) AS latest,p.time_zone_id AS zone FROM \"ShoreExcursion\" e JOIN \"CruiseStop\" s USING(cruise_stop_id) JOIN \"Port\" p ON p.port_id=s.port_id JOIN \"Itinerary\" i USING(itinerary_id) WHERE i.cruise_id=? AND e.status<>'CANCELLED' ORDER BY e.start_time,e.shore_excursion_id",id);
+        for(var row:excursions) collectProgramIssues(issues,row,"EXCURSION");
+        return issues;
+    }
+    private void collectProgramIssues(List<ProgramIssue> issues,Map<String,Object> row,String kind) {
+        List<String> codes=new ArrayList<>();
+        if(!(row.get("capacity") instanceof Number n)||n.longValue()<1)codes.add(kind+"_CAPACITY_REQUIRED");
+        if(!(row.get("price") instanceof Number n)||new java.math.BigDecimal(n.toString()).signum()<0)codes.add(kind+"_PRICE_REQUIRED");
+        if(!(row.get("currency_code") instanceof String currency)||!currency.trim().matches("[A-Z]{3}"))codes.add(kind+"_CURRENCY_REQUIRED");
+        Instant start=time(row.get("start_time")),end=time(row.get("end_time")),earliest=time(row.get("earliest")),latest=time(row.get("latest"));
+        if(start==null||end==null||earliest==null||latest==null||!end.isAfter(start)||start.isBefore(earliest)||end.isAfter(latest))
+            codes.add(kind.equals("ACTIVITY")?"ACTIVITY_OUTSIDE_CRUISE":"EXCURSION_OUTSIDE_PORT_CALL");
+        for(String code:codes)issues.add(new ProgramIssue(code,kind,(UUID)row.get("id"),(String)row.get("name"),start,end,earliest,latest,(String)row.get("zone")));
     }
     private boolean approved(UUID id, Map<String,Object> r) {
         return "APPROVED".equals(status(r)) && Objects.equals(r.get("fingerprint"),hash(planSnapshot(id)));
@@ -133,38 +158,45 @@ public class CruiseMainflowService {
     public View get(UUID id) {
         Map<String,Object> c=cruise(id,false),r=row(id);
         String fingerprint=readinessFingerprint(id);
-        List<String> b=new ArrayList<>();
-        b.addAll(planBlockers(id,c));
+        List<ProgramIssue> issues=programIssues(id);
+        List<String> planIssues=planBlockers(id,c,issues);
+        List<String> b=new ArrayList<>(planIssues);
         if(!approved(id,r))b.add("PLAN_APPROVAL_REQUIRED");
         Integer confirmed=jdbc.queryForObject("SELECT count(*) FROM \"CruisePreparationSection\" WHERE cruise_id=? AND status='CONFIRMED'",Integer.class,id);
         if(confirmed==null||confirmed!=5)b.add("PREPARATION_CONFIRMATION_REQUIRED");
-        Boolean captain=jdbc.queryForObject("SELECT EXISTS(SELECT 1 FROM \"CruiseStaff\" WHERE cruise_id=? AND status='ACTIVE' AND role_in_cruise='CAPTAIN')",Boolean.class,id);
-        if(!Boolean.TRUE.equals(captain))b.add("CAPTAIN_REQUIRED");
+        Boolean onboard=jdbc.queryForObject(com.casms.ship.repository.CruiseStaffRepository.ACTIVE_ONBOARD_SQL.replace(":cruiseId","?"),Boolean.class,id);
+        if(!Boolean.TRUE.equals(onboard))b.add("ONBOARD_STAFF_REQUIRED");
         Boolean guidance=jdbc.queryForObject("SELECT EXISTS(SELECT 1 FROM \"GuidanceSession\" WHERE cruise_id=? AND status IN ('Published','Completed') AND published_at IS NOT NULL AND content IS NOT NULL AND length(trim(content))>0 AND instructor_user_id IS NOT NULL)",Boolean.class,id);
         if(!Boolean.TRUE.equals(guidance))b.add("GUIDANCE_PUBLICATION_REQUIRED");
         // FN-038 checks booking consistency; no minimum bookings/check-in/attendance before sale.
         if(c.get("booking_opens_at")==null||c.get("booking_closes_at")==null)b.add("BOOKING_WINDOW_REQUIRED");
-        if(approved(id,r)) {
+        {
             var operational=cruiseServices.getObject().validateOperationalReadiness(id);
-            if(!operational.isReady()) b.addAll(operational.getBlockers());
+            if(operational.getStatus()==com.casms.ship.enums.ReadinessStatus.INDETERMINATE)b.add("DEPENDENCY_TIMEOUT");
+            if(!operational.isReady()) operational.getBlockers().stream().filter(code -> !"PLAN_APPROVAL_REQUIRED".equals(code)).filter(code -> !b.contains(code)).forEach(b::add);
         }
         boolean ready=r.get("ready_at")!=null;
         String readyStatus=!ready?"NOT_READY":b.isEmpty()&&Objects.equals(r.get("ready_fingerprint"),fingerprint)?"READY":"INVALIDATED";
         List<String> actions=new ArrayList<>();
         if(Set.of("DRAFT","WITHDRAWN","REVISION_REQUESTED").contains(status(r)))actions.add("SUBMIT");
         if("SUBMITTED".equals(status(r)))actions.addAll(List.of("WITHDRAW","APPROVE","REJECT","REQUEST_REVISION"));
+        if(!planIssues.isEmpty())actions.remove("APPROVE");
+        if("APPROVED".equals(status(r))&&(!b.isEmpty()||pricingReturned(id)))actions.add("REQUEST_REVISION");
         if(b.isEmpty())actions.add("SET_READY");
         List<String> submitterNames=r.get("submitted_by")==null?List.of():jdbc.queryForList("SELECT username FROM \"User\" WHERE user_id=?",String.class,r.get("submitted_by"));
         return new View(id,revision(r),status(r),(Long)r.get("submitted_revision"),(String)c.get("cruise_code"),submitterNames.isEmpty()?null:submitterNames.getFirst(),(UUID)r.get("submitted_by"),time(r.get("submitted_at")),
                 (UUID)r.get("reviewed_by"),time(r.get("reviewed_at")),(String)r.get("reason"),json(r.get("snapshot")),
-                fingerprint,readyStatus,(UUID)r.get("ready_by"),time(r.get("ready_at")),planBlockers(id,c),b,actions,
-                new Windows(((Number)c.get("revision")).longValue(),time(c.get("booking_opens_at")),time(c.get("booking_closes_at")),time(c.get("guidance_opens_at")),time(c.get("guidance_closes_at"))));
+                fingerprint,readyStatus,(UUID)r.get("ready_by"),time(r.get("ready_at")),planIssues,b,actions,
+                new Windows(((Number)c.get("revision")).longValue(),time(c.get("booking_opens_at")),time(c.get("booking_closes_at")),time(c.get("guidance_opens_at")),time(c.get("guidance_closes_at"))),issues);
     }
     public List<View> queue() {
         return jdbc.queryForList("SELECT cruise_id FROM \"CruisePlanReview\" WHERE status='SUBMITTED' ORDER BY submitted_at",UUID.class).stream().map(this::get).toList();
     }
     private void expected(Map<String,Object> r, Long expected) {
         if(expected==null||expected!=revision(r))throw new BusinessException(HttpStatus.CONFLICT,"STALE_REVISION","Expected plan revision must match");
+    }
+    private boolean pricingReturned(UUID id) {
+        return Boolean.TRUE.equals(jdbc.queryForObject("SELECT EXISTS(SELECT 1 FROM \"CruisePricingPolicy\" p WHERE p.cruise_id=? AND p.status='RETURNED' AND p.policy_number=(SELECT max(policy_number) FROM \"CruisePricingPolicy\" WHERE cruise_id=p.cruise_id))",Boolean.class,id));
     }
     @Transactional
     public void assertEditable(UUID id) {
@@ -199,14 +231,26 @@ public class CruiseMainflowService {
                 if(!Set.of("DRAFT","WITHDRAWN","REVISION_REQUESTED").contains(before))throw conflict();
                 List<String> blockers=planBlockers(id,c);
                 if(!blockers.isEmpty())throw new BusinessException(HttpStatus.UNPROCESSABLE_ENTITY,"PLAN_INCOMPLETE","Plan configuration incomplete",Map.of("blockers",blockers));
+                var pricing=pricingServices.getObject();
+                var policy=pricing.getPricingPolicy(id);
+                if("DRAFT".equals(policy.getStatus().name()))pricing.review(id,"submit",new CruisePricingPolicyService.Review(policy.getRevision(),null),actor);
+                else if(!Set.of("PENDING_APPROVAL","APPROVED").contains(policy.getStatus().name()))throw new BusinessException(HttpStatus.UNPROCESSABLE_ENTITY,"PRICING_POLICY_CONFIGURATION_REQUIRED","Save pricing draft before submitting plan");
                 after="SUBMITTED";
             }
-            case "WITHDRAW" -> {if(!"SUBMITTED".equals(before))throw conflict();after="WITHDRAWN";}
+            case "WITHDRAW" -> {if(!"SUBMITTED".equals(before))throw conflict();pricingServices.getObject().recallForPlan(id,actor,false);after="WITHDRAWN";}
             case "APPROVE","REJECT","REQUEST_REVISION" -> {
-                if(!"SUBMITTED".equals(before))throw conflict();
+                boolean reopening="REQUEST_REVISION".equals(action)&&"APPROVED".equals(before)&&(!get(id).readyBlockers().isEmpty()||pricingReturned(id));
+                if(!"SUBMITTED".equals(before)&&!reopening)throw conflict();
                 if(Objects.equals(actor,r.get("submitted_by")))throw new BusinessException(HttpStatus.FORBIDDEN,"SELF_APPROVAL_FORBIDDEN","Submitter cannot review its own plan");
-                if(!Objects.equals(r.get("fingerprint"),hash(snapshot)))throw new BusinessException(HttpStatus.CONFLICT,"PLAN_SNAPSHOT_STALE","Submitted source changed");
+                if(!reopening&&!Objects.equals(r.get("fingerprint"),hash(snapshot)))throw new BusinessException(HttpStatus.CONFLICT,"PLAN_SNAPSHOT_STALE","Submitted source changed");
                 if(!"APPROVE".equals(action)&&(request.reason()==null||request.reason().isBlank()))throw new BusinessException(HttpStatus.UNPROCESSABLE_ENTITY,"REASON_REQUIRED","Reason or feedback required");
+                if("APPROVE".equals(action)) {
+                    // Review CRM-owned plan inputs here; staffing, preparation and guidance belong to FN-042.
+                    var blockers=planBlockers(id,c);
+                    if(!blockers.isEmpty())throw new BusinessException(HttpStatus.UNPROCESSABLE_ENTITY,"PLAN_APPROVAL_CHECK_FAILED","Plan approval checks incomplete",Map.of("blockers",blockers));
+                } else {
+                    pricingServices.getObject().recallForPlan(id,actor,true);
+                }
                 after=action.equals("APPROVE")?"APPROVED":action.equals("REJECT")?"REJECTED":"REVISION_REQUESTED";
             }
             default -> throw conflict();
