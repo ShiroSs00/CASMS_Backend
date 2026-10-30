@@ -16,11 +16,6 @@ public interface ShipRepository extends JpaRepository<Ship, UUID> {
     boolean existsByShipCode(String shipCode);
     boolean existsByShipCodeAndShipIdNot(String shipCode, UUID shipId);
     Optional<Ship> findByShipCode(String shipCode);
-    Optional<Ship> findByManifestModelId(String manifestModelId);
-
-    @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("select s from Ship s where s.manifestModelId = :manifestModelId")
-    Optional<Ship> lockByManifestModelId(@Param("manifestModelId") String manifestModelId);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT s FROM Ship s WHERE s.shipId = :shipId")

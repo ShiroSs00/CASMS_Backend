@@ -21,7 +21,7 @@ class PublicShipModelTest {
     final ShipModelRepository models = mock(ShipModelRepository.class);
     final ShipModelObjectRepository objects = mock(ShipModelObjectRepository.class);
     final ShipModelAssetStore store = mock(ShipModelAssetStore.class);
-    final ShipModelAssetService service = new ShipModelAssetService(null, models, objects, null, null, store, null, null);
+    final ShipModelAssetService service = new ShipModelAssetService(null, models, objects, null, null, store, null);
     final Ship ship = new Ship();
     final ShipModel model = new ShipModel();
 
