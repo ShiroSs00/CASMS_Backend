@@ -30,6 +30,8 @@ import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class CruiseStaffServiceTest {
+    @Mock
+    private CruisePreparationService cruisePreparationService;
 
     @Mock
     private CruiseStaffRepository cruiseStaffRepository;

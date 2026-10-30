@@ -40,7 +40,7 @@ class FlywayMigrationPostgresIntegrationTest {
     private static final String PASSWORD = env("DB_PASSWORD", "12345");
     private static final String[] APP_LOCATIONS = {"classpath:db/migration"};
     private static final String[] PROD_LOCATIONS = {"classpath:db/migration", "classpath:db/prod-migration"};
-    private static final String LATEST = "68";
+    private static final String LATEST = "72";
 
     private final List<String> createdDatabases = new ArrayList<>();
 
@@ -223,16 +223,30 @@ class FlywayMigrationPostgresIntegrationTest {
         assertDemoSeederPreservesLegacyInventory(db);
     }
 
-    private static void assertDemoSeederPreservesLegacyInventory(String db) throws SQLException {
-        String snapshot = """
-            SELECT jsonb_build_object(
-              'ship',(SELECT to_jsonb(s) FROM "Ship" s WHERE ship_id='85000000-0000-4000-8000-000000000201'),
-              'decks',(SELECT jsonb_agg(to_jsonb(d) ORDER BY deck_id) FROM "Deck" d WHERE ship_id='85000000-0000-4000-8000-000000000201'),
-              'cabins',(SELECT jsonb_agg(to_jsonb(c) ORDER BY cabin_id) FROM "Cabin" c WHERE ship_id='85000000-0000-4000-8000-000000000201'))::text
-            """;
+    @Test
+    void demoSeederPreservesReservedLegacyInventoryAndIsIdempotent() throws SQLException {
+        String db = createDatabase();
+        migrateLikeApplication(flyway(db, null, APP_LOCATIONS));
         try (Connection c = connect(db); Statement st = c.createStatement()) {
-            String original;
-            try (ResultSet result = st.executeQuery(snapshot)) { result.next(); original = result.getString(1); }
+            st.execute("INSERT INTO \"Ship\" (ship_id,ship_code,ship_name,status,total_capacity,total_decks,created_at,updated_at) VALUES ('85000000-0000-4000-8000-000000000201','IT-LEGACY-SHIP','Existing inventory','ACTIVE',10,1,now(),now())");
+            st.execute("INSERT INTO \"Deck\" (deck_id,ship_id,deck_number,deck_name,created_at,updated_at) VALUES ('85000000-0000-4000-8000-000000000202','85000000-0000-4000-8000-000000000201',1,'Existing deck',now(),now())");
+            st.execute("INSERT INTO \"Cabin\" (cabin_id,ship_id,deck_id,cabin_number,cabin_type,capacity,status,is_accessible,created_at,updated_at) VALUES ('85000000-0000-4000-8000-000000000203','85000000-0000-4000-8000-000000000201','85000000-0000-4000-8000-000000000202','OLD-101','SUITE',4,'AVAILABLE',false,now(),now())");
+        }
+        assertDemoSeederPreservesLegacyInventory(db);
+    }
+
+    private static void assertDemoSeederPreservesLegacyInventory(String db) throws SQLException {
+        Map<String,String> keys = Map.of("Ship","ship_id","Deck","deck_id","Cabin","cabin_id");
+        try (Connection c = connect(db); Statement st = c.createStatement()) {
+            // Compare only records that existed before seeding, including inventories without reserved UUIDs.
+            Map<String,Map<UUID,String>> original = new LinkedHashMap<>();
+            for (var table : keys.entrySet()) {
+                Map<UUID,String> rows = new LinkedHashMap<>();
+                try (ResultSet result = st.executeQuery("SELECT " + table.getValue() + ",to_jsonb(t)::text FROM \"" + table.getKey() + "\" t")) {
+                    while (result.next()) rows.put(result.getObject(1,UUID.class),result.getString(2));
+                }
+                original.put(table.getKey(),rows);
+            }
             var dataSource = new org.springframework.jdbc.datasource.DriverManagerDataSource(url(db), USER, PASSWORD);
             var seeder = new com.casms.servicepackage.config.DemoCatalogSeeder(dataSource);
             seeder.run(null);
@@ -241,7 +255,17 @@ class FlywayMigrationPostgresIntegrationTest {
             seeder.run(null);
             assertEquals(ships, count(c, "SELECT count(*) FROM \"Ship\""));
             assertEquals(cabins, count(c, "SELECT count(*) FROM \"Cabin\""));
-            try (ResultSet result = st.executeQuery(snapshot)) { result.next(); assertEquals(original, result.getString(1)); }
+            for (var table : keys.entrySet()) {
+                try (PreparedStatement query = c.prepareStatement("SELECT to_jsonb(t)::text FROM \"" + table.getKey() + "\" t WHERE " + table.getValue() + "=?")) {
+                    for (var row : original.get(table.getKey()).entrySet()) {
+                        query.setObject(1,row.getKey());
+                        try (ResultSet result = query.executeQuery()) {
+                            assertTrue(result.next(),"Existing " + table.getKey() + " row must survive");
+                            assertEquals(row.getValue(),result.getString(1),table.getKey() + " " + row.getKey());
+                        }
+                    }
+                }
+            }
             assertEquals(4L, count(c, "SELECT count(*) FROM \"Cabin\" c JOIN \"Ship\" s USING(ship_id) WHERE s.ship_code='DEMO-CATALOG-SHIP'"));
         }
     }

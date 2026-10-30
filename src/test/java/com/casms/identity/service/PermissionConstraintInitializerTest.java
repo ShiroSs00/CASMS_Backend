@@ -18,7 +18,7 @@ class PermissionConstraintInitializerTest {
     void currentPermissionConstraintMigrationMatchesEveryPermissionEnumValue() throws IOException {
         String migration;
         try (var stream = getClass().getResourceAsStream(
-                "/db/migration/V46__sync_permission_allowlist_for_cruise_preparation.sql")) {
+                "/db/migration/V70__sync_pos_permission_allowlist.sql")) {
             assertTrue(stream != null, "Current permission allowlist migration must be on the classpath");
             migration = new String(stream.readAllBytes(), StandardCharsets.UTF_8);
         }

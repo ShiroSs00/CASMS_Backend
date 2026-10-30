@@ -32,6 +32,7 @@ public class RolePermissionInitializer implements CommandLineRunner {
 
         // ADMIN: identity administration, technical configuration and manifest-based ship import.
         saveRolePermission(Role.ADMIN, EnumSet.of(
+                Permission.POS_MANAGE,
                 Permission.USER_CREATE, Permission.USER_READ, Permission.USER_UPDATE,
                 Permission.USER_ROLE_ASSIGN, Permission.USER_STATUS_CHANGE,
                 Permission.SHIP_CREATE, Permission.SHIP_READ, Permission.SHIP_UPDATE,
@@ -202,6 +203,7 @@ public class RolePermissionInitializer implements CommandLineRunner {
 
         // OPERATIONS_MANAGER: quản lý vận hành chung, sự cố, quy định, công suất và điều phối
         saveRolePermission(Role.OPERATIONS_MANAGER, EnumSet.of(
+                Permission.POS_ACCESS, Permission.POS_MANAGE,
                 Permission.OPERATIONAL_ISSUE_CREATE,
                 Permission.OPERATIONAL_ISSUE_READ,
                 Permission.OPERATIONAL_ISSUE_UPDATE,
@@ -515,6 +517,7 @@ public class RolePermissionInitializer implements CommandLineRunner {
         // ONBOARD_STAFF: Onboard Sales & Service Staff
         // Tiếp nhận/thực hiện yêu cầu dịch vụ và bán hàng POS; KHÔNG sửa danh mục hoặc hoạt động.
         saveRolePermission(Role.ONBOARD_STAFF, EnumSet.of(
+                Permission.POS_ACCESS,
                 // Tiếp nhận & thực hiện yêu cầu dịch vụ
                 Permission.SERVICE_READ,
                 Permission.SERVICE_REQUEST_READ,

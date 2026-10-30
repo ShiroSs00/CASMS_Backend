@@ -25,7 +25,7 @@ INSERT INTO "Cabin" (cabin_id,ship_id,deck_id,cabin_number,cabin_type,capacity,s
                       location_code,has_balcony,has_connecting_door,is_family_cabin,has_bathtub,has_separate_living_area)
 SELECT CASE WHEN EXISTS (SELECT 1 FROM "Cabin" old WHERE old.cabin_id=seed.cabin_id::uuid)
        THEN gen_random_uuid() ELSE seed.cabin_id::uuid END, s.ship_id,d.deck_id,
-       seed.cabin_number,seed.cabin_type,seed.capacity,seed.status,seed.is_accessible,seed.created_at,seed.updated_at,seed.minimum_occupancy,seed.bed_count,seed.bed_configuration,seed.area_square_meters,seed.balcony_area_square_meters,seed.location_code,seed.has_balcony,seed.has_connecting_door,seed.is_family_cabin,seed.has_bathtub,seed.has_separate_living_area
+       seed.cabin_number,seed.cabin_type::"Cabin_cabin_type",seed.capacity,seed.status::"Cabin_status",seed.is_accessible,seed.created_at,seed.updated_at,seed.minimum_occupancy,seed.bed_count,seed.bed_configuration,seed.area_square_meters,seed.balcony_area_square_meters,seed.location_code,seed.has_balcony,seed.has_connecting_door,seed.is_family_cabin,seed.has_bathtub,seed.has_separate_living_area
 FROM seed CROSS JOIN "Ship" s JOIN "Deck" d ON d.ship_id=s.ship_id AND d.deck_number=1
 WHERE s.ship_code='DEMO-CATALOG-SHIP'
 ON CONFLICT (ship_id,cabin_number) DO NOTHING;

@@ -32,6 +32,7 @@ public class ServiceRequestService {
  private final PassengerRepository passengers;
  private final UserRepository users;
  private final ServiceScheduleRepository schedules;
+ private final com.casms.pos.PosLedgerService posLedger;
 
  public List<ServiceRequest> list(UUID passengerId, boolean staff) {
   if (!staff) return requests.findByPassenger_User_UserId(passengerId);
@@ -61,6 +62,15 @@ public class ServiceRequestService {
       }
   }
   Passenger passenger=passengers.findByUser_UserId(userId).orElseThrow(()->new IllegalStateException("Authenticated user has no passenger profile"));
+  return reserve(passenger,serviceId,bookingPassengerId,scheduleId,quantity,note,idempotencyKey);
+ }
+ /** The POS caller must validate employee/device scope and spending membership before reserving. */
+ public ServiceRequest createForPos(UUID bookingPassengerId,UUID serviceId,UUID scheduleId,Integer quantity) {
+  var bp=bookingPassengers.findById(bookingPassengerId).orElseThrow(()->missing("Booking passenger",bookingPassengerId));
+  return reserve(bp.getPassenger(),serviceId,bookingPassengerId,scheduleId,quantity,null,null);
+ }
+ private ServiceRequest reserve(Passenger passenger,UUID serviceId,UUID bookingPassengerId,UUID scheduleId,
+                                Integer quantity,String note,String idempotencyKey) {
   // Serialize capacity checks for this service to prevent concurrent reservations exceeding capacity.
   var s=services.findByIdForUpdate(serviceId).orElseThrow(()->missing("Service",serviceId));
   if(s.getStatus()!=ServiceStatus.ACTIVE) throw new IllegalStateException("Service is not available");
@@ -94,6 +104,7 @@ public class ServiceRequestService {
  }
  public ServiceRequest updatePending(UUID id, UUID userId, boolean staff, Integer quantity, String note) {
   ServiceRequest r=requests.lockById(id).orElseThrow(()->missing("Service request",id));assertOwner(r,userId,staff); if(r.getStatus()!=ServiceRequestStatus.REQUESTED)throw new IllegalStateException("Only requested service requests may be edited");
+  if(posLedger.isPosRequest(id))throw new com.casms.common.exception.BusinessException("POS_CHARGE_IMMUTABLE","Cancel the POS request to restore its allowance, then record a new one; charged quantities cannot be edited");
   if(quantity==null||quantity<1)throw new IllegalArgumentException("Quantity must be positive");
   var service=services.findByIdForUpdate(r.getService().getServiceId()).orElseThrow(()->missing("Service",r.getService().getServiceId()));
   assertCapacity(service, quantity, r.getQuantity());
@@ -110,6 +121,7 @@ public class ServiceRequestService {
    case "cancel"->{if(r.getStatus()!=ServiceRequestStatus.REQUESTED&&r.getStatus()!=ServiceRequestStatus.ACCEPTED)invalid();r.setStatus(ServiceRequestStatus.CANCELLED);}
    default->throw new IllegalArgumentException("Unsupported request action");
   }
+  if(r.getStatus()==ServiceRequestStatus.REJECTED || r.getStatus()==ServiceRequestStatus.CANCELLED)posLedger.reverseForRequest(id,userId);
   return r;
  }
  public void assertOwner(ServiceRequest r, UUID userId, boolean staff){if(staff)return; if(r.getPassenger().getUser()==null||!r.getPassenger().getUser().getUserId().equals(userId))throw new AccessDeniedException("Service request belongs to another passenger");}
