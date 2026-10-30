@@ -40,7 +40,7 @@ class FlywayMigrationPostgresIntegrationTest {
     private static final String PASSWORD = env("DB_PASSWORD", "12345");
     private static final String[] APP_LOCATIONS = {"classpath:db/migration"};
     private static final String[] PROD_LOCATIONS = {"classpath:db/migration", "classpath:db/prod-migration"};
-    private static final String LATEST = "54";
+    private static final String LATEST = "68";
 
     private final List<String> createdDatabases = new ArrayList<>();
 
@@ -144,6 +144,48 @@ class FlywayMigrationPostgresIntegrationTest {
     }
 
     @Test
+    void originalV34ChecksumIsAcceptedWithoutRewritingBusinessData() throws SQLException {
+        String db = createDatabase();
+        migrateLikeApplication(flyway(db, null, APP_LOCATIONS));
+        Map<String, Long> before = new LinkedHashMap<>();
+        try (Connection c = connect(db)) {
+            for (String table : List.of("Ship", "Deck", "Cabin", "Cruise", "Booking"))
+                before.put(table, count(c, "SELECT count(*) FROM \"" + table + "\""));
+            setChecksum(c, "34", -1753018760);
+        }
+        Flyway flyway = flyway(db, null, APP_LOCATIONS);
+        assertThrows(FlywayValidateException.class, flyway::migrate);
+        assertEquals(1, migrateLikeApplication(flyway));
+        assertTrue(flyway.validateWithResult().validationSuccessful);
+        try (Connection c = connect(db)) {
+            assertEquals(-477179883L, checksum(c, "34"));
+            for (var entry : before.entrySet())
+                assertEquals(entry.getValue(), count(c, "SELECT count(*) FROM \"" + entry.getKey() + "\""));
+            setChecksum(c, "34", 42);
+        }
+        assertThrows(FlywayValidateException.class, () -> migrateLikeApplication(flyway));
+    }
+
+    @Test
+    void filesystemLocationsReconcileOnlyTheReviewedV34Checksum(@org.junit.jupiter.api.io.TempDir java.nio.file.Path directory) throws Exception {
+        String db = createDatabase();
+        migrateLikeApplication(flyway(db, null, APP_LOCATIONS));
+        try (Connection c = connect(db)) { setChecksum(c, "34", -1753018760); }
+        var resources = new org.springframework.core.io.support.PathMatchingResourcePatternResolver()
+                .getResources("classpath:db/migration/V*.sql");
+        for (var resource : resources) {
+            try (var input = resource.getInputStream()) {
+                java.nio.file.Files.copy(input, directory.resolve(java.util.Objects.requireNonNull(resource.getFilename())));
+            }
+        }
+        Flyway flyway = flyway(db, null, "filesystem:" + directory.toString().replace('\\', '/'));
+        assertEquals(1, migrateLikeApplication(flyway));
+        assertTrue(flyway.validateWithResult().validationSuccessful);
+        try (Connection c = connect(db)) { setChecksum(c, "34", 42); }
+        assertThrows(FlywayValidateException.class, () -> migrateLikeApplication(flyway));
+    }
+
+    @Test
     void cloneOfExistingDatabaseUpgradesWithoutDataLoss() throws SQLException {
         String source = System.getProperty("casms.flyway.cloneSource");
         Assumptions.assumeTrue(source != null && source.matches("[A-Za-z0-9_]+"),
@@ -178,6 +220,30 @@ class FlywayMigrationPostgresIntegrationTest {
         }
         System.out.printf("[BE-FIX-00] clone of %s: schema V%s -> V%s, realigned %d checksum(s), row counts %s preserved%n",
                 source, versionBefore, LATEST, realigned, before);
+        assertDemoSeederPreservesLegacyInventory(db);
+    }
+
+    private static void assertDemoSeederPreservesLegacyInventory(String db) throws SQLException {
+        String snapshot = """
+            SELECT jsonb_build_object(
+              'ship',(SELECT to_jsonb(s) FROM "Ship" s WHERE ship_id='85000000-0000-4000-8000-000000000201'),
+              'decks',(SELECT jsonb_agg(to_jsonb(d) ORDER BY deck_id) FROM "Deck" d WHERE ship_id='85000000-0000-4000-8000-000000000201'),
+              'cabins',(SELECT jsonb_agg(to_jsonb(c) ORDER BY cabin_id) FROM "Cabin" c WHERE ship_id='85000000-0000-4000-8000-000000000201'))::text
+            """;
+        try (Connection c = connect(db); Statement st = c.createStatement()) {
+            String original;
+            try (ResultSet result = st.executeQuery(snapshot)) { result.next(); original = result.getString(1); }
+            var dataSource = new org.springframework.jdbc.datasource.DriverManagerDataSource(url(db), USER, PASSWORD);
+            var seeder = new com.casms.servicepackage.config.DemoCatalogSeeder(dataSource);
+            seeder.run(null);
+            long ships = count(c, "SELECT count(*) FROM \"Ship\"");
+            long cabins = count(c, "SELECT count(*) FROM \"Cabin\"");
+            seeder.run(null);
+            assertEquals(ships, count(c, "SELECT count(*) FROM \"Ship\""));
+            assertEquals(cabins, count(c, "SELECT count(*) FROM \"Cabin\""));
+            try (ResultSet result = st.executeQuery(snapshot)) { result.next(); assertEquals(original, result.getString(1)); }
+            assertEquals(4L, count(c, "SELECT count(*) FROM \"Cabin\" c JOIN \"Ship\" s USING(ship_id) WHERE s.ship_code='DEMO-CATALOG-SHIP'"));
+        }
     }
 
     // ---------------------------------------------------------------------------------------------
