@@ -4,19 +4,30 @@ BEGIN;
 
 -- Isolated demonstration inventory; no cruise/booking is fabricated.
 INSERT INTO "Ship" (ship_id,ship_code,ship_name,status,total_capacity,total_decks,commission_date,created_at,updated_at)
-VALUES ('85000000-0000-4000-8000-000000000201','DEMO-CATALOG-SHIP','Demo catalogue ship','ACTIVE',8,1,CURRENT_DATE,now(),now())
+SELECT CASE WHEN EXISTS (SELECT 1 FROM "Ship" WHERE ship_id='85000000-0000-4000-8000-000000000201')
+       THEN gen_random_uuid() ELSE '85000000-0000-4000-8000-000000000201'::uuid END,
+       'DEMO-CATALOG-SHIP','Demo catalogue ship','ACTIVE',8,1,CURRENT_DATE,now(),now()
 ON CONFLICT (ship_code) DO NOTHING;
 INSERT INTO "Deck" (deck_id,ship_id,deck_number,deck_name,created_at,updated_at)
-VALUES ('85000000-0000-4000-8000-000000000202','85000000-0000-4000-8000-000000000201',1,'Demo deck',now(),now())
-ON CONFLICT (deck_id) DO NOTHING;
+SELECT CASE WHEN EXISTS (SELECT 1 FROM "Deck" WHERE deck_id='85000000-0000-4000-8000-000000000202')
+       THEN gen_random_uuid() ELSE '85000000-0000-4000-8000-000000000202'::uuid END,
+       s.ship_id,1,'Demo deck',now(),now()
+FROM "Ship" s WHERE s.ship_code='DEMO-CATALOG-SHIP'
+ON CONFLICT (ship_id,deck_number) DO NOTHING;
+-- Preserve any legacy V34 inventory that already owns the originally reserved UUIDs.
+WITH seed(cabin_id,cabin_number,cabin_type,capacity,status,is_accessible,created_at,updated_at,minimum_occupancy,bed_count,bed_configuration,area_square_meters,balcony_area_square_meters,location_code,has_balcony,has_connecting_door,is_family_cabin,has_bathtub,has_separate_living_area) AS (VALUES
+ ('85000000-0000-4000-8000-000000000203','101','INTERIOR',2,'AVAILABLE',false,now(),now(),1,2,'TWIN',14,NULL,'AFT-PORT',false,false,false,false,false),
+ ('85000000-0000-4000-8000-000000000204','102','OCEAN_VIEW',2,'AVAILABLE',false,now(),now(),1,2,'TWIN',17,NULL,'MIDSHIP-PORT',false,false,false,false,false),
+ ('85000000-0000-4000-8000-000000000205','103','BALCONY',2,'AVAILABLE',false,now(),now(),1,2,'QUEEN',21,4,'MIDSHIP-STARBOARD',true,false,false,true,false),
+ ('85000000-0000-4000-8000-000000000206','104','SUITE',2,'AVAILABLE',false,now(),now(),1,1,'KING',32,8,'FORWARD-STARBOARD',true,false,false,true,true))
 INSERT INTO "Cabin" (cabin_id,ship_id,deck_id,cabin_number,cabin_type,capacity,status,is_accessible,created_at,updated_at,
                       minimum_occupancy,bed_count,bed_configuration,area_square_meters,balcony_area_square_meters,
                       location_code,has_balcony,has_connecting_door,is_family_cabin,has_bathtub,has_separate_living_area)
-VALUES
- ('85000000-0000-4000-8000-000000000203','85000000-0000-4000-8000-000000000201','85000000-0000-4000-8000-000000000202','101','INTERIOR',2,'AVAILABLE',false,now(),now(),1,2,'TWIN',14,NULL,'AFT-PORT',false,false,false,false,false),
- ('85000000-0000-4000-8000-000000000204','85000000-0000-4000-8000-000000000201','85000000-0000-4000-8000-000000000202','102','OCEAN_VIEW',2,'AVAILABLE',false,now(),now(),1,2,'TWIN',17,NULL,'MIDSHIP-PORT',false,false,false,false,false),
- ('85000000-0000-4000-8000-000000000205','85000000-0000-4000-8000-000000000201','85000000-0000-4000-8000-000000000202','103','BALCONY',2,'AVAILABLE',false,now(),now(),1,2,'QUEEN',21,4,'MIDSHIP-STARBOARD',true,false,false,true,false),
- ('85000000-0000-4000-8000-000000000206','85000000-0000-4000-8000-000000000201','85000000-0000-4000-8000-000000000202','104','SUITE',2,'AVAILABLE',false,now(),now(),1,1,'KING',32,8,'FORWARD-STARBOARD',true,false,false,true,true)
+SELECT CASE WHEN EXISTS (SELECT 1 FROM "Cabin" old WHERE old.cabin_id=seed.cabin_id::uuid)
+       THEN gen_random_uuid() ELSE seed.cabin_id::uuid END, s.ship_id,d.deck_id,
+       seed.cabin_number,seed.cabin_type,seed.capacity,seed.status,seed.is_accessible,seed.created_at,seed.updated_at,seed.minimum_occupancy,seed.bed_count,seed.bed_configuration,seed.area_square_meters,seed.balcony_area_square_meters,seed.location_code,seed.has_balcony,seed.has_connecting_door,seed.is_family_cabin,seed.has_bathtub,seed.has_separate_living_area
+FROM seed CROSS JOIN "Ship" s JOIN "Deck" d ON d.ship_id=s.ship_id AND d.deck_number=1
+WHERE s.ship_code='DEMO-CATALOG-SHIP'
 ON CONFLICT (ship_id,cabin_number) DO NOTHING;
 
 INSERT INTO "ServiceCategory" (category_code, category_name)

@@ -360,6 +360,21 @@ public class CruiseService {
                     "Revision của Cruise không khớp (expected: " + request.getExpectedRevision() + ", current: " + cruise.getRevision() + ")");
         }
 
+        if (request.getPlannedScope() != null || request.getItineraryMode() != null) {
+            if (cruise.getSourceVersion() != null || cruise.getSourceTrip() != null)
+                throw new BusinessException(HttpStatus.CONFLICT,"SOURCE_CONFIGURATION_LOCKED","Linked source controls scope and itinerary mode");
+            if (request.getPlannedScope() != null) {
+                if (!Set.of("DOMESTIC","INTERNATIONAL").contains(request.getPlannedScope()))
+                    throw new BusinessException(HttpStatus.UNPROCESSABLE_ENTITY,"SCOPE_COUNTRY_REQUIRED","Explicit domestic or international scope required");
+                cruise.setPlannedScope(request.getPlannedScope());
+            }
+            if (request.getItineraryMode() != null) {
+                if (!Set.of("FIXED","CUSTOM").contains(request.getItineraryMode()))
+                    throw new BusinessException(HttpStatus.UNPROCESSABLE_ENTITY,"INVALID_ITINERARY_MODE","Invalid itinerary mode");
+                cruise.setItineraryMode(request.getItineraryMode());
+            }
+        }
+
         Instant oldDep = cruise.getDepartureDatetime();
         Instant effectiveDeparture = request.getDepartureDatetime() != null ? request.getDepartureDatetime() : cruise.getDepartureDatetime();
         Instant effectiveReturn = request.getReturnDatetime() != null ? request.getReturnDatetime() : cruise.getReturnDatetime();
@@ -1005,20 +1020,21 @@ public class CruiseService {
         boolean captainAssigned = activeStaff.stream()
                 .anyMatch(s -> "CAPTAIN".equalsIgnoreCase(s.getRoleInCruise()));
 
+        boolean onboardStaffAssigned = cruiseStaffRepository.existsActiveOnboardStaff(cruiseId);
         List<String> staffConflicts = new ArrayList<>();
-        if (!captainAssigned) {
-            issues.add("Chuyến đi chưa được phân công Thuyền trưởng (CAPTAIN)");
-            blockers.add("MISSING_CAPTAIN");
+        if (!onboardStaffAssigned) {
+            issues.add("Chuyến đi chưa được phân công Onboard Staff");
+            blockers.add("MISSING_ONBOARD_STAFF");
             details.add(ReadinessIssueDetail.builder()
-                    .code("MISSING_CAPTAIN")
+                    .code("MISSING_ONBOARD_STAFF")
                     .targetType("CRUISE")
                     .targetId(cruiseId)
                     .scope("CRUISE")
                     .severity(ReadinessSeverity.BLOCKER)
-                    .message("Chuyến đi chưa được phân công Thuyền trưởng (CAPTAIN)")
-                    .evidence("Active staff with CAPTAIN role = 0")
+                    .message("Chuyến đi chưa được phân công Onboard Staff")
+                    .evidence("Active Onboard Staff assignment = 0")
                     .ownerRole("OPERATIONS_MANAGER")
-                    .allowedAction("Phân công nhân sự có vai trò Thuyền trưởng qua /api/cruise/" + cruiseId + "/staff")
+                    .allowedAction("Phân công nhân sự có vai trò Onboard Staff qua /api/cruise/" + cruiseId + "/staff")
                     .requiredPermission(Permission.CRUISE_STAFF_ASSIGN.name())
                     .remediationUrl("/api/cruise/" + cruiseId + "/staff")
                     .remediationOperation("POST")
@@ -1120,8 +1136,8 @@ public class CruiseService {
         }
         boolean ready = (status == ReadinessStatus.READY || status == ReadinessStatus.WARNING) && blockers.isEmpty() && !hasInfrastructureError;
 
-        String rawState = String.format("CRUISE:%s:REV:%s:SHIP:%s:ACT:%s:CONFIG:%s:PORTS:%s:CAPTAIN:%s:REGS:%d:BLOCKERS:%d:WARNS:%d:INFRA:%s",
-                cruiseId, cruise.getRevision(), shipAssigned, shipActive, shipConfigValid, portsActive, captainAssigned,
+        String rawState = String.format("CRUISE:%s:REV:%s:SHIP:%s:ACT:%s:CONFIG:%s:PORTS:%s:ONBOARD_STAFF:%s:REGS:%d:BLOCKERS:%d:WARNS:%d:INFRA:%s",
+                cruiseId, cruise.getRevision(), shipAssigned, shipActive, shipConfigValid, portsActive, onboardStaffAssigned,
                 regCount, blockers.size(), warnings.size(), hasInfrastructureError);
         String fingerprint = generateFingerprint(rawState);
 
@@ -1140,6 +1156,7 @@ public class CruiseService {
         response.setItineraryConfigured(itineraryConfigured);
         response.setStaffAssigned(staffAssigned);
         response.setCaptainAssigned(captainAssigned);
+        response.setOnboardStaffAssigned(onboardStaffAssigned);
         response.setStaffConflicts(staffConflicts);
         response.setRegulationsCompliant(regulationsCompliant);
         response.setRegulationConflicts(regulationConflicts);
@@ -2955,7 +2972,8 @@ public class CruiseService {
         // Passenger manifest
         CruiseManifestResponse manifest = getManifest(cruiseId);
 
-        boolean departureClearanceReady = captainAssigned && ship != null && ship.getStatus() == ShipStatus.ACTIVE
+        boolean onboardStaffAssigned = cruiseStaffRepository.existsActiveOnboardStaff(cruiseId);
+        boolean departureClearanceReady = onboardStaffAssigned && ship != null && ship.getStatus() == ShipStatus.ACTIVE
                 && (cruise.getStatus() == CruiseStatus.PUBLISHED || cruise.getStatus() == CruiseStatus.IN_PROGRESS);
 
         return CruiseDownstreamHandoffResponse.builder()
@@ -2982,6 +3000,7 @@ public class CruiseService {
                 .checkedInPassengersCount(checkedInPassengers)
                 .boardedPassengersCount(boardedPassengers)
                 .captainAssigned(captainAssigned)
+                .onboardStaffAssigned(onboardStaffAssigned)
                 .departureClearanceReady(departureClearanceReady)
                 .manifestLocked(cruise.getStatus() == CruiseStatus.IN_PROGRESS || cruise.getStatus() == CruiseStatus.COMPLETED)
                 .passengerManifest(manifest.getPassengerList())

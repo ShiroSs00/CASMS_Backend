@@ -31,6 +31,7 @@ public class IdentityService {
 
         return users.stream()
                 .filter(u -> {
+                    if ("ONBOARD_STAFF".equalsIgnoreCase(assignableFor))return u.hasRole(Role.ONBOARD_STAFF);
                     if (isOpIssue) {
                         return isEligibleOperationalHandler(u);
                     }

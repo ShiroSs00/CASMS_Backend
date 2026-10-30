@@ -5,7 +5,6 @@ import com.casms.activity.repository.ShoreExcursionRepository;
 import com.casms.common.exception.BusinessException;
 import com.casms.common.exception.ResourceNotFoundException;
 import com.casms.security.principal.CasmsPrincipal;
-import com.casms.servicepackage.repository.ServiceScheduleRepository;
 import com.casms.ship.dto.request.CruisePreparationConfirmRequest;
 import com.casms.ship.dto.request.CruisePreparationReturnRequest;
 import com.casms.ship.dto.request.CruisePreparationSubmitRequest;
@@ -38,7 +37,6 @@ public class CruisePreparationService {
     private final DeckRepository deckRepository;
     private final CabinRepository cabinRepository;
     private final ShoreExcursionRepository shoreExcursionRepository;
-    private final ServiceScheduleRepository serviceScheduleRepository;
     private final OnboardActivityRepository onboardActivityRepository;
     private final com.casms.identity.repository.UserRepository userRepository;
     private final org.springframework.jdbc.core.JdbcTemplate jdbc;
@@ -121,7 +119,6 @@ public class CruisePreparationService {
     private static final List<SectionTemplate> TEMPLATES = List.of(
             new SectionTemplate("TECHNICAL_NAUTICAL", "Kỹ thuật Hàng hải & Tàu", "SHIP_MANAGER"),
             new SectionTemplate("HOTEL_CABIN", "Khách sạn & Buồng phòng", "CRUISE_MANAGER"),
-            new SectionTemplate("FOOD_BEVERAGE", "Ẩm thực & Dịch vụ F&B", "CRUISE_MANAGER"),
             new SectionTemplate("ENTERTAINMENT_SHORE", "Hoạt động Giải trí & Tour bờ", "CRUISE_MANAGER"),
             new SectionTemplate("SAFETY_CREW", "An toàn & Thuyền viên", "OPERATIONS_MANAGER")
     );
@@ -139,7 +136,15 @@ public class CruisePreparationService {
                 .orElseThrow(() -> new ResourceNotFoundException("Cruise", cruiseId));
 
 
-        List<CruisePreparationSection> sections = preparationSectionRepository.findByCruiseCruiseIdOrderBySectionCodeAsc(cruiseId);
+        // A legacy Cruise can predate preparation records. The read model still exposes the
+        // standard work areas, with current checks and NOT_STARTED defaults, without writes.
+        List<CruisePreparationSection> sections = new ArrayList<>(preparationSectionRepository.findByCruiseCruiseIdOrderBySectionCodeAsc(cruiseId).stream().filter(section -> TEMPLATES.stream().anyMatch(template -> template.code().equals(section.getSectionCode()))).toList());
+        Set<String> existingCodes = new HashSet<>();
+        sections.forEach(section -> existingCodes.add(section.getSectionCode()));
+        for (SectionTemplate template : TEMPLATES) {
+            if (!existingCodes.contains(template.code())) sections.add(newSection(cruise, template));
+        }
+        sections.sort(Comparator.comparing(CruisePreparationSection::getSectionCode));
         List<CruisePreparationSectionResponse> sectionResponses = new ArrayList<>();
 
         boolean allConfirmed = sections.size() == TEMPLATES.size();
@@ -200,9 +205,11 @@ public class CruisePreparationService {
     public CruisePreparationSectionResponse submitSection(UUID cruiseId, String sectionCode,
                                                          CruisePreparationSubmitRequest request,
                                                          UUID actorId, Set<String> roles) {
+        if(TEMPLATES.stream().noneMatch(template -> template.code().equals(sectionCode)))throw new ResourceNotFoundException("Active CruisePreparationSection",sectionCode);
         var actor=requireActor(actorId,true);
         Cruise cruise=lockedCruise(cruiseId);
         if(!submissionScope(cruise,actor))throw new BusinessException(HttpStatus.FORBIDDEN,"PREPARATION_CRUISE_SCOPE_FORBIDDEN","CRM is not assigned preparation coordinator for this Cruise");
+        ensureSectionsInitialized(cruise);
         CruisePreparationSection section = preparationSectionRepository
                 .findByCruiseCruiseIdAndSectionCodeForUpdate(cruiseId, sectionCode)
                 .orElseThrow(() -> new ResourceNotFoundException("CruisePreparationSection", sectionCode));
@@ -247,6 +254,7 @@ public class CruisePreparationService {
     public CruisePreparationSectionResponse confirmSection(UUID cruiseId, String sectionCode,
                                                           CruisePreparationConfirmRequest request,
                                                           UUID actorId, String actorUsername) {
+        if(TEMPLATES.stream().noneMatch(template -> template.code().equals(sectionCode)))throw new ResourceNotFoundException("Active CruisePreparationSection",sectionCode);
         CasmsPrincipal actor=requireActor(actorId,false);
         lockedCruise(cruiseId);
         CruisePreparationSection section = preparationSectionRepository
@@ -300,6 +308,7 @@ public class CruisePreparationService {
     public CruisePreparationSectionResponse returnSection(UUID cruiseId, String sectionCode,
                                                          CruisePreparationReturnRequest request,
                                                          UUID actorId) {
+        if(TEMPLATES.stream().noneMatch(template -> template.code().equals(sectionCode)))throw new ResourceNotFoundException("Active CruisePreparationSection",sectionCode);
         requireActor(actorId,false);
         lockedCruise(cruiseId);
         CruisePreparationSection section = preparationSectionRepository
@@ -352,20 +361,27 @@ public class CruisePreparationService {
         }
     }
 
+    private CruisePreparationSection newSection(Cruise cruise, SectionTemplate template) {
+        CruisePreparationSection section = new CruisePreparationSection();
+        section.setCruise(cruise);
+        section.setSectionCode(template.code());
+        section.setSectionName(template.name());
+        section.setOwnerRole(template.ownerRole());
+        section.setStatus("NOT_STARTED");
+        section.setRevision(0L);
+        return section;
+    }
+
     private void ensureSectionsInitialized(Cruise cruise) {
-        if (!preparationSectionRepository.existsByCruiseCruiseId(cruise.getCruiseId())) {
-            for (SectionTemplate tpl : TEMPLATES) {
-                CruisePreparationSection section = new CruisePreparationSection();
-                section.setCruise(cruise);
-                section.setSectionCode(tpl.code());
-                section.setSectionName(tpl.name());
-                section.setOwnerRole(tpl.ownerRole());
-                section.setStatus("NOT_STARTED");
-                section.setRevision(0L);
-                preparationSectionRepository.save(section);
+        Set<String> existingCodes = new HashSet<>();
+        preparationSectionRepository.findByCruiseCruiseIdOrderBySectionCodeAsc(cruise.getCruiseId())
+                .forEach(section -> existingCodes.add(section.getSectionCode()));
+        for (SectionTemplate template : TEMPLATES) {
+            if (!existingCodes.contains(template.code())) {
+                preparationSectionRepository.save(newSection(cruise, template));
             }
-            preparationSectionRepository.flush();
         }
+        preparationSectionRepository.flush();
     }
 
     private List<PreparationCheckItemDto> computeCheckItems(Cruise cruise, String sectionCode) {
@@ -422,19 +438,6 @@ public class CruisePreparationService {
                         .details("Tổng phòng: " + totalCabins + ", Khả dụng: " + availableCabins)
                         .build());
             }
-            case "FOOD_BEVERAGE" -> {
-                long scheduleCount = serviceScheduleRepository.countByCruise_CruiseId(cruiseId);
-                boolean hasFB = scheduleCount > 0;
-                items.add(PreparationCheckItemDto.builder()
-                        .itemCode("SERVING_WINDOWS")
-                        .itemName("Khung giờ phục vụ ăn uống & dịch vụ")
-                        .ready(hasFB)
-                        .required(true)
-                        .state(hasFB ? "PASSED" : "BLOCKED")
-                        .evidence(hasFB ? "Đã cấu hình " + scheduleCount + " khung giờ phục vụ ẩm thực/dịch vụ" : "Chưa có khung giờ phục vụ dịch vụ/ẩm thực nào được cấu hình cho chuyến đi")
-                        .details(hasFB ? "Đã đồng bộ lịch trình và khung giờ phục vụ" : "Yêu cầu cấu hình ServiceSchedule cho chuyến đi")
-                        .build());
-            }
             case "ENTERTAINMENT_SHORE" -> {
                 long excursions = shoreExcursionRepository.countByCruiseId(cruiseId);
                 long activities = onboardActivityRepository.countByCruise_CruiseId(cruiseId);
@@ -450,18 +453,17 @@ public class CruisePreparationService {
                         .build());
             }
             case "SAFETY_CREW" -> {
-                boolean captainAssigned = cruiseStaffRepository.existsByCruise_CruiseIdAndRoleInCruiseAndStatus(
-                        cruiseId, "CAPTAIN", "ACTIVE");
+                boolean onboardAssigned = cruiseStaffRepository.existsActiveOnboardStaff(cruiseId);
                 long activeCrew = cruiseStaffRepository.countByCruise_CruiseIdAndStatus(cruiseId, "ACTIVE");
-                boolean crewReady = captainAssigned && activeCrew >= 1;
+                boolean crewReady = onboardAssigned && activeCrew >= 1;
                 items.add(PreparationCheckItemDto.builder()
-                        .itemCode("CAPTAIN_ASSIGNED")
-                        .itemName("Phân công Thuyền trưởng & Thuyền viên")
+                        .itemCode("ONBOARD_STAFF_ASSIGNED")
+                        .itemName("Phân công Onboard Staff")
                         .ready(crewReady)
                         .required(true)
                         .state(crewReady ? "PASSED" : "BLOCKED")
-                        .evidence(captainAssigned ? "Thuyền trưởng đã phân công (Tổng thuyền viên hoạt động: " + activeCrew + ")" : "Chưa phân công Thuyền trưởng")
-                        .details("Thuyền trưởng: " + (captainAssigned ? "SẴN SÀNG" : "CHƯA PHÂN CÔNG") + ", Thuyền viên: " + activeCrew)
+                        .evidence(onboardAssigned ? "Onboard Staff đã phân công (Tổng thuyền viên hoạt động: " + activeCrew + ")" : "Chưa phân công Onboard Staff")
+                        .details("Onboard Staff: " + (onboardAssigned ? "SẴN SÀNG" : "CHƯA PHÂN CÔNG") + ", Thuyền viên: " + activeCrew)
                         .build());
             }
             default -> {}

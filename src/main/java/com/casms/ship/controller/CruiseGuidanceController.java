@@ -26,7 +26,7 @@ public class CruiseGuidanceController {
     private final JdbcTemplate jdbc;
     private final CruiseMainflowService plans;
     public record Input(@NotBlank String sessionName,@NotBlank String location,@NotNull Instant startAt,
-                        @NotNull Instant endAt,@NotNull UUID instructorUserId,String content,@NotNull @Positive Integer capacity) {}
+                        @NotNull Instant endAt,@NotNull UUID instructorUserId,@NotBlank String content,@NotNull @Positive Integer capacity) {}
     public record Session(UUID sessionId,UUID cruiseId,long revision,String sessionName,String location,
                           Instant startAt,Instant endAt,UUID instructorUserId,String content,Integer capacity,String status) {}
     private Instant instant(Object x){return x instanceof Timestamp t?t.toInstant():x instanceof java.time.OffsetDateTime t?t.toInstant():null;}
@@ -41,6 +41,8 @@ public class CruiseGuidanceController {
         return row;
     }
     private void validate(UUID cruiseId,UUID sessionId,Input r,Map<String,Object> cruise){
+        if(!plans.isPlanApproved(cruiseId))
+            throw new BusinessException(HttpStatus.CONFLICT,"PLAN_APPROVAL_REQUIRED","An approved current Cruise Plan is required before scheduling or publishing guidance");
         Instant opens=instant(cruise.get("guidance_opens_at")),closes=instant(cruise.get("guidance_closes_at"));
         if(opens==null||closes==null||!r.startAt().isBefore(r.endAt())||r.startAt().isBefore(opens)||r.endAt().isAfter(closes))
             throw new BusinessException(HttpStatus.UNPROCESSABLE_ENTITY,"INVALID_GUIDANCE_WINDOW","Session must be inside configured guidance window");
@@ -78,6 +80,12 @@ public class CruiseGuidanceController {
         validate(cruiseId,id,new Input(s.sessionName(),s.location(),s.startAt(),s.endAt(),s.instructorUserId(),s.content(),s.capacity()),cruise);
         jdbc.update("UPDATE \"GuidanceSession\" SET status='Published',published_at=now(),published_by=?,revision=revision+1 WHERE guidance_session_id=?",principal.getUserId(),id);
         plans.recordOperationalEvent(cruiseId,"GUIDANCE_PUBLISH",principal.getUserId());return ApiResponse.success(read(id));
+    }
+    @PostMapping("/{id}/cancel")
+    public ApiResponse<Session> cancel(@PathVariable UUID cruiseId,@PathVariable UUID id,@RequestHeader("If-Match") Long expected,@AuthenticationPrincipal CasmsPrincipal principal){
+        lock(cruiseId);session(cruiseId,id,expected);
+        jdbc.update("UPDATE \"GuidanceSession\" SET status='Cancelled',revision=revision+1 WHERE guidance_session_id=?",id);
+        plans.recordOperationalEvent(cruiseId,"GUIDANCE_CANCEL",principal.getUserId());return ApiResponse.success(read(id));
     }
     private Session read(UUID id){return view(jdbc.queryForMap("SELECT * FROM \"GuidanceSession\" WHERE guidance_session_id=?",id));}
 }

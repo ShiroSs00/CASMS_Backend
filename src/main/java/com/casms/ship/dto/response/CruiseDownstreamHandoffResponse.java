@@ -48,6 +48,7 @@ public class CruiseDownstreamHandoffResponse {
 
     // Readiness & clearance
     private boolean captainAssigned;
+    private boolean onboardStaffAssigned;
     private boolean departureClearanceReady;
     private boolean manifestLocked;
 
