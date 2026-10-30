@@ -41,6 +41,8 @@ public class CruiseGuidanceController {
         return row;
     }
     private void validate(UUID cruiseId,UUID sessionId,Input r,Map<String,Object> cruise){
+        if(!plans.isPlanApproved(cruiseId))
+            throw new BusinessException(HttpStatus.CONFLICT,"PLAN_APPROVAL_REQUIRED","An approved current Cruise Plan is required before scheduling or publishing guidance");
         Instant opens=instant(cruise.get("guidance_opens_at")),closes=instant(cruise.get("guidance_closes_at"));
         if(opens==null||closes==null||!r.startAt().isBefore(r.endAt())||r.startAt().isBefore(opens)||r.endAt().isAfter(closes))
             throw new BusinessException(HttpStatus.UNPROCESSABLE_ENTITY,"INVALID_GUIDANCE_WINDOW","Session must be inside configured guidance window");
