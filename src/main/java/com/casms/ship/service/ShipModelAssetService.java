@@ -56,6 +56,17 @@ public class ShipModelAssetService {
     private final ShipModelAssetStore assets;
     private final BusinessCodeGenerator businessCodes;
 
+    @Transactional(readOnly=true)
+    public JsonNode previewStoredBundle(String modelKey,String assetVersion) {
+        if(!assets.bundleExists(modelKey,assetVersion)) throw new ResponseStatusException(HttpStatus.NOT_FOUND,"Model asset bundle is not uploaded to the database");
+        return assets.manifest(modelKey,assetVersion);
+    }
+
+    @Transactional(readOnly=true)
+    public List<ShipModelAssetStore.StoredBundle> listStoredBundles() {
+        return assets.listBundles();
+    }
+
     @Transactional
     public ShipModelAssetUploadResponse uploadBundle(String modelKey, String assetVersion, MultipartFile bundle) {
         if (bundle == null || bundle.isEmpty() || bundle.getSize() > 2L * 1024 * 1024 * 1024) {

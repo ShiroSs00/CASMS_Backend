@@ -50,6 +50,14 @@ public class ShipModelAssetStore {
         this.jdbc = jdbc;
     }
 
+    public record StoredBundle(String modelKey, String assetVersion, java.time.Instant uploadedAt) {}
+
+    public java.util.List<StoredBundle> listBundles() {
+        return jdbc.query("SELECT model_key,asset_version,created_at FROM " + TABLE +
+            " WHERE asset_path='manifest.json' ORDER BY created_at DESC,model_key,asset_version",
+            (r,n)->new StoredBundle(r.getString("model_key"),r.getString("asset_version"),r.getTimestamp("created_at").toInstant()));
+    }
+
     public UploadResult storeZip(String modelKey, String assetVersion, InputStream archive) {
         validateBundleKey(modelKey, assetVersion);
         if (bundleExists(modelKey, assetVersion)) {

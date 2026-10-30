@@ -76,6 +76,18 @@ public class ShipModelController {
         return ApiResponse.success(importService.issues(shipId, jobId));
     }
 
+    @PreAuthorize("hasAuthority('SHIP_MODEL_CREATE') and hasAuthority('SHIP_CREATE')")
+    @GetMapping("/ship-model-assets")
+    public ApiResponse<List<com.casms.ship.service.ShipModelAssetStore.StoredBundle>> storedAssets() {
+        return ApiResponse.success(assetService.listStoredBundles());
+    }
+
+    @PreAuthorize("hasAuthority('SHIP_MODEL_CREATE') and hasAuthority('SHIP_CREATE')")
+    @GetMapping("/ship-model-assets/{modelKey}/{assetVersion}/preview")
+    public ApiResponse<com.fasterxml.jackson.databind.JsonNode> previewStoredAsset(@PathVariable String modelKey,@PathVariable String assetVersion) {
+        return ApiResponse.success(assetService.previewStoredBundle(modelKey,assetVersion));
+    }
+
     @Operation(summary = "Upload and validate a versioned ship model asset ZIP into PostgreSQL",description="At most two stored bundles may contain byte-identical full-model GLB content, even under different keys or versions. Existing uploads count toward this limit; invalid or rolled-back uploads do not. Creating ships from stored models does not upload another copy.")
     @PreAuthorize("hasAuthority('SHIP_UPDATE')")
     @PostMapping(value = "/ship-model-assets", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
