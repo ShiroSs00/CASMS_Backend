@@ -152,6 +152,12 @@ public class OperationalProgramMappingService {
             Instant startTime = startDate!=null&&startTimeVal!=null?PortTimeZoneHelper.strictLocalInstant(startDate.atTime(startTimeVal),shipZone):null;
             Instant endTime = endDate!=null&&endTimeVal!=null?PortTimeZoneHelper.strictLocalInstant(endDate.atTime(endTimeVal),shipZone):null;
 
+            if(entry.getKind()==TripPlanEntryKind.ONBOARD_ACTIVITY
+                    && (startTime==null||endTime==null||!endTime.isAfter(startTime)
+                        ||startTime.isBefore(cruise.getDepartureDatetime())||endTime.isAfter(cruise.getReturnDatetime())))
+                throw new com.casms.common.exception.BusinessException(org.springframework.http.HttpStatus.UNPROCESSABLE_ENTITY,
+                        "SOURCE_PROGRAM_OUTSIDE_CRUISE","Hoạt động nguồn nằm ngoài thời gian chuyến: "+entry.getTitle());
+
             try {
                 // BE-R04 / D03: Tách bạch rõ rệt giữa SERVING_WINDOW, ONBOARD_ACTIVITY, SHORE_EXCURSION
                 if (entry.getKind() == TripPlanEntryKind.SERVING_WINDOW) {
@@ -418,16 +424,12 @@ public class OperationalProgramMappingService {
                         }
                     }
 
-                    // Kiểm tra cửa sổ tour bờ so với khung giờ tàu cập cảng (Port Call Window)
-                    if (matchedStop.getPlannedArrival() != null && matchedStop.getPlannedDeparture() != null) {
-                        if (startTime.isBefore(matchedStop.getPlannedArrival()) || endTime.isAfter(matchedStop.getPlannedDeparture())) {
-                            String winMsg = String.format("Thời gian tour bờ (%s - %s) nằm ngoài khung giờ tàu cập cảng (%s - %s)",
-                                    startTime, endTime, matchedStop.getPlannedArrival(), matchedStop.getPlannedDeparture());
-                            itemWarnings.add(winMsg);
-                            warnings.add(winMsg);
-                            requiredData.append("Thời gian tour ngoài khung giờ cảng; ");
-                        }
-                    }
+                    Instant excursionLimit=matchedStop.getAllAboardTime()!=null&&matchedStop.getAllAboardTime().isBefore(matchedStop.getPlannedDeparture())?matchedStop.getAllAboardTime():matchedStop.getPlannedDeparture();
+                    if(startTime==null||endTime==null||!endTime.isAfter(startTime)||matchedStop.getPlannedArrival()==null||excursionLimit==null
+                            ||startTime.isBefore(matchedStop.getPlannedArrival())||endTime.isAfter(excursionLimit)
+                            ||startTime.isBefore(cruise.getDepartureDatetime())||endTime.isAfter(cruise.getReturnDatetime()))
+                        throw new com.casms.common.exception.BusinessException(org.springframework.http.HttpStatus.UNPROCESSABLE_ENTITY,
+                                "SOURCE_EXCURSION_OUTSIDE_PORT_CALL","Tour nguồn có thời gian ngoài lần ghé cảng: "+entry.getTitle());
 
                     // Kế thừa thông tin từ Tour mẫu nguồn (nếu có)
                     Supplier supplier = null;
@@ -688,6 +690,8 @@ public class OperationalProgramMappingService {
                             .build());
                 }
 
+            } catch (com.casms.common.exception.BusinessException ex) {
+                throw ex;
             } catch (Exception ex) {
                 log.error("Error mapping trip plan entry {} (clientKey={}): {}",
                         entry.getEntryId(), entry.getClientKey(), ex.getMessage(), ex);

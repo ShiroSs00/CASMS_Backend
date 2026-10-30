@@ -75,6 +75,10 @@ public class CruiseStaffService {
                     "Only an existing staff account can receive a cruise assignment; assignment does not grant system roles");
         }
 
+        if ("ONBOARD_STAFF".equals(assignmentRole) && !user.hasRole(com.casms.identity.enums.Role.ONBOARD_STAFF)) {
+            throw new BusinessException("INVALID_CRUISE_STAFF_ROLE", "Onboard assignment requires an Onboard Staff account");
+        }
+
         // Validate schedule conflict across other active cruises
         List<CruiseStaff> conflicts = cruiseStaffRepository.findConflictingAssignments(
                 user.getUserId(),

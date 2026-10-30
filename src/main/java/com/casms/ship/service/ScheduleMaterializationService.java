@@ -213,6 +213,8 @@ public class ScheduleMaterializationService {
         // Map operational programs (onboard activities and shore excursions) from source entries
         try {
             operationalProgramMappingService.mapOperationalPrograms(cruise, version);
+        } catch (BusinessException ex) {
+            throw ex;
         } catch (Exception ex) {
             log.warn("Failed to map operational programs for cruise {}: {}", cruise.getCruiseId(), ex.getMessage());
         }
@@ -514,6 +516,8 @@ public class ScheduleMaterializationService {
             dayStopsMap.computeIfAbsent(dayNum, k -> new ArrayList<>()).add(s);
         }
 
+        Instant projectedReturn = projectedStops.getLast().getPlannedDeparture();
+        if(!projectedReturn.isAfter(departureDatetime))throw new BusinessException("INVALID_SCHEDULE","Return must be after departure");
         Map<Integer, List<CruiseSchedulePreviewResponse.ProjectedEntryDto>> dayEntriesMap = new HashMap<>();
         for (TripPlanEntry entry : planEntries) {
             int startDay = entry.getStartDayNumber() != null ? entry.getStartDayNumber() : 1;
@@ -541,6 +545,23 @@ public class ScheduleMaterializationService {
                     ? PortTimeZoneHelper.strictLocalInstant(LocalDateTime.of(endCal, entry.getPlannedEndTime()), entryZone)
                     : null;
 
+            if(entry.getKind()==TripPlanEntryKind.ONBOARD_ACTIVITY||entry.getKind()==TripPlanEntryKind.SHORE_EXCURSION) {
+                if(entry.getStartDayNumber()==null||entry.getEndDayNumber()==null||startInst==null||endInst==null||!endInst.isAfter(startInst))
+                    throw new BusinessException(org.springframework.http.HttpStatus.UNPROCESSABLE_ENTITY,"SOURCE_PROGRAM_SCHEDULE_REQUIRED",
+                            "Lịch trình nguồn có chương trình chưa đủ ngày giờ hoặc giờ kết thúc không sau giờ bắt đầu: "+entry.getTitle(),Map.of("name",Objects.toString(entry.getTitle(),""),"entryId",entry.getEntryId()));
+                if(startInst.isBefore(departureDatetime)||endInst.isAfter(projectedReturn))
+                    throw new BusinessException(org.springframework.http.HttpStatus.UNPROCESSABLE_ENTITY,"SOURCE_PROGRAM_OUTSIDE_CRUISE",
+                            "Chương trình trong lịch trình nguồn nằm ngoài thời gian chuyến: "+entry.getTitle(),Map.of("name",Objects.toString(entry.getTitle(),""),"entryId",entry.getEntryId()));
+                if(entry.getKind()==TripPlanEntryKind.SHORE_EXCURSION) {
+                    var sourceStop=entry.getStop();
+                    var projectedStop=sourceStop==null?null:projectedStops.stream().filter(stop->Objects.equals(stop.getSourceStopId(),sourceStop.getStopId())).findFirst().orElse(null);
+                    Instant limit=projectedStop==null?null:projectedStop.getAllAboardTime()!=null&&projectedStop.getAllAboardTime().isBefore(projectedStop.getPlannedDeparture())?projectedStop.getAllAboardTime():projectedStop.getPlannedDeparture();
+                    if(projectedStop==null||startInst.isBefore(projectedStop.getPlannedArrival())||endInst.isAfter(limit))
+                        throw new BusinessException(org.springframework.http.HttpStatus.UNPROCESSABLE_ENTITY,"SOURCE_EXCURSION_OUTSIDE_PORT_CALL",
+                                "Tour trong lịch trình nguồn nằm ngoài lần ghé cảng hoặc vượt hạn trở lại tàu: "+entry.getTitle(),Map.of("name",Objects.toString(entry.getTitle(),""),"entryId",entry.getEntryId()));
+                }
+            }
+
             Integer stopOrder = entry.getStop() != null ? entry.getStop().getStopOrder() : null;
 
             CruiseSchedulePreviewResponse.ProjectedEntryDto entryDto = CruiseSchedulePreviewResponse.ProjectedEntryDto.builder()
@@ -557,8 +578,6 @@ public class ScheduleMaterializationService {
             dayEntriesMap.computeIfAbsent(startDay, k -> new ArrayList<>()).add(entryDto);
         }
 
-        Instant projectedReturn = projectedStops.getLast().getPlannedDeparture();
-        if(!projectedReturn.isAfter(departureDatetime))throw new BusinessException("INVALID_SCHEDULE","Return must be after departure");
         totalDays = Math.toIntExact(java.time.temporal.ChronoUnit.DAYS.between(day1Date,projectedReturn.atZone(shipZone).toLocalDate())+1);
         List<CruiseSchedulePreviewResponse.ProjectedDayDto> projectedDays = new ArrayList<>();
         for (int d = 1; d <= totalDays; d++) {

@@ -14,6 +14,12 @@ public class CruiseUpdateDraftRequest {
     @Schema(description = "Revision kỳ vọng của chuyến đi để bảo vệ chống ghi đè đồng thời (Optimistic lock)", example = "1")
     private Long expectedRevision;
 
+    @Schema(description = "Phạm vi của lịch trình nhập trực tiếp; nguồn liên kết không cho ghi đè")
+    private String plannedScope;
+
+    @Schema(description = "Chế độ lịch trình nhập trực tiếp: FIXED hoặc CUSTOM")
+    private String itineraryMode;
+
     @Schema(description = "Tên chuyến đi mới", example = "Hải trình khám phá Vịnh Hạ Long - Cát Bà 3N2Đ")
     private String cruiseName;
 

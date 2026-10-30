@@ -130,6 +130,21 @@ public class CruisePricingPolicyService {
         }
         p.setRevision(p.getRevision()+1);event(p,action.toUpperCase(java.util.Locale.ROOT),actorId,request.reason());return toResponse(p);
     }
+    @Transactional
+    public void recallForPlan(UUID cruiseId, UUID actorId, boolean reviewer) {
+        var auth=org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+        if(auth==null || !(auth.getPrincipal() instanceof com.casms.security.principal.CasmsPrincipal principal)
+            || !Objects.equals(actorId,principal.getUserId())
+            || !principal.hasRole(reviewer?com.casms.identity.enums.Role.OPERATIONS_MANAGER:com.casms.identity.enums.Role.CRUISE_MANAGER)
+            || !principal.hasPermission(reviewer?com.casms.identity.enums.Permission.ITINERARY_APPROVE:com.casms.identity.enums.Permission.CRUISE_UPDATE_DRAFT))
+            throw new org.springframework.security.access.AccessDeniedException("Plan recall requires role and effective permission");
+        cruiseRepository.findByIdForUpdate(cruiseId).orElseThrow(()->new ResourceNotFoundException("Cruise",cruiseId));
+        var p=pricingPolicyRepository.findByCruise_CruiseId(cruiseId).orElseThrow(()->new ResourceNotFoundException("Pricing policy",cruiseId));
+        if(p.getStatus()!=PricingPolicyStatus.PENDING_APPROVAL)return;
+        p.setStatus(PricingPolicyStatus.DRAFT);p.setSubmittedBy(null);p.setSubmittedAt(null);
+        p.setSubmittedSnapshot(null);p.setSnapshotHash(null);p.setRevision(p.getRevision()+1);
+        event(p,"PLAN_RECALL",actorId,null);
+    }
     /** Legacy no-revision route cannot approve. */
     @Transactional
     public CruisePricingPolicyResponse approvePricingPolicy(UUID cruiseId,UUID actorId){actor(actorId,true);throw conflict("STALE_REVISION");}
