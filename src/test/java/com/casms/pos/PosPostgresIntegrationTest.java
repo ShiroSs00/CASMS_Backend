@@ -515,7 +515,8 @@ class PosPostgresIntegrationTest {
     private void assignEmployee(String auth,UUID targetArea,UUID targetCruise) throws Exception {
         UUID id=jwt.extractUserId(auth);
         int count=jdbc.queryForObject("SELECT count(*) FROM \"CruiseStaff\" WHERE cruise_id=? AND user_id=? AND status='ACTIVE'",Integer.class,targetCruise,id);
-        if(count==0)perform(post("/cruise/{id}/staff",targetCruise),manager,Map.of("userId",id,"roleInCruise","ONBOARD_STAFF"),200);
+        String assignmentRole=new TransactionTemplate(tm).execute(s->users.findById(id).orElseThrow().hasRole(Role.ONBOARD_STAFF)?"ONBOARD_STAFF":"PORT_COORDINATOR");
+        if(count==0)perform(post("/cruise/{id}/staff",targetCruise),manager,Map.of("userId",id,"roleInCruise",assignmentRole),200);
         perform(put("/ships/{ship}/areas/{area}/staff/{user}",ship,targetArea,id),manager,
                 Map.of("cruiseId",targetCruise,"enabled",true,"startsAt",Instant.now().minusSeconds(60).toString()),200);
     }
