@@ -40,7 +40,7 @@ class FlywayMigrationPostgresIntegrationTest {
     private static final String PASSWORD = env("DB_PASSWORD", "12345");
     private static final String[] APP_LOCATIONS = {"classpath:db/migration"};
     private static final String[] PROD_LOCATIONS = {"classpath:db/migration", "classpath:db/prod-migration"};
-    private static final String LATEST = "72";
+    private static final String LATEST = "73";
 
     private final List<String> createdDatabases = new ArrayList<>();
 

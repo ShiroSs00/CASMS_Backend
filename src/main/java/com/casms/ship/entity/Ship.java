@@ -40,7 +40,7 @@ public class Ship {
     @Column(name = "deck_number_limit")
     private Integer deckNumberLimit;
 
-    /** Stable identity shared by revisions of the source ship manifest. */
+    /** Source template identity; multiple physical ships may reuse the same uploaded model. */
     @Column(name = "manifest_model_id", length = 80)
     private String manifestModelId;
 

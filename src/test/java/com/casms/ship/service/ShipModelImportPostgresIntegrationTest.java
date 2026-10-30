@@ -72,7 +72,7 @@ class ShipModelImportPostgresIntegrationTest {
 
     private final List<UUID> testShipIds = new ArrayList<>();
     private final List<UUID> testUserIds = new ArrayList<>();
-    private final Set<String> uploadedBundles = new LinkedHashSet<>();
+    private final Set<String> uploadedBundles = Collections.synchronizedSet(new LinkedHashSet<>());
     private final List<Path> tempArchives = new ArrayList<>();
     private final List<UUID> testServiceIds = new ArrayList<>();
 
@@ -503,7 +503,7 @@ class ShipModelImportPostgresIntegrationTest {
     }
 
     @Test
-    void manifestRegistration_createsShipAndReusesStableIdentityAcrossVersions() throws Exception {
+    void manifestRegistration_createsIndependentShipsFromTheSameUploadedTemplate() throws Exception {
         String token = token(Role.SHIP_MANAGER);
         String key = uniqueKey("provision");
         upload(key, "v1", smallBundle(key, "v1", "OCEAN_VIEW", "M-301", true), token);
@@ -524,25 +524,30 @@ class ShipModelImportPostgresIntegrationTest {
         assertEquals(100.0, createdShip.getLengthMeters());
         assertEquals(20.0, createdShip.getBeamMeters());
 
-        upload(key, "v2", smallBundle(key, "v2", "SUITE", "M-301", true), token);
-        upload(key, "v3", smallBundle(key, "v3", "BALCONY", "M-301", true), token);
+
         ExecutorService pool = Executors.newFixedThreadPool(2);
         JsonNode second;
         JsonNode third;
         try {
-            var v2 = CompletableFuture.supplyAsync(() -> registerManifestUnchecked(key, "v2", token), pool);
-            var v3 = CompletableFuture.supplyAsync(() -> registerManifestUnchecked(key, "v3", token), pool);
+            var v2 = CompletableFuture.supplyAsync(() -> registerManifestUnchecked(key, "v1", token), pool);
+            var v3 = CompletableFuture.supplyAsync(() -> registerManifestUnchecked(key, "v1", token), pool);
             second = v2.join();
             third = v3.join();
         } finally {
             pool.shutdownNow();
         }
-        assertFalse(second.path("shipCreated").asBoolean());
-        assertFalse(third.path("shipCreated").asBoolean());
-        assertEquals(shipId, UUID.fromString(second.path("shipId").asText()));
-        assertEquals(shipId, UUID.fromString(third.path("shipId").asText()));
-        assertEquals(1, ships.findAll().stream().filter(s -> key.equals(s.getManifestModelId())).count());
-        assertEquals(3, models.findByShipShipIdOrderByCreatedAtDesc(shipId).size());
+        assertTrue(second.path("shipCreated").asBoolean());
+        assertTrue(third.path("shipCreated").asBoolean());
+        UUID secondShip=UUID.fromString(second.path("shipId").asText()),thirdShip=UUID.fromString(third.path("shipId").asText());
+        testShipIds.add(secondShip);testShipIds.add(thirdShip);
+        assertEquals(3,Set.of(shipId,secondShip,thirdShip).size());
+        assertEquals(3,ships.findAll().stream().filter(s->key.equals(s.getManifestModelId())).count());
+        assertEquals(1,models.findByShipShipIdOrderByCreatedAtDesc(shipId).size());
+        assertEquals(1,models.findByShipShipIdOrderByCreatedAtDesc(secondShip).size());
+        assertEquals(1,models.findByShipShipIdOrderByCreatedAtDesc(thirdShip).size());
+        assertEquals("SUCCEEDED",importJob(secondShip,UUID.fromString(second.path("shipModelId").asText()),token).path("data").path("status").asText());
+        assertEquals("SUCCEEDED",importJob(thirdShip,UUID.fromString(third.path("shipModelId").asText()),token).path("data").path("status").asText());
+        assertNotEquals(decks.findByShipShipIdAndDeckNumber(secondShip,1).orElseThrow().getDeckId(),decks.findByShipShipIdAndDeckNumber(thirdShip,1).orElseThrow().getDeckId());
     }
 
     @Test
@@ -597,6 +602,149 @@ class ShipModelImportPostgresIntegrationTest {
         UUID noCabinModel = register(ship.getShipId(), noCabinKey, noCabinVersion, token);
         assertEquals("SUCCEEDED", importJob(ship.getShipId(), noCabinModel, token).path("data").path("status").asText());
         assertEquals(1, cabins.countByShipShipId(ship.getShipId()), "objects absent from a later model must be retained");
+    }
+
+    @Test
+    void shipCreateUsesStoredModelAndGeneratesCodesAndDatesWithoutAnotherUpload() throws Exception {
+        String token=token(Role.SHIP_MANAGER),key=uniqueKey("reuse-create");
+        upload(key,"v1",smallBundle(key,"v1","OCEAN_VIEW","M-REUSE",true),token);
+        long blobCount=jdbc.queryForObject("SELECT count(*) FROM \"ShipModelAssetBlob\" WHERE model_key=?",Long.class,key);
+        var uploadedAt=jdbc.queryForObject("SELECT min(created_at) FROM \"ShipModelAssetBlob\" WHERE model_key=?",java.sql.Timestamp.class,key);
+        JsonNode first=createUsingModel(key,"v1",Map.of("shipName","Ignored override","totalCapacity",999,"totalDecks",99),token,201);
+        JsonNode second=createUsingModel(key,"v1",Map.of("commissionDate","2020-01-02"),token,201);
+        assertNotEquals(first.path("shipId").asText(),second.path("shipId").asText());
+        assertNotEquals(first.path("shipCode").asText(),second.path("shipCode").asText());
+        assertEquals("Mini Ship",first.path("shipName").asText());assertEquals(2,first.path("totalCapacity").asInt());
+        assertEquals(1,first.path("totalDecks").asInt());assertFalse(first.path("createdAt").asText().isBlank());
+        assertEquals("2020-01-02",second.path("commissionDate").asText());
+        assertEquals(blobCount,jdbc.queryForObject("SELECT count(*) FROM \"ShipModelAssetBlob\" WHERE model_key=?",Long.class,key));
+        assertEquals(uploadedAt,jdbc.queryForObject("SELECT min(created_at) FROM \"ShipModelAssetBlob\" WHERE model_key=?",java.sql.Timestamp.class,key));
+        UUID firstId=UUID.fromString(first.path("shipId").asText()),secondId=UUID.fromString(second.path("shipId").asText());
+        assertEquals(1,models.findByShipShipIdOrderByCreatedAtDesc(firstId).size());
+        assertEquals(1,models.findByShipShipIdOrderByCreatedAtDesc(secondId).size());
+    }
+
+    @Test
+    void missingOptionalMetadataIsSkippedAndOnlyMissingRequiredValuesNeedSupplements() throws Exception {
+        String token=token(Role.SHIP_MANAGER),key=uniqueKey("partial-metadata");
+        Path original=smallBundle(key,"v1","OCEAN_VIEW","M-PARTIAL",true);
+        Path partial=rewriteManifest(original,key,"v1",Set.of("name","passengerCapacity","deckCount","length","beam"));
+        upload(key,"v1",partial,token);long before=ships.count();
+        createUsingModel(key,"v1",Map.of(),token,400);assertEquals(before,ships.count());
+        JsonNode ship=createUsingModel(key,"v1",Map.of("shipName","Supplemented ship","totalCapacity",20,"lengthMeters",75.0),token,201);
+        assertEquals("Supplemented ship",ship.path("shipName").asText());assertEquals(20,ship.path("totalCapacity").asInt());
+        assertEquals(1,ship.path("totalDecks").asInt());assertEquals(75.0,ship.path("lengthMeters").asDouble());
+        assertTrue(ship.path("beamMeters").isNull());assertTrue(ship.path("commissionDate").isNull());
+        var result=mockMvc.perform(post("/ship-model-assets/{key}/{version}/register",key,"v1").header("Authorization","Bearer "+token)
+                .contentType(MediaType.APPLICATION_JSON).content(mapper.writeValueAsBytes(Map.of("shipName","Second supplemented ship","totalCapacity",30))))
+                .andExpect(status().isCreated()).andReturn();
+        UUID other=UUID.fromString(mapper.readTree(result.getResponse().getContentAsByteArray()).path("data").path("shipId").asText());testShipIds.add(other);
+        assertNull(ships.findById(other).orElseThrow().getLengthMeters());assertNull(ships.findById(other).orElseThrow().getBeamMeters());
+    }
+
+    @Test
+    void sameUploadedBundleCanBeAttachedToDifferentExistingShips() throws Exception {
+        String token=token(Role.SHIP_MANAGER),key=uniqueKey("reuse-existing");
+        upload(key,"v1",smallBundle(key,"v1","SUITE","M-EXIST",true),token);
+        Ship first=createShip(2),second=createShip(2);
+        UUID a=register(first.getShipId(),key,"v1",token),b=register(second.getShipId(),key,"v1",token);
+        assertNotEquals(a,b);assertEquals(key,ships.findById(first.getShipId()).orElseThrow().getManifestModelId());
+        assertEquals(key,ships.findById(second.getShipId()).orElseThrow().getManifestModelId());
+        mockMvc.perform(post("/ships/{id}/models",first.getShipId()).header("Authorization","Bearer "+token).contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsBytes(Map.of("modelKey",key,"assetVersion","v1")))).andExpect(status().isConflict());
+    }
+
+    @Test
+    void contentLimitCountsIdenticalGlbAcrossKeysButAllowsDifferentContentAndUnlimitedShipReuse() throws Exception {
+        String token=token(Role.SHIP_MANAGER),first=uniqueKey("copy-a"),alias=uniqueKey("copy-b");
+        upload(first,"v1",smallBundle(first,"v1","OCEAN_VIEW","M-COPY",true),token);
+        upload(alias,"v1",smallBundle(alias,"v1","OCEAN_VIEW","M-COPY",true),token);
+        long objectsBefore=jdbc.queryForObject("SELECT count(*) FROM pg_largeobject_metadata",Long.class);
+        assertEquals(409,uploadStatus(first,"v2",smallBundle(first,"v2","OCEAN_VIEW","M-COPY",true),token));
+        assertEquals(0,jdbc.queryForObject("SELECT count(*) FROM \"ShipModelAssetBlob\" WHERE model_key=? AND asset_version='v2'",Integer.class,first));
+        assertEquals(objectsBefore,jdbc.queryForObject("SELECT count(*) FROM pg_largeobject_metadata",Long.class));
+        for(int i=0;i<3;i++)createUsingModel(first,"v1",Map.of(),token,201);
+        upload(first,"v3",smallBundle(first,"v3","SUITE","M-COPY",true),token);
+    }
+
+    @Test
+    void invalidUploadDoesNotConsumeDuplicateAllowance() throws Exception {
+        String token=token(Role.SHIP_MANAGER),key=uniqueKey("invalid-copy");
+        upload(key,"v1",smallBundle(key,"v1","OCEAN_VIEW","M-INVALID",true),token);
+        Path invalid=rewriteChecksums(smallBundle(key,"v2","OCEAN_VIEW","M-INVALID",true),key,"v2");
+        assertEquals(400,uploadStatus(key,"v2",invalid,token));
+        upload(key,"v3",smallBundle(key,"v3","OCEAN_VIEW","M-INVALID",true),token);
+        assertEquals(409,uploadStatus(key,"v4",smallBundle(key,"v4","OCEAN_VIEW","M-INVALID",true),token));
+    }
+
+    @Test
+    void concurrentIdenticalUploadsCannotExceedTwoCopies() throws Exception {
+        String token=token(Role.SHIP_MANAGER),a=uniqueKey("race-a"),b=uniqueKey("race-b"),c=uniqueKey("race-c");
+        upload(a,"v1",smallBundle(a,"v1","OCEAN_VIEW","M-RACE",true),token);
+        Path second=smallBundle(b,"v1","OCEAN_VIEW","M-RACE",true),third=smallBundle(c,"v1","OCEAN_VIEW","M-RACE",true);
+        ExecutorService pool=Executors.newFixedThreadPool(2);var start=new java.util.concurrent.CountDownLatch(1);
+        try {
+            var f1=pool.submit(()->{start.await();return uploadStatus(b,"v1",second,token);});
+            var f2=pool.submit(()->{start.await();return uploadStatus(c,"v1",third,token);});start.countDown();
+            var results=new ArrayList<>(List.of(f1.get(90,java.util.concurrent.TimeUnit.SECONDS),f2.get(90,java.util.concurrent.TimeUnit.SECONDS)));
+            Collections.sort(results);assertEquals(List.of(201,409),results);
+            assertEquals(2,jdbc.queryForObject("SELECT count(*) FROM \"ShipModelAssetBlob\" WHERE asset_path='manifest.json' AND model_key IN (?,?,?)",Integer.class,a,b,c));
+        } finally {pool.shutdownNow();}
+    }
+
+    @Test
+    void modelReferencesAndCreatePermissionsAreValidatedBeforeCreatingShips() throws Exception {
+        String token=token(Role.SHIP_MANAGER),key=uniqueKey("create-access"),passenger=token(Role.PASSENGER);
+        upload(key,"v1",smallBundle(key,"v1","OCEAN_VIEW","M-ACCESS",true),token);
+        long before=ships.count();
+        mockMvc.perform(post("/ships").header("Authorization","Bearer "+token).contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsBytes(Map.of("modelKey",key)))).andExpect(status().isBadRequest());
+        createUsingModel(key,"missing",Map.of(),token,404);
+        createUsingModel(key,"v1",Map.of(),passenger,403);
+        mockMvc.perform(post("/ship-model-assets/{key}/{version}/register",key,"v1").header("Authorization","Bearer "+passenger)).andExpect(status().isForbidden());
+        mockMvc.perform(post("/ships").header("Authorization","Bearer "+token).contentType(MediaType.APPLICATION_JSON).content("{}")).andExpect(status().isBadRequest());
+        assertEquals(before,ships.count());
+    }
+
+    private JsonNode createUsingModel(String key,String version,Map<String,Object> supplements,String token,int expected) throws Exception {
+        Map<String,Object> body=new LinkedHashMap<>(supplements);body.put("modelKey",key);body.put("assetVersion",version);
+        var result=mockMvc.perform(post("/ships").header("Authorization","Bearer "+token).contentType(MediaType.APPLICATION_JSON).content(mapper.writeValueAsBytes(body)))
+                .andExpect(status().is(expected)).andReturn();
+        JsonNode data=mapper.readTree(result.getResponse().getContentAsByteArray()).path("data");
+        if(expected==201)testShipIds.add(UUID.fromString(data.path("shipId").asText()));return data;
+    }
+    private int uploadStatus(String key,String version,Path archive,String token) throws Exception {
+        uploadedBundles.add(key+"|"+version);
+        return mockMvc.perform(multipart("/ship-model-assets").file(new FileBackedMultipartFile("bundle",archive))
+                .param("modelKey",key).param("assetVersion",version).header("Authorization","Bearer "+token)).andReturn().getResponse().getStatus();
+    }
+    private Path rewriteManifest(Path original,String key,String version,Set<String> fields) throws Exception {
+        Map<String,byte[]> entries=readBundle(original,key,version);
+        var manifest=(com.fasterxml.jackson.databind.node.ObjectNode)mapper.readTree(entries.get("manifest.json"));fields.forEach(manifest::remove);
+        entries.put("manifest.json",mapper.writeValueAsBytes(manifest));return writeBundle(entries,key,version,true);
+    }
+    private Path rewriteChecksums(Path original,String key,String version) throws Exception {
+        Map<String,byte[]> entries=readBundle(original,key,version);
+        var sums=(com.fasterxml.jackson.databind.node.ObjectNode)mapper.readTree(entries.get("checksums.json"));sums.put("ship.glb","0".repeat(64));
+        entries.put("checksums.json",mapper.writeValueAsBytes(sums));return writeBundle(entries,key,version,false);
+    }
+    private Map<String,byte[]> readBundle(Path original,String key,String version) throws Exception {
+        Map<String,byte[]> entries=new LinkedHashMap<>();String prefix=ASSET_PREFIX+key+"/"+version+"/";
+        try(var zip=new java.util.zip.ZipInputStream(Files.newInputStream(original))) {
+            ZipEntry entry;while((entry=zip.getNextEntry())!=null)if(!entry.isDirectory())entries.put(entry.getName().substring(prefix.length()),zip.readAllBytes());
+        }
+        return entries;
+    }
+    private Path writeBundle(Map<String,byte[]> entries,String key,String version,boolean checksums) throws Exception {
+        if(checksums) {
+            Map<String,String> sums=new LinkedHashMap<>();for(var entry:entries.entrySet())if(!entry.getKey().equals("checksums.json"))sums.put(entry.getKey(),sha256(entry.getValue()));
+            entries.put("checksums.json",mapper.writeValueAsBytes(sums));
+        }
+        Path archive=Files.createTempFile("casms-reuse-",".zip");tempArchives.add(archive);
+        try(var zip=new ZipOutputStream(Files.newOutputStream(archive))) {
+            for(var entry:entries.entrySet()) {zip.putNextEntry(new ZipEntry(ASSET_PREFIX+key+"/"+version+"/"+entry.getKey()));zip.write(entry.getValue());zip.closeEntry();}
+        }
+        return archive;
     }
 
     @AfterEach

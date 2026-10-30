@@ -106,8 +106,35 @@ public class ShipModelAssetStore {
         expected.remove("checksums.json");
         if (!checksumPaths.equals(expected)) throw bad("checksums.json does not cover every uploaded asset");
 
+        enforceFullModelCopyLimit(modelKey,assetVersion,manifest,stored);
+
         return new UploadResult(fileCount, totalBytes);
     }
+
+    private void enforceFullModelCopyLimit(String modelKey,String version,JsonNode manifest,Map<String,AssetMetadata> stored) {
+        String fingerprint=stored.get(manifest.path("assets").path("full").asText()).sha256();
+        // Lock after validation and before counting; a waiter sees uploads committed by the previous holder.
+        jdbc.execute((ConnectionCallback<Void>)connection->{
+            try(var statement=connection.prepareStatement("SELECT pg_advisory_xact_lock(hashtextextended(?,0))")) {
+                statement.setString(1,"ship-model-full:"+fingerprint);statement.execute();
+            }
+            return null;
+        });
+        var candidates=jdbc.query("SELECT a.model_key,a.asset_version,a.asset_path FROM "+TABLE+" a JOIN "+TABLE+" m "
+                +"ON m.model_key=a.model_key AND m.asset_version=a.asset_version AND m.asset_path='manifest.json' "
+                +"WHERE a.sha256=? AND a.asset_path LIKE '%.glb' AND (a.model_key<>? OR a.asset_version<>?) ORDER BY a.model_key,a.asset_version,a.asset_path",
+                (r,n)->new ContentCandidate(r.getString("model_key"),r.getString("asset_version"),r.getString("asset_path")),fingerprint,modelKey,version);
+        Map<String,JsonNode> manifests=new HashMap<>();Set<String> counted=new HashSet<>();
+        for(var candidate:candidates) {
+            String identity=candidate.modelKey()+"|"+candidate.version();
+            JsonNode source=manifests.computeIfAbsent(identity,k->readJson(candidate.modelKey(),candidate.version(),"manifest.json",MAX_MANIFEST_BYTES));
+            if(candidate.path().equals(source.path("assets").path("full").asText()))counted.add(identity);
+            if(counted.size()>=2)throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "This GLB content has already been uploaded twice; reuse an uploaded model to create more ships");
+        }
+    }
+
+    private record ContentCandidate(String modelKey,String version,String path) {}
 
     public boolean bundleExists(String modelKey, String assetVersion) {
         Integer count = jdbc.queryForObject("SELECT count(*) FROM " + TABLE +

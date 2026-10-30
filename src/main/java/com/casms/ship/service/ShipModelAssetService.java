@@ -3,6 +3,7 @@ package com.casms.ship.service;
 import com.casms.common.exception.ResourceNotFoundException;
 import com.casms.common.service.BusinessCodeGenerator;
 import com.casms.ship.dto.request.ShipModelAssetRegisterRequest;
+import com.casms.ship.dto.request.ShipCreateRequest;
 import com.casms.ship.dto.request.ShipModelCabinMappingRequest;
 import com.casms.ship.dto.request.ShipModelDeckMappingRequest;
 import com.casms.ship.dto.response.ShipModelAssetResponse;
@@ -25,8 +26,6 @@ import com.fasterxml.jackson.databind.JsonNode;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.core.ConnectionCallback;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
@@ -56,7 +55,6 @@ public class ShipModelAssetService {
     private final CabinRepository cabins;
     private final ShipModelAssetStore assets;
     private final BusinessCodeGenerator businessCodes;
-    private final JdbcTemplate jdbc;
 
     @Transactional
     public ShipModelAssetUploadResponse uploadBundle(String modelKey, String assetVersion, MultipartFile bundle) {
@@ -79,7 +77,6 @@ public class ShipModelAssetService {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Model asset bundle is not uploaded to the database");
         }
         JsonNode manifest = assets.manifest(request.modelKey(), request.assetVersion());
-        lockManifestIdentity(manifest.path("modelId").asText(""));
         lockShip(shipId);
         if (models.existsByShipShipIdAndModelKeyAndAssetVersion(shipId, request.modelKey(), request.assetVersion())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Model asset version is already registered on this ship");
@@ -108,35 +105,38 @@ public class ShipModelAssetService {
         }
     }
 
-    /** Resolve an existing manifest identity or create its CASMS Ship, then register the asset version. */
+    /** Create an independent physical ship; a manifest is a reusable source template. */
     @Transactional
     public ShipModelManifestRegistrationResponse registerFromManifest(String modelKey, String assetVersion,
                                                                        Authentication authentication) {
+        return registerFromManifest(modelKey,assetVersion,null,authentication);
+    }
+
+    @Transactional
+    public ShipModelManifestRegistrationResponse registerFromManifest(String modelKey,String assetVersion,
+            ShipCreateRequest supplements,Authentication authentication) {
+        requireAuthority(authentication,"SHIP_CREATE");
+        return createShipFromManifest(modelKey,assetVersion,supplements);
+    }
+
+    @Transactional
+    public ShipModelManifestRegistrationResponse createShipFromManifest(String modelKey,String assetVersion,ShipCreateRequest supplements) {
         if (!assets.bundleExists(modelKey, assetVersion)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Model asset bundle is not uploaded to the database");
         }
         JsonNode manifest = assets.manifest(modelKey, assetVersion);
-        String manifestModelId = requiredManifestText(manifest, "modelId");
-        lockManifestIdentity(manifestModelId);
-        Ship ship = ships.lockByManifestModelId(manifestModelId).orElse(null);
-        boolean created = ship == null;
-        if (created) {
-            requireAuthority(authentication, "SHIP_CREATE");
-            ship = new Ship();
-            ship.setShipCode(businessCodes.next("SH"));
-            ship.setStatus(ShipStatus.ACTIVE);
-        } else {
-            requireAuthority(authentication, "SHIP_UPDATE");
+        Ship ship = new Ship();
+        ship.setShipCode(businessCodes.next("SH"));
+        ship.setStatus(supplements==null || supplements.getStatus()==null?ShipStatus.ACTIVE:supplements.getStatus());
+        if(supplements!=null) {
+            ship.setShipName(supplements.getShipName());ship.setTotalCapacity(supplements.getTotalCapacity());
+            ship.setTotalDecks(supplements.getTotalDecks());ship.setLengthMeters(supplements.getLengthMeters());
+            ship.setBeamMeters(supplements.getBeamMeters());ship.setCommissionDate(supplements.getCommissionDate());
         }
         syncShipFromManifest(ship, manifest, true);
-        try {
-            ship = ships.saveAndFlush(ship);
-        } catch (DataIntegrityViolationException ex) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "A Ship with this manifest identity was registered concurrently; retry registration", ex);
-        }
+        ship = ships.saveAndFlush(ship);
         UUID shipModelId = register(ship.getShipId(), new ShipModelAssetRegisterRequest(modelKey, assetVersion));
-        return new ShipModelManifestRegistrationResponse(ship.getShipId(), shipModelId, created);
+        return new ShipModelManifestRegistrationResponse(ship.getShipId(), shipModelId, true);
     }
 
     private static void requireAuthority(Authentication authentication, String authority) {
@@ -152,71 +152,72 @@ public class ShipModelAssetService {
             if (requireCompleteMetadata) throw bad("Manifest modelId is required to provision a Ship");
             return;
         }
-        lockManifestIdentity(manifestModelId);
-        Ship identityOwner = ships.findByManifestModelId(manifestModelId).orElse(null);
-        if (identityOwner != null && ship.getShipId() != null && !identityOwner.getShipId().equals(ship.getShipId())) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Manifest identity is already linked to another Ship");
-        }
         if (ship.getManifestModelId() != null && !ship.getManifestModelId().equals(manifestModelId)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Ship is already linked to a different manifest identity");
         }
 
+        if(manifest.hasNonNull("name") && !manifest.path("name").isTextual())throw bad("Manifest name must be text");
         String name = manifest.path("name").asText("").trim();
-        Integer deckCount = manifestInt(manifest, "deckCount");
-        Integer passengerCapacity = manifestInt(manifest, "passengerCapacity");
-        Double length = manifestDouble(manifest, "length");
-        Double beam = manifestDouble(manifest, "beam");
+        if(!name.isEmpty())ship.setShipName(name);
+        Integer deckCount = positiveManifestInt(manifest, "deckCount");
+        Integer passengerCapacity = positiveManifestInt(manifest, "passengerCapacity");
+        Double length = positiveManifestDouble(manifest, "length");
+        Double beam = positiveManifestDouble(manifest, "beam");
+        if(deckCount!=null)ship.setTotalDecks(deckCount);
+        else if(ship.getTotalDecks()==null && !manifest.path("decks").isEmpty())ship.setTotalDecks(manifest.path("decks").size());
+        if(passengerCapacity!=null)ship.setTotalCapacity(passengerCapacity);
+        if(length!=null)ship.setLengthMeters(length);
+        if(beam!=null)ship.setBeamMeters(beam);
+        String commission=manifest.path("commissionDate").asText("").trim();
+        if(!commission.isEmpty()) {
+            try {ship.setCommissionDate(java.time.LocalDate.parse(commission));}
+            catch(java.time.format.DateTimeParseException ex) {throw bad("Manifest commissionDate must be an ISO date");}
+        }
         int maximumDeckNumber = manifest.path("decks").isArray()
                 ? java.util.stream.StreamSupport.stream(manifest.path("decks").spliterator(), false)
                     .mapToInt(deck -> deck.path("number").asInt(0)).max().orElse(0)
                 : 0;
-        boolean complete = !name.isEmpty() && name.length() <= 100 && deckCount != null && deckCount > 0 &&
-                maximumDeckNumber > 0 &&
-                passengerCapacity != null && passengerCapacity > 0 && length != null && length > 0 &&
-                beam != null && beam > 0;
-        if (requireCompleteMetadata && !complete) {
-            throw bad("Manifest must provide a valid name, deckCount, passengerCapacity, length, beam, and passenger deck numbering to provision a Ship");
-        }
+        if(ship.getShipName()==null || ship.getShipName().isBlank() || ship.getShipName().trim().length()>100)
+            throw bad("Supply shipName when the model has no ship name (maximum 100 characters)");
+        ship.setShipName(ship.getShipName().trim());
+        if(ship.getTotalCapacity()==null || ship.getTotalCapacity()<1)
+            throw bad("Supply a positive totalCapacity when the model has no passengerCapacity");
+        if(ship.getTotalDecks()==null || ship.getTotalDecks()<1)
+            throw bad("Supply a positive totalDecks when the model has no passenger decks or deckCount");
+        if(ship.getLengthMeters()!=null && (!Double.isFinite(ship.getLengthMeters()) || ship.getLengthMeters()<=0) ||
+                ship.getBeamMeters()!=null && (!Double.isFinite(ship.getBeamMeters()) || ship.getBeamMeters()<=0))
+            throw bad("Ship dimensions, when supplied, must be finite positive values");
+        if(ship.getCommissionDate()!=null && ship.getCommissionDate().isAfter(java.time.LocalDate.now()))
+            throw bad("Commission date cannot be in the future");
         ship.setManifestModelId(manifestModelId);
-        if (!complete) return; // Keep older manifest bundles compatible with explicit ship registration.
 
         if (ship.getShipId() != null) {
             Long configuredCabinCapacity = cabins.sumCapacityByShipId(ship.getShipId());
-            if (configuredCabinCapacity != null && passengerCapacity < configuredCabinCapacity) {
+            if (configuredCabinCapacity != null && ship.getTotalCapacity() < configuredCabinCapacity) {
                 throw new ResponseStatusException(HttpStatus.CONFLICT,
                         "Manifest passengerCapacity is lower than the configured cabin capacity");
             }
             long configuredDeckCount = decks.countByShipShipIdAndServiceLevelFalse(ship.getShipId());
-            if (deckCount < configuredDeckCount) {
+            if (ship.getTotalDecks() < configuredDeckCount) {
                 throw new ResponseStatusException(HttpStatus.CONFLICT,
                         "Manifest deckCount is lower than the configured business deck count");
             }
             maximumDeckNumber = Math.max(maximumDeckNumber,
                     ship.getDeckNumberLimit() == null ? ship.getTotalDecks() : ship.getDeckNumberLimit());
         }
-        ship.setShipName(name);
-        ship.setTotalCapacity(passengerCapacity);
-        ship.setTotalDecks(deckCount); // serviceDecks are model-only, not passenger business decks.
-        ship.setDeckNumberLimit(maximumDeckNumber);
-        ship.setLengthMeters(length);
-        ship.setBeamMeters(beam);
+        ship.setDeckNumberLimit(maximumDeckNumber>0?maximumDeckNumber:ship.getTotalDecks());
     }
 
-    private void lockManifestIdentity(String manifestModelId) {
-        if (manifestModelId == null || manifestModelId.isBlank()) return;
-        jdbc.execute((ConnectionCallback<Void>) connection -> {
-            try (var statement = connection.prepareStatement(
-                    "SELECT pg_advisory_xact_lock(hashtextextended(?, 0))")) {
-                statement.setString(1, manifestModelId);
-                statement.execute();
-            }
-            return null;
-        });
+    private static Integer positiveManifestInt(JsonNode manifest,String field) {
+        if(!manifest.hasNonNull(field))return null;
+        Integer value=manifestInt(manifest,field);
+        if(value==null || value<1)throw bad("Manifest "+field+" must be a positive integer");
+        return value;
     }
-
-    private static String requiredManifestText(JsonNode manifest, String field) {
-        String value = manifest.path(field).asText("").trim();
-        if (value.isEmpty()) throw bad("Manifest " + field + " is required");
+    private static Double positiveManifestDouble(JsonNode manifest,String field) {
+        if(!manifest.hasNonNull(field))return null;
+        Double value=manifestDouble(manifest,field);
+        if(value==null || value<=0)throw bad("Manifest "+field+" must be a finite positive number");
         return value;
     }
 

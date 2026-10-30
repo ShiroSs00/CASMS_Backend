@@ -42,9 +42,16 @@ public class ShipService {
     private final ShipModelRepository shipModelRepository;
     private final LocationDeviceRepository locationDeviceRepository;
     private final BusinessCodeGenerator businessCodeGenerator;
+    private final ShipModelAssetService modelAssets;
 
     @Transactional
     public ShipResponse create(ShipCreateRequest request) {
+        if(request.getModelKey()!=null || request.getAssetVersion()!=null) {
+            if(!request.isModelReferenceComplete())throw new BusinessException("INVALID_MODEL_REFERENCE","modelKey and assetVersion must be supplied together");
+            var registered=modelAssets.createShipFromManifest(request.getModelKey(),request.getAssetVersion(),request);
+            return mapToResponse(getShipById(registered.shipId()));
+        }
+        if(request.getShipName()==null || request.getShipName().isBlank())throw new BusinessException("INVALID_SHIP_NAME","Ship name is required");
         String shipName = request.getShipName().trim();
         String shipCode = businessCodeGenerator.next("SH");
         ShipStatus status = request.getStatus() == null ? ShipStatus.ACTIVE : request.getStatus();
@@ -265,11 +272,10 @@ public class ShipService {
     }
 
     private void validateHullDimensions(Double lengthMeters, Double beamMeters) {
-        if ((lengthMeters == null) != (beamMeters == null) ||
-                (lengthMeters != null && (!Double.isFinite(lengthMeters) || lengthMeters <= 0 ||
-                        !Double.isFinite(beamMeters) || beamMeters <= 0))) {
+        if (lengthMeters != null && (!Double.isFinite(lengthMeters) || lengthMeters <= 0) ||
+                beamMeters != null && (!Double.isFinite(beamMeters) || beamMeters <= 0)) {
             throw new BusinessException("INVALID_SHIP_HULL_DIMENSIONS",
-                    "Ship length and beam must either both be omitted or both be finite positive values");
+                    "Ship dimensions, when supplied, must be finite positive values");
         }
     }
 
