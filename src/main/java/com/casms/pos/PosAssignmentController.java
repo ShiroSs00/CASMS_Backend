@@ -41,7 +41,7 @@ public class PosAssignmentController {
     public ApiResponse<List<PosDtos.TerminalArea>> areas(@PathVariable UUID terminalId) {return ApiResponse.success(service.areas(terminalId));}
 
     @Operation(summary="Link an additional area on the same ship to this POS",
-            description="New area links grant no service capabilities automatically. Configure POS-area-service policies explicitly. Changing the link revokes sessions using that area.")
+            description="New links inherit canonical resource operations through area assignments, capped by terminal permissions. Explicit POS policies can restrict them further. Changing the link revokes sessions using that area.")
     @PutMapping("/pos-terminals/{terminalId}/areas/{areaId}")
     public ApiResponse<PosDtos.TerminalArea> linkArea(@PathVariable UUID terminalId,@PathVariable UUID areaId,
             @Valid @RequestBody PosDtos.AreaLinkInput input) {return ApiResponse.success(service.linkArea(terminalId,areaId,input.enabled()));}
@@ -55,13 +55,13 @@ public class PosAssignmentController {
     public ApiResponse<List<PosDtos.TerminalService>> policies(@PathVariable UUID terminalId,@PathVariable UUID areaId) {
         return ApiResponse.success(service.policies(terminalId,areaId));
     }
-    @Operation(summary="Configure explicit operation permissions for a service in an area on this POS",
-            description="Permissions must be within terminal and area-service capabilities. Every POS call re-evaluates current permissions; an existing session cannot retain removed capabilities.")
+    @Operation(summary="Restrict or inherit operation permissions for a service in an area on this POS",
+            description="Omit permissions to inherit; explicit permissions must be within source, terminal and area-service capabilities. Every POS call re-evaluates current permissions; an existing session cannot retain removed capabilities.")
     @PutMapping("/pos-terminals/{terminalId}/areas/{areaId}/services/{serviceId}")
     public ApiResponse<PosDtos.TerminalService> policy(@PathVariable UUID terminalId,@PathVariable UUID areaId,@PathVariable UUID serviceId,
             @Valid @RequestBody PosDtos.AssignmentInput input) {return ApiResponse.success(service.policy(terminalId,areaId,serviceId,input));}
 
-    @Operation(summary="Remove this POS-area-service capability configuration without deleting usage history")
+    @Operation(summary="Deny this service on this POS and area, retaining an explicit disabled override")
     @DeleteMapping("/pos-terminals/{terminalId}/areas/{areaId}/services/{serviceId}") @ResponseStatus(HttpStatus.NO_CONTENT)
     public void removePolicy(@PathVariable UUID terminalId,@PathVariable UUID areaId,@PathVariable UUID serviceId) {service.removePolicy(terminalId,areaId,serviceId);}
 }

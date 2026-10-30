@@ -38,7 +38,7 @@ public class PosController {
     public ApiResponse<List<PosDtos.AreaService>> areaServices(@PathVariable UUID shipId,@PathVariable UUID areaId) {
         return ApiResponse.success(service.assignments(shipId,areaId));
     }
-    @Operation(summary="Assign a deck service and its POS permissions to a published physical area")
+    @Operation(summary="Assign a deck service to a published area and inherit its canonical permissions", description="Omit permissions to inherit the service policy; an explicit set may only narrow the policy. Source changes apply live to already linked areas and POS. Services are never created from model metadata.")
     @PreAuthorize("hasAuthority('POS_MANAGE') and principal.enabled and principal.accountNonLocked")
     @PutMapping("/ships/{shipId}/areas/{areaId}/services/{serviceId}")
     public ApiResponse<PosDtos.AreaService> assign(@PathVariable UUID shipId,@PathVariable UUID areaId,@PathVariable UUID serviceId,

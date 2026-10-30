@@ -50,11 +50,12 @@ class PosPostgresIntegrationTest {
     @Autowired BookingRepository bookings;
     @Autowired BookingPassengerRepository bookingPassengers;
     @Autowired ServiceRepository catalog;
+    @Autowired com.casms.activity.repository.OnboardActivityRepository activityRepository;
     @Autowired DeckServiceAssignmentRepository deckServices;
     @Autowired PaymentRepository payments;
     @Autowired JwtService jwt;
     UUID ship,deck,model,area,port,cruise,booking,bp,bp2,service,account,terminal;
-    String manager,staff,buyer,secret,session;
+    String manager,catalogManager,staff,buyer,secret,session;
     final List<UUID> userIds=new ArrayList<>();
     final List<UUID> passengerIds=new ArrayList<>();
 
@@ -75,18 +76,19 @@ class PosPostgresIntegrationTest {
             Booking b=new Booking();b.setCruise(c);b.setBookedByUser(owner);b.setBookingReference(code());b.setBookingStatus(BookingStatus.Confirmed);b.setAgreedFareAmount(BigDecimal.ZERO);b.setRequiredDepositAmount(BigDecimal.ZERO);b.setCurrency("USD");bookings.saveAndFlush(b);booking=b.getBookingId();
             BookingPassenger a=new BookingPassenger();a.setBooking(b);a.setPassenger(p);a.setParticipationStatus(BookingPassengerParticipationStatus.Active);bookingPassengers.saveAndFlush(a);bp=a.getBookingPassengerId();
             BookingPassenger a2=new BookingPassenger();a2.setBooking(b);a2.setPassenger(p2);a2.setParticipationStatus(BookingPassengerParticipationStatus.Active);bookingPassengers.saveAndFlush(a2);bp2=a2.getBookingPassengerId();
-            manager=token(user(Role.OPERATIONS_MANAGER));staff=token(user(Role.ONBOARD_STAFF));
+            manager=token(user(Role.OPERATIONS_MANAGER));catalogManager=token(user(Role.ACTIVITY_SERVICE_MANAGER));staff=token(user(Role.ONBOARD_STAFF));
         });
         allocate("100",List.of(Map.of("bookingPassengerId",bp,"amount",new BigDecimal("30"))));
+        setServicePolicy(PosPermission.forResource(PosPermission.ResourceType.SERVICE));
         var configured=perform(put("/ships/{ship}/areas/{area}/services/{service}",ship,area,service),manager,
-                Map.of("permissions",List.of(PosPermission.values()),"enabled",true),200);
+                Map.of("permissions",PosPermission.forResource(PosPermission.ResourceType.SERVICE),"enabled",true),200);
         assertEquals(service.toString(),configured.path("serviceId").asText());
         var device=perform(post("/ships/{ship}/pos-terminals",ship),manager,
                 Map.of("areaId",area,"code",code(),"name","Spa POS","permissions",List.of(PosPermission.values()),"enabled",true),201);
         terminal=UUID.fromString(device.path("terminal").path("terminalId").asText());secret=device.path("deviceSecret").asText();
         assignEmployee(staff,area,cruise);
         assignEmployee(manager,area,cruise);
-        configurePolicy(terminal,area,service,List.of(PosPermission.values()));
+        configurePolicy(terminal,area,service,new ArrayList<>(PosPermission.forResource(PosPermission.ResourceType.SERVICE)));
         session=login(staff,secret);
     }
     @Test void recordsUsageAtServerPriceReducesVirtualAllowanceAndCreatesNoPayment() throws Exception {
@@ -192,11 +194,11 @@ class PosPostgresIntegrationTest {
             ShipModelObject o=new ShipModelObject();o.setShipModel(models.findById(model).orElseThrow());o.setDeck(decks.findById(deck).orElseThrow());
             o.setNodeKey("other-pos-area");o.setObjectType(ShipModelObjectType.FACILITY);return objects.saveAndFlush(o).getShipModelObjectId();
         });
-        perform(put("/ships/{ship}/areas/{area}/services/{service}",ship,otherArea,service),manager,Map.of("permissions",List.of(PosPermission.values()),"enabled",true),200);
+        perform(put("/ships/{ship}/areas/{area}/services/{service}",ship,otherArea,service),manager,Map.of("permissions",PosPermission.forResource(PosPermission.ResourceType.SERVICE),"enabled",true),200);
         var d=perform(post("/ships/{ship}/pos-terminals",ship),manager,Map.of("areaId",otherArea,"code",code(),"name","Second","permissions",List.of(PosPermission.values()),"enabled",true),201);
         UUID otherTerminal=UUID.fromString(d.path("terminal").path("terminalId").asText());
         assignEmployee(staff,otherArea,cruise);
-        configurePolicy(otherTerminal,otherArea,service,List.of(PosPermission.values()));
+        configurePolicy(otherTerminal,otherArea,service,new ArrayList<>(PosPermission.forResource(PosPermission.ResourceType.SERVICE)));
         String other=perform(post("/pos-terminals/{id}/sessions",otherTerminal),staff,Map.of("deviceSecret",d.path("deviceSecret").asText()),201).path("sessionToken").asText();
         ExecutorService pool=Executors.newFixedThreadPool(2);CountDownLatch start=new CountDownLatch(1);
         try {
@@ -265,18 +267,19 @@ class PosPostgresIntegrationTest {
         assertEquals(1,services.size());assertEquals(1,services.get(0).path("permissions").size());
         sell(bp,1,"reduced-permission",403);assertEquals(1,count("PosSale"));
     }
-    @Test void newDeviceHasNoServiceGrantUntilExplicitPolicyIsConfigured() throws Exception {
+    @Test void newDeviceInheritsSourceAndAreaAutomaticallyButExplicitDenialStaysDenied() throws Exception {
         var d=perform(post("/ships/{ship}/pos-terminals",ship),manager,Map.of("areaId",area,"code",code(),"name","New POS","permissions",List.of(PosPermission.values()),"enabled",true),201);
         UUID other=UUID.fromString(d.path("terminal").path("terminalId").asText());
         String token=perform(post("/pos-terminals/{id}/sessions",other),staff,Map.of("deviceSecret",d.path("deviceSecret").asText()),201).path("sessionToken").asText();
-        assertEquals(0,perform(get("/pos/services").header("X-POS-Session",token),staff,null,200).size());
-        perform(post("/pos/sales").header("X-POS-Session",token),staff,input(bp,1,"no-explicit-grant"),403);
+        assertEquals(1,perform(get("/pos/services").header("X-POS-Session",token),staff,null,200).size());
+        perform(delete("/pos-terminals/{id}/areas/{area}/services/{service}",other,area,service),manager,null,204);
+        perform(post("/pos/sales").header("X-POS-Session",token),staff,input(bp,1,"explicit-denial"),403);
         configurePolicy(other,area,service,List.of(PosPermission.SERVICE_READ));
         assertEquals(1,perform(get("/pos/services").header("X-POS-Session",token),staff,null,200).size());
     }
     @Test void onePosSupportsMultipleAreasButEmployeeAndServiceGrantsRemainAreaScoped() throws Exception {
         UUID otherArea=createArea();
-        perform(put("/ships/{ship}/areas/{area}/services/{service}",ship,otherArea,service),manager,Map.of("permissions",List.of(PosPermission.values()),"enabled",true),200);
+        perform(put("/ships/{ship}/areas/{area}/services/{service}",ship,otherArea,service),manager,Map.of("permissions",PosPermission.forResource(PosPermission.ResourceType.SERVICE),"enabled",true),200);
         perform(put("/pos-terminals/{id}/areas/{area}",terminal,otherArea),manager,Map.of("enabled",true),200);
         configurePolicy(terminal,otherArea,service,List.of(PosPermission.SERVICE_READ));
         perform(post("/pos-terminals/{id}/sessions",terminal),staff,Map.of("deviceSecret",secret,"areaId",otherArea,"cruiseId",cruise),403);
@@ -342,6 +345,158 @@ class PosPostgresIntegrationTest {
             status.setRollbackOnly(); // PostgreSQL also rolls back the temporary schema and its DDL.
         });
     }
+    @Test void sourcePoliciesAreClassifiedAndOnlyCatalogueManagerCanChangeThem() throws Exception {
+        JsonNode definitions=perform(get("/operation-permissions").param("resourceType","SERVICE"),catalogManager,null,200);
+        assertEquals(5,definitions.size());for(JsonNode d:definitions) {assertEquals("SERVICE",d.path("resourceType").asText());assertFalse(d.path("category").asText().isBlank());}
+        perform(put("/servicepackage/services/{id}/permissions",service),manager,Map.of("permissions",List.of("SERVICE_READ")),403);
+        perform(put("/servicepackage/services/{id}/permissions",service),staff,Map.of("permissions",List.of("SERVICE_READ")),403);
+        perform(put("/servicepackage/services/{id}/permissions",service),catalogManager,Map.of("permissions",List.of("ACTIVITY_READ")),422);
+        perform(put("/servicepackage/services/{id}/permissions",service),catalogManager,Map.of(),400);
+        perform(put("/servicepackage/services/{id}/permissions",UUID.randomUUID()),catalogManager,Map.of("permissions",List.of("SERVICE_READ")),404);
+        perform(put("/ships/{ship}/areas/{area}/services/{service}",ship,area,service),manager,Map.of("permissions",List.of("ACTIVITY_READ"),"enabled",true),422);
+        perform(put("/pos-terminals/{id}/areas/{area}/services/{service}",terminal,area,service),manager,Map.of("permissions",List.of("ACTIVITY_READ"),"enabled",true),422);
+    }
+    @Test void sourceChangesPropagateToExistingLinksAndOpenSessionsWithoutExpandingAreaCaps() throws Exception {
+        var areaPolicy=perform(put("/ships/{ship}/areas/{area}/services/{service}",ship,area,service),manager,Map.of("enabled",true),200);
+        assertTrue(areaPolicy.path("inherited").asBoolean());assertEquals(5,areaPolicy.path("permissions").size());
+        perform(put("/pos-terminals/{id}/areas/{area}/services/{service}",terminal,area,service),manager,Map.of("enabled",true),200);
+        setServicePolicy(Set.of(PosPermission.SERVICE_READ));
+        assertEquals(1,perform(get("/pos/services").header("X-POS-Session",session),staff,null,200).get(0).path("permissions").size());
+        sell(bp,1,"source-denies-sale",403);
+        perform(put("/ships/{ship}/areas/{area}/services/{service}",ship,area,service),manager,Map.of("permissions",List.of("SERVICE_SALE"),"enabled",true),422);
+        setServicePolicy(PosPermission.forResource(PosPermission.ResourceType.SERVICE));sell(bp,1,"source-restores-sale",201);
+        perform(put("/ships/{ship}/areas/{area}/services/{service}",ship,area,service),manager,Map.of("permissions",List.of("SERVICE_READ"),"enabled",true),200);
+        setServicePolicy(Set.of());setServicePolicy(PosPermission.forResource(PosPermission.ResourceType.SERVICE));
+        sell(bp,1,"area-still-restricts",403);assertEquals(1,count("PosSale"));
+    }
+    @Test void clearingSourceDeniesUsageWithoutDeletingServiceLinksOrHistory() throws Exception {
+        sell(bp,1,"history-before-clear",201);
+        perform(delete("/servicepackage/services/{id}/permissions",service),catalogManager,null,204);
+        assertEquals(0,perform(get("/pos/services").header("X-POS-Session",session),staff,null,200).size());sell(bp,1,"cleared",403);
+        assertTrue(catalog.existsById(service));assertEquals(1,count("PosSale"));
+        assertEquals(1,perform(get("/ships/{ship}/areas/{area}/services",ship,area),manager,null,200).size());
+        setServicePolicy(PosPermission.forResource(PosPermission.ResourceType.SERVICE));
+        perform(delete("/pos-terminals/{id}/areas/{area}/services/{service}",terminal,area,service),manager,null,204);
+        sell(bp,1,"device-denial",403);
+        perform(put("/pos-terminals/{id}/areas/{area}/services/{service}",terminal,area,service),manager,Map.of("enabled",true),200);
+        sell(bp,1,"inherit-restored",201);
+    }
+    @Test void unconfiguredServiceCanBeLinkedButCannotBeUsedUntilManagerConfiguresIt() throws Exception {
+        jdbc.update("DELETE FROM \"ServiceOperationPolicy\" WHERE service_id=?",service);
+        var linked=perform(put("/ships/{ship}/areas/{area}/services/{service}",ship,area,service),manager,Map.of("enabled",true),200);
+        assertEquals(0,linked.path("permissions").size());sell(bp,1,"unconfigured",403);
+        setServicePolicy(PosPermission.forResource(PosPermission.ResourceType.SERVICE));sell(bp,1,"configured",201);
+    }
+    private UUID createActivity() throws Exception {
+        // Seed a previously planned activity: fixed/in-progress cruise plans cannot create new activities.
+        return new TransactionTemplate(tm).execute(status->{
+            var a=new com.casms.activity.entity.OnboardActivity();a.setActivityCode(code());a.setActivityName("POS yoga");
+            a.setStartTime(Instant.now().plusSeconds(3600));a.setEndTime(Instant.now().plusSeconds(7200));a.setCapacity(10);
+            a.setCruise(cruises.findById(cruise).orElseThrow());a.setDeck(decks.findById(deck).orElseThrow());a.setPrice(BigDecimal.ZERO);a.setCurrencyCode("USD");
+            a.setStatus(com.casms.activity.enums.OnboardActivityStatus.PLANNED);return activityRepository.saveAndFlush(a).getOnboardActivityId();
+        });
+    }
+    private void configureActivity(UUID activity,Set<PosPermission> permissions) throws Exception {
+        perform(put("/activities/{id}/permissions",activity),catalogManager,Map.of("permissions",permissions),200);
+    }
+    private void linkActivity(UUID activity) throws Exception {
+        perform(put("/ships/{ship}/areas/{area}/activities/{id}",ship,area,activity),manager,Map.of("enabled",true),200);
+    }
+    @Test void activityPermissionsInheritAndAuthorizeRegistrationAttendanceAndLifecycle() throws Exception {
+        UUID activity=createActivity();configureActivity(activity,PosPermission.forResource(PosPermission.ResourceType.ACTIVITY));linkActivity(activity);
+        var available=perform(get("/pos/activities").header("X-POS-Session",session),staff,null,200);
+        assertEquals(1,available.size());assertEquals(4,available.get(0).path("permissions").size());
+        // Scoped POS capability does not add global activity-manager privileges.
+        perform(post("/activities/{id}/actions/open",activity),staff,null,403);
+        perform(post("/pos/activities/{id}/actions/open",activity).header("X-POS-Session",session),staff,null,200);
+        var registration=perform(post("/pos/activities/{id}/registrations",activity).header("X-POS-Session",session),staff,Map.of("bookingPassengerId",bp,"quantity",1),201);
+        UUID registrationId=UUID.fromString(registration.path("id").asText());
+        perform(put("/pos/activity-registrations/{id}",registrationId).header("X-POS-Session",session),staff,Map.of("quantity",2,"notes","POS update"),200);
+        perform(post("/pos/activity-registrations/{id}/actions/confirm",registrationId).header("X-POS-Session",session),staff,null,200);
+        JsonNode participants=perform(get("/pos/activities/{id}/participations",activity).header("X-POS-Session",session),staff,null,200);
+        UUID participation=UUID.fromString(participants.get(0).path("id").asText());
+        jdbc.update("UPDATE \"OnboardActivity\" SET start_time=now()-interval '1 minute' WHERE onboard_activity_id=?",activity);
+        perform(post("/pos/activities/{id}/actions/start",activity).header("X-POS-Session",session),staff,null,200);
+        for(String action:List.of("check-in","checkout","complete"))perform(post("/pos/activity-participations/{id}/actions/{action}",participation,action).header("X-POS-Session",session),staff,null,200);
+        perform(post("/pos/activities/{id}/actions/complete",activity).header("X-POS-Session",session),staff,null,200);
+        assertEquals("COMPLETED",perform(get("/pos/activities/{id}/registrations",activity).header("X-POS-Session",session),staff,null,200).get(0).path("status").asText());
+        assertEquals(0,count("OnboardTransaction"));assertEquals(0,count("PosSale"));
+    }
+    @Test void activityPoliciesRejectWrongCategoryAndUnauthorizedManagerAndApplyLiveRestrictions() throws Exception {
+        UUID activity=createActivity();
+        perform(put("/activities/{id}/permissions",activity),manager,Map.of("permissions",List.of("ACTIVITY_READ")),403);
+        perform(put("/activities/{id}/permissions",activity),catalogManager,Map.of("permissions",List.of("SERVICE_READ")),422);
+        perform(put("/activities/{id}/permissions",UUID.randomUUID()),catalogManager,Map.of("permissions",List.of("ACTIVITY_READ")),404);
+        linkActivity(activity);assertEquals(0,perform(get("/pos/activities").header("X-POS-Session",session),staff,null,200).size());
+        configureActivity(activity,PosPermission.forResource(PosPermission.ResourceType.ACTIVITY));
+        perform(put("/ships/{ship}/areas/{area}/activities/{id}",ship,area,activity),manager,Map.of("permissions",List.of("SERVICE_READ"),"enabled",true),422);
+        perform(put("/pos-terminals/{id}/areas/{area}/activities/{a}",terminal,area,activity),manager,Map.of("permissions",List.of("ACTIVITY_READ"),"enabled",true),200);
+        perform(post("/pos/activities/{id}/actions/open",activity).header("X-POS-Session",session),staff,null,403);
+        perform(put("/pos-terminals/{id}/areas/{area}/activities/{a}",terminal,area,activity),manager,Map.of("enabled",true),200);
+        configureActivity(activity,Set.of(PosPermission.ACTIVITY_READ));
+        perform(post("/pos/activities/{id}/actions/open",activity).header("X-POS-Session",session),staff,null,403);
+        perform(delete("/activities/{id}/permissions",activity),catalogManager,null,204);
+        assertEquals(0,perform(get("/pos/activities").header("X-POS-Session",session),staff,null,200).size());
+        configureActivity(activity,PosPermission.forResource(PosPermission.ResourceType.ACTIVITY));
+        perform(delete("/pos-terminals/{id}/areas/{area}/activities/{a}",terminal,area,activity),manager,null,204);
+        assertEquals(0,perform(get("/pos/activities").header("X-POS-Session",session),staff,null,200).size());
+        perform(put("/pos-terminals/{id}/areas/{area}/activities/{a}",terminal,area,activity),manager,Map.of("enabled",true),200);
+        assertEquals(1,perform(get("/pos/activities").header("X-POS-Session",session),staff,null,200).size());
+    }
+    @Test void activityOperationsStayWithinAssignedAreaDeckAndSessionCruise() throws Exception {
+        UUID activity=createActivity();configureActivity(activity,PosPermission.forResource(PosPermission.ResourceType.ACTIVITY));
+        perform(post("/pos/activities/{id}/actions/open",activity).header("X-POS-Session",session),staff,null,403);
+        UUID otherArea=createArea();perform(put("/ships/{ship}/areas/{area}/activities/{id}",ship,otherArea,activity),manager,Map.of("enabled",true),200);
+        assertEquals(0,perform(get("/pos/activities").header("X-POS-Session",session),staff,null,200).size());linkActivity(activity);
+        UUID otherDeck=new TransactionTemplate(tm).execute(status->{Deck d=new Deck();d.setShip(ships.findById(ship).orElseThrow());d.setDeckNumber(2);d.setDeckName("Other venue");d.setPriceMultiplier(BigDecimal.ONE);return decks.saveAndFlush(d).getDeckId();});
+        jdbc.update("UPDATE \"OnboardActivity\" SET deck_id=? WHERE onboard_activity_id=?",otherDeck,activity);
+        perform(put("/ships/{ship}/areas/{area}/activities/{id}",ship,area,activity),manager,Map.of("enabled",true),422);
+        assertEquals(0,perform(get("/pos/activities").header("X-POS-Session",session),staff,null,200).size());
+        jdbc.update("UPDATE \"OnboardActivity\" SET deck_id=? WHERE onboard_activity_id=?",deck,activity);
+        // A live venue change must revoke operation eligibility even for an existing link/session.
+        jdbc.update("UPDATE \"OnboardActivity\" SET cruise_id=NULL WHERE onboard_activity_id=?",activity);
+        assertEquals(0,perform(get("/pos/activities").header("X-POS-Session",session),staff,null,200).size());
+        perform(post("/pos/activities/{id}/actions/open",activity).header("X-POS-Session",session),staff,null,403);
+        jdbc.update("UPDATE \"OnboardActivity\" SET cruise_id=? WHERE onboard_activity_id=?",cruise,activity);
+        perform(delete("/ships/{ship}/areas/{area}/activities/{id}",ship,area,activity),manager,null,204);
+        perform(post("/pos/activities/{id}/actions/open",activity).header("X-POS-Session",session),staff,null,403);
+    }
+    @Test void resourcePolicyMigrationPreservesOldRestrictionsDenialsAndHistory() {
+        new TransactionTemplate(tm).executeWithoutResult(status->{
+            String schema="it_resource_policy_"+UUID.randomUUID().toString().replace("-","");
+            jdbc.execute("CREATE SCHEMA "+schema);jdbc.execute("SET LOCAL search_path TO "+schema+",public");
+            jdbc.execute("CREATE TABLE \"User\" (user_id uuid PRIMARY KEY)");
+            jdbc.execute("CREATE TABLE \"Service\" (service_id uuid PRIMARY KEY)");
+            jdbc.execute("CREATE TABLE \"OnboardActivity\" (onboard_activity_id uuid PRIMARY KEY)");
+            jdbc.execute("CREATE TABLE \"ShipModelObject\" (ship_model_object_id uuid PRIMARY KEY)");
+            jdbc.execute("CREATE TABLE \"AreaServiceAssignment\" (area_object_id uuid,service_id uuid,permissions text[],enabled boolean,UNIQUE(area_object_id,service_id))");
+            jdbc.execute("CREATE TABLE \"PosTerminal\" (terminal_id uuid PRIMARY KEY,permissions text[],CONSTRAINT \"PosTerminal_permissions_check\" CHECK(permissions <@ ARRAY['SERVICE_READ','SERVICE_SALE']::text[]))");
+            jdbc.execute("CREATE TABLE \"PosTerminalArea\" (terminal_id uuid,area_object_id uuid,PRIMARY KEY(terminal_id,area_object_id))");
+            jdbc.execute("CREATE TABLE \"PosAreaServicePermission\" (terminal_id uuid,area_object_id uuid,service_id uuid,permissions text[] NOT NULL DEFAULT '{}',enabled boolean,PRIMARY KEY(terminal_id,area_object_id,service_id))");
+            jdbc.execute("CREATE TABLE \"PosSale\" (sale_id uuid PRIMARY KEY,amount numeric(19,4))");
+            UUID oldArea=UUID.randomUUID(),oldDevice=UUID.randomUUID(),oldService=UUID.randomUUID(),deniedService=UUID.randomUUID(),oldSale=UUID.randomUUID();
+            jdbc.update("INSERT INTO \"ShipModelObject\" VALUES (?)",oldArea);
+            jdbc.update("INSERT INTO \"Service\" VALUES (?),(?)",oldService,deniedService);
+            jdbc.update("INSERT INTO \"PosTerminal\" VALUES (?,ARRAY['SERVICE_READ','SERVICE_SALE'])",oldDevice);
+            jdbc.update("INSERT INTO \"PosTerminalArea\" VALUES (?,?)",oldDevice,oldArea);
+            jdbc.update("INSERT INTO \"AreaServiceAssignment\" VALUES (?,?,ARRAY['SERVICE_READ','SERVICE_SALE'],true),(?,?,ARRAY['SERVICE_READ'],true)",oldArea,oldService,oldArea,deniedService);
+            jdbc.update("INSERT INTO \"PosAreaServicePermission\" VALUES (?,?,?,ARRAY['SERVICE_READ'],true)",oldDevice,oldArea,oldService);
+            jdbc.update("INSERT INTO \"PosSale\" VALUES (?,20)",oldSale);
+            jdbc.execute((org.springframework.jdbc.core.ConnectionCallback<Void>)connection->{
+                org.springframework.jdbc.datasource.init.ScriptUtils.executeSqlScript(connection,new org.springframework.core.io.ClassPathResource("db/migration/V72__resource_operation_permissions.sql"));return null;
+            });
+            assertEquals(1,jdbc.queryForObject("SELECT count(*) FROM \"ServiceOperationPolicy\" WHERE service_id=? AND 'SERVICE_SALE'=ANY(permissions)",Integer.class,oldService));
+            assertEquals(1,jdbc.queryForObject("SELECT count(*) FROM \"AreaServiceAssignment\" WHERE service_id=? AND NOT inherit_permissions",Integer.class,oldService));
+            assertEquals(1,jdbc.queryForObject("SELECT count(*) FROM \"PosAreaServicePermission\" WHERE service_id=? AND enabled AND NOT inherit_permissions AND permissions=ARRAY['SERVICE_READ']",Integer.class,oldService));
+            assertEquals(1,jdbc.queryForObject("SELECT count(*) FROM \"PosAreaServicePermission\" WHERE service_id=? AND NOT enabled",Integer.class,deniedService));
+            assertEquals(0,jdbc.queryForObject("SELECT count(*) FROM \"ActivityOperationPolicy\"",Integer.class));
+            assertEquals(0,new BigDecimal("20").compareTo(jdbc.queryForObject("SELECT amount FROM \"PosSale\" WHERE sale_id=?",BigDecimal.class,oldSale)));
+            status.setRollbackOnly();
+        });
+    }
+    private void setServicePolicy(Set<PosPermission> permissions) throws Exception {
+        perform(put("/servicepackage/services/{id}/permissions",service),catalogManager,Map.of("permissions",permissions),200);
+    }
     private UUID createArea() {
         return new TransactionTemplate(tm).execute(status->{ShipModelObject o=new ShipModelObject();o.setShipModel(models.findById(model).orElseThrow());
             o.setDeck(decks.findById(deck).orElseThrow());o.setNodeKey(code());o.setObjectType(ShipModelObjectType.FACILITY);return objects.saveAndFlush(o).getShipModelObjectId();});
@@ -361,7 +516,8 @@ class PosPostgresIntegrationTest {
         UUID id=jwt.extractUserId(auth);
         int count=jdbc.queryForObject("SELECT count(*) FROM \"CruiseStaff\" WHERE cruise_id=? AND user_id=? AND status='ACTIVE'",Integer.class,targetCruise,id);
         if(count==0)perform(post("/cruise/{id}/staff",targetCruise),manager,Map.of("userId",id,"roleInCruise","ONBOARD_STAFF"),200);
-        perform(put("/ships/{ship}/areas/{area}/staff/{user}",ship,targetArea,id),manager,Map.of("cruiseId",targetCruise,"enabled",true),200);
+        perform(put("/ships/{ship}/areas/{area}/staff/{user}",ship,targetArea,id),manager,
+                Map.of("cruiseId",targetCruise,"enabled",true,"startsAt",Instant.now().minusSeconds(60).toString()),200);
     }
     private void configurePolicy(UUID targetTerminal,UUID targetArea,UUID targetService,List<PosPermission> permissions) throws Exception {
         perform(put("/pos-terminals/{terminal}/areas/{area}/services/{service}",targetTerminal,targetArea,targetService),manager,
@@ -387,6 +543,8 @@ class PosPostgresIntegrationTest {
 
     @AfterEach void cleanup() {
         if(booking!=null) {
+            jdbc.update("DELETE FROM \"Participation\" WHERE registration_id IN (SELECT registration_id FROM \"Registration\" WHERE booking_passenger_id IN (SELECT booking_passenger_id FROM \"BookingPassenger\" WHERE booking_id=?))",booking);
+            jdbc.update("DELETE FROM \"Registration\" WHERE booking_passenger_id IN (SELECT booking_passenger_id FROM \"BookingPassenger\" WHERE booking_id=?)",booking);
             jdbc.update("DELETE FROM \"PosSale\" WHERE booking_passenger_id IN (SELECT booking_passenger_id FROM \"BookingPassenger\" WHERE booking_id=?)",booking);
             jdbc.update("DELETE FROM \"Charge\" WHERE transaction_id IN (SELECT transaction_id FROM \"OnboardTransaction\" WHERE onboard_account_id IN (SELECT settlement_onboard_account_id FROM \"Booking\" WHERE booking_id=?))",booking);
             jdbc.update("DELETE FROM \"OnboardTransaction\" WHERE onboard_account_id IN (SELECT settlement_onboard_account_id FROM \"Booking\" WHERE booking_id=?)",booking);
@@ -401,6 +559,9 @@ class PosPostgresIntegrationTest {
             jdbc.update("DELETE FROM \"BookingPassenger\" WHERE booking_id=?",booking);jdbc.update("DELETE FROM \"Booking\" WHERE booking_id=?",booking);
         }
         if(ship!=null) {
+            jdbc.update("DELETE FROM \"PosAreaActivityPermission\" WHERE terminal_id IN (SELECT terminal_id FROM \"PosTerminal\" WHERE ship_id=?)",ship);
+            jdbc.update("DELETE FROM \"AreaActivityAssignment\" WHERE area_object_id IN (SELECT ship_model_object_id FROM \"ShipModelObject\" WHERE ship_model_id=?)",model);
+            jdbc.update("DELETE FROM \"OnboardActivity\" WHERE cruise_id IN (SELECT cruise_id FROM \"Cruise\" WHERE ship_id=?)",ship);
             jdbc.update("DELETE FROM \"PosSession\" WHERE terminal_id IN (SELECT terminal_id FROM \"PosTerminal\" WHERE ship_id=?)",ship);
             jdbc.update("DELETE FROM \"PosAreaServicePermission\" WHERE terminal_id IN (SELECT terminal_id FROM \"PosTerminal\" WHERE ship_id=?)",ship);
             jdbc.update("DELETE FROM \"PosTerminalArea\" WHERE terminal_id IN (SELECT terminal_id FROM \"PosTerminal\" WHERE ship_id=?)",ship);

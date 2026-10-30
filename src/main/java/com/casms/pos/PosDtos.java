@@ -8,7 +8,16 @@ import java.util.UUID;
 
 public final class PosDtos {
     private PosDtos() {}
-    public record AssignmentInput(@NotNull Set<@NotNull PosPermission> permissions, boolean enabled) {}
+    /** Omitted permissions inherit the source; an explicit empty set denies all operations. */
+    public record AssignmentInput(Set<@NotNull PosPermission> permissions, boolean enabled) {}
+    public record PermissionInput(@NotNull Set<@NotNull PosPermission> permissions) {}
+    public record PermissionDefinition(PosPermission code, PosPermission.ResourceType resourceType, String category) {}
+    public record ResourcePolicy(UUID resourceId, PosPermission.ResourceType resourceType, boolean configured,
+            Set<PosPermission> permissions) {}
+    public record AreaActivity(UUID areaId, UUID activityId, Set<PosPermission> permissions, boolean enabled, boolean inherited) {}
+    public record TerminalActivity(UUID terminalId, UUID areaId, UUID activityId, Set<PosPermission> permissions,
+            boolean enabled, boolean inherited) {}
+    public record AvailableActivity(com.casms.activity.controller.ActivityController.ActivityView activity, Set<PosPermission> permissions) {}
     public record TerminalInput(@NotNull UUID areaId, @NotBlank @Size(max=60) String code,
             @NotBlank @Size(max=200) String name, @NotNull Set<@NotNull PosPermission> permissions, boolean enabled) {}
     public record TerminalUpdate(@NotBlank @Size(max=200) String name,
@@ -19,12 +28,12 @@ public final class PosDtos {
             boolean enabled, Instant startsAt, Instant endsAt) {}
     public record AreaLinkInput(boolean enabled) {}
     public record TerminalArea(UUID terminalId, UUID areaId, boolean enabled) {}
-    public record TerminalService(UUID terminalId, UUID areaId, UUID serviceId, Set<PosPermission> permissions, boolean enabled) {}
+    public record TerminalService(UUID terminalId, UUID areaId, UUID serviceId, Set<PosPermission> permissions, boolean enabled, boolean inherited) {}
     public record Terminal(UUID terminalId, UUID shipId, UUID areaId, String code, String name,
             Set<PosPermission> permissions, boolean enabled) {}
     public record Credential(Terminal terminal, String deviceSecret) {}
     public record Session(String sessionToken, Instant expiresAt, Terminal terminal, UUID cruiseId, UUID staffAssignmentId) {}
-    public record AreaService(UUID areaId, UUID serviceId, Set<PosPermission> permissions, boolean enabled) {}
+    public record AreaService(UUID areaId, UUID serviceId, Set<PosPermission> permissions, boolean enabled, boolean inherited) {}
     public record AvailableService(UUID serviceId, String code, String name, BigDecimal unitPrice,
             String currency, Set<PosPermission> permissions) {}
     public record Context(Terminal terminal, java.util.List<AvailableService> services, UUID cruiseId, UUID staffAssignmentId) {}

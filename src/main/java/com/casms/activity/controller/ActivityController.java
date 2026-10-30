@@ -65,10 +65,10 @@ public class ActivityController {
         }
     }
     public record RegistrationView(UUID id, UUID passengerId, UUID bookingPassengerId, UUID activityId, UUID excursionId, Integer quantity, String status, String notes, Instant registeredAt) {
-        static RegistrationView of(Registration r) { return new RegistrationView(r.getRegistrationId(), r.getPassenger().getPassengerId(), r.getBookingPassenger().getBookingPassengerId(), r.getOnboardActivity()==null?null:r.getOnboardActivity().getOnboardActivityId(), r.getShoreExcursion()==null?null:r.getShoreExcursion().getShoreExcursionId(), r.getQuantity(), r.getStatus().name(), r.getNotes(), r.getRegistrationTime()); }
+        public static RegistrationView of(Registration r) { return new RegistrationView(r.getRegistrationId(), r.getPassenger().getPassengerId(), r.getBookingPassenger().getBookingPassengerId(), r.getOnboardActivity()==null?null:r.getOnboardActivity().getOnboardActivityId(), r.getShoreExcursion()==null?null:r.getShoreExcursion().getShoreExcursionId(), r.getQuantity(), r.getStatus().name(), r.getNotes(), r.getRegistrationTime()); }
     }
     public record ParticipationView(UUID id, UUID registrationId, String status, Instant checkInTime, Instant checkOutTime) {
-        static ParticipationView of(Participation p) { return new ParticipationView(p.getParticipationId(), p.getRegistration().getRegistrationId(), p.getStatus().name(), p.getCheckInTime(), p.getCheckOutTime()); }
+        public static ParticipationView of(Participation p) { return new ParticipationView(p.getParticipationId(), p.getRegistration().getRegistrationId(), p.getStatus().name(), p.getCheckInTime(), p.getCheckOutTime()); }
     }
     public record ActivityAvailabilityView(UUID activityId,Integer capacity,Integer availableSeats,String status){}
     public record ActivityScheduleCheckView(UUID activityId,boolean conflictFree,long conflicts){}

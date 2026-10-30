@@ -48,13 +48,15 @@ public class PosRepository {
     void rotate(UUID id,String hash) { jdbc.update("UPDATE \"PosTerminal\" SET secret_hash=? WHERE terminal_id=?",hash,id);revokeDevice(id); }
     private void revokeDevice(UUID id) {jdbc.update("UPDATE \"PosSession\" SET revoked_at=now() WHERE terminal_id=? AND revoked_at IS NULL",id);}
     List<PosDtos.AreaService> assignments(UUID area) {
-        return jdbc.query("SELECT * FROM \"AreaServiceAssignment\" WHERE area_object_id=? ORDER BY service_id",
-                (r,n)->new PosDtos.AreaService(area,uuid(r,"service_id"),permissions(r),r.getBoolean("enabled")),area);
+        return jdbc.query("SELECT a.*,COALESCE(s.permissions,'{}') AS source_permissions FROM \"AreaServiceAssignment\" a "
+                +"LEFT JOIN \"ServiceOperationPolicy\" s ON s.service_id=a.service_id WHERE area_object_id=? ORDER BY a.service_id",
+                (r,n)->{var effective=permissions(r,"source_permissions");if(!r.getBoolean("inherit_permissions"))effective.retainAll(permissions(r));
+                    return new PosDtos.AreaService(area,uuid(r,"service_id"),Set.copyOf(effective),r.getBoolean("enabled"),r.getBoolean("inherit_permissions"));},area);
     }
     void assign(UUID area,UUID service,PosDtos.AssignmentInput input) {
-        jdbc.update("INSERT INTO \"AreaServiceAssignment\" (assignment_id,area_object_id,service_id,permissions,enabled) "
-                +"VALUES (?,?,?,string_to_array(?,','),?) ON CONFLICT (area_object_id,service_id) DO UPDATE SET permissions=excluded.permissions,enabled=excluded.enabled",
-                UUID.randomUUID(),area,service,csv(input.permissions()),input.enabled());
+        jdbc.update("INSERT INTO \"AreaServiceAssignment\" (assignment_id,area_object_id,service_id,permissions,enabled,inherit_permissions) "
+                +"VALUES (?,?,?,string_to_array(?,','),?,?) ON CONFLICT (area_object_id,service_id) DO UPDATE SET permissions=excluded.permissions,enabled=excluded.enabled,inherit_permissions=excluded.inherit_permissions",
+                UUID.randomUUID(),area,service,csv(input.permissions()),input.enabled(),input.permissions()==null);
     }
     void unassign(UUID area,UUID service) {jdbc.update("DELETE FROM \"AreaServiceAssignment\" WHERE area_object_id=? AND service_id=?",area,service);}
     void session(String hash,UUID device,UUID user,Instant expires,UUID staffAssignment) {
@@ -66,12 +68,16 @@ public class PosRepository {
     }
     void logout(String hash) {jdbc.update("UPDATE \"PosSession\" SET revoked_at=now() WHERE token_hash=?",hash);}
     List<PosDtos.AvailableService> available(UUID terminal,UUID area,Set<PosPermission> devicePermissions) {
-        return jdbc.query("SELECT s.service_id,s.service_code,s.service_name,s.price,s.currency_code,a.permissions AS area_permissions,p.permissions AS pos_permissions FROM \"AreaServiceAssignment\" a "
+        return jdbc.query("SELECT s.service_id,s.service_code,s.service_name,s.price,s.currency_code,a.permissions AS area_permissions,p.permissions AS pos_permissions, "
+                +"sp.permissions AS source_permissions,a.inherit_permissions AS area_inherit,(p.service_id IS NULL OR p.inherit_permissions) AS pos_inherit FROM \"AreaServiceAssignment\" a "
                 +"JOIN \"Service\" s ON s.service_id=a.service_id JOIN \"ShipModelObject\" o ON o.ship_model_object_id=a.area_object_id "
                 +"JOIN \"DeckServiceAssignment\" d ON d.deck_id=o.deck_id AND d.service_id=s.service_id "
-                +"JOIN \"PosAreaServicePermission\" p ON p.area_object_id=a.area_object_id AND p.service_id=a.service_id AND p.terminal_id=? AND p.enabled "
-                +"WHERE a.area_object_id=? AND a.enabled AND s.status='ACTIVE' ORDER BY s.service_code",(r,n)->{
-                    var effective=permissions(r,"area_permissions");effective.retainAll(devicePermissions);effective.retainAll(permissions(r,"pos_permissions"));
+                +"JOIN \"ServiceOperationPolicy\" sp ON sp.service_id=s.service_id "
+                +"LEFT JOIN \"PosAreaServicePermission\" p ON p.area_object_id=a.area_object_id AND p.service_id=a.service_id AND p.terminal_id=? "
+                +"WHERE a.area_object_id=? AND a.enabled AND (p.service_id IS NULL OR p.enabled) AND s.status='ACTIVE' ORDER BY s.service_code",(r,n)->{
+                    var effective=permissions(r,"source_permissions");effective.retainAll(devicePermissions);
+                    if(!r.getBoolean("area_inherit"))effective.retainAll(permissions(r,"area_permissions"));
+                    if(!r.getBoolean("pos_inherit"))effective.retainAll(permissions(r,"pos_permissions"));
                     return new PosDtos.AvailableService(uuid(r,"service_id"),r.getString("service_code"),r.getString("service_name"),
                             r.getBigDecimal("price"),r.getString("currency_code"),Set.copyOf(effective));
                 },terminal,area).stream().filter(s->!s.permissions().isEmpty()).toList();
@@ -79,11 +85,12 @@ public class PosRepository {
     List<UUID> requestIds(UUID terminal,UUID area,UUID ship,UUID cruise) {
         return jdbc.query("SELECT r.service_request_id FROM \"ServiceRequest\" r JOIN \"Booking\" b ON b.booking_id=r.booking_id "
                 +"JOIN \"Cruise\" c ON c.cruise_id=b.cruise_id JOIN \"AreaServiceAssignment\" a ON a.service_id=r.service_id "
-                +"JOIN \"PosAreaServicePermission\" p ON p.area_object_id=a.area_object_id AND p.service_id=a.service_id AND p.terminal_id=? "
+                +"LEFT JOIN \"PosAreaServicePermission\" p ON p.area_object_id=a.area_object_id AND p.service_id=a.service_id AND p.terminal_id=? "
+                +"JOIN \"ServiceOperationPolicy\" sp ON sp.service_id=a.service_id "
                 +"JOIN \"Service\" s ON s.service_id=r.service_id JOIN \"ShipModelObject\" o ON o.ship_model_object_id=a.area_object_id "
                 +"JOIN \"DeckServiceAssignment\" d ON d.deck_id=o.deck_id AND d.service_id=r.service_id "
-                +"WHERE a.area_object_id=? AND a.enabled AND 'SERVICE_REQUEST_READ'=ANY(a.permissions) AND c.ship_id=? AND c.cruise_id=? "
-                +"AND p.enabled AND 'SERVICE_REQUEST_READ'=ANY(p.permissions) AND s.status='ACTIVE' "
+                +"WHERE a.area_object_id=? AND a.enabled AND (a.inherit_permissions OR 'SERVICE_REQUEST_READ'=ANY(a.permissions)) AND c.ship_id=? AND c.cruise_id=? "
+                +"AND 'SERVICE_REQUEST_READ'=ANY(sp.permissions) AND (p.service_id IS NULL OR (p.enabled AND (p.inherit_permissions OR 'SERVICE_REQUEST_READ'=ANY(p.permissions)))) AND s.status='ACTIVE' "
                 +"ORDER BY r.request_time DESC,r.service_request_id LIMIT 200",(r,n)->uuid(r,"service_request_id"),terminal,area,ship,cruise);
     }
     private static final RowMapper<StoredSale> SALE=(r,n)->new StoredSale(new PosDtos.Sale(uuid(r,"sale_id"),uuid(r,"terminal_id"),
@@ -98,7 +105,7 @@ public class PosRepository {
                 s.saleId(),s.terminalId(),s.areaId(),s.serviceId(),s.serviceRequestId(),s.onboardAccountId(),s.bookingPassengerId(),s.quantity(),
                 s.unitPrice(),s.amount(),s.currency(),s.employeeId(),s.chargeId(),Timestamp.from(s.createdAt()),key,fingerprint);
     }
-    static String csv(Set<PosPermission> p) {return p.stream().map(Enum::name).sorted().collect(Collectors.joining(","));}
+    static String csv(Set<PosPermission> p) {return p==null?"":p.stream().map(Enum::name).sorted().collect(Collectors.joining(","));}
     private static Set<PosPermission> permissions(ResultSet r) throws SQLException {
         return permissions(r,"permissions");
     }

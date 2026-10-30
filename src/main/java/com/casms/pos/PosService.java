@@ -36,6 +36,7 @@ import java.util.*;
 public class PosService {
     private final PosRepository repository;
     private final PosAccessService accessRules;
+    private final ResourceOperationService operationPolicies;
     private final ServiceRepository services;
     private final DeckServiceAssignmentRepository deckServices;
     private final ServiceRequestService serviceRequests;
@@ -59,8 +60,10 @@ public class PosService {
         services.findById(service).orElseThrow(()->new ResourceNotFoundException("Service",service));
         if(deckServices.findByDeckDeckIdAndServiceServiceId(area.deckId(),service).isEmpty())
             throw invalid("SERVICE_NOT_ON_AREA_DECK","Assign the service to this area's deck first");
+        ResourceOperationService.validate(PosPermission.ResourceType.SERVICE,input.permissions(),
+                operationPolicies.get(PosPermission.ResourceType.SERVICE,service).permissions());
         repository.assign(id,service,input);
-        return new PosDtos.AreaService(id,service,input.permissions(),input.enabled());
+        return repository.assignments(id).stream().filter(a->a.serviceId().equals(service)).findFirst().orElseThrow();
     }
     public void unassign(UUID ship,UUID area,UUID service) {area(ship,area,true);repository.unassign(area,service);}
     public List<PosDtos.Terminal> terminals(UUID ship) {return repository.devices(ship);}
@@ -193,7 +196,7 @@ public class PosService {
         t.setSourceType(source);t.setSourceReferenceId(reference);t.setCreatedByUser(user.getUser());t.setSyncStatus(TransactionSyncStatus.SYNCED);t.setSyncedAt(now);
         return transactions.save(t);
     }
-    private Access access(String token,CasmsPrincipal user) {
+    Access access(String token,CasmsPrincipal user) {
         employee(user);
         if(token==null || token.length()>128)throw denied("POS session is required");
         var session=repository.session(hash(token)).orElseThrow(()->denied("Invalid POS session"));

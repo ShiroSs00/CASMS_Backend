@@ -80,23 +80,32 @@ public class PosAccessService {
     }
     public List<PosDtos.TerminalService> policies(UUID terminal,UUID area) {
         var d=device(terminal);area(d.shipId(),area,true,false);
-        return jdbc.query("SELECT * FROM \"PosAreaServicePermission\" WHERE terminal_id=? AND area_object_id=? ORDER BY service_id",
-                (r,n)->new PosDtos.TerminalService(terminal,area,PosRepository.uuid(r,"service_id"),PosRepository.permissions(r,"permissions"),r.getBoolean("enabled")),terminal,area);
+        var sources=repository.assignments(area);
+        return jdbc.query("SELECT a.service_id,p.permissions,COALESCE(p.enabled,true) AS enabled,(p.service_id IS NULL OR p.inherit_permissions) AS inherited "
+                +"FROM \"AreaServiceAssignment\" a LEFT JOIN \"PosAreaServicePermission\" p ON p.area_object_id=a.area_object_id AND p.service_id=a.service_id AND p.terminal_id=? "
+                +"WHERE a.area_object_id=? ORDER BY a.service_id",
+                (r,n)->{UUID id=PosRepository.uuid(r,"service_id");boolean inherit=r.getBoolean("inherited");
+                    var effective=EnumSet.noneOf(PosPermission.class);
+                    sources.stream().filter(s->s.serviceId().equals(id)).findFirst().ifPresent(s->effective.addAll(s.permissions()));
+                    effective.retainAll(d.permissions());if(!inherit)effective.retainAll(PosRepository.permissions(r,"permissions"));
+                    return new PosDtos.TerminalService(terminal,area,id,Set.copyOf(effective),r.getBoolean("enabled"),inherit);},terminal,area);
     }
     public PosDtos.TerminalService policy(UUID terminal,UUID area,UUID service,PosDtos.AssignmentInput input) {
         var d=device(terminal);area(d.shipId(),area,true,input.enabled());requireAreaLink(d,area);
         var source=repository.assignments(area).stream().filter(a->a.serviceId().equals(service)).findFirst()
                 .orElseThrow(()->invalid("POS_AREA_SERVICE_REQUIRED","Assign this service to the selected area first"));
-        if(!source.permissions().containsAll(input.permissions()) || !d.permissions().containsAll(input.permissions()))
+        ResourceOperationService.validate(PosPermission.ResourceType.SERVICE,input.permissions(),source.permissions());
+        if(input.permissions()!=null && !d.permissions().containsAll(input.permissions()))
             throw invalid("POS_PERMISSION_OUTSIDE_PARENT_SCOPE","POS service permissions must be within area and terminal permissions");
-        jdbc.update("INSERT INTO \"PosAreaServicePermission\" (terminal_id,area_object_id,service_id,permissions,enabled) VALUES (?,?,?,string_to_array(?,','),?) "
-                +"ON CONFLICT (terminal_id,area_object_id,service_id) DO UPDATE SET permissions=excluded.permissions,enabled=excluded.enabled",
-                terminal,area,service,PosRepository.csv(input.permissions()),input.enabled());
-        return new PosDtos.TerminalService(terminal,area,service,input.permissions(),input.enabled());
+        jdbc.update("INSERT INTO \"PosAreaServicePermission\" (terminal_id,area_object_id,service_id,permissions,enabled,inherit_permissions) VALUES (?,?,?,string_to_array(?,','),?,?) "
+                +"ON CONFLICT (terminal_id,area_object_id,service_id) DO UPDATE SET permissions=excluded.permissions,enabled=excluded.enabled,inherit_permissions=excluded.inherit_permissions",
+                terminal,area,service,PosRepository.csv(input.permissions()),input.enabled(),input.permissions()==null);
+        return policies(terminal,area).stream().filter(p->p.serviceId().equals(service)).findFirst().orElseThrow();
     }
     public void removePolicy(UUID terminal,UUID area,UUID service) {
         var d=device(terminal);area(d.shipId(),area,true,false);
-        jdbc.update("DELETE FROM \"PosAreaServicePermission\" WHERE terminal_id=? AND area_object_id=? AND service_id=?",terminal,area,service);
+        // Retain an explicit denial: absence now means inheritance for new links.
+        policy(terminal,area,service,new PosDtos.AssignmentInput(null,false));
     }
     public PosDtos.AreaStaff login(PosDtos.Terminal terminal,PosDtos.LoginInput input,UUID user) {
         UUID areaId=input.areaId()==null?terminal.areaId():input.areaId();
