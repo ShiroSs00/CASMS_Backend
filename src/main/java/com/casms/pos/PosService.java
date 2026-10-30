@@ -35,6 +35,7 @@ import java.util.*;
 @Service @RequiredArgsConstructor @Transactional
 public class PosService {
     private final PosRepository repository;
+    private final PosAccessService accessRules;
     private final ServiceRepository services;
     private final DeckServiceAssignmentRepository deckServices;
     private final ServiceRequestService serviceRequests;
@@ -48,7 +49,7 @@ public class PosService {
     private final PasswordEncoder encoder;
     @Value("${casms.pos.session-ttl:PT30M}") private Duration sessionTtl;
     private static final SecureRandom RANDOM = new SecureRandom();
-    record Access(PosDtos.Terminal terminal, PosRepository.Area area, CasmsPrincipal employee) {}
+    record Access(PosDtos.Terminal terminal, PosRepository.Area area, CasmsPrincipal employee, PosDtos.AreaStaff assignment) {}
 
     public List<PosDtos.AreaService> assignments(UUID ship,UUID area) {
         area(ship,area,false);return repository.assignments(area);
@@ -78,15 +79,15 @@ public class PosService {
         employee(user);
         var d=device(id);
         if(!d.terminal().enabled() || !encoder.matches(input.deviceSecret(),d.secretHash()))throw denied("Invalid or inactive POS device");
-        area(d.terminal().shipId(),d.terminal().areaId(),true);
+        var assignment=accessRules.login(d.terminal(),input,user.getUserId());
         if(sessionTtl.isNegative() || sessionTtl.isZero() || sessionTtl.compareTo(Duration.ofHours(8))>0)
             throw new IllegalStateException("POS session TTL must be positive and at most eight hours");
         String token=secret();Instant expiry=Instant.now().plus(sessionTtl);
-        repository.session(hash(token),id,user.getUserId(),expiry);
-        return new PosDtos.Session(token,expiry,d.terminal());
+        repository.session(hash(token),id,user.getUserId(),expiry,assignment.assignmentId());
+        return new PosDtos.Session(token,expiry,scopedTerminal(d.terminal(),assignment.areaId()),assignment.cruiseId(),assignment.assignmentId());
     }
     public PosDtos.Context context(String token,CasmsPrincipal user) {
-        var a=access(token,user);return new PosDtos.Context(a.terminal(),available(a));
+        var a=access(token,user);return new PosDtos.Context(a.terminal(),available(a),a.assignment().cruiseId(),a.assignment().assignmentId());
     }
     public void logout(String token,CasmsPrincipal user) {access(token,user);repository.logout(hash(token));}
     public List<PosDtos.AvailableService> available(String token,CasmsPrincipal user) {
@@ -97,7 +98,7 @@ public class PosService {
         requireTerminal(a,PosPermission.SERVICE_REQUEST_READ);
         var allowed=available(a).stream().filter(s->s.permissions().contains(PosPermission.SERVICE_REQUEST_READ))
                 .map(PosDtos.AvailableService::serviceId).collect(java.util.stream.Collectors.toSet());
-        return repository.requestIds(a.area().id(),a.area().shipId()).stream().map(id->serviceRequests.get(id,user.getUserId(),true))
+        return repository.requestIds(a.terminal().terminalId(),a.area().id(),a.area().shipId(),a.assignment().cruiseId()).stream().map(id->serviceRequests.get(id,user.getUserId(),true))
                 .filter(r->allowed.contains(r.getService().getServiceId())).map(PosService::requestView).toList();
     }
     public ServiceRequestView action(String token,CasmsPrincipal user,UUID request,String action) {
@@ -109,7 +110,7 @@ public class PosService {
         };
         var r=requests.lockById(request).orElseThrow(()->new ResourceNotFoundException("Service request",request));
         require(a,r.getService().getServiceId(),permission);
-        if(r.getBooking()==null || r.getBooking().getCruise().getShip()==null
+        if(r.getBooking()==null || !a.assignment().cruiseId().equals(r.getBooking().getCruise().getCruiseId()) || r.getBooking().getCruise().getShip()==null
                 || !a.area().shipId().equals(r.getBooking().getCruise().getShip().getShipId()))throw denied("Request is outside this POS ship");
         return requestView(serviceRequests.transition(request,user.getUserId(),action));
     }
@@ -120,6 +121,8 @@ public class PosService {
         var existing=repository.sale(a.terminal().terminalId(),input.idempotencyKey().trim());
         if(existing.isPresent()) {
             if(!fingerprint.equals(existing.get().fingerprint()))throw conflict("POS_IDEMPOTENCY_CONFLICT","Key was used for a different sale");
+            if(!a.area().id().equals(existing.get().sale().areaId()))throw denied("Sale belongs to another POS area context");
+            checkSaleCruise(a,existing.get().sale());
             return existing.get().sale();
         }
         // All internal allowance writes serialize on the account; no money is collected at POS.
@@ -127,7 +130,7 @@ public class PosService {
         var account=accounts.findById(input.onboardAccountId()).orElseThrow(()->new ResourceNotFoundException("Onboard account",input.onboardAccountId()));
         var bp=passengers.findById(input.bookingPassengerId()).orElseThrow(()->new ResourceNotFoundException("Booking passenger",input.bookingPassengerId()));
         var cruise=bp.getBooking().getCruise();
-        if(cruise.getShip()==null || !a.area().shipId().equals(cruise.getShip().getShipId()) || !cruise.getCruiseId().equals(account.getCruise().getCruiseId()))
+        if(cruise.getShip()==null || !a.assignment().cruiseId().equals(cruise.getCruiseId()) || !a.area().shipId().equals(cruise.getShip().getShipId()) || !cruise.getCruiseId().equals(account.getCruise().getCruiseId()))
             throw denied("Passenger/account is outside this POS ship or cruise");
         if(account.getStatus()!=OnboardAccountStatus.ACTIVE || cruise.getStatus()!=CruiseStatus.IN_PROGRESS
                 || bp.getBooking().getBookingStatus()!=BookingStatus.Confirmed || bp.getParticipationStatus()!=BookingPassengerParticipationStatus.Active)
@@ -169,14 +172,19 @@ public class PosService {
         ledger.lockAccount(id);
         var account=accounts.findById(id).orElseThrow(()->new ResourceNotFoundException("Onboard account",id));
         var bp=passengers.findById(bookingPassengerId).orElseThrow(()->new ResourceNotFoundException("Booking passenger",bookingPassengerId));
-        if(account.getCruise().getShip()==null || !a.area().shipId().equals(account.getCruise().getShip().getShipId())
+        if(!a.assignment().cruiseId().equals(account.getCruise().getCruiseId()) || account.getCruise().getShip()==null || !a.area().shipId().equals(account.getCruise().getShip().getShipId())
                 || !bp.getBooking().getCruise().getCruiseId().equals(account.getCruise().getCruiseId()))throw denied("Account or passenger is outside this POS ship/cruise");
         return new PosDtos.Statement(ledger.budget(account,bp.getPassenger().getPassengerId()),ledger.history(id));
     }
     private PosDtos.Sale scopedSale(Access a,UUID id) {
         var sale=repository.sale(id).orElseThrow(()->new ResourceNotFoundException("POS sale",id)).sale();
         if(!sale.terminalId().equals(a.terminal().terminalId()) || !sale.areaId().equals(a.area().id()))throw denied("Sale belongs to another POS");
+        checkSaleCruise(a,sale);
         return sale;
+    }
+    private void checkSaleCruise(Access a,PosDtos.Sale sale) {
+        var account=accounts.findById(sale.onboardAccountId()).orElseThrow();
+        if(!a.assignment().cruiseId().equals(account.getCruise().getCruiseId()))throw denied("Sale belongs to another POS cruise context");
     }
     private OnboardTransaction transaction(OnboardAccount account,com.casms.identity.entity.Passenger passenger,CasmsPrincipal user,
             BigDecimal amount,TransactionType type,String source,UUID reference,Instant now) {
@@ -194,7 +202,12 @@ public class PosService {
         // Re-read after locking the terminal so concurrent disable/rotation cannot revive a session.
         session=repository.session(hash(token)).orElseThrow();
         if(session.revokedAt()!=null || !session.expiresAt().isAfter(Instant.now()) || !d.enabled())throw denied("POS session expired or revoked");
-        return new Access(d,area(d.shipId(),d.areaId(),true),user);
+        var assignment=accessRules.sessionAssignment(session.staffAssignmentId(),d,user.getUserId());
+        // Area assignment changes can revoke sessions while this request waits for the area lock.
+        session=repository.session(hash(token)).orElseThrow();
+        if(session.revokedAt()!=null || !session.expiresAt().isAfter(Instant.now()))throw denied("POS session expired or revoked");
+        var scoped=scopedTerminal(d,assignment.areaId());
+        return new Access(scoped,area(d.shipId(),assignment.areaId(),true),user,assignment);
     }
     private static void employee(CasmsPrincipal user) {
         if(user==null || !user.isEnabled() || !user.isAccountNonLocked() || !user.isStaff() || !user.hasPermission(Permission.POS_ACCESS))
@@ -206,7 +219,10 @@ public class PosService {
         if(!"READY".equals(a.modelStatus()))throw invalid("POS_AREA_NOT_PUBLISHED","POS requires a physical area in a READY model");
         return a;
     }
-    private List<PosDtos.AvailableService> available(Access a) {return repository.available(a.area().id(),a.terminal().permissions());}
+    private static PosDtos.Terminal scopedTerminal(PosDtos.Terminal d,UUID area) {
+        return new PosDtos.Terminal(d.terminalId(),d.shipId(),area,d.code(),d.name(),d.permissions(),d.enabled());
+    }
+    private List<PosDtos.AvailableService> available(Access a) {return repository.available(a.terminal().terminalId(),a.area().id(),a.terminal().permissions());}
     private boolean has(Access a,UUID service,PosPermission p) {return available(a).stream().anyMatch(s->s.serviceId().equals(service)&&s.permissions().contains(p));}
     private void require(Access a,UUID service,PosPermission p) {if(!has(a,service,p))throw denied("Service or permission is unavailable at this POS");}
     private static void requireTerminal(Access a,PosPermission p) {if(!a.terminal().permissions().contains(p))throw denied("Operation unavailable at this POS");}

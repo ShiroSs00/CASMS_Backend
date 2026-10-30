@@ -13,15 +13,21 @@ public final class PosDtos {
             @NotBlank @Size(max=200) String name, @NotNull Set<@NotNull PosPermission> permissions, boolean enabled) {}
     public record TerminalUpdate(@NotBlank @Size(max=200) String name,
             @NotNull Set<@NotNull PosPermission> permissions, boolean enabled) {}
-    public record LoginInput(@NotBlank @Size(max=128) String deviceSecret) {}
+    public record LoginInput(@NotBlank @Size(max=128) String deviceSecret, UUID areaId, UUID cruiseId) {}
+    public record AreaStaffInput(@NotNull UUID cruiseId, Instant startsAt, Instant endsAt, boolean enabled) {}
+    public record AreaStaff(UUID assignmentId, UUID areaId, UUID userId, UUID cruiseStaffId, UUID cruiseId,
+            boolean enabled, Instant startsAt, Instant endsAt) {}
+    public record AreaLinkInput(boolean enabled) {}
+    public record TerminalArea(UUID terminalId, UUID areaId, boolean enabled) {}
+    public record TerminalService(UUID terminalId, UUID areaId, UUID serviceId, Set<PosPermission> permissions, boolean enabled) {}
     public record Terminal(UUID terminalId, UUID shipId, UUID areaId, String code, String name,
             Set<PosPermission> permissions, boolean enabled) {}
     public record Credential(Terminal terminal, String deviceSecret) {}
-    public record Session(String sessionToken, Instant expiresAt, Terminal terminal) {}
+    public record Session(String sessionToken, Instant expiresAt, Terminal terminal, UUID cruiseId, UUID staffAssignmentId) {}
     public record AreaService(UUID areaId, UUID serviceId, Set<PosPermission> permissions, boolean enabled) {}
     public record AvailableService(UUID serviceId, String code, String name, BigDecimal unitPrice,
             String currency, Set<PosPermission> permissions) {}
-    public record Context(Terminal terminal, java.util.List<AvailableService> services) {}
+    public record Context(Terminal terminal, java.util.List<AvailableService> services, UUID cruiseId, UUID staffAssignmentId) {}
     public record SaleInput(@NotNull UUID serviceId, @NotNull UUID bookingPassengerId,
             @NotNull UUID onboardAccountId, UUID scheduleId, @NotNull @Min(1) @Max(1000) Integer quantity,
             @NotBlank @Size(max=100) String idempotencyKey) {}

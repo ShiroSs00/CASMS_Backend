@@ -71,7 +71,8 @@ public class PosController {
     @PostMapping("/pos-terminals/{terminalId}/credentials")
     public ApiResponse<PosDtos.Credential> rotate(@PathVariable UUID terminalId) {return ApiResponse.success(service.rotate(terminalId));}
 
-    @Operation(summary="Open a POS session using an employee JWT with POS_ACCESS and the provisioned device secret")
+    @Operation(summary="Open a POS session for an assigned employee, selected area and cruise",
+            description="Requires POS_ACCESS, device secret, an enabled POS-area link and an active area/CruiseStaff assignment. areaId defaults to the original device area. cruiseId may be omitted only if exactly one current assignment matches. The assignment and permissions are checked on every subsequent request.")
     @PreAuthorize("hasAuthority('POS_ACCESS') and principal.enabled and principal.accountNonLocked")
     @PostMapping("/pos-terminals/{terminalId}/sessions") @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<PosDtos.Session> login(@PathVariable UUID terminalId,@Valid @RequestBody PosDtos.LoginInput input,
