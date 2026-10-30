@@ -11,6 +11,8 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Set;
 
@@ -19,9 +21,10 @@ import java.util.Set;
  * had already applied them (BE-FIX-00).
  *
  * <p>Only exact, known (version, legacy checksum) pairs listed in {@link #ACCEPTED_DRIFTS} are rewritten,
- * and only while the script on the classpath still has the expected checksum. Any other mismatch is left
+ * and only while the script in the configured location still has the expected checksum. Any other mismatch is left
  * untouched, so Flyway validation still rejects it. Schema and data are never modified here; the
- * forward-only migration V40 carries the intended follow-up changes.</p>
+ * forward-only migration V40 carries the earlier schema follow-ups. The V34 edit only separates the
+ * new seed ship identity to avoid a primary-key collision; existing ship/deck/cabin IDs are retained.</p>
  */
 @Slf4j
 public class LegacyChecksumRealigner {
@@ -58,6 +61,8 @@ public class LegacyChecksumRealigner {
                     Set.of(-960173765), "d0d449c edited by 5756081"),
             new AcceptedDrift("22", "V22__create_audit_log_table.sql", -532601896,
                     Set.of(1529099746), "d0d449c edited by 5756081"),
+            new AcceptedDrift("34", "V34__add_deck_and_cabin_to_trip_plan_entry.sql", -477179883,
+                    Set.of(-1753018760), "30b2d06 seed ship UUID corrected by 569b5f7 to avoid collision with existing demo ship; preserve existing rows"),
             new AcceptedDrift("35", "V35__add_activity_category_and_location_refinement.sql", 267207917,
                     Set.of(-1792007694), "original 4f4f5e0 restored; edit 9d894af carried forward by V40")
     );
@@ -97,7 +102,7 @@ public class LegacyChecksumRealigner {
             String sql = "UPDATE " + historyTable
                     + " SET checksum = ?, script = ? WHERE version = ? AND success AND checksum = ANY (?)";
             for (AcceptedDrift drift : drifts) {
-                Integer resolved = classpathChecksum(configuration, drift.script());
+                Integer resolved = configuredChecksum(configuration, drift.script());
                 if (resolved == null || resolved != drift.currentChecksum()) {
                     log.warn("Flyway V{} ({}) no longer matches its accepted checksum (found {}); "
                             + "skipping realignment so validation can report it", drift.version(), drift.script(), resolved);
@@ -126,11 +131,22 @@ public class LegacyChecksumRealigner {
         }
     }
 
-    private static Integer classpathChecksum(Configuration configuration, String script) {
+    private static Integer configuredChecksum(Configuration configuration, String script) {
         ClassLoader classLoader = configuration.getClassLoader() != null
                 ? configuration.getClassLoader()
                 : Thread.currentThread().getContextClassLoader();
         for (Location location : configuration.getLocations()) {
+            if (location.isFileSystem()) {
+                Path file = Path.of(location.getRootPath()).resolve(script);
+                if (Files.isRegularFile(file)) {
+                    try (InputStream stream = Files.newInputStream(file)) {
+                        return FlywaySqlChecksum.of(stream);
+                    } catch (IOException ex) {
+                        throw new IllegalStateException("Unable to read migration " + file, ex);
+                    }
+                }
+                continue;
+            }
             if (!location.isClassPath()) {
                 continue;
             }
