@@ -260,6 +260,48 @@ public class ShipModelAssetService {
     }
 
     @Transactional(readOnly = true)
+    public com.casms.ship.dto.response.PublicShipModelResponse publicModel(UUID shipId) {
+        ShipModel current = models.findByShipShipIdAndModelKeyIsNotNullAndStatusOrderByCreatedAtDesc(shipId, ShipModelStatus.READY)
+                .stream().findFirst().orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No published model on this ship"));
+        ShipModel model = publicModelVersion(shipId, current.getShipModelId());
+        return new com.casms.ship.dto.response.PublicShipModelResponse(shipId, model.getShipModelId(),
+                manifest(model), cabinMappings(shipId, model.getShipModelId()));
+    }
+
+    private ShipModel publicModelVersion(UUID shipId, UUID modelId) {
+        ShipModel model = models.findById(modelId)
+                .filter(value -> value.getShip().getShipId().equals(shipId)
+                        && value.getShip().getStatus() == ShipStatus.ACTIVE
+                        && value.getStatus() == ShipModelStatus.READY && value.getModelKey() != null)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Published model not found"));
+        manifest(model);
+        return model;
+    }
+
+    private ShipModel publicAssetModel(UUID shipId, UUID modelId, String name) {
+        ShipModel model = publicModelVersion(shipId, modelId);
+        JsonNode manifest = manifest(model);
+        Set<String> allowed = new HashSet<>();
+        manifest.path("assets").elements().forEachRemaining(value -> { if (value.isTextual()) allowed.add(value.asText()); });
+        assets.decks(manifest).forEach(deck -> allowed.add(deck.path("asset").asText()));
+        if (!name.endsWith(".glb") || !allowed.contains(name))
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Published model asset not found");
+        return model;
+    }
+
+    @Transactional(readOnly = true)
+    public ShipModelAssetStore.AssetMetadata publicAsset(UUID shipId, UUID modelId, String name) {
+        ShipModel model = publicAssetModel(shipId, modelId, name);
+        return assets.asset(model.getModelKey(), model.getAssetVersion(), name);
+    }
+
+    @Transactional(readOnly = true)
+    public void writePublicAsset(UUID shipId, UUID modelId, String name, OutputStream output) {
+        ShipModel model = publicAssetModel(shipId, modelId, name);
+        assets.writeAsset(model.getModelKey(), model.getAssetVersion(), name, output);
+    }
+
+    @Transactional(readOnly = true)
     public List<ShipModelDeckMappingRequest> deckMappings(UUID shipId, UUID modelId) {
         ShipModel model = model(shipId, modelId);
         return objects.findByShipModelShipModelId(modelId).stream()
