@@ -117,6 +117,8 @@ public class CruiseMainflowService {
         if(!Set.of("DOMESTIC","INTERNATIONAL").contains(Objects.toString(c.get("planned_scope"),"")))b.add("SCOPE_COUNTRY_REQUIRED");
         if(c.get("booking_opens_at")==null||c.get("booking_closes_at")==null)b.add("BOOKING_WINDOW_REQUIRED");
         if(c.get("guidance_opens_at")==null||c.get("guidance_closes_at")==null)b.add("GUIDANCE_WINDOW_REQUIRED");
+        Instant bookingClose=time(c.get("booking_closes_at")),guidanceStart=time(c.get("guidance_opens_at"));
+        if(bookingClose!=null&&guidanceStart!=null&&guidanceStart.isBefore(bookingClose))b.add("GUIDANCE_BEFORE_BOOKING_CLOSE");
         if(Boolean.FALSE.equals(jdbc.queryForObject("SELECT EXISTS(SELECT 1 FROM \"ItineraryDay\" d JOIN \"Itinerary\" i USING(itinerary_id) WHERE cruise_id=?)",Boolean.class,id)))b.add("ITINERARY_REQUIRED");
         if(Boolean.TRUE.equals(jdbc.queryForObject("SELECT EXISTS(SELECT 1 FROM \"Itinerary\" i JOIN \"Cruise\" c USING(cruise_id) WHERE c.cruise_id=? AND (i.start_date<>(c.departure_datetime AT TIME ZONE 'Asia/Ho_Chi_Minh')::date OR i.end_date<>(c.return_datetime AT TIME ZONE 'Asia/Ho_Chi_Minh')::date))",Boolean.class,id)))b.add("ITINERARY_CRUISE_DATES_MISMATCH");
         if(Boolean.TRUE.equals(jdbc.queryForObject("SELECT EXISTS(SELECT 1 FROM \"Itinerary\" i WHERE i.cruise_id=? AND ((SELECT count(*) FROM \"ItineraryDay\" d WHERE d.itinerary_id=i.itinerary_id)<>i.end_date-i.start_date+1 OR EXISTS(SELECT 1 FROM \"ItineraryDay\" d WHERE d.itinerary_id=i.itinerary_id AND d.date<>i.start_date+d.day_number-1)))",Boolean.class,id)))b.add("ITINERARY_DAY_DATE_MISMATCH");
@@ -213,6 +215,8 @@ public class CruiseMainflowService {
         if(w.bookingOpensAt()==null||w.bookingClosesAt()==null||!w.bookingOpensAt().isBefore(w.bookingClosesAt())||!w.bookingClosesAt().isBefore(departure)
                 ||w.guidanceOpensAt()==null||w.guidanceClosesAt()==null||!w.guidanceOpensAt().isBefore(w.guidanceClosesAt())||w.guidanceClosesAt().isAfter(departure))
             throw new BusinessException(HttpStatus.UNPROCESSABLE_ENTITY,"INVALID_WINDOWS","Invalid booking or guidance window");
+        if(w.guidanceOpensAt().isBefore(w.bookingClosesAt()))
+            throw new BusinessException(HttpStatus.UNPROCESSABLE_ENTITY,"GUIDANCE_BEFORE_BOOKING_CLOSE","Guidance must start after booking closes");
         jdbc.update("UPDATE \"Cruise\" SET booking_opens_at=?,booking_closes_at=?,guidance_opens_at=?,guidance_closes_at=?,revision=revision+1 WHERE cruise_id=?",
                 java.sql.Timestamp.from(w.bookingOpensAt()),java.sql.Timestamp.from(w.bookingClosesAt()),java.sql.Timestamp.from(w.guidanceOpensAt()),java.sql.Timestamp.from(w.guidanceClosesAt()),id);
         event(id,"CONFIGURE_WINDOWS",actor,null,planSnapshot(id));return get(id);
