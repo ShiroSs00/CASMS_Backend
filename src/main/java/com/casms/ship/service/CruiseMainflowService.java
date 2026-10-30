@@ -162,8 +162,8 @@ public class CruiseMainflowService {
         List<String> planIssues=planBlockers(id,c,issues);
         List<String> b=new ArrayList<>(planIssues);
         if(!approved(id,r))b.add("PLAN_APPROVAL_REQUIRED");
-        Integer confirmed=jdbc.queryForObject("SELECT count(*) FROM \"CruisePreparationSection\" WHERE cruise_id=? AND status='CONFIRMED'",Integer.class,id);
-        if(confirmed==null||confirmed!=5)b.add("PREPARATION_CONFIRMATION_REQUIRED");
+        Integer confirmed=jdbc.queryForObject("SELECT count(*) FROM \"CruisePreparationSection\" WHERE cruise_id=? AND status='CONFIRMED' AND section_code IN ('TECHNICAL_NAUTICAL','HOTEL_CABIN','ENTERTAINMENT_SHORE','SAFETY_CREW')",Integer.class,id);
+        if(confirmed==null||confirmed!=4)b.add("PREPARATION_CONFIRMATION_REQUIRED");
         Boolean onboard=jdbc.queryForObject(com.casms.ship.repository.CruiseStaffRepository.ACTIVE_ONBOARD_SQL.replace(":cruiseId","?"),Boolean.class,id);
         if(!Boolean.TRUE.equals(onboard))b.add("ONBOARD_STAFF_REQUIRED");
         Boolean guidance=jdbc.queryForObject("SELECT EXISTS(SELECT 1 FROM \"GuidanceSession\" WHERE cruise_id=? AND status IN ('Published','Completed') AND published_at IS NOT NULL AND content IS NOT NULL AND length(trim(content))>0 AND instructor_user_id IS NOT NULL)",Boolean.class,id);
