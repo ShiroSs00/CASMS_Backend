@@ -202,6 +202,40 @@ public class CruisePreparationService {
     }
 
     @Transactional
+    public void submitDossier(UUID cruiseId, String evidence, Map<String, Long> expectedRevisions, UUID actorId) {
+        var actor = requireActor(actorId, true);
+        Cruise cruise = lockedCruise(cruiseId);
+        if (!submissionScope(cruise, actor))
+            throw new BusinessException(HttpStatus.FORBIDDEN, "PREPARATION_CRUISE_SCOPE_FORBIDDEN", "Only the assigned preparation coordinator may submit the dossier");
+        if (expectedRevisions == null || expectedRevisions.size() != TEMPLATES.size()
+                || TEMPLATES.stream().anyMatch(t -> !expectedRevisions.containsKey(t.code())))
+            throw new BusinessException(HttpStatus.UNPROCESSABLE_ENTITY, "PREPARATION_REVISIONS_REQUIRED", "Read all active preparation sections before submitting");
+        ensureSectionsInitialized(cruise);
+        List<CruisePreparationSection> pending = new ArrayList<>();
+        for (var template : TEMPLATES) {
+            var section = preparationSectionRepository.findByCruiseCruiseIdAndSectionCodeForUpdate(cruiseId, template.code())
+                    .orElseThrow(() -> new ResourceNotFoundException("CruisePreparationSection", template.code()));
+            if (!Objects.equals(expectedRevisions.get(template.code()), section.getRevision()))
+                throw new BusinessException(HttpStatus.CONFLICT, "STALE_REVISION", "Preparation evidence changed before submission");
+            if (!Set.of("SUBMITTED", "CONFIRMED").contains(section.getStatus())) {
+                if (!Set.of("NOT_STARTED", "IN_PROGRESS", "RETURNED").contains(section.getStatus()))
+                    throw new BusinessException(HttpStatus.CONFLICT, "INVALID_SECTION_STATUS", "Preparation section cannot be submitted");
+                pending.add(section);
+            }
+        }
+        if (!pending.isEmpty() && (evidence == null || evidence.isBlank()))
+            throw new BusinessException(HttpStatus.UNPROCESSABLE_ENTITY, "PREPARATION_EVIDENCE_REQUIRED", "Preparation evidence required");
+        // Joins the plan submission transaction: any later failure rolls back every section and its event.
+        // Existing submitted/confirmed groups retain their original evidence and decisions.
+        for (var section : pending) {
+            var request = new CruisePreparationSubmitRequest();
+            request.setExpectedRevision(section.getRevision());
+            request.setEvidence(evidence.trim());
+            submitSection(cruiseId, section.getSectionCode(), request, actorId, Set.of());
+        }
+    }
+
+    @Transactional
     public CruisePreparationSectionResponse submitSection(UUID cruiseId, String sectionCode,
                                                          CruisePreparationSubmitRequest request,
                                                          UUID actorId, Set<String> roles) {
