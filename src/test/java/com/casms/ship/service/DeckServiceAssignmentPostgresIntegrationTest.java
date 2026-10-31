@@ -50,7 +50,7 @@ class DeckServiceAssignmentPostgresIntegrationTest {
     }
     private Ship ship() {
         Ship s=new Ship();s.setShipCode("C90-"+UUID.randomUUID().toString().substring(0,12));
-        s.setShipName("CASMS 90 test");s.setTotalCapacity(10);s.setTotalDecks(1);s.setStatus(ShipStatus.ACTIVE);
+        s.setShipName("CASMS 90 test");s.setTotalCapacity(10);s.setTotalDecks(1);s.setStatus(ShipStatus.READY);
         return ships.saveAndFlush(s);
     }
     private String path(String verb, UUID deckId, UUID serviceId) {

@@ -91,7 +91,7 @@ class CruiseServiceTest {
         testShip.setShipId(shipId);
         testShip.setShipCode("SH-01");
         testShip.setShipName("Queen of the Ocean");
-        testShip.setStatus(ShipStatus.ACTIVE);
+        testShip.setStatus(ShipStatus.READY);
         testShip.setTotalCapacity(1000);
         testShip.setTotalDecks(10);
 
@@ -114,6 +114,17 @@ class CruiseServiceTest {
         testCruise.setDeparturePort(depPort);
         testCruise.setReturnPort(retPort);
         testCruise.setStatus(CruiseStatus.DRAFT);
+    }
+
+    @Test
+    void assignShip_rejectsNonOperationalLifecycle() {
+        when(cruiseRepository.findByIdForUpdate(cruiseId)).thenReturn(Optional.of(testCruise));
+        when(shipRepository.findByIdForUpdate(shipId)).thenReturn(Optional.of(testShip));
+        for(ShipStatus status:List.of(ShipStatus.DRAFT,ShipStatus.MAINTENANCE,ShipStatus.SUSPENDED,ShipStatus.RETIRED)) {
+            testShip.setStatus(status);
+            assertThrows(BusinessException.class,()->cruiseService.assignShip(cruiseId,shipId),status.name());
+        }
+        verify(cruiseRepository,never()).save(any());
     }
 
     @Test

@@ -135,7 +135,7 @@ public class CruiseSaleAndHandoffPostgresIntegrationTest {
         testShip = new Ship();
         testShip.setShipCode(shipCode);
         testShip.setShipName("Sale Explorer Test");
-        testShip.setStatus(ShipStatus.ACTIVE);
+        testShip.setStatus(ShipStatus.READY);
         testShip.setTotalCapacity(200);
         testShip.setTotalDecks(3);
         testShip = shipRepository.save(testShip);

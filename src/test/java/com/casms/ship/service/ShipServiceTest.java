@@ -27,6 +27,7 @@ class ShipServiceTest {
  @Mock ShipModelRepository shipModelRepository;
  @Mock LocationDeviceRepository locationDeviceRepository;
  @Mock BusinessCodeGenerator businessCodeGenerator;
+ @Mock ShipAreaService shipAreas;
  @InjectMocks ShipService service;
 
  @Test void create_savesAndReturnsShip() {
@@ -43,6 +44,22 @@ class ShipServiceTest {
   assertEquals("SH-0001",res.getShipCode());
   assertEquals("Test Ship",res.getShipName());
   verify(shipRepository).save(any(Ship.class));
+ }
+ @Test void statusChange_preservesSixStatesAndBlocksNonOperationalDuringCruise() {
+  UUID id=UUID.randomUUID(); Ship ship=new Ship(); ship.setShipId(id); ship.setStatus(ShipStatus.READY);
+  when(shipRepository.findById(id)).thenReturn(Optional.of(ship));
+  when(shipRepository.save(any(Ship.class))).thenAnswer(i->i.getArgument(0));
+  assertEquals(ShipStatus.IN_SERVICE,service.changeStatus(id,ShipStatus.IN_SERVICE).getStatus());
+  when(cruiseRepository.findCurrentActiveCruise(eq(id),any())).thenReturn(Optional.of(new com.casms.ship.entity.Cruise()));
+  for(ShipStatus status:List.of(ShipStatus.DRAFT,ShipStatus.MAINTENANCE,ShipStatus.SUSPENDED,ShipStatus.RETIRED)) {
+   assertEquals("SHIP_ACTIVE_CRUISE",assertThrows(BusinessException.class,()->service.changeStatus(id,status)).getCode());
+  }
+  assertEquals(ShipStatus.IN_SERVICE,ship.getStatus());
+ }
+ @Test void operationalStates_areExplicitAndNullSafe() {
+  assertEquals(6,ShipStatus.values().length);
+  for(ShipStatus status:ShipStatus.values()) assertEquals(status==ShipStatus.READY||status==ShipStatus.IN_SERVICE,ShipStatus.isOperational(status));
+  assertFalse(ShipStatus.isOperational(null));
  }
  @Test void list_mapsPage() {
   Ship s=new Ship(); s.setShipCode("SH-01"); s.setShipName("Test");

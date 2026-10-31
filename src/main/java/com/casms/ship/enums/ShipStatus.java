@@ -1,7 +1,14 @@
 package com.casms.ship.enums;
 
 public enum ShipStatus {
-    ACTIVE,
+    DRAFT,
+    READY,
+    IN_SERVICE,
     MAINTENANCE,
-    INACTIVE
+    SUSPENDED,
+    RETIRED;
+
+    public static boolean isOperational(ShipStatus status) {
+        return status == READY || status == IN_SERVICE;
+    }
 }

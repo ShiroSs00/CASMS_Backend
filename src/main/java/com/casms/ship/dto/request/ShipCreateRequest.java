@@ -21,7 +21,7 @@ public class ShipCreateRequest {
     @Size(max=100)
     private String shipName;
 
-    @Schema(description = "Trạng thái hoạt động ban đầu (mặc định ACTIVE)", example = "ACTIVE")
+    @Schema(description = "Trạng thái hoạt động ban đầu (mặc định DRAFT)", example = "DRAFT")
     private ShipStatus status;
 
     @Schema(description = "Tổng sức chứa; chỉ bổ sung khi mô hình không có", example = "2500")

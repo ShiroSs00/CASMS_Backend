@@ -138,7 +138,7 @@ public class ShipModelAssetService {
         JsonNode manifest = assets.manifest(modelKey, assetVersion);
         Ship ship = new Ship();
         ship.setShipCode(businessCodes.next("SH"));
-        ship.setStatus(supplements==null || supplements.getStatus()==null?ShipStatus.ACTIVE:supplements.getStatus());
+        ship.setStatus(supplements==null || supplements.getStatus()==null?ShipStatus.DRAFT:supplements.getStatus());
         if(supplements!=null) {
             ship.setShipName(supplements.getShipName());ship.setTotalCapacity(supplements.getTotalCapacity());
             ship.setTotalDecks(supplements.getTotalDecks());ship.setLengthMeters(supplements.getLengthMeters());
@@ -283,7 +283,7 @@ public class ShipModelAssetService {
     private ShipModel publicModelVersion(UUID shipId, UUID modelId) {
         ShipModel model = models.findById(modelId)
                 .filter(value -> value.getShip().getShipId().equals(shipId)
-                        && value.getShip().getStatus() == ShipStatus.ACTIVE
+                        && ShipStatus.isOperational(value.getShip().getStatus())
                         && value.getStatus() == ShipModelStatus.READY && value.getModelKey() != null)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Published model not found"));
         manifest(model);

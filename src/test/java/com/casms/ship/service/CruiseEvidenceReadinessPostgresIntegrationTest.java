@@ -110,7 +110,7 @@ public class CruiseEvidenceReadinessPostgresIntegrationTest {
         testShip = new Ship();
         testShip.setShipCode("SH-EVI-" + UUID.randomUUID().toString().substring(0, 8));
         testShip.setShipName("Evidence Explorer");
-        testShip.setStatus(ShipStatus.ACTIVE);
+        testShip.setStatus(ShipStatus.READY);
         testShip.setTotalCapacity(150);
         testShip.setTotalDecks(3);
         testShip = shipRepository.save(testShip);

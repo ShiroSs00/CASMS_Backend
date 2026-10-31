@@ -21,7 +21,7 @@ public class ShipResponse {
     @Schema(description = "Tên tàu", example = "Ocean Voyager")
     private String shipName;
 
-    @Schema(description = "Trạng thái tàu", example = "ACTIVE")
+    @Schema(description = "Trạng thái tàu", example = "READY")
     private ShipStatus status;
 
     @Schema(description = "Tổng sức chứa", example = "2500")

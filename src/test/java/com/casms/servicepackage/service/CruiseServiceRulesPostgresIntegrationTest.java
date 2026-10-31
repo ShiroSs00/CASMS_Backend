@@ -38,7 +38,7 @@ class CruiseServiceRulesPostgresIntegrationTest {
     Ship ship; Deck deck; Service service; Cruise cruise; TourPackage pkg;
     String code(){return UUID.randomUUID().toString().substring(0,8);}
     @BeforeEach void fixture(){
-        ship=new Ship();ship.setShipCode("R-"+code());ship.setShipName("Service rules");ship.setStatus(ShipStatus.ACTIVE);ship.setTotalCapacity(100);ship.setTotalDecks(1);ship=ships.saveAndFlush(ship);
+        ship=new Ship();ship.setShipCode("R-"+code());ship.setShipName("Service rules");ship.setStatus(ShipStatus.READY);ship.setTotalCapacity(100);ship.setTotalDecks(1);ship=ships.saveAndFlush(ship);
         deck=new Deck();deck.setShip(ship);deck.setDeckName("Deck 1");deck.setDeckNumber(1);deck=decks.saveAndFlush(deck);
         service=new Service();service.setServiceCode("R-"+code());service.setServiceName("Restaurant");service.setServiceType("DINING");service.setRequiresSchedule(true);service.setStatus(ServiceStatus.ACTIVE);service=services.saveAndFlush(service);
         Port port=new Port();port.setPortCode("R-"+code());port.setPortName("Test port");port.setCountryCode("VN");port.setTimeZoneId("Asia/Ho_Chi_Minh");port.setStatus(PortStatus.ACTIVE);port=ports.saveAndFlush(port);
@@ -73,7 +73,7 @@ class CruiseServiceRulesPostgresIntegrationTest {
     }
     @Test void attachingPackageSucceedsOnlyOnItsActualShip(){install();assertNotNull(cruisePackageService.assignPackage(cruise.getCruiseId(),request()));}
     @Test void anotherShipsServiceDoesNotSatisfyPackage(){
-        Ship other=new Ship();other.setShipCode("R-"+code());other.setShipName("Other ship");other.setStatus(ShipStatus.ACTIVE);other.setTotalCapacity(100);other.setTotalDecks(1);other=ships.saveAndFlush(other);
+        Ship other=new Ship();other.setShipCode("R-"+code());other.setShipName("Other ship");other.setStatus(ShipStatus.READY);other.setTotalCapacity(100);other.setTotalDecks(1);other=ships.saveAndFlush(other);
         deck.setShip(other);decks.saveAndFlush(deck);install();
         assertEquals("SERVICE_NOT_AVAILABLE_ON_SHIP",assertThrows(BusinessException.class,()->cruisePackageService.assignPackage(cruise.getCruiseId(),request())).getCode());
     }

@@ -8,6 +8,9 @@ import java.util.Optional;
 import java.util.UUID;
 
 public interface ShipModelObjectRepository extends JpaRepository<ShipModelObject, UUID> {
+    long countByShipModelShipModelIdAndObjectTypeAndDeckIsNotNull(UUID modelId, com.casms.ship.enums.ShipModelObjectType type);
+    @org.springframework.data.jpa.repository.EntityGraph(attributePaths = {"deck", "deck.ship"})
+    List<ShipModelObject> findByShipModelShipModelIdAndObjectTypeAndDeckIsNotNull(UUID modelId, com.casms.ship.enums.ShipModelObjectType type);
     List<ShipModelObject> findByShipModelShipModelId(UUID shipModelId);
     Optional<ShipModelObject> findByShipModelShipModelIdAndNodeKey(UUID shipModelId, String nodeKey);
     boolean existsByShipModelShipModelIdAndNodeKey(UUID shipModelId, String nodeKey);

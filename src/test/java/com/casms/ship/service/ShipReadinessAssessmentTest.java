@@ -30,7 +30,7 @@ class ShipReadinessAssessmentTest {
     @Test
     void readinessIsStructuralAndDoesNotClaimCabinVacancy() {
         UUID id = UUID.randomUUID();
-        Ship ship = ship(id, ShipStatus.ACTIVE);
+        Ship ship = ship(id, ShipStatus.READY);
         when(ships.findById(id)).thenReturn(Optional.of(ship));
         when(decks.countByShipShipId(id)).thenReturn(3L);
         when(cabins.countByShipShipId(id)).thenReturn(40L);

@@ -109,7 +109,7 @@ public class OperationalProgramMappingPostgresIntegrationTest {
         testShipA = new Ship();
         testShipA.setShipCode("SH-A-" + UUID.randomUUID().toString().substring(0, 6));
         testShipA.setShipName("Hạ Long Princess A");
-        testShipA.setStatus(ShipStatus.ACTIVE);
+        testShipA.setStatus(ShipStatus.READY);
         testShipA.setTotalCapacity(500);
         testShipA.setTotalDecks(5);
         testShipA = shipRepository.save(testShipA);
@@ -134,7 +134,7 @@ public class OperationalProgramMappingPostgresIntegrationTest {
         testShipB = new Ship();
         testShipB.setShipCode("SH-B-" + UUID.randomUUID().toString().substring(0, 6));
         testShipB.setShipName("Hạ Long Princess B");
-        testShipB.setStatus(ShipStatus.ACTIVE);
+        testShipB.setStatus(ShipStatus.READY);
         testShipB.setTotalCapacity(400);
         testShipB.setTotalDecks(4);
         testShipB = shipRepository.save(testShipB);

@@ -26,7 +26,7 @@ class PublicShipModelTest {
     final ShipModel model = new ShipModel();
 
     @BeforeEach void setup() {
-        ship.setShipId(shipId); ship.setStatus(ShipStatus.ACTIVE);
+        ship.setShipId(shipId); ship.setStatus(ShipStatus.READY);
         model.setShip(ship); model.setShipModelId(modelId); model.setStatus(ShipModelStatus.READY);
         model.setModelKey("demo"); model.setAssetVersion("v1"); model.setAssetRevision("r1");
         when(models.findById(modelId)).thenReturn(Optional.of(model));
@@ -52,7 +52,7 @@ class PublicShipModelTest {
         }
         model.setStatus(ShipModelStatus.READY);
         assertThrows(ResponseStatusException.class, () -> service.publicAsset(UUID.randomUUID(), modelId, "exterior.glb"));
-        ship.setStatus(ShipStatus.INACTIVE);
+        ship.setStatus(ShipStatus.SUSPENDED);
         assertThrows(ResponseStatusException.class, () -> service.publicAsset(shipId, modelId, "exterior.glb"));
         verifyNoInteractions(store);
     }

@@ -32,6 +32,16 @@ import java.util.UUID;
 public class ShipController {
 
     private final ShipService service;
+    private final com.casms.ship.service.ShipAreaService shipAreas;
+
+    @Operation(summary = "Danh sách khu vực dịch vụ đã nhập của tàu")
+    @PreAuthorize("hasAuthority('SHIP_CONFIGURATION_READ')")
+    @GetMapping("/{shipId}/areas")
+    public ApiResponse<List<com.casms.ship.dto.response.ShipAreaResponse>> areas(@PathVariable UUID shipId) {
+        service.detail(shipId);
+        return ApiResponse.success(shipAreas.list(shipId));
+    }
+
 
     @Operation(summary = "Tạo tàu mới", description = "Chọn modelKey và assetVersion đã tải lên để tái sử dụng mô hình. Thông tin mô hình có sẵn được lấy tự động; chỉ bổ sung trường còn thiếu. Mã tàu và thời điểm tạo tự sinh. Có thể tạo nhiều tàu từ cùng mô hình mà không tải lại file.")
     @PreAuthorize("hasAuthority('SHIP_CREATE') and (#request.modelKey == null or hasAuthority('SHIP_MODEL_CREATE'))")

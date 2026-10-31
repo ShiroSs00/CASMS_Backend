@@ -106,7 +106,7 @@ public class CruiseOperationalReadinessPostgresIntegrationTest {
         testShip = new Ship();
         testShip.setShipCode(shipCode);
         testShip.setShipName("Ready Ship Alpha");
-        testShip.setStatus(ShipStatus.ACTIVE);
+        testShip.setStatus(ShipStatus.READY);
         testShip.setTotalCapacity(500);
         testShip.setTotalDecks(5);
         testShip = shipRepository.save(testShip);
@@ -132,7 +132,7 @@ public class CruiseOperationalReadinessPostgresIntegrationTest {
         secondShip = new Ship();
         secondShip.setShipCode(shipCode2);
         secondShip.setShipName("Ready Ship Beta");
-        secondShip.setStatus(ShipStatus.ACTIVE);
+        secondShip.setStatus(ShipStatus.READY);
         secondShip.setTotalCapacity(300);
         secondShip.setTotalDecks(3);
         secondShip = shipRepository.save(secondShip);

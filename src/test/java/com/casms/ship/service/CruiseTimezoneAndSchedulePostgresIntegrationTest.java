@@ -105,7 +105,7 @@ public class CruiseTimezoneAndSchedulePostgresIntegrationTest {
         testShip = new Ship();
         testShip.setShipCode("SH-TZ-" + UUID.randomUUID().toString().substring(0, 6));
         testShip.setShipName("Ocean Star TZ");
-        testShip.setStatus(ShipStatus.ACTIVE);
+        testShip.setStatus(ShipStatus.READY);
         testShip.setTotalCapacity(600);
         testShip.setTotalDecks(6);
         testShip = shipRepository.save(testShip);
