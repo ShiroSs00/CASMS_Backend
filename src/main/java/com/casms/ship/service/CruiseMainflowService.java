@@ -26,8 +26,15 @@ public class CruiseMainflowService {
 
     @org.springframework.beans.factory.annotation.Autowired
     private org.springframework.beans.factory.ObjectProvider<CruisePricingPolicyService> pricingServices;
+    @org.springframework.beans.factory.annotation.Autowired
+    private org.springframework.beans.factory.ObjectProvider<CruisePreparationService> preparationServices;
 
-    public record Action(Long expectedRevision, String reason, String fingerprint) {}
+    public record Action(Long expectedRevision, String reason, String fingerprint,
+                         String preparationEvidence, Map<String, Long> preparationRevisions) {
+        public Action(Long expectedRevision, String reason, String fingerprint) {
+            this(expectedRevision, reason, fingerprint, null, null);
+        }
+    }
     public record Windows(Long expectedRevision, Instant bookingOpensAt, Instant bookingClosesAt,
                           Instant guidanceOpensAt, Instant guidanceClosesAt) {}
     public record AssignmentContext(UUID cruiseId,long cruiseRevision,boolean hasBookings,boolean editablePlan) {}
@@ -182,6 +189,9 @@ public class CruiseMainflowService {
         List<String> actions=new ArrayList<>();
         if(Set.of("DRAFT","WITHDRAWN","REVISION_REQUESTED").contains(status(r)))actions.add("SUBMIT");
         if("SUBMITTED".equals(status(r)))actions.addAll(List.of("WITHDRAW","APPROVE","REJECT","REQUEST_REVISION"));
+        if(Set.of("SUBMITTED","APPROVED").contains(status(r))
+                && Objects.equals(r.get("fingerprint"),hash(planSnapshot(id)))
+                && preparationSubmissionPending(id))actions.add("SUBMIT");
         if(!planIssues.isEmpty())actions.remove("APPROVE");
         if("APPROVED".equals(status(r))&&(!b.isEmpty()||pricingReturned(id)))actions.add("REQUEST_REVISION");
         if(b.isEmpty())actions.add("SET_READY");
@@ -232,6 +242,13 @@ public class CruiseMainflowService {
         String snapshot=planSnapshot(id);
         switch(action) {
             case "SUBMIT" -> {
+                if(Set.of("SUBMITTED","APPROVED").contains(before)) {
+                    if(!Objects.equals(r.get("fingerprint"),hash(snapshot))||!preparationSubmissionPending(id))throw conflict();
+                    preparationServices.getObject().submitDossier(id,request.preparationEvidence(),request.preparationRevisions(),actor);
+                    jdbc.update("UPDATE \"CruisePlanReview\" SET revision=revision+1 WHERE cruise_id=?",id);
+                    event(id,"SUPPLEMENT_PREPARATION",actor,null,snapshot);
+                    return get(id);
+                }
                 if(!Set.of("DRAFT","WITHDRAWN","REVISION_REQUESTED").contains(before))throw conflict();
                 List<String> blockers=planBlockers(id,c);
                 if(!blockers.isEmpty())throw new BusinessException(HttpStatus.UNPROCESSABLE_ENTITY,"PLAN_INCOMPLETE","Plan configuration incomplete",Map.of("blockers",blockers));
@@ -239,6 +256,7 @@ public class CruiseMainflowService {
                 var policy=pricing.getPricingPolicy(id);
                 if("DRAFT".equals(policy.getStatus().name()))pricing.review(id,"submit",new CruisePricingPolicyService.Review(policy.getRevision(),null),actor);
                 else if(!Set.of("PENDING_APPROVAL","APPROVED").contains(policy.getStatus().name()))throw new BusinessException(HttpStatus.UNPROCESSABLE_ENTITY,"PRICING_POLICY_CONFIGURATION_REQUIRED","Save pricing draft before submitting plan");
+                preparationServices.getObject().submitDossier(id,request.preparationEvidence(),request.preparationRevisions(),actor);
                 after="SUBMITTED";
             }
             case "WITHDRAW" -> {if(!"SUBMITTED".equals(before))throw conflict();pricingServices.getObject().recallForPlan(id,actor,false);after="WITHDRAWN";}
@@ -267,6 +285,10 @@ public class CruiseMainflowService {
         return get(id);
     }
     private BusinessException conflict() {return new BusinessException(HttpStatus.CONFLICT,"INVALID_PLAN_TRANSITION","Invalid plan transition");}
+    private boolean preparationSubmissionPending(UUID id) {
+        Integer sent = jdbc.queryForObject("SELECT count(*) FROM \"CruisePreparationSection\" WHERE cruise_id=? AND section_code IN ('TECHNICAL_NAUTICAL','HOTEL_CABIN','ENTERTAINMENT_SHORE','SAFETY_CREW') AND status IN ('SUBMITTED','CONFIRMED')",Integer.class,id);
+        return sent == null || sent != 4;
+    }
     @Transactional
     public View setReady(UUID id,Action request,UUID actor) {
         var auth=org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
