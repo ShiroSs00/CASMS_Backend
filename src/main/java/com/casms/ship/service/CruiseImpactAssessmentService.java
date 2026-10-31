@@ -111,9 +111,9 @@ public class CruiseImpactAssessmentService {
 
             if (newShip.getStatus() == ShipStatus.MAINTENANCE) {
                 blockers.add("Tàu mới đang trong trạng thái bảo trì (MAINTENANCE)");
-            } else if (newShip.getStatus() == ShipStatus.INACTIVE) {
+            } else if (newShip.getStatus() == ShipStatus.SUSPENDED) {
                 blockers.add("Tàu mới đang không hoạt động (INACTIVE)");
-            } else if (newShip.getStatus() != ShipStatus.ACTIVE) {
+            } else if (!ShipStatus.isOperational(newShip.getStatus())) {
                 blockers.add("Tàu mới không ở trạng thái ACTIVE (hiện tại: " + newShip.getStatus() + ")");
             }
 

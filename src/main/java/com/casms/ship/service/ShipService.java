@@ -43,6 +43,7 @@ public class ShipService {
     private final LocationDeviceRepository locationDeviceRepository;
     private final BusinessCodeGenerator businessCodeGenerator;
     private final ShipModelAssetService modelAssets;
+    private final ShipAreaService shipAreas;
 
     @Transactional
     public ShipResponse create(ShipCreateRequest request) {
@@ -54,7 +55,7 @@ public class ShipService {
         if(request.getShipName()==null || request.getShipName().isBlank())throw new BusinessException("INVALID_SHIP_NAME","Ship name is required");
         String shipName = request.getShipName().trim();
         String shipCode = businessCodeGenerator.next("SH");
-        ShipStatus status = request.getStatus() == null ? ShipStatus.ACTIVE : request.getStatus();
+        ShipStatus status = request.getStatus() == null ? ShipStatus.DRAFT : request.getStatus();
         validateShipDimensions(request.getTotalCapacity(), request.getTotalDecks());
         validateHullDimensions(request.getLengthMeters(), request.getBeamMeters());
         validateCommissionDate(request.getCommissionDate());
@@ -162,8 +163,8 @@ public class ShipService {
             return mapToResponse(ship);
         }
         
-        // If changing to INACTIVE or MAINTENANCE, we should check if there are active cruises right now
-        if ((newStatus == ShipStatus.INACTIVE || newStatus == ShipStatus.MAINTENANCE)) {
+        // A ship on a current cruise cannot move to a non-operational state
+        if (!ShipStatus.isOperational(newStatus)) {
             Optional<Cruise> currentCruise = cruiseRepository.findCurrentActiveCruise(shipId, Instant.now());
             if (currentCruise.isPresent()) {
                 throw new BusinessException("SHIP_ACTIVE_CRUISE", "Cannot change status to " + newStatus + " while ship is on an active cruise");
@@ -197,6 +198,7 @@ public class ShipService {
         response.setConfiguredTotalCapacity(ship.getTotalCapacity());
         response.setConfiguredTotalDecks(ship.getTotalDecks());
         response.setActualDeckCount(actualDecks);
+        response.setActualServiceAreaCount(shipAreas.count(shipId));
         response.setActualCabinCount(actualCabins);
         response.setAvailableCabinCount(availableCabins);
         
@@ -243,10 +245,10 @@ public class ShipService {
         long cabinCount = cabinRepository.countByShipShipId(shipId);
         List<ShipReadinessAssessmentResponse.Issue> issues = new ArrayList<>();
         String readiness;
-        if (ship.getStatus() != ShipStatus.ACTIVE) {
+        if (!ShipStatus.isOperational(ship.getStatus())) {
             readiness = "BLOCKED";
             issues.add(new ShipReadinessAssessmentResponse.Issue("SHIP_NOT_ACTIVE",
-                    "Ship lifecycle status must be ACTIVE for operational readiness"));
+                    "Ship lifecycle status must be READY or IN_SERVICE for operational readiness"));
         } else {
             readiness = "READY";
             if (deckCount == 0) {

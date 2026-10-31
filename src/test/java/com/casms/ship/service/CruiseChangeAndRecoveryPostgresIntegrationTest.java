@@ -120,7 +120,7 @@ public class CruiseChangeAndRecoveryPostgresIntegrationTest {
         shipA = new Ship();
         shipA.setShipCode("SHA-" + UUID.randomUUID().toString().substring(0, 4));
         shipA.setShipName("Tàu Ngôi Sao Phương Đông A");
-        shipA.setStatus(ShipStatus.ACTIVE);
+        shipA.setStatus(ShipStatus.READY);
         shipA.setTotalCapacity(100);
         shipA.setTotalDecks(3);
         shipA = shipRepository.save(shipA);
@@ -145,7 +145,7 @@ public class CruiseChangeAndRecoveryPostgresIntegrationTest {
         shipB = new Ship();
         shipB.setShipCode("SHB-" + UUID.randomUUID().toString().substring(0, 4));
         shipB.setShipName("Tàu Đại Dương Huyền Thoại B");
-        shipB.setStatus(ShipStatus.ACTIVE);
+        shipB.setStatus(ShipStatus.READY);
         shipB.setTotalCapacity(150);
         shipB.setTotalDecks(5);
         shipB = shipRepository.save(shipB);

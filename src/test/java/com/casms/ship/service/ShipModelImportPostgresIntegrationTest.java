@@ -776,7 +776,7 @@ class ShipModelImportPostgresIntegrationTest {
         Ship ship = new Ship();
         ship.setShipCode("IT-" + UUID.randomUUID().toString().substring(0, 12));
         ship.setShipName("Import Integration " + UUID.randomUUID().toString().substring(0, 6));
-        ship.setStatus(ShipStatus.ACTIVE);
+        ship.setStatus(ShipStatus.READY);
         ship.setTotalCapacity(1000);
         ship.setTotalDecks(totalDecks);
         Ship saved = ships.saveAndFlush(ship);

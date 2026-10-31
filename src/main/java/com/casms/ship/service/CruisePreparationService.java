@@ -435,7 +435,7 @@ public class CruisePreparationService {
                         .evidence(shipAssigned ? "Đã gán: " + ship.getShipName() : "Chưa gán tàu")
                         .details(shipAssigned ? "Tàu ID: " + ship.getShipId() : "Chưa có tàu được gán")
                         .build());
-                boolean shipActive = (ship != null && ship.getStatus() == ShipStatus.ACTIVE);
+                boolean shipActive = (ship != null && ShipStatus.isOperational(ship.getStatus()));
                 items.add(PreparationCheckItemDto.builder()
                         .itemCode("SHIP_STATUS_ACTIVE")
                         .itemName("Tàu ở trạng thái ACTIVE")

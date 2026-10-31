@@ -64,7 +64,7 @@ class PosPostgresIntegrationTest {
             User owner=user(Role.PASSENGER);User owner2=user(Role.PASSENGER);buyer=token(owner);
             Passenger p=new Passenger();p.setUser(owner);p.setFullName("POS buyer");passengers.saveAndFlush(p);passengerIds.add(p.getPassengerId());
             Passenger p2=new Passenger();p2.setUser(owner2);p2.setFullName("POS group buyer");passengers.saveAndFlush(p2);passengerIds.add(p2.getPassengerId());
-            Ship s=new Ship();s.setShipCode(code());s.setShipName("POS test ship");s.setStatus(ShipStatus.ACTIVE);s.setTotalCapacity(100);s.setTotalDecks(1);ships.saveAndFlush(s);ship=s.getShipId();
+            Ship s=new Ship();s.setShipCode(code());s.setShipName("POS test ship");s.setStatus(ShipStatus.READY);s.setTotalCapacity(100);s.setTotalDecks(1);ships.saveAndFlush(s);ship=s.getShipId();
             Deck d=new Deck();d.setShip(s);d.setDeckNumber(1);d.setDeckName("Spa deck");d.setPriceMultiplier(BigDecimal.ONE);decks.saveAndFlush(d);deck=d.getDeckId();
             ShipModel m=new ShipModel();m.setShip(s);m.setVersion(code());m.setFileUri("/pos-test.glb");m.setFileFormat("glb");m.setStatus(ShipModelStatus.READY);models.saveAndFlush(m);model=m.getShipModelId();
             ShipModelObject o=new ShipModelObject();o.setShipModel(m);o.setDeck(d);o.setNodeKey("spa");o.setDisplayName("Spa");o.setObjectType(ShipModelObjectType.FACILITY);objects.saveAndFlush(o);area=o.getShipModelObjectId();

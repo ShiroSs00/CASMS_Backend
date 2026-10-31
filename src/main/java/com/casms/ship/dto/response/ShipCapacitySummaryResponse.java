@@ -28,4 +28,7 @@ public class ShipCapacitySummaryResponse {
 
     @Schema(description = "Số lượng boong thực tế đã cấu hình trong hệ thống", example = "12")
     private Long actualDeckCount;
+
+    @Schema(description = "Số khu vực dịch vụ đã nhập của tàu")
+    private Long actualServiceAreaCount;
 }

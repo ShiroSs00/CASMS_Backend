@@ -6,7 +6,7 @@ BEGIN;
 INSERT INTO "Ship" (ship_id,ship_code,ship_name,status,total_capacity,total_decks,commission_date,created_at,updated_at)
 SELECT CASE WHEN EXISTS (SELECT 1 FROM "Ship" WHERE ship_id='85000000-0000-4000-8000-000000000201')
        THEN gen_random_uuid() ELSE '85000000-0000-4000-8000-000000000201'::uuid END,
-       'DEMO-CATALOG-SHIP','Demo catalogue ship','ACTIVE',8,1,CURRENT_DATE,now(),now()
+       'DEMO-CATALOG-SHIP','Demo catalogue ship','READY',8,1,CURRENT_DATE,now(),now()
 ON CONFLICT (ship_code) DO NOTHING;
 INSERT INTO "Deck" (deck_id,ship_id,deck_number,deck_name,created_at,updated_at)
 SELECT CASE WHEN EXISTS (SELECT 1 FROM "Deck" WHERE deck_id='85000000-0000-4000-8000-000000000202')

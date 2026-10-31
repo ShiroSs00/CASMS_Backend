@@ -222,8 +222,8 @@ public class CruiseService {
             ship = shipRepository.findById(request.getShipId())
                     .orElseThrow(() -> new ResourceNotFoundException("Ship", request.getShipId()));
 
-            if (ship.getStatus() != ShipStatus.ACTIVE) {
-                throw new BusinessException("SHIP_NOT_ACTIVE", "Assigned ship must be in ACTIVE status");
+            if (!ShipStatus.isOperational(ship.getStatus())) {
+                throw new BusinessException("SHIP_NOT_ACTIVE", "Assigned ship must be READY or IN_SERVICE");
             }
 
             if (cruiseRepository.existsOverlappingCruises(ship.getShipId(), request.getDepartureDatetime(), request.getReturnDatetime())) {
@@ -506,9 +506,9 @@ public class CruiseService {
 
         if (ship.getStatus() == ShipStatus.MAINTENANCE) {
             throw new BusinessException("SHIP_IN_MAINTENANCE", "Không thể gán tàu: Tàu đang trong trạng thái bảo trì (MAINTENANCE)");
-        } else if (ship.getStatus() == ShipStatus.INACTIVE) {
+        } else if (ship.getStatus() == ShipStatus.SUSPENDED) {
             throw new BusinessException("SHIP_INACTIVE", "Không thể gán tàu: Tàu đang trong trạng thái không hoạt động (INACTIVE)");
-        } else if (ship.getStatus() != ShipStatus.ACTIVE) {
+        } else if (!ShipStatus.isOperational(ship.getStatus())) {
             throw new BusinessException("SHIP_NOT_ACTIVE", "Cannot assign ship because ship status is " + ship.getStatus());
         }
 
@@ -578,10 +578,10 @@ public class CruiseService {
 
         if (newShip.getStatus() == ShipStatus.MAINTENANCE) {
             throw new BusinessException("SHIP_IN_MAINTENANCE", "Không thể đổi tàu: Tàu mới đang trong trạng thái bảo trì (MAINTENANCE)");
-        } else if (newShip.getStatus() == ShipStatus.INACTIVE) {
+        } else if (newShip.getStatus() == ShipStatus.SUSPENDED) {
             throw new BusinessException("SHIP_INACTIVE", "Không thể đổi tàu: Tàu mới đang trong trạng thái không hoạt động (INACTIVE)");
-        } else if (newShip.getStatus() != ShipStatus.ACTIVE) {
-            throw new BusinessException("SHIP_NOT_ACTIVE", "New ship must be in ACTIVE status");
+        } else if (!ShipStatus.isOperational(newShip.getStatus())) {
+            throw new BusinessException("SHIP_NOT_ACTIVE", "New ship must be READY or IN_SERVICE");
         }
 
         long decks = deckRepository.countByShipShipId(newShipId);
@@ -677,7 +677,7 @@ public class CruiseService {
                 .orElseThrow(() -> new ResourceNotFoundException("Ship", shipId));
 
         List<String> issues = new ArrayList<>();
-        boolean active = ship.getStatus() == ShipStatus.ACTIVE;
+        boolean active = ShipStatus.isOperational(ship.getStatus());
         if (!active) {
             issues.add("Tàu không ở trạng thái ACTIVE (hiện tại: " + ship.getStatus() + ")");
         }
@@ -728,7 +728,7 @@ public class CruiseService {
         List<String> blockers = new ArrayList<>();
         List<String> warnings = new ArrayList<>();
 
-        if (newShip.getStatus() != ShipStatus.ACTIVE) {
+        if (!ShipStatus.isOperational(newShip.getStatus())) {
             blockers.add("Tàu mới không ở trạng thái ACTIVE (hiện tại: " + newShip.getStatus() + ")");
         }
 
@@ -784,7 +784,7 @@ public class CruiseService {
         Ship ship = shipRepository.findById(shipId)
                 .orElseThrow(() -> new ResourceNotFoundException("Ship", shipId));
 
-        if (ship.getStatus() != ShipStatus.ACTIVE) {
+        if (!ShipStatus.isOperational(ship.getStatus())) {
             return false;
         }
 
@@ -854,7 +854,7 @@ public class CruiseService {
                     .build());
         } else {
             Ship ship = cruise.getShip();
-            shipActive = ship.getStatus() == ShipStatus.ACTIVE;
+            shipActive = ShipStatus.isOperational(ship.getStatus());
             if (!shipActive) {
                 issues.add("Tàu được gán đang không ở trạng thái ACTIVE (hiện tại: " + ship.getStatus() + ")");
                 blockers.add("SHIP_NOT_ACTIVE");
@@ -1202,8 +1202,8 @@ public class CruiseService {
             throw new BusinessException("CRUISE_NOT_PUBLISHED", "Only published cruises can be started");
         }
 
-        if (cruise.getShip() == null || cruise.getShip().getStatus() != ShipStatus.ACTIVE) {
-            throw new BusinessException("SHIP_NOT_ACTIVE", "Cannot start cruise: assigned ship is missing or not active");
+        if (cruise.getShip() == null || !ShipStatus.isOperational(cruise.getShip().getStatus())) {
+            throw new BusinessException("SHIP_NOT_ACTIVE", "Cannot start cruise: assigned ship is missing or not operational");
         }
 
         // Rule 1: Không bấm start quá sớm trước giờ khởi hành (tối đa 2 giờ trước departureDatetime)
@@ -1630,7 +1630,7 @@ public class CruiseService {
                     .build());
         } else {
             Ship ship = cruise.getShip();
-            if (ship.getStatus() != ShipStatus.ACTIVE) {
+            if (!ShipStatus.isOperational(ship.getStatus())) {
                 blockers.add("SHIP_NOT_ACTIVE");
                 issues.add("Tàu được gán đang không ở trạng thái ACTIVE (hiện tại: " + ship.getStatus() + ")");
                 details.add(ReadinessIssueDetail.builder()
@@ -2973,7 +2973,7 @@ public class CruiseService {
         CruiseManifestResponse manifest = getManifest(cruiseId);
 
         boolean onboardStaffAssigned = cruiseStaffRepository.existsActiveOnboardStaff(cruiseId);
-        boolean departureClearanceReady = onboardStaffAssigned && ship != null && ship.getStatus() == ShipStatus.ACTIVE
+        boolean departureClearanceReady = onboardStaffAssigned && ship != null && ShipStatus.isOperational(ship.getStatus())
                 && (cruise.getStatus() == CruiseStatus.PUBLISHED || cruise.getStatus() == CruiseStatus.IN_PROGRESS);
 
         return CruiseDownstreamHandoffResponse.builder()

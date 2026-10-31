@@ -92,7 +92,7 @@ public class CruiseDraftAndMaterializationPostgresIntegrationTest {
         testShip = new Ship();
         testShip.setShipCode("SH-" + UUID.randomUUID().toString().substring(0, 6));
         testShip.setShipName("Tàu Hoàng Gia Test");
-        testShip.setStatus(ShipStatus.ACTIVE);
+        testShip.setStatus(ShipStatus.READY);
         testShip.setTotalCapacity(500);
         testShip.setTotalDecks(5);
         testShip = shipRepository.save(testShip);
