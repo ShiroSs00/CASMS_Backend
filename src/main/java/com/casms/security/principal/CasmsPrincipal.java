@@ -32,6 +32,7 @@ public class CasmsPrincipal implements UserDetails {
 
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
+        if (user.hasRole(Role.POS)) return Set.of(new SimpleGrantedAuthority("ROLE_POS"), new SimpleGrantedAuthority("POS"));
         Set<GrantedAuthority> authorities = new HashSet<>();
         if (user.getRoles() != null) {
             for (Role role : user.getRoles()) {
@@ -74,18 +75,20 @@ public class CasmsPrincipal implements UserDetails {
     }
 
     public boolean hasRole(Role role) {
+        if (user.hasRole(Role.POS)) return role == Role.POS;
         return user.hasRole(role);
     }
 
     public boolean hasAnyRole(Role... roles) {
-        return user.hasAnyRole(roles);
+        return java.util.Arrays.stream(roles).anyMatch(this::hasRole);
     }
 
     public boolean hasAllRoles(Role... roles) {
-        return user.hasAllRoles(roles);
+        return java.util.Arrays.stream(roles).allMatch(this::hasRole);
     }
 
     public boolean hasPermission(Permission permission) {
+        if (user.hasRole(Role.POS)) return false;
         return user.getRoles().stream()
                 .flatMap(role -> {
                     var rpOptional = rolePermissionRepository.findByRole(role);

@@ -46,7 +46,7 @@ public class CruiseGuidanceController {
         Instant opens=instant(cruise.get("guidance_opens_at")),closes=instant(cruise.get("guidance_closes_at"));
         if(opens==null||closes==null||!r.startAt().isBefore(r.endAt())||r.startAt().isBefore(opens)||r.endAt().isAfter(closes))
             throw new BusinessException(HttpStatus.UNPROCESSABLE_ENTITY,"INVALID_GUIDANCE_WINDOW","Session must be inside configured guidance window");
-        Boolean eligible=jdbc.queryForObject("SELECT EXISTS(SELECT 1 FROM \"User\" u JOIN \"UserRole\" r USING(user_id) WHERE u.user_id=? AND u.status='ACTIVE' AND r.role IN ('OPERATIONS_MANAGER','CHECKIN_STAFF','ONBOARD_STAFF','ACTIVITY_SERVICE_MANAGER'))",Boolean.class,r.instructorUserId());
+        Boolean eligible=jdbc.queryForObject("SELECT EXISTS(SELECT 1 FROM \"User\" u JOIN \"UserRole\" r USING(user_id) WHERE u.user_id=? AND u.status='ACTIVE' AND r.role IN ('OPERATIONS_MANAGER','ONBOARD_STAFF','ACTIVITY_SERVICE_MANAGER') AND NOT EXISTS(SELECT 1 FROM \"UserRole\" device_role WHERE device_role.user_id=u.user_id AND device_role.role='POS'))",Boolean.class,r.instructorUserId());
         if(!Boolean.TRUE.equals(eligible))throw new BusinessException(HttpStatus.UNPROCESSABLE_ENTITY,"GUIDANCE_STAFF_INELIGIBLE","Eligible active staff required");
         Boolean overlap=jdbc.queryForObject("SELECT EXISTS(SELECT 1 FROM \"GuidanceSession\" WHERE instructor_user_id=? AND status<>'Cancelled' AND guidance_session_id<>? AND start_at<? AND end_at>?)",Boolean.class,r.instructorUserId(),sessionId,Timestamp.from(r.endAt()),Timestamp.from(r.startAt()));
         if(Boolean.TRUE.equals(overlap))throw new BusinessException(HttpStatus.CONFLICT,"GUIDANCE_STAFF_CONFLICT","Guidance instructor has overlapping session");
@@ -59,7 +59,7 @@ public class CruiseGuidanceController {
     @Transactional(readOnly=true)
     public ApiResponse<List<Instructor>> instructors(@PathVariable UUID cruiseId){
         plans.get(cruiseId);
-        return ApiResponse.success(jdbc.query("SELECT DISTINCT u.user_id,u.username FROM \"User\" u JOIN \"UserRole\" r USING(user_id) WHERE u.status='ACTIVE' AND r.role IN ('OPERATIONS_MANAGER','CHECKIN_STAFF','ONBOARD_STAFF','ACTIVITY_SERVICE_MANAGER') ORDER BY u.username",(rs,n)->new Instructor(rs.getObject(1,UUID.class),rs.getString(2))));
+        return ApiResponse.success(jdbc.query("SELECT DISTINCT u.user_id,u.username FROM \"User\" u JOIN \"UserRole\" r USING(user_id) WHERE u.status='ACTIVE' AND r.role IN ('OPERATIONS_MANAGER','ONBOARD_STAFF','ACTIVITY_SERVICE_MANAGER') AND NOT EXISTS(SELECT 1 FROM \"UserRole\" device_role WHERE device_role.user_id=u.user_id AND device_role.role='POS') ORDER BY u.username",(rs,n)->new Instructor(rs.getObject(1,UUID.class),rs.getString(2))));
     }
     @PostMapping
     public ApiResponse<Session> create(@PathVariable UUID cruiseId,@Valid @RequestBody Input input,@AuthenticationPrincipal CasmsPrincipal principal){

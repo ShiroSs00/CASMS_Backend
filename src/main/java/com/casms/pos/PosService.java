@@ -36,6 +36,8 @@ import java.util.*;
 public class PosService {
     private final PosRepository repository;
     private final PosAccessService accessRules;
+    private final PosDeviceAccountService deviceAccounts;
+    private final PosStaffResourceService employeeResources;
     private final ResourceOperationService operationPolicies;
     private final ServiceRepository services;
     private final DeckServiceAssignmentRepository deckServices;
@@ -81,12 +83,15 @@ public class PosService {
     public PosDtos.Session login(UUID id,PosDtos.LoginInput input,CasmsPrincipal user) {
         employee(user);
         var d=device(id);
-        if(!d.terminal().enabled() || !encoder.matches(input.deviceSecret(),d.secretHash()))throw denied("Invalid or inactive POS device");
-        var assignment=accessRules.login(d.terminal(),input,user.getUserId());
+        if(!d.terminal().enabled())throw denied("Invalid or inactive POS device");
+        Instant deviceExpiry=deviceAccounts.authenticate(id,input);
+        if(deviceExpiry==null && (input.deviceSecret()==null || !encoder.matches(input.deviceSecret(),d.secretHash())))throw denied("Invalid POS device secret");
+        var assignment=accessRules.login(d.terminal(),input,user);
         if(sessionTtl.isNegative() || sessionTtl.isZero() || sessionTtl.compareTo(Duration.ofHours(8))>0)
             throw new IllegalStateException("POS session TTL must be positive and at most eight hours");
         String token=secret();Instant expiry=Instant.now().plus(sessionTtl);
-        repository.session(hash(token),id,user.getUserId(),expiry,assignment.assignmentId());
+        if(deviceExpiry!=null && deviceExpiry.isBefore(expiry))expiry=deviceExpiry;
+        repository.session(hash(token),id,user.getUserId(),expiry,assignment.assignmentId(),assignment.areaId(),assignment.cruiseId());
         return new PosDtos.Session(token,expiry,scopedTerminal(d.terminal(),assignment.areaId()),assignment.cruiseId(),assignment.assignmentId());
     }
     public PosDtos.Context context(String token,CasmsPrincipal user) {
@@ -202,10 +207,13 @@ public class PosService {
         var session=repository.session(hash(token)).orElseThrow(()->denied("Invalid POS session"));
         if(!session.userId().equals(user.getUserId()))throw denied("POS session belongs to another employee");
         var d=device(session.terminalId()).terminal();
+        deviceAccounts.requireActive(d.terminalId());
         // Re-read after locking the terminal so concurrent disable/rotation cannot revive a session.
         session=repository.session(hash(token)).orElseThrow();
         if(session.revokedAt()!=null || !session.expiresAt().isAfter(Instant.now()) || !d.enabled())throw denied("POS session expired or revoked");
-        var assignment=accessRules.sessionAssignment(session.staffAssignmentId(),d,user.getUserId());
+        var assignment=PosStaffResourceService.manager(user)
+                ?accessRules.managerContext(d,session.areaId(),session.cruiseId(),user.getUserId())
+                :accessRules.sessionAssignment(session.staffAssignmentId(),d,user.getUserId());
         // Area assignment changes can revoke sessions while this request waits for the area lock.
         session=repository.session(hash(token)).orElseThrow();
         if(session.revokedAt()!=null || !session.expiresAt().isAfter(Instant.now()))throw denied("POS session expired or revoked");
@@ -225,7 +233,12 @@ public class PosService {
     private static PosDtos.Terminal scopedTerminal(PosDtos.Terminal d,UUID area) {
         return new PosDtos.Terminal(d.terminalId(),d.shipId(),area,d.code(),d.name(),d.permissions(),d.enabled());
     }
-    private List<PosDtos.AvailableService> available(Access a) {return repository.available(a.terminal().terminalId(),a.area().id(),a.terminal().permissions());}
+    private List<PosDtos.AvailableService> available(Access a) {
+        return repository.available(a.terminal().terminalId(),a.area().id(),a.terminal().permissions()).stream()
+                .map(s->new PosDtos.AvailableService(s.serviceId(),s.code(),s.name(),s.unitPrice(),s.currency(),
+                        employeeResources.restrict(a,PosPermission.ResourceType.SERVICE,s.serviceId(),s.permissions())))
+                .filter(s->!s.permissions().isEmpty()).toList();
+    }
     private boolean has(Access a,UUID service,PosPermission p) {return available(a).stream().anyMatch(s->s.serviceId().equals(service)&&s.permissions().contains(p));}
     private void require(Access a,UUID service,PosPermission p) {if(!has(a,service,p))throw denied("Service or permission is unavailable at this POS");}
     private static void requireTerminal(Access a,PosPermission p) {if(!a.terminal().permissions().contains(p))throw denied("Operation unavailable at this POS");}

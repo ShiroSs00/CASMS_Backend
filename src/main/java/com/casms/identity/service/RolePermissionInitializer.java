@@ -35,12 +35,16 @@ public class RolePermissionInitializer implements CommandLineRunner {
                 Permission.POS_MANAGE,
                 Permission.USER_CREATE, Permission.USER_READ, Permission.USER_UPDATE,
                 Permission.USER_ROLE_ASSIGN, Permission.USER_STATUS_CHANGE,
-                Permission.SHIP_CREATE, Permission.SHIP_READ, Permission.SHIP_UPDATE,
+                Permission.SHIP_CREATE, Permission.SHIP_READ, Permission.SHIP_UPDATE, Permission.SHIP_DELETE, Permission.SHIP_VALIDATE,
                 Permission.SHIP_MODEL_CREATE, Permission.SHIP_MODEL_READ, Permission.SHIP_MODEL_UPDATE,
                 Permission.SHIP_MODEL_DELETE, Permission.SHIP_MODEL_PUBLISH,
                 Permission.SHIP_MODEL_OBJECT_CREATE, Permission.SHIP_MODEL_OBJECT_UPDATE,
                 Permission.SHIP_MODEL_OBJECT_DELETE, Permission.SHIP_CONFIGURATION_READ,
                 Permission.SHIP_CONFIGURATION_VALIDATE,
+                Permission.DECK_CREATE, Permission.DECK_READ, Permission.DECK_UPDATE, Permission.DECK_DELETE,
+                Permission.DECK_CABINS_VIEW, Permission.DECK_VALIDATE,
+                Permission.CABIN_CREATE, Permission.CABIN_READ, Permission.CABIN_UPDATE, Permission.CABIN_DELETE,
+                Permission.CABIN_SEARCH, Permission.CABIN_VALIDATE,
                 Permission.BLE_ANCHOR_CREATE, Permission.BLE_ANCHOR_READ, Permission.BLE_ANCHOR_UPDATE,
                 Permission.BLE_ANCHOR_DELETE, Permission.BLE_ANCHOR_ACTIVATE, Permission.BLE_ANCHOR_DEACTIVATE,
                 Permission.BLE_ANCHOR_RETIRE, Permission.BLE_ANCHOR_INSTALL, Permission.BLE_ANCHOR_VALIDATE,
@@ -128,12 +132,9 @@ public class RolePermissionInitializer implements CommandLineRunner {
                 Permission.BOOKING_READ
         ));
 
-        // SHIP_MANAGER: quản lý đội tàu, boong, cabin, 3D model và quy định tàu (Quản lý vận hành)
+        // SHIP_MANAGER owns operational status; ADMIN owns technical/model configuration.
         saveRolePermission(Role.SHIP_MANAGER, EnumSet.of(
-                Permission.SHIP_CREATE,
                 Permission.SHIP_READ,
-                Permission.SHIP_UPDATE,
-                Permission.SHIP_DELETE,
                 Permission.SHIP_STATUS_CHANGE,
                 Permission.SHIP_SCHEDULE_CHECK,
                 Permission.SHIP_CAPACITY_SUMMARY,
@@ -142,40 +143,23 @@ public class RolePermissionInitializer implements CommandLineRunner {
                 Permission.SHIP_VALIDATE,
                 Permission.SHIP_READINESS,
 
-                Permission.SHIP_MODEL_CREATE,
                 Permission.SHIP_MODEL_READ,
-                Permission.SHIP_MODEL_UPDATE,
-                Permission.SHIP_MODEL_DELETE,
-                Permission.SHIP_MODEL_PUBLISH,
-                Permission.SHIP_MODEL_OBJECT_CREATE,
-                Permission.SHIP_MODEL_OBJECT_UPDATE,
-                Permission.SHIP_MODEL_OBJECT_DELETE,
                 Permission.SHIP_CONFIGURATION_READ,
                 Permission.SHIP_CONFIGURATION_VALIDATE,
 
-                Permission.BLE_ANCHOR_CREATE,
                 Permission.BLE_ANCHOR_READ,
-                Permission.BLE_ANCHOR_UPDATE,
-                Permission.BLE_ANCHOR_DELETE,
                 Permission.BLE_ANCHOR_ACTIVATE,
                 Permission.BLE_ANCHOR_DEACTIVATE,
                 Permission.BLE_ANCHOR_RETIRE,
-                Permission.BLE_ANCHOR_INSTALL,
                 Permission.BLE_ANCHOR_VALIDATE,
                 Permission.BLE_TELEMETRY_RECEIVE,
                 Permission.BLE_TELEMETRY_READ,
 
-                Permission.DECK_CREATE,
                 Permission.DECK_READ,
-                Permission.DECK_UPDATE,
-                Permission.DECK_DELETE,
                 Permission.DECK_CABINS_VIEW,
                 Permission.DECK_VALIDATE,
 
-                Permission.CABIN_CREATE,
                 Permission.CABIN_READ,
-                Permission.CABIN_UPDATE,
-                Permission.CABIN_DELETE,
                 Permission.CABIN_SEARCH,
                 Permission.CABIN_STATUS_CHANGE,
                 Permission.CABIN_BLOCK,
@@ -204,6 +188,7 @@ public class RolePermissionInitializer implements CommandLineRunner {
         // OPERATIONS_MANAGER: quản lý vận hành chung, sự cố, quy định, công suất và điều phối
         saveRolePermission(Role.OPERATIONS_MANAGER, EnumSet.of(
                 Permission.POS_ACCESS, Permission.POS_MANAGE,
+                Permission.PASSENGER_BLE_ASSIGN, Permission.PASSENGER_BLE_READ, Permission.PASSENGER_BLE_REVOKE, Permission.PASSENGER_BLE_HISTORY,
                 Permission.OPERATIONAL_ISSUE_CREATE,
                 Permission.OPERATIONAL_ISSUE_READ,
                 Permission.OPERATIONAL_ISSUE_UPDATE,
@@ -367,74 +352,8 @@ public class RolePermissionInitializer implements CommandLineRunner {
                 Permission.REPORT_GENERATE
         ));
 
-        // CUSTOMER_SERVICE: hỗ trợ khách hàng, thay đổi thông tin/phòng, hủy theo điều kiện
-        saveRolePermission(Role.CUSTOMER_SERVICE, EnumSet.of(
-                Permission.SERVICE_READ, Permission.SERVICE_REQUEST_READ, Permission.SERVICE_REQUEST_CREATE,
-                Permission.USER_READ,
-                Permission.USER_UPDATE,
-
-                Permission.BOOKING_READ,
-                Permission.BOOKING_UPDATE,
-                Permission.BOOKING_CANCEL,
-                Permission.CHECKIN_READ,
-                Permission.CHECKIN_UPDATE,
-
-                Permission.CABIN_READ,
-                Permission.CABIN_SEARCH,
-                Permission.CABIN_AVAILABILITY,
-                Permission.CABIN_ASSIGNMENTS_VIEW,
-
-                Permission.NOTIFICATION_SEND,
-                Permission.NOTIFICATION_READ,
-                Permission.FEEDBACK_READ,
-                Permission.FEEDBACK_REVIEW,
-                Permission.REPORT_GENERATE,
-
-                Permission.CRUISE_READ,
-                Permission.ITINERARY_READ,
-                Permission.ITINERARY_DAY_READ,
-                Permission.CRUISE_STOP_READ,
-                Permission.PORT_READ,
-                Permission.DESTINATION_READ,
-
-                // Cross-module reference read permissions
-                Permission.SHIP_READ,
-                Permission.DECK_READ,
-                Permission.EXCURSION_READ,
-                Permission.ACTIVITY_READ
-        ));
-
-        // CHECKIN_STAFF: xử lý check-in, xác minh danh tính, cấp boarding pass và quản lý BLE tag
-        saveRolePermission(Role.CHECKIN_STAFF, EnumSet.of(
-                Permission.CHECKIN_CREATE,
-                Permission.CHECKIN_READ,
-                Permission.CHECKIN_UPDATE,
-                Permission.CHECKIN_STEP_UPDATE,
-                Permission.CHECKIN_IDENTITY_VERIFY,
-                Permission.CHECKIN_DOCUMENT_VERIFY,
-                Permission.CHECKIN_PAYMENT_VERIFY,
-                Permission.CHECKIN_BOARDING,
-                Permission.CHECKOUT_PROCESS,
-                Permission.PASSENGER_BLE_ASSIGN,
-                Permission.PASSENGER_BLE_READ,
-                Permission.PASSENGER_BLE_REVOKE,
-                Permission.PASSENGER_BLE_HISTORY,
-
-                Permission.CABIN_READ,
-                Permission.CABIN_SEARCH,
-                Permission.CABIN_AVAILABILITY,
-
-                Permission.CRUISE_READ,
-                Permission.ITINERARY_READ,
-                Permission.ITINERARY_DAY_READ,
-                Permission.CRUISE_STOP_READ,
-                Permission.PORT_READ,
-                Permission.DESTINATION_READ,
-
-                // Cross-module reference read permissions
-                Permission.SHIP_READ,
-                Permission.DECK_READ
-        ));
+        // POS identifies a device account; it never grants employee or global business powers.
+        saveRolePermission(Role.POS, EnumSet.noneOf(Permission.class));
 
         // ACTIVITY_SERVICE_MANAGER: unified onboard activity/service and shore excursion management
         saveRolePermission(Role.ACTIVITY_SERVICE_MANAGER, EnumSet.of(
@@ -518,28 +437,18 @@ public class RolePermissionInitializer implements CommandLineRunner {
                 Permission.REPORT_EXPORT
         ));
 
-        // ONBOARD_STAFF: Onboard Sales & Service Staff
-        // Tiếp nhận/thực hiện yêu cầu dịch vụ và bán hàng POS; KHÔNG sửa danh mục hoặc hoạt động.
+        // ONBOARD_STAFF serves both services and activities. Operational mutations
+        // come from resource assignments and POS policies, never global role grants.
         saveRolePermission(Role.ONBOARD_STAFF, EnumSet.of(
                 Permission.POS_ACCESS,
-                // Tiếp nhận & thực hiện yêu cầu dịch vụ
+                // Catalogue reads; service request operations are scoped by POS.
                 Permission.SERVICE_READ,
-                Permission.SERVICE_REQUEST_READ,
-                Permission.SERVICE_REQUEST_ASSIGN,
-                Permission.SERVICE_REQUEST_EXECUTE,
-
-                // Bán hàng qua POS
-                Permission.PRODUCT_SALE,
-                Permission.PAYMENT_PROCESS,
 
                 // Điểm danh và kiểm tra hoạt động / tour bờ
                 Permission.ACTIVITY_READ,
-                Permission.ACTIVITY_ATTENDANCE,
-                Permission.PARTICIPATION_ATTENDANCE,
                 Permission.EXCURSION_READ,
                 Permission.TOUR_GROUP_READ,
                 Permission.TOUR_GROUP_PASSENGER_READ,
-                Permission.TOUR_GROUP_PASSENGER_ATTENDANCE,
 
                 // Vận hành checkout và BLE
                 Permission.CHECKOUT_PROCESS,
@@ -584,6 +493,7 @@ public class RolePermissionInitializer implements CommandLineRunner {
                 Permission.BOOKING_CANCEL,
 
                 Permission.CHECKIN_CREATE,
+                Permission.CHECKIN_UPDATE,
                 Permission.CHECKIN_READ,
 
                 // Xem chuyến tàu, hải trình, lịch trình và lịch sử thay đổi
@@ -630,8 +540,9 @@ public class RolePermissionInitializer implements CommandLineRunner {
                 .orElseGet(RolePermission::new);
 
         rolePermission.setRole(role);
-        Set<Permission> effective = EnumSet.copyOf(permissions);
-        // PORT-01 is additive: retain existing OPS grants, including manual grants unrelated to this task.
+        Set<Permission> effective = permissions.isEmpty() ? EnumSet.noneOf(Permission.class) : EnumSet.copyOf(permissions);
+        // Port directory grants remain additive for OPS, preserving unrelated manual grants.
+        // Other roles retain main's explicit POS and resource-scoped staff grant sets.
         if (role == Role.OPERATIONS_MANAGER) effective.addAll(rolePermission.getPermissions());
         rolePermission.setPermissions(effective);
 

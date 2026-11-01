@@ -877,9 +877,9 @@ public class CruiseService {
                         .evidence("Ship.status=" + ship.getStatus())
                         .ownerRole("SHIP_MANAGER")
                         .allowedAction("Kích hoạt tàu qua /api/ships/" + ship.getShipId() + "/status")
-                        .requiredPermission(Permission.SHIP_UPDATE.name())
+                        .requiredPermission(Permission.SHIP_STATUS_CHANGE.name())
                         .remediationUrl("/api/ships/" + ship.getShipId() + "/status")
-                        .remediationOperation("PUT")
+                        .remediationOperation("POST")
                         .build());
             }
 
@@ -1652,9 +1652,9 @@ public class CruiseService {
                         .evidence("Ship.status=" + ship.getStatus())
                         .ownerRole("SHIP_MANAGER")
                         .allowedAction("Kích hoạt tàu hoặc đổi tàu khác qua /cruises/{id}/preview-ship-change")
-                        .requiredPermission(Permission.SHIP_UPDATE.name())
+                        .requiredPermission(Permission.SHIP_STATUS_CHANGE.name())
                         .remediationUrl("/api/ships/" + ship.getShipId() + "/status")
-                        .remediationOperation("PUT")
+                        .remediationOperation("POST")
                         .build());
             }
 

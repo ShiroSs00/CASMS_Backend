@@ -31,7 +31,8 @@ public class IdentityService {
 
         return users.stream()
                 .filter(u -> {
-                    if ("ONBOARD_STAFF".equalsIgnoreCase(assignableFor))return u.hasRole(Role.ONBOARD_STAFF);
+                    if ("POS".equalsIgnoreCase(assignableFor)) return u.hasRole(Role.POS);
+                    if ("ONBOARD_STAFF".equalsIgnoreCase(assignableFor))return u.isStaff() && u.hasRole(Role.ONBOARD_STAFF);
                     if (isOpIssue) {
                         return isEligibleOperationalHandler(u);
                     }
@@ -48,7 +49,7 @@ public class IdentityService {
     }
 
     public static boolean isEligibleOperationalHandler(User user) {
-        if (user == null || user.getStatus() != UserStatus.ACTIVE) {
+        if (user == null || !user.isStaff() || user.getStatus() != UserStatus.ACTIVE) {
             return false;
         }
         return user.hasAnyRole(

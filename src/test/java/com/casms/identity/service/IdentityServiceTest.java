@@ -21,6 +21,17 @@ import com.casms.identity.enums.Role;
 @ExtendWith(MockitoExtension.class)
 class IdentityServiceTest {
 
+    @Test
+    void deviceAccountsAreListedForDeviceBindingButNeverAsEmployees() {
+        User device=new User();device.setUserId(UUID.randomUUID());device.setStatus(UserStatus.ACTIVE);
+        device.setRoles(java.util.Set.of(Role.POS,Role.ONBOARD_STAFF));
+        when(userRepository.findByStatus(UserStatus.ACTIVE)).thenReturn(List.of(device));
+        assertEquals(1,identityService.findUsers(UserStatus.ACTIVE,"POS").size());
+        assertTrue(identityService.findUsers(UserStatus.ACTIVE,"ONBOARD_STAFF").isEmpty());
+        assertTrue(identityService.findUsers(UserStatus.ACTIVE,null).isEmpty());
+        assertFalse(IdentityService.isEligibleOperationalHandler(device));
+    }
+
     @Mock
     private UserRepository userRepository;
 

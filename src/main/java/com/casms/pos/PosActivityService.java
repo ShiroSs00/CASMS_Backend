@@ -21,6 +21,7 @@ public class PosActivityService {
     private final JdbcTemplate jdbc;
     private final PosRepository repository;
     private final PosService sessions;
+    private final PosStaffResourceService employeeResources;
     private final ResourceOperationService policies;
     private final ActivityService activities;
     private final OnboardActivityRepository activityRepository;
@@ -86,7 +87,7 @@ public class PosActivityService {
                     if(!r.getBoolean("area_inherit"))effective.retainAll(PosRepository.permissions(r,"area_permissions"));
                     if(!r.getBoolean("pos_inherit"))effective.retainAll(PosRepository.permissions(r,"pos_permissions"));
                     var a=activities.activity(PosRepository.uuid(r,"activity_id"));if(!matchesVenue(a,access.area()))effective.clear();
-                    return new PosDtos.AvailableActivity(ActivityView.of(a),Set.copyOf(effective));
+                    return new PosDtos.AvailableActivity(ActivityView.of(a),employeeResources.restrict(access,ACTIVITY,a.getOnboardActivityId(),Set.copyOf(effective)));
                 },access.terminal().terminalId(),access.area().id(),access.assignment().cruiseId()).stream().filter(a->!a.permissions().isEmpty()).toList();
     }
     private void require(PosService.Access access,UUID id,PosPermission permission) {

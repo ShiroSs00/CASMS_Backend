@@ -107,8 +107,10 @@ public class PosAccessService {
         // Retain an explicit denial: absence now means inheritance for new links.
         policy(terminal,area,service,new PosDtos.AssignmentInput(null,false));
     }
-    public PosDtos.AreaStaff login(PosDtos.Terminal terminal,PosDtos.LoginInput input,UUID user) {
+    public PosDtos.AreaStaff login(PosDtos.Terminal terminal,PosDtos.LoginInput input,CasmsPrincipal employee) {
+        UUID user=employee.getUserId();
         UUID areaId=input.areaId()==null?terminal.areaId():input.areaId();
+        if(PosStaffResourceService.manager(employee))return managerContext(terminal,areaId,input.cruiseId(),user);
         area(terminal.shipId(),areaId,true,true);requireAreaLink(terminal,areaId);
         List<PosDtos.AreaStaff> candidates;
         if(input.cruiseId()==null)candidates=jdbc.query(STAFF_SELECT+"WHERE a.area_object_id=? AND cs.user_id=?"+QUALIFIED,STAFF,areaId,user,terminal.shipId());
@@ -125,6 +127,14 @@ public class PosAccessService {
         var active=jdbc.query(STAFF_SELECT+"WHERE a.assignment_id=? AND cs.user_id=?"+QUALIFIED,STAFF,assignment,user,terminal.shipId());
         if(active.isEmpty())throw new AccessDeniedException("Employee area/cruise assignment is inactive, expired or revoked");
         return active.getFirst();
+    }
+    PosDtos.AreaStaff managerContext(PosDtos.Terminal terminal,UUID areaId,UUID cruiseId,UUID user) {
+        if(areaId==null)throw new AccessDeniedException("POS session has no selected area");
+        area(terminal.shipId(),areaId,true,true);requireAreaLink(terminal,areaId);
+        String sql="SELECT cruise_id FROM \"Cruise\" WHERE ship_id=? AND status IN ('PUBLISHED','IN_PROGRESS','COMPLETED')";
+        List<UUID> ids=cruiseId==null?jdbc.queryForList(sql,UUID.class,terminal.shipId()):jdbc.queryForList(sql+" AND cruise_id=?",UUID.class,terminal.shipId(),cruiseId);
+        if(ids.size()!=1)throw new BusinessException(HttpStatus.CONFLICT,"POS_CRUISE_SELECTION_REQUIRED","Select one eligible cruise on this POS ship");
+        return new PosDtos.AreaStaff(null,areaId,user,null,ids.getFirst(),true,Instant.EPOCH,null);
     }
     private PosDtos.Terminal device(UUID id) {
         return repository.device(id,true).orElseThrow(()->new ResourceNotFoundException("POS terminal",id)).terminal();

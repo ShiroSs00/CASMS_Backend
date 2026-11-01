@@ -16,7 +16,7 @@ public class PosRepository {
     private final JdbcTemplate jdbc;
     record Area(UUID id, UUID shipId, UUID deckId, String modelStatus) {}
     record Device(PosDtos.Terminal terminal, String secretHash) {}
-    record SessionRow(UUID terminalId, UUID userId, Instant expiresAt, Instant revokedAt, UUID staffAssignmentId) {}
+    record SessionRow(UUID terminalId, UUID userId, Instant expiresAt, Instant revokedAt, UUID staffAssignmentId, UUID areaId, UUID cruiseId) {}
     record StoredSale(PosDtos.Sale sale, String fingerprint) {}
 
     Optional<Area> area(UUID ship, UUID id, boolean lock) {
@@ -59,12 +59,12 @@ public class PosRepository {
                 UUID.randomUUID(),area,service,csv(input.permissions()),input.enabled(),input.permissions()==null);
     }
     void unassign(UUID area,UUID service) {jdbc.update("DELETE FROM \"AreaServiceAssignment\" WHERE area_object_id=? AND service_id=?",area,service);}
-    void session(String hash,UUID device,UUID user,Instant expires,UUID staffAssignment) {
-        jdbc.update("INSERT INTO \"PosSession\" (token_hash,terminal_id,user_id,created_at,expires_at,area_staff_assignment_id) VALUES (?,?,?,now(),?,?)",hash,device,user,Timestamp.from(expires),staffAssignment);
+    void session(String hash,UUID device,UUID user,Instant expires,UUID staffAssignment,UUID area,UUID cruise) {
+        jdbc.update("INSERT INTO \"PosSession\" (token_hash,terminal_id,user_id,created_at,expires_at,area_staff_assignment_id,area_object_id,cruise_id) VALUES (?,?,?,now(),?,?,?,?)",hash,device,user,Timestamp.from(expires),staffAssignment,area,cruise);
     }
     Optional<SessionRow> session(String hash) {
         return one(jdbc.query("SELECT * FROM \"PosSession\" WHERE token_hash=?",(r,n)->new SessionRow(uuid(r,"terminal_id"),
-                uuid(r,"user_id"),instant(r,"expires_at"),instant(r,"revoked_at"),uuid(r,"area_staff_assignment_id")),hash));
+                uuid(r,"user_id"),instant(r,"expires_at"),instant(r,"revoked_at"),uuid(r,"area_staff_assignment_id"),uuid(r,"area_object_id"),uuid(r,"cruise_id")),hash));
     }
     void logout(String hash) {jdbc.update("UPDATE \"PosSession\" SET revoked_at=now() WHERE token_hash=?",hash);}
     List<PosDtos.AvailableService> available(UUID terminal,UUID area,Set<PosPermission> devicePermissions) {

@@ -112,8 +112,8 @@ class RolePermissionInitializerTest {
         assertTrue(perms.contains(Permission.SHIP_READINESS), "Ship Manager must have SHIP_READINESS");
         assertTrue(perms.contains(Permission.SHIP_CURRENT_CRUISE), "Ship Manager must have SHIP_CURRENT_CRUISE");
         assertTrue(perms.contains(Permission.SHIP_AFFECTED_CRUISES), "Ship Manager must have SHIP_AFFECTED_CRUISES");
-        assertTrue(perms.contains(Permission.DECK_CREATE));
-        assertTrue(perms.contains(Permission.CABIN_CREATE));
+        assertFalse(perms.contains(Permission.DECK_CREATE));
+        assertFalse(perms.contains(Permission.CABIN_CREATE));
 
         // Negative checks
         assertFalse(perms.contains(Permission.CRUISE_ASSIGN_SHIP), "Ship Manager must not assign ships");
@@ -135,15 +135,15 @@ class RolePermissionInitializerTest {
 
         // Positive checks: Service execution, POS sales, Attendance, Read activities & excursions
         assertTrue(perms.contains(Permission.SERVICE_READ));
-        assertTrue(perms.contains(Permission.SERVICE_REQUEST_READ));
-        assertTrue(perms.contains(Permission.SERVICE_REQUEST_EXECUTE));
-        assertTrue(perms.contains(Permission.PRODUCT_SALE));
-        assertTrue(perms.contains(Permission.PAYMENT_PROCESS));
+        assertFalse(perms.contains(Permission.SERVICE_REQUEST_READ));
+        assertFalse(perms.contains(Permission.SERVICE_REQUEST_EXECUTE));
+        assertFalse(perms.contains(Permission.PRODUCT_SALE));
+        assertFalse(perms.contains(Permission.PAYMENT_PROCESS));
         assertTrue(perms.contains(Permission.ACTIVITY_READ));
-        assertTrue(perms.contains(Permission.ACTIVITY_ATTENDANCE));
+        assertFalse(perms.contains(Permission.ACTIVITY_ATTENDANCE));
         assertTrue(perms.contains(Permission.EXCURSION_READ));
         assertTrue(perms.contains(Permission.TOUR_GROUP_READ));
-        assertTrue(perms.contains(Permission.TOUR_GROUP_PASSENGER_ATTENDANCE));
+        assertFalse(perms.contains(Permission.TOUR_GROUP_PASSENGER_ATTENDANCE));
 
         // Negative checks: Onboard staff must NOT modify catalog or activities
         assertFalse(perms.contains(Permission.ACTIVITY_CREATE));
@@ -223,7 +223,7 @@ class RolePermissionInitializerTest {
     }
 
     @Test
-    void bookingAgentAndCheckinStaff_haveMinimalReadAccess() {
+    void bookingAgent_hasMinimalReadAccess() {
         Set<Permission> bookingPerms = rolePermissionsMap.get(Role.BOOKING_AGENT);
         assertNotNull(bookingPerms);
         assertTrue(bookingPerms.contains(Permission.SHIP_READ));
@@ -234,12 +234,23 @@ class RolePermissionInitializerTest {
         assertFalse(bookingPerms.contains(Permission.SHIP_CREATE));
         assertFalse(bookingPerms.contains(Permission.CABIN_CREATE));
 
-        Set<Permission> checkinPerms = rolePermissionsMap.get(Role.CHECKIN_STAFF);
-        assertNotNull(checkinPerms);
-        assertTrue(checkinPerms.contains(Permission.SHIP_READ));
-        assertTrue(checkinPerms.contains(Permission.DECK_READ));
-        assertTrue(checkinPerms.contains(Permission.CABIN_READ));
-        assertFalse(checkinPerms.contains(Permission.SHIP_CREATE));
+    }
+
+    @Test
+    void posIsADeviceAndPhysicalConfigurationBelongsToAdmin() {
+        assertTrue(rolePermissionsMap.get(Role.POS).isEmpty());
+        assertEquals(Set.of(Role.values()),rolePermissionsMap.keySet());
+        assertThrows(IllegalArgumentException.class,()->Role.valueOf("CHECKIN_STAFF"));
+        assertThrows(IllegalArgumentException.class,()->Role.valueOf("CUSTOMER_SERVICE"));
+        for(Permission p:Set.of(Permission.SHIP_CREATE,Permission.SHIP_UPDATE,Permission.SHIP_MODEL_CREATE,
+                Permission.SHIP_MODEL_UPDATE,Permission.SHIP_MODEL_PUBLISH,Permission.DECK_CREATE,Permission.CABIN_UPDATE)) {
+            assertTrue(rolePermissionsMap.get(Role.ADMIN).contains(p));
+            assertFalse(rolePermissionsMap.get(Role.SHIP_MANAGER).contains(p));
+        }
+        assertFalse(rolePermissionsMap.get(Role.ADMIN).contains(Permission.SHIP_STATUS_CHANGE));
+        assertTrue(rolePermissionsMap.get(Role.SHIP_MANAGER).contains(Permission.SHIP_STATUS_CHANGE));
+        assertTrue(rolePermissionsMap.get(Role.PASSENGER).contains(Permission.CHECKIN_UPDATE));
+        assertTrue(rolePermissionsMap.get(Role.OPERATIONS_MANAGER).contains(Permission.PASSENGER_BLE_ASSIGN));
     }
 
     @Test
@@ -274,5 +285,19 @@ class RolePermissionInitializerTest {
         assertFalse(perms.contains(Permission.TOUR_GROUP_CREATE));
         assertFalse(perms.contains(Permission.TOUR_GROUP_PASSENGER_ASSIGN));
         assertFalse(perms.contains(Permission.ITINERARY_CREATE));
+    }
+    @Test
+    void mergeRetainsOpsWindowGrantsAndManualOpsGrantsWithoutGrantingCrmWrites(){
+        var ops=new RolePermission();ops.setRole(Role.OPERATIONS_MANAGER);
+        ops.setPermissions(java.util.EnumSet.of(Permission.USER_READ));
+        when(rolePermissionRepository.findByRole(any(Role.class))).thenAnswer(call->call.getArgument(0)==Role.OPERATIONS_MANAGER?java.util.Optional.of(ops):java.util.Optional.empty());
+        initializer.initializeRolePermissions();
+        assertTrue(ops.getPermissions().contains(Permission.USER_READ));
+        assertTrue(ops.getPermissions().containsAll(Set.of(Permission.PORT_CALL_WINDOW_READ,Permission.PORT_CALL_WINDOW_CREATE,Permission.PORT_CALL_WINDOW_UPDATE,Permission.PORT_CALL_WINDOW_VERIFY)));
+        var crm=rolePermissionsMap.get(Role.CRUISE_MANAGER);
+        assertFalse(crm.contains(Permission.PORT_CALL_WINDOW_CREATE));
+        assertFalse(crm.contains(Permission.PORT_CALL_WINDOW_UPDATE));
+        assertFalse(crm.contains(Permission.PORT_CALL_WINDOW_VERIFY));
+        assertTrue(rolePermissionsMap.get(Role.POS).isEmpty());
     }
 }

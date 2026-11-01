@@ -722,7 +722,6 @@ public class BookingService {
                 principal.getAuthorities().stream().anyMatch(a ->
                         a.getAuthority().equals("ROLE_ADMIN") ||
                         a.getAuthority().equals("ROLE_BOOKING_AGENT") ||
-                        a.getAuthority().equals("ROLE_CUSTOMER_SERVICE") ||
                         a.getAuthority().equals("ROLE_FINANCE_OFFICER") ||
                         a.getAuthority().equals("ROLE_OPERATIONS_MANAGER") ||
                         (principal.isStaff() && a.getAuthority().equals("BOOKING_READ"))));
@@ -1913,7 +1912,6 @@ public class BookingService {
         boolean isStaff = principal.isAdmin() || principal.getAuthorities().stream()
                 .anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN") ||
                                a.getAuthority().equals("ROLE_BOOKING_AGENT") ||
-                               a.getAuthority().equals("ROLE_CUSTOMER_SERVICE") ||
                                a.getAuthority().equals("ROLE_FINANCE_OFFICER") ||
                                a.getAuthority().equals("ROLE_OPERATIONS_MANAGER") ||
                                (principal.isStaff() && a.getAuthority().equals("BOOKING_READ")));
