@@ -22,7 +22,19 @@ public final class PosDtos {
             @NotBlank @Size(max=200) String name, @NotNull Set<@NotNull PosPermission> permissions, boolean enabled) {}
     public record TerminalUpdate(@NotBlank @Size(max=200) String name,
             @NotNull Set<@NotNull PosPermission> permissions, boolean enabled) {}
-    public record LoginInput(@NotBlank @Size(max=128) String deviceSecret, UUID areaId, UUID cruiseId) {}
+    public record LoginInput(@Size(max=128) String deviceSecret, UUID areaId, UUID cruiseId,
+            @Size(max=4096) String deviceAccessToken) {
+        @com.fasterxml.jackson.annotation.JsonIgnore
+        @AssertTrue(message="Provide exactly one deviceSecret or deviceAccessToken")
+        public boolean isDeviceCredentialComplete() {
+            return (deviceSecret != null && !deviceSecret.isBlank())
+                    != (deviceAccessToken != null && !deviceAccessToken.isBlank());
+        }
+    }
+    public record DeviceAccountInput(@NotNull UUID userId) {}
+    public record DeviceAccount(UUID terminalId, UUID userId) {}
+    public record StaffResource(UUID assignmentId, PosPermission.ResourceType resourceType, UUID resourceId,
+            Set<PosPermission> permissions, boolean enabled, boolean inherited) {}
     public record AreaStaffInput(@NotNull UUID cruiseId, Instant startsAt, Instant endsAt, boolean enabled) {}
     public record AreaStaff(UUID assignmentId, UUID areaId, UUID userId, UUID cruiseStaffId, UUID cruiseId,
             boolean enabled, Instant startsAt, Instant endsAt) {}

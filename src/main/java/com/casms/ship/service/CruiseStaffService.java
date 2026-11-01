@@ -29,17 +29,15 @@ import java.util.UUID;
 public class CruiseStaffService {
 
     private static final Set<String> ALLOWED_ASSIGNMENT_ROLES = Set.of(
-            "CAPTAIN", "DECK_OFFICER", "ONBOARD_STAFF", "CHECKIN_STAFF",
+            "CAPTAIN", "DECK_OFFICER", "ONBOARD_STAFF",
             "ACTIVITY_SERVICE_MANAGER", "TOUR_GUIDE", "PORT_COORDINATOR",
-            "BOOKING_AGENT", "FINANCE_OFFICER", "CUSTOMER_SERVICE"
+            "BOOKING_AGENT", "FINANCE_OFFICER"
     );
     private static final Set<Role> STAFF_ROLES = Set.of(
             Role.OPERATIONS_MANAGER,
             Role.BOOKING_AGENT,
-            Role.CHECKIN_STAFF,
             Role.ONBOARD_STAFF,
             Role.FINANCE_OFFICER,
-            Role.CUSTOMER_SERVICE,
             Role.ACTIVITY_SERVICE_MANAGER
     );
 
@@ -70,7 +68,7 @@ public class CruiseStaffService {
         if (!ALLOWED_ASSIGNMENT_ROLES.contains(assignmentRole)) {
             throw new BusinessException("INVALID_CRUISE_STAFF_ROLE", "Unsupported operational role in cruise assignment");
         }
-        if (user.getRoles() == null || user.getRoles().stream().noneMatch(STAFF_ROLES::contains)) {
+        if (!user.isStaff() || user.getRoles() == null || user.getRoles().stream().noneMatch(STAFF_ROLES::contains)) {
             throw new BusinessException("INVALID_CRUISE_STAFF_ROLE",
                     "Only an existing staff account can receive a cruise assignment; assignment does not grant system roles");
         }
