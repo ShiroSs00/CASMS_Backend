@@ -78,7 +78,7 @@ class ShipModelImportPostgresIntegrationTest {
 
     @Test
     void physicalAreasPersistAsFacilitiesAndReadBackWithoutCreatingServices() throws Exception {
-        Ship ship=createShip(1);String token=token(Role.SHIP_MANAGER);String key=uniqueKey("physical-areas");
+        Ship ship=createShip(1);String token=token(Role.ADMIN);String key=uniqueKey("physical-areas");
         long definitions=catalogueServices.count();
         upload(key,"v1",bundleWithPhysicalAreas(key,"v1","valid"),token);
         UUID model=register(ship.getShipId(),key,"v1",token);
@@ -117,7 +117,7 @@ class ShipModelImportPostgresIntegrationTest {
     @org.junit.jupiter.params.ParameterizedTest
     @org.junit.jupiter.params.provider.ValueSource(strings={"unknown-deck","invalid-size","invalid-transform"})
     void invalidAreaRecordsAnIssueWithoutCreatingFalseCabins(String mode) throws Exception {
-        Ship ship=createShip(1);String token=token(Role.SHIP_MANAGER);String key=uniqueKey("area-partial");
+        Ship ship=createShip(1);String token=token(Role.ADMIN);String key=uniqueKey("area-partial");
         upload(key,"v1",bundleWithPhysicalAreas(key,"v1",mode),token);UUID model=register(ship.getShipId(),key,"v1",token);
         JsonNode result=importJob(ship.getShipId(),model,token).path("data");
         assertEquals("PARTIAL",result.path("status").asText());assertEquals(1,result.path("objectsFailed").asInt());
@@ -130,7 +130,7 @@ class ShipModelImportPostgresIntegrationTest {
     @org.junit.jupiter.params.ParameterizedTest
     @org.junit.jupiter.params.provider.ValueSource(strings={"duplicate-node","missing-node"})
     void ambiguousPhysicalStructureFailsBeforeWritingDecks(String mode) throws Exception {
-        Ship ship=createShip(1);String token=token(Role.SHIP_MANAGER);String key=uniqueKey("area-identity");
+        Ship ship=createShip(1);String token=token(Role.ADMIN);String key=uniqueKey("area-identity");
         upload(key,"v1",bundleWithPhysicalAreas(key,"v1",mode),token);UUID model=register(ship.getShipId(),key,"v1",token);
         mockMvc.perform(post("/ships/{shipId}/models/{modelId}/imports",ship.getShipId(),model).header("Authorization","Bearer "+token)).andExpect(status().isBadRequest());
         assertEquals(0,decks.countByShipShipId(ship.getShipId()));assertEquals(0,objects.findByShipModelShipModelId(model).size());
@@ -138,7 +138,7 @@ class ShipModelImportPostgresIntegrationTest {
 
     @Test
     void databaseFailureDuringAreaPersistenceRollsBackAllImportedStructure() throws Exception {
-        Ship ship=createShip(1);String token=token(Role.SHIP_MANAGER);String key=uniqueKey("area-rollback");
+        Ship ship=createShip(1);String token=token(Role.ADMIN);String key=uniqueKey("area-rollback");
         upload(key,"v1",bundleWithPhysicalAreas(key,"v1","valid"),token);UUID model=register(ship.getShipId(),key,"v1",token);
         String trigger="it_area_"+UUID.randomUUID().toString().replace("-","");
         jdbc.execute("CREATE FUNCTION "+trigger+"() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'injected physical area persistence failure'; END; $$");
@@ -153,7 +153,7 @@ class ShipModelImportPostgresIntegrationTest {
     @Test
     void importsEveryDeckIgnoresModelServicesAndSupportsManualAssignments() throws Exception {
         Ship ship = createShip(1);
-        String manager = token(Role.SHIP_MANAGER);
+        String manager = token(Role.ADMIN);
         String serviceManager = token(Role.ACTIVITY_SERVICE_MANAGER);
         String key = uniqueKey("all-decks");
         long serviceCount = catalogueServices.count();
@@ -229,7 +229,7 @@ class ShipModelImportPostgresIntegrationTest {
 
     @Test
     void serviceDeckWritesRollbackWhenCabinPersistenceFails() throws Exception {
-        Ship ship = createShip(1); String manager = token(Role.SHIP_MANAGER);
+        Ship ship = createShip(1); String manager = token(Role.ADMIN);
         String key = uniqueKey("deck-rollback");
         upload(key, "v1", bundleWithServiceDeck(key, "v1", "CABIN-NUM-TOO-LONG"), manager);
         UUID modelId = register(ship.getShipId(), key, "v1", manager);
@@ -243,7 +243,7 @@ class ShipModelImportPostgresIntegrationTest {
 
     @Test
     void concurrentManualAssignmentsHaveOneDatabaseIdentity() throws Exception {
-        Ship ship = createShip(1); String manager = token(Role.SHIP_MANAGER);
+        Ship ship = createShip(1); String manager = token(Role.ADMIN);
         String serviceManager = token(Role.ACTIVITY_SERVICE_MANAGER); String key = uniqueKey("deck-link");
         upload(key, "v1", bundleWithServiceDeck(key, "v1", "M-001"), manager);
         UUID model = register(ship.getShipId(), key, "v1", manager); importJob(ship.getShipId(), model, manager);
@@ -299,9 +299,26 @@ class ShipModelImportPostgresIntegrationTest {
     }
 
     @Test
+    void modelWritesBelongToAdminAndOperationalStatusToShipManager() throws Exception {
+        Ship ship=createShip(1);String admin=token(Role.ADMIN),manager=token(Role.SHIP_MANAGER),key=uniqueKey("rbac-model");
+        Path zip=smallBundle(key,"v1","OCEAN_VIEW","M-RBAC",true);
+        assertEquals(403,uploadStatus(key,"v1",zip,manager));upload(key,"v1",zip,admin);
+        UUID model=register(ship.getShipId(),key,"v1",admin);
+        mockMvc.perform(post("/ships/{ship}/models/{model}/imports",ship.getShipId(),model).header("Authorization","Bearer "+manager)).andExpect(status().isForbidden());
+        for(String kind:List.of("deck-mappings","cabin-mappings"))mockMvc.perform(put("/ships/{ship}/models/{model}/"+kind,ship.getShipId(),model)
+                .header("Authorization","Bearer "+manager).contentType(MediaType.APPLICATION_JSON).content("[]")).andExpect(status().isForbidden());
+        for(String action:List.of("activate","ready","archive"))mockMvc.perform(post("/ships/{ship}/models/{model}/"+action,ship.getShipId(),model)
+                .header("Authorization","Bearer "+manager)).andExpect(status().isForbidden());
+        assertEquals("SUCCEEDED",importJob(ship.getShipId(),model,admin).path("data").path("status").asText());
+        mockMvc.perform(post("/ships/{ship}/models/{model}/activate",ship.getShipId(),model).header("Authorization","Bearer "+admin)).andExpect(status().isOk());
+        mockMvc.perform(post("/ships/{ship}/status",ship.getShipId()).param("status","MAINTENANCE").header("Authorization","Bearer "+admin)).andExpect(status().isForbidden());
+        mockMvc.perform(post("/ships/{ship}/status",ship.getShipId()).param("status","MAINTENANCE").header("Authorization","Bearer "+manager)).andExpect(status().isOk());
+    }
+
+    @Test
     void committedZaandamBundle_uploadImportReadAndRetry_isIdempotent() throws Exception {
         Ship ship = createShip(10);
-        String token = token(Role.SHIP_MANAGER);
+        String token = token(Role.ADMIN);
         String version = "it-" + UUID.randomUUID().toString().substring(0, 8);
         Path archive = committedBundle(version);
         try {
@@ -385,7 +402,7 @@ class ShipModelImportPostgresIntegrationTest {
     @Test
     void smallDatabaseBundles_recordObjectIssuesAndRollbackWholeTransaction() throws Exception {
         Ship ship = createShip(10);
-        String token = token(Role.SHIP_MANAGER);
+        String token = token(Role.ADMIN);
 
         String modelKey = uniqueKey("small-bundles");
         String partialKey = modelKey;
@@ -441,7 +458,7 @@ class ShipModelImportPostgresIntegrationTest {
     @Test
     void laterModel_updatesModelManagedFieldsAndPreservesBusinessOwnedCabinFields() throws Exception {
         Ship ship = createShip(10);
-        String token = token(Role.SHIP_MANAGER);
+        String token = token(Role.ADMIN);
         String firstKey = uniqueKey("upsert-a");
         upload(firstKey, "v1", smallBundle(firstKey, "v1", "OCEAN_VIEW", "M-101", true), token);
         UUID firstModel = register(ship.getShipId(), firstKey, "v1", token);
@@ -485,7 +502,7 @@ class ShipModelImportPostgresIntegrationTest {
     @Test
     void duplicateCabinBusinessIdentity_isRejectedBeforeWritingBusinessRows() throws Exception {
         Ship ship = createShip(10);
-        String token = token(Role.SHIP_MANAGER);
+        String token = token(Role.ADMIN);
         String key = uniqueKey("duplicate-cabin");
         upload(key, "v1", smallBundle(key, "v1", "OCEAN_VIEW", "M-201", true,
                 true, "Mini Deck", 1.0, List.of(5.0, 2.8, 6.5), true), token);
@@ -504,7 +521,7 @@ class ShipModelImportPostgresIntegrationTest {
 
     @Test
     void manifestRegistration_createsIndependentShipsFromTheSameUploadedTemplate() throws Exception {
-        String token = token(Role.SHIP_MANAGER);
+        String token = token(Role.ADMIN);
         String key = uniqueKey("provision");
         upload(key, "v1", smallBundle(key, "v1", "OCEAN_VIEW", "M-301", true), token);
 
@@ -552,7 +569,7 @@ class ShipModelImportPostgresIntegrationTest {
 
     @Test
     void manifestDeckCount_isSeparateFromPassengerDeckNumberLimit() throws Exception {
-        String token = token(Role.SHIP_MANAGER);
+        String token = token(Role.ADMIN);
         String key = uniqueKey("deck-gap");
         upload(key, "v1", smallBundle(key, "v1", "OCEAN_VIEW", "M-401", true,
                 true, "Sky Deck", 14.0, List.of(5.0, 2.8, 6.5), false, 14, 13), token);
@@ -579,7 +596,7 @@ class ShipModelImportPostgresIntegrationTest {
         Ship ship = createShip(10);
         String key = uniqueKey("parallel");
         String version = "v1";
-        String token = token(Role.SHIP_MANAGER);
+        String token = token(Role.ADMIN);
         upload(key, version, smallBundle(key, version, "OCEAN_VIEW", "M-001", true), token);
         UUID modelId = register(ship.getShipId(), key, version, token);
 
@@ -606,7 +623,7 @@ class ShipModelImportPostgresIntegrationTest {
 
     @Test
     void shipCreateUsesStoredModelAndGeneratesCodesAndDatesWithoutAnotherUpload() throws Exception {
-        String token=token(Role.SHIP_MANAGER),key=uniqueKey("reuse-create");
+        String token=token(Role.ADMIN),key=uniqueKey("reuse-create");
         upload(key,"v1",smallBundle(key,"v1","OCEAN_VIEW","M-REUSE",true),token);
         long blobCount=jdbc.queryForObject("SELECT count(*) FROM \"ShipModelAssetBlob\" WHERE model_key=?",Long.class,key);
         var uploadedAt=jdbc.queryForObject("SELECT min(created_at) FROM \"ShipModelAssetBlob\" WHERE model_key=?",java.sql.Timestamp.class,key);
@@ -626,7 +643,7 @@ class ShipModelImportPostgresIntegrationTest {
 
     @Test
     void missingOptionalMetadataIsSkippedAndOnlyMissingRequiredValuesNeedSupplements() throws Exception {
-        String token=token(Role.SHIP_MANAGER),key=uniqueKey("partial-metadata");
+        String token=token(Role.ADMIN),key=uniqueKey("partial-metadata");
         Path original=smallBundle(key,"v1","OCEAN_VIEW","M-PARTIAL",true);
         Path partial=rewriteManifest(original,key,"v1",Set.of("name","passengerCapacity","deckCount","length","beam"));
         upload(key,"v1",partial,token);long before=ships.count();
@@ -644,7 +661,7 @@ class ShipModelImportPostgresIntegrationTest {
 
     @Test
     void sameUploadedBundleCanBeAttachedToDifferentExistingShips() throws Exception {
-        String token=token(Role.SHIP_MANAGER),key=uniqueKey("reuse-existing");
+        String token=token(Role.ADMIN),key=uniqueKey("reuse-existing");
         upload(key,"v1",smallBundle(key,"v1","SUITE","M-EXIST",true),token);
         Ship first=createShip(2),second=createShip(2);
         UUID a=register(first.getShipId(),key,"v1",token),b=register(second.getShipId(),key,"v1",token);
@@ -656,7 +673,7 @@ class ShipModelImportPostgresIntegrationTest {
 
     @Test
     void contentLimitCountsIdenticalGlbAcrossKeysButAllowsDifferentContentAndUnlimitedShipReuse() throws Exception {
-        String token=token(Role.SHIP_MANAGER),first=uniqueKey("copy-a"),alias=uniqueKey("copy-b");
+        String token=token(Role.ADMIN),first=uniqueKey("copy-a"),alias=uniqueKey("copy-b");
         upload(first,"v1",smallBundle(first,"v1","OCEAN_VIEW","M-COPY",true),token);
         upload(alias,"v1",smallBundle(alias,"v1","OCEAN_VIEW","M-COPY",true),token);
         long objectsBefore=jdbc.queryForObject("SELECT count(*) FROM pg_largeobject_metadata",Long.class);
@@ -669,7 +686,7 @@ class ShipModelImportPostgresIntegrationTest {
 
     @Test
     void invalidUploadDoesNotConsumeDuplicateAllowance() throws Exception {
-        String token=token(Role.SHIP_MANAGER),key=uniqueKey("invalid-copy");
+        String token=token(Role.ADMIN),key=uniqueKey("invalid-copy");
         upload(key,"v1",smallBundle(key,"v1","OCEAN_VIEW","M-INVALID",true),token);
         Path invalid=rewriteChecksums(smallBundle(key,"v2","OCEAN_VIEW","M-INVALID",true),key,"v2");
         assertEquals(400,uploadStatus(key,"v2",invalid,token));
@@ -679,7 +696,7 @@ class ShipModelImportPostgresIntegrationTest {
 
     @Test
     void concurrentIdenticalUploadsCannotExceedTwoCopies() throws Exception {
-        String token=token(Role.SHIP_MANAGER),a=uniqueKey("race-a"),b=uniqueKey("race-b"),c=uniqueKey("race-c");
+        String token=token(Role.ADMIN),a=uniqueKey("race-a"),b=uniqueKey("race-b"),c=uniqueKey("race-c");
         upload(a,"v1",smallBundle(a,"v1","OCEAN_VIEW","M-RACE",true),token);
         Path second=smallBundle(b,"v1","OCEAN_VIEW","M-RACE",true),third=smallBundle(c,"v1","OCEAN_VIEW","M-RACE",true);
         ExecutorService pool=Executors.newFixedThreadPool(2);var start=new java.util.concurrent.CountDownLatch(1);
@@ -694,7 +711,7 @@ class ShipModelImportPostgresIntegrationTest {
 
     @Test
     void modelReferencesAndCreatePermissionsAreValidatedBeforeCreatingShips() throws Exception {
-        String token=token(Role.SHIP_MANAGER),key=uniqueKey("create-access"),passenger=token(Role.PASSENGER);
+        String token=token(Role.ADMIN),key=uniqueKey("create-access"),passenger=token(Role.PASSENGER);
         upload(key,"v1",smallBundle(key,"v1","OCEAN_VIEW","M-ACCESS",true),token);
         long before=ships.count();
         mockMvc.perform(post("/ships").header("Authorization","Bearer "+token).contentType(MediaType.APPLICATION_JSON)

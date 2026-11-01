@@ -40,7 +40,7 @@ class FlywayMigrationPostgresIntegrationTest {
     private static final String PASSWORD = env("DB_PASSWORD", "12345");
     private static final String[] APP_LOCATIONS = {"classpath:db/migration"};
     private static final String[] PROD_LOCATIONS = {"classpath:db/migration", "classpath:db/prod-migration"};
-    private static final String LATEST = "73";
+    private static final String LATEST = "76";
 
     private final List<String> createdDatabases = new ArrayList<>();
 
@@ -68,6 +68,28 @@ class FlywayMigrationPostgresIntegrationTest {
             assertEquals(0L, count(c, "SELECT count(*) FROM \"TripPlanEntry\" WHERE category = 'WORKSHOPS_CLASSES'"));
             assertLineageConstraintsValidated(c);
         }
+    }
+
+    @Test
+    void roleMigrationPreservesAccountRowsAndUnrelatedRoles() throws SQLException {
+        String db=createDatabase();flyway(db,"74",APP_LOCATIONS).migrate();
+        try(Connection c=connect(db);Statement st=c.createStatement()) {
+            st.execute("CREATE TABLE users_before_roles AS SELECT * FROM \"User\"");
+            st.executeUpdate("INSERT INTO \"UserRole\" (user_id,role) SELECT user_id,'CHECKIN_STAFF' FROM \"User\" WHERE username='onboard_staff'");
+        }
+        Flyway upgraded=flyway(db,null,APP_LOCATIONS);migrateLikeApplication(upgraded);upgraded.migrate();
+        try(Connection c=connect(db)) {
+            assertEquals(0,count(c,"SELECT count(*) FROM (SELECT * FROM users_before_roles EXCEPT SELECT * FROM \"User\") changed"));
+            assertEquals(0,count(c,"SELECT count(*) FROM \"UserRole\" WHERE role IN ('CHECKIN_STAFF','CUSTOMER_SERVICE')"));
+            assertEquals(0,count(c,"SELECT count(*) FROM \"RolePermissionMapping\" WHERE role IN ('POS','CHECKIN_STAFF','CUSTOMER_SERVICE')"));
+            assertEquals(1,count(c,"SELECT count(*) FROM \"UserRole\" r JOIN \"User\" u USING(user_id) WHERE u.username='customer_service' AND r.role='POS'"));
+            assertEquals(0,count(c,"SELECT count(*) FROM \"UserRole\" r JOIN \"User\" u USING(user_id) WHERE u.username='checkin_staff'"));
+            assertEquals(1,count(c,"SELECT count(*) FROM \"UserRole\" r JOIN \"User\" u USING(user_id) WHERE u.username='onboard_staff' AND r.role='ONBOARD_STAFF'"));
+            assertEquals(0,count(c,"SELECT count(*) FROM \"StaffServiceAssignment\""));
+            assertEquals(0,count(c,"SELECT count(*) FROM \"StaffActivityAssignment\""));
+            assertEquals(0,count(c,"SELECT count(*) FROM \"RolePermissionMapping\" WHERE role='ONBOARD_STAFF' AND permission='PAYMENT_PROCESS'"));
+        }
+        assertTrue(upgraded.validateWithResult().validationSuccessful);
     }
 
     @Test
@@ -228,7 +250,7 @@ class FlywayMigrationPostgresIntegrationTest {
         String db = createDatabase();
         migrateLikeApplication(flyway(db, null, APP_LOCATIONS));
         try (Connection c = connect(db); Statement st = c.createStatement()) {
-            st.execute("INSERT INTO \"Ship\" (ship_id,ship_code,ship_name,status,total_capacity,total_decks,created_at,updated_at) VALUES ('85000000-0000-4000-8000-000000000201','IT-LEGACY-SHIP','Existing inventory','ACTIVE',10,1,now(),now())");
+            st.execute("INSERT INTO \"Ship\" (ship_id,ship_code,ship_name,status,total_capacity,total_decks,created_at,updated_at) VALUES ('85000000-0000-4000-8000-000000000201','IT-LEGACY-SHIP','Existing inventory','READY',10,1,now(),now())");
             st.execute("INSERT INTO \"Deck\" (deck_id,ship_id,deck_number,deck_name,created_at,updated_at) VALUES ('85000000-0000-4000-8000-000000000202','85000000-0000-4000-8000-000000000201',1,'Existing deck',now(),now())");
             st.execute("INSERT INTO \"Cabin\" (cabin_id,ship_id,deck_id,cabin_number,cabin_type,capacity,status,is_accessible,created_at,updated_at) VALUES ('85000000-0000-4000-8000-000000000203','85000000-0000-4000-8000-000000000201','85000000-0000-4000-8000-000000000202','OLD-101','SUITE',4,'AVAILABLE',false,now(),now())");
         }

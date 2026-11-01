@@ -95,13 +95,13 @@ public class User {
     }
 
     public boolean isAdmin() {
-        return hasRole(Role.ADMIN);
+        return !hasRole(Role.POS) && hasRole(Role.ADMIN);
     }
 
     public boolean isStaff() {
-        return hasAnyRole(Role.ADMIN, Role.CRUISE_MANAGER, Role.SHIP_MANAGER, 
-                Role.OPERATIONS_MANAGER, Role.BOOKING_AGENT, Role.CHECKIN_STAFF, 
-                Role.ONBOARD_STAFF, Role.FINANCE_OFFICER, Role.CUSTOMER_SERVICE,
+        return !hasRole(Role.POS) && hasAnyRole(Role.ADMIN, Role.CRUISE_MANAGER, Role.SHIP_MANAGER,
+                Role.OPERATIONS_MANAGER, Role.BOOKING_AGENT,
+                Role.ONBOARD_STAFF, Role.FINANCE_OFFICER,
                 Role.ACTIVITY_SERVICE_MANAGER);
     }
 }

@@ -117,7 +117,7 @@ public class AuthService {
     }
 
     public Set<String> getEffectivePermissions(User user) {
-        if (user == null) {
+        if (user == null || user.hasRole(Role.POS)) {
             return Collections.emptySet();
         }
         Set<String> permissions = new TreeSet<>();

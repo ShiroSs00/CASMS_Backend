@@ -49,7 +49,7 @@ public class ShipModelController {
 
     @Operation(summary = "Import physical decks, cabins and areas from a registered model manifest",
             description = "Physical area nodes are stored as FACILITY mappings linked to decks, including spatial metadata. Business service nodes do not create catalogue services or deck-service assignments.")
-    @PreAuthorize("hasAuthority('SHIP_UPDATE')")
+    @PreAuthorize("hasAuthority('SHIP_MODEL_UPDATE')")
     @PostMapping("/ships/{shipId}/models/{modelId}/imports")
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<ModelImportJobResponse> importStructure(@PathVariable UUID shipId, @PathVariable UUID modelId,
@@ -89,7 +89,7 @@ public class ShipModelController {
     }
 
     @Operation(summary = "Upload and validate a versioned ship model asset ZIP into PostgreSQL",description="At most two stored bundles may contain byte-identical full-model GLB content, even under different keys or versions. Existing uploads count toward this limit; invalid or rolled-back uploads do not. Creating ships from stored models does not upload another copy.")
-    @PreAuthorize("hasAuthority('SHIP_UPDATE')")
+    @PreAuthorize("hasAuthority('SHIP_MODEL_CREATE')")
     @PostMapping(value = "/ship-model-assets", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<ShipModelAssetUploadResponse> uploadAssets(@RequestParam String modelKey,
@@ -99,7 +99,7 @@ public class ShipModelController {
     }
 
     @Operation(summary = "Register a versioned asset bundle already stored in PostgreSQL")
-    @PreAuthorize("hasAuthority('SHIP_UPDATE')")
+    @PreAuthorize("hasAuthority('SHIP_MODEL_CREATE')")
     @PostMapping("/ships/{shipId}/models") @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<Map<String, UUID>> create(@PathVariable UUID shipId,
             @Valid @RequestBody ShipModelAssetRegisterRequest request) {
@@ -140,7 +140,7 @@ public class ShipModelController {
         return ApiResponse.success(assetService.deckMappings(shipId, modelId));
     }
 
-    @PreAuthorize("hasAuthority('SHIP_UPDATE')")
+    @PreAuthorize("hasAuthority('SHIP_MODEL_UPDATE')")
     @PutMapping("/ships/{shipId}/models/{modelId}/deck-mappings")
     public ApiResponse<String> replaceDeckMappings(@PathVariable UUID shipId, @PathVariable UUID modelId,
             @RequestBody @Size(max = 100) List<@NotNull @Valid ShipModelDeckMappingRequest> mappings) {
@@ -154,7 +154,7 @@ public class ShipModelController {
         return ApiResponse.success(assetService.cabinMappings(shipId, modelId));
     }
 
-    @PreAuthorize("hasAuthority('SHIP_UPDATE')")
+    @PreAuthorize("hasAuthority('SHIP_MODEL_UPDATE')")
     @PutMapping("/ships/{shipId}/models/{modelId}/cabin-mappings")
     public ApiResponse<String> replaceCabinMappings(@PathVariable UUID shipId, @PathVariable UUID modelId,
             @RequestBody @Size(max = 5000) List<@NotNull @Valid ShipModelCabinMappingRequest> mappings) {
@@ -162,7 +162,7 @@ public class ShipModelController {
         return ApiResponse.success("Cabin mappings replaced", "Cabin mappings replaced");
     }
 
-    @PreAuthorize("hasAuthority('SHIP_UPDATE')")
+    @PreAuthorize("hasAuthority('SHIP_MODEL_PUBLISH')")
     @PostMapping("/ships/{shipId}/models/{modelId}/activate")
     public ApiResponse<String> activate(@PathVariable UUID shipId, @PathVariable UUID modelId) {
         assetService.activate(shipId, modelId);

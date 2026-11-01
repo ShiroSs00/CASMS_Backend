@@ -24,7 +24,7 @@ public class IdentityController {
 
     private final IdentityService service;
 
-    @Operation(summary = "Danh sách người dùng cho gán việc", description = "Lấy danh sách người dùng khả dụng để phân công xử lý sự cố hoặc tác vụ")
+    @Operation(summary = "Danh sách người dùng cho gán việc", description = "Mặc định chỉ lấy nhân viên. assignableFor=POS lấy tài khoản máy để liên kết POS; ONBOARD_STAFF lấy nhân viên phục vụ dịch vụ và hoạt động, OPERATIONAL_ISSUE lấy người xử lý sự cố.")
     @PreAuthorize("hasAnyAuthority('USER_READ', 'OPERATIONAL_ISSUE_ASSIGN', 'OPERATIONAL_ISSUE_CREATE', 'OPERATIONAL_ISSUE_UPDATE')")
     @GetMapping("/users")
     public ResponseEntity<ApiResponse<List<UserLookupResponse>>> listUsers(

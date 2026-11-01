@@ -58,6 +58,10 @@ public class JwtService {
         return expirationMs;
     }
 
+    public java.time.Instant expiresAt(String token) {
+        return parseClaims(token).getExpiration().toInstant();
+    }
+
     private Claims parseClaims(String token) {
         return Jwts.parser()
                 .verifyWith(key())

@@ -54,6 +54,7 @@ class PosPostgresIntegrationTest {
     @Autowired DeckServiceAssignmentRepository deckServices;
     @Autowired PaymentRepository payments;
     @Autowired JwtService jwt;
+    @Autowired org.springframework.security.crypto.password.PasswordEncoder encoder;
     UUID ship,deck,model,area,port,cruise,booking,bp,bp2,service,account,terminal;
     String manager,catalogManager,staff,buyer,secret,session;
     final List<UUID> userIds=new ArrayList<>();
@@ -91,6 +92,91 @@ class PosPostgresIntegrationTest {
         configurePolicy(terminal,area,service,new ArrayList<>(PosPermission.forResource(PosPermission.ResourceType.SERVICE)));
         session=login(staff,secret);
     }
+    @Test void employeeResourceAssignmentsRestrictSpecificOperationsAndApplyChangesLive() throws Exception {
+        UUID employee=jwt.extractUserId(staff);
+        var path=delete("/ships/{s}/areas/{a}/staff/{u}/resources/SERVICE/{r}",ship,area,employee,service).param("cruiseId",cruise.toString());
+        perform(path,manager,null,204);
+        assertEquals(0,perform(get("/pos/services").header("X-POS-Session",session),staff,null,200).size());
+        sell(bp,1,"unassigned",403);
+        grantResource(employee,area,cruise,"SERVICE",service,Map.of("permissions",List.of("SERVICE_READ"),"enabled",true));
+        assertEquals(1,perform(get("/pos/services").header("X-POS-Session",session),staff,null,200).size());
+        sell(bp,1,"read-only",403);
+        grantResource(employee,area,cruise,"SERVICE",service,Map.of("enabled",true));
+        grantResource(employee,area,cruise,"SERVICE",service,Map.of("enabled",true));
+        assertEquals(1,perform(get("/ships/{s}/areas/{a}/staff/{u}/resources/SERVICE",ship,area,employee).param("cruiseId",cruise.toString()),manager,null,200).size());
+        sell(bp,1,"inherited",201);
+        setServicePolicy(Set.of(PosPermission.SERVICE_READ));sell(bp,1,"source-revoked",403);
+        setServicePolicy(PosPermission.forResource(PosPermission.ResourceType.SERVICE));sell(bp,1,"source-restored",201);
+        perform(put("/ships/{s}/areas/{a}/staff/{u}/resources/SERVICE/{r}",ship,area,employee,service).param("cruiseId",cruise.toString()),staff,Map.of("enabled",true),403);
+        perform(put("/ships/{s}/areas/{a}/staff/{u}/resources/SERVICE/{r}",ship,area,employee,service).param("cruiseId",cruise.toString()),manager,Map.of("permissions",List.of("ACTIVITY_READ"),"enabled",true),422);
+        perform(put("/ships/{s}/areas/{a}/staff/{u}/resources/SERVICE/{r}",UUID.randomUUID(),area,employee,service).param("cruiseId",cruise.toString()),manager,Map.of("enabled",true),404);
+        perform(put("/ships/{s}/areas/{a}/staff/{u}/resources/SERVICE/{r}",ship,area,employee,UUID.randomUUID()).param("cruiseId",cruise.toString()),manager,Map.of("enabled",true),404);
+        perform(get("/servicepackage/requests"),staff,null,403);
+    }
+    @Test void activityAssignmentDoesNotGrantOtherOperationsOrGlobalActivityAttendance() throws Exception {
+        UUID activity=createActivity();configureActivity(activity,PosPermission.forResource(PosPermission.ResourceType.ACTIVITY));linkActivity(activity);
+        grantResource(jwt.extractUserId(staff),area,cruise,"ACTIVITY",activity,Map.of("permissions",List.of("ACTIVITY_READ"),"enabled",true));
+        perform(post("/pos/activities/{id}/actions/open",activity).header("X-POS-Session",session),staff,null,403);
+        perform(get("/activities/participations"),staff,null,403);
+        grantResource(jwt.extractUserId(staff),area,cruise,"ACTIVITY",activity,Map.of("enabled",true));
+        perform(post("/pos/activities/{id}/actions/open",activity).header("X-POS-Session",session),staff,null,200);
+        perform(delete("/ships/{s}/areas/{a}/staff/{u}/resources/ACTIVITY/{id}",ship,area,jwt.extractUserId(staff),activity).param("cruiseId",cruise.toString()),manager,null,204);
+        assertEquals(0,perform(get("/pos/activities").header("X-POS-Session",session),staff,null,200).size());
+    }
+    @Test void operationsManagerCanUseEveryPosWithoutCrewOrAreaAssignments() throws Exception {
+        String ops=new TransactionTemplate(tm).execute(s->token(user(Role.OPERATIONS_MANAGER)));
+        String opsSession=login(ops,secret);
+        perform(post("/pos/sales").header("X-POS-Session",opsSession),ops,input(bp,1,"manager-sale"),201);
+        assertEquals(90,statement(bp).path("budget").path("accountRemaining").asInt());
+        configurePolicy(terminal,area,service,List.of(PosPermission.SERVICE_READ));
+        perform(post("/pos/sales").header("X-POS-Session",opsSession),ops,input(bp,1,"manager-device-cap"),403);
+        jdbc.update("UPDATE \"UserRole\" SET role='ONBOARD_STAFF' WHERE user_id=? AND role='OPERATIONS_MANAGER'",jwt.extractUserId(ops));
+        perform(get("/pos/session").header("X-POS-Session",opsSession),ops,null,403);
+    }
+    @Test void deviceAccountAndEmployeeAreSeparateAndBothRequiredOnBoundTerminals() throws Exception {
+        User machine=new TransactionTemplate(tm).execute(s->{User u=user(Role.POS);u.setPasswordHash(encoder.encode("device-test-password"));return users.saveAndFlush(u);});
+        String machineJwt=perform(post("/auth/login"),null,Map.of("username",machine.getUsername(),"password","device-test-password"),200).path("accessToken").asText();
+        assertEquals(0,perform(get("/auth/me"),machineJwt,null,200).path("effectivePermissions").size());
+        perform(post("/pos-terminals/{id}/sessions",terminal),machineJwt,Map.of("deviceSecret",secret),403);
+        perform(post("/cruise/{id}/staff",cruise),manager,Map.of("userId",machine.getUserId(),"roleInCruise","ONBOARD_STAFF"),422);
+        perform(put("/pos-terminals/{id}/account",terminal),staff,Map.of("userId",machine.getUserId()),403);
+        perform(put("/pos-terminals/{id}/account",terminal),manager,Map.of("userId",machine.getUserId()),200);
+        assertEquals(machine.getUserId().toString(),perform(get("/pos-terminals/{id}/account",terminal),manager,null,200).path("userId").asText());
+        perform(get("/pos/session").header("X-POS-Session",session),staff,null,403);
+        perform(post("/pos-terminals/{id}/sessions",terminal),staff,Map.of("deviceSecret",secret),403);
+        perform(post("/pos-terminals/{id}/sessions",terminal),staff,Map.of("deviceAccessToken",manager),403);
+        String unassigned=new TransactionTemplate(tm).execute(s->token(user(Role.ONBOARD_STAFF)));
+        perform(post("/pos-terminals/{id}/sessions",terminal),unassigned,Map.of("deviceAccessToken",machineJwt),403);
+        session=perform(post("/pos-terminals/{id}/sessions",terminal),staff,Map.of("deviceAccessToken",machineJwt),201).path("sessionToken").asText();
+        long paymentCount=payments.count();sell(bp,1,"device-sale",201);assertEquals(paymentCount,payments.count());
+        String replacement=new TransactionTemplate(tm).execute(s->token(user(Role.POS)));
+        perform(put("/pos-terminals/{id}/account",terminal),manager,Map.of("userId",jwt.extractUserId(replacement)),200);
+        perform(get("/pos/session").header("X-POS-Session",session),staff,null,403);
+        perform(post("/pos-terminals/{id}/sessions",terminal),staff,Map.of("deviceAccessToken",machineJwt),403);
+        session=perform(post("/pos-terminals/{id}/sessions",terminal),staff,Map.of("deviceAccessToken",replacement),201).path("sessionToken").asText();
+        jdbc.update("UPDATE \"User\" SET status='LOCKED' WHERE user_id=?",jwt.extractUserId(replacement));
+        perform(get("/pos/session").header("X-POS-Session",session),staff,null,403);
+    }
+    @Test void deviceAccountBindingRejectsInvalidAndDuplicateAccounts() throws Exception {
+        perform(put("/pos-terminals/{id}/account",terminal),manager,Map.of("userId",UUID.randomUUID()),404);
+        perform(put("/pos-terminals/{id}/account",terminal),manager,Map.of("userId",jwt.extractUserId(staff)),422);
+        perform(put("/pos-terminals/{id}/account",terminal),manager,Map.of(),400);
+        String machine=new TransactionTemplate(tm).execute(s->token(user(Role.POS)));
+        UUID id=jwt.extractUserId(machine);
+        jdbc.update("UPDATE \"User\" SET status='DISABLED' WHERE user_id=?",id);
+        perform(put("/pos-terminals/{id}/account",terminal),manager,Map.of("userId",id),422);
+        jdbc.update("UPDATE \"User\" SET status='ACTIVE' WHERE user_id=?",id);
+        perform(put("/pos-terminals/{id}/account",terminal),manager,Map.of("userId",id),200);
+        var second=perform(post("/ships/{ship}/pos-terminals",ship),manager,Map.of("areaId",area,"code",code(),"name","Other","permissions",List.of("SERVICE_READ"),"enabled",true),201);
+        perform(put("/pos-terminals/{id}/account",second.path("terminal").path("terminalId").asText()),manager,Map.of("userId",id),409);
+    }
+    @Test void passengerCanCompleteOwnOnlineCheckinWithoutAStaffRole() throws Exception {
+        jdbc.update("INSERT INTO \"BookingContract\" (booking_contract_id,booking_id,contract_reference,document_reference,status) VALUES (?,?,?,?,'Accepted')",UUID.randomUUID(),booking,code(),"test-contract");
+        perform(post("/checkin/passenger/{id}/start",bp).param("emergencyContactName","Family").param("emergencyContactPhone","0123456789"),buyer,null,200);
+        assertEquals("BoardingReady",perform(post("/checkin/passenger/{id}/complete",bp),buyer,null,200).path("checkinStatus").asText());
+        perform(post("/checkin/passenger/{id}/complete",bp),buyer,null,200);
+        perform(post("/checkin/passenger/{id}/start",bp2),buyer,null,403);
+    }
     @Test void recordsUsageAtServerPriceReducesVirtualAllowanceAndCreatesNoPayment() throws Exception {
         long paymentCount=payments.count();JsonNode sale=sell(bp,2,"one",201);
         assertEquals(0,new BigDecimal("20").compareTo(sale.path("amount").decimalValue()));
@@ -122,14 +208,14 @@ class PosPostgresIntegrationTest {
         perform(post("/servicepackage/requests/{id}/cancel",request),buyer,null,200);
         assertEquals(100,statement(bp).path("budget").path("accountRemaining").asInt());
         assertEquals(2,count("OnboardTransaction"));assertEquals(1,count("Charge"));
-        perform(put("/servicepackage/requests/{id}",request),staff,Map.of("quantity",1,"note","edit"),409);
+        perform(put("/servicepackage/requests/{id}",request),staff,Map.of("quantity",1,"note","edit"),403);
         var second=sell(bp,1,"reject",201);
-        perform(post("/servicepackage/requests/{id}/actions/reject",second.path("serviceRequestId").asText()),staff,null,200);
+        perform(post("/pos/requests/{id}/actions/reject",second.path("serviceRequestId").asText()).header("X-POS-Session",session),staff,null,200);
         assertEquals(100,statement(bp).path("budget").path("accountRemaining").asInt());assertEquals(4,count("OnboardTransaction"));
     }
     @Test void posChargedQuantitiesCannotBeEditedViaLegacyApi() throws Exception {
         var sale=sell(bp,1,"immutable",201);
-        perform(put("/servicepackage/requests/{id}",sale.path("serviceRequestId").asText()),staff,Map.of("quantity",2),422);
+        perform(put("/servicepackage/requests/{id}",sale.path("serviceRequestId").asText()),staff,Map.of("quantity",2),403);
         assertEquals(90,statement(bp).path("budget").path("accountRemaining").asInt());
     }
     @Test void groupPassengerDoesNotNeedAnIndividualLoginToUseAllocatedAllowance() throws Exception {
@@ -401,6 +487,7 @@ class PosPostgresIntegrationTest {
     }
     private void linkActivity(UUID activity) throws Exception {
         perform(put("/ships/{ship}/areas/{area}/activities/{id}",ship,area,activity),manager,Map.of("enabled",true),200);
+        grantResource(jwt.extractUserId(staff),area,cruise,"ACTIVITY",activity,Map.of("enabled",true));
     }
     @Test void activityPermissionsInheritAndAuthorizeRegistrationAttendanceAndLifecycle() throws Exception {
         UUID activity=createActivity();configureActivity(activity,PosPermission.forResource(PosPermission.ResourceType.ACTIVITY));linkActivity(activity);
@@ -519,13 +606,18 @@ class PosPostgresIntegrationTest {
         if(count==0)perform(post("/cruise/{id}/staff",targetCruise),manager,Map.of("userId",id,"roleInCruise",assignmentRole),200);
         perform(put("/ships/{ship}/areas/{area}/staff/{user}",ship,targetArea,id),manager,
                 Map.of("cruiseId",targetCruise,"enabled",true,"startsAt",Instant.now().minusSeconds(60).toString()),200);
+        if(jdbc.queryForObject("SELECT EXISTS(SELECT 1 FROM \"AreaServiceAssignment\" WHERE area_object_id=? AND service_id=? AND enabled)",Boolean.class,targetArea,service))
+            grantResource(id,targetArea,targetCruise,"SERVICE",service,Map.of("enabled",true));
+    }
+    private JsonNode grantResource(UUID user,UUID targetArea,UUID targetCruise,String type,UUID resource,Map<String,Object> input) throws Exception {
+        return perform(put("/ships/{ship}/areas/{area}/staff/{user}/resources/{type}/{resource}",ship,targetArea,user,type,resource).param("cruiseId",targetCruise.toString()),manager,input,200);
     }
     private void configurePolicy(UUID targetTerminal,UUID targetArea,UUID targetService,List<PosPermission> permissions) throws Exception {
         perform(put("/pos-terminals/{terminal}/areas/{area}/services/{service}",targetTerminal,targetArea,targetService),manager,
                 Map.of("permissions",permissions,"enabled",true),200);
     }
     private JsonNode perform(MockHttpServletRequestBuilder request,String auth,Object body,int status) throws Exception {
-        request.header("Authorization","Bearer "+auth);if(body!=null)request.contentType(MediaType.APPLICATION_JSON).content(mapper.writeValueAsBytes(body));
+        if(auth!=null)request.header("Authorization","Bearer "+auth);if(body!=null)request.contentType(MediaType.APPLICATION_JSON).content(mapper.writeValueAsBytes(body));
         var response=mvc.perform(request).andExpect(status().is(status)).andReturn().getResponse();
         return response.getContentAsByteArray().length==0?mapper.createObjectNode():mapper.readTree(response.getContentAsByteArray()).path("data");
     }
@@ -538,12 +630,14 @@ class PosPostgresIntegrationTest {
             default->throw new IllegalArgumentException();
         };return jdbc.queryForObject(sql,Long.class,table.equals("ServiceRequest")?booking:account);
     }
-    private User user(Role role) {User u=new User();u.setUsername(code());u.setPasswordHash("not-used");u.setRoles(Set.of(role));u.setStatus(UserStatus.ACTIVE);users.saveAndFlush(u);userIds.add(u.getUserId());return u;}
+    private User user(Role role) {User u=new User();u.setUsername(code());u.setPasswordHash("not-used");u.setRoles(EnumSet.of(role));u.setStatus(UserStatus.ACTIVE);users.saveAndFlush(u);userIds.add(u.getUserId());return u;}
     private String token(User u) {return jwt.generateToken(u.getUsername(),u.getUserId());}
     private static String code() {return "P"+UUID.randomUUID().toString().replace("-","").substring(0,14);}
 
     @AfterEach void cleanup() {
         if(booking!=null) {
+            jdbc.update("DELETE FROM \"CruiseCheckin\" WHERE booking_passenger_id IN (SELECT booking_passenger_id FROM \"BookingPassenger\" WHERE booking_id=?)",booking);
+            jdbc.update("DELETE FROM \"BookingContract\" WHERE booking_id=?",booking);
             jdbc.update("DELETE FROM \"Participation\" WHERE registration_id IN (SELECT registration_id FROM \"Registration\" WHERE booking_passenger_id IN (SELECT booking_passenger_id FROM \"BookingPassenger\" WHERE booking_id=?))",booking);
             jdbc.update("DELETE FROM \"Registration\" WHERE booking_passenger_id IN (SELECT booking_passenger_id FROM \"BookingPassenger\" WHERE booking_id=?)",booking);
             jdbc.update("DELETE FROM \"PosSale\" WHERE booking_passenger_id IN (SELECT booking_passenger_id FROM \"BookingPassenger\" WHERE booking_id=?)",booking);
@@ -560,6 +654,7 @@ class PosPostgresIntegrationTest {
             jdbc.update("DELETE FROM \"BookingPassenger\" WHERE booking_id=?",booking);jdbc.update("DELETE FROM \"Booking\" WHERE booking_id=?",booking);
         }
         if(ship!=null) {
+            jdbc.update("DELETE FROM \"StaffActivityAssignment\" WHERE assignment_id IN (SELECT a.assignment_id FROM \"AreaStaffAssignment\" a JOIN \"ShipModelObject\" o ON o.ship_model_object_id=a.area_object_id WHERE o.ship_model_id=?)",model);
             jdbc.update("DELETE FROM \"PosAreaActivityPermission\" WHERE terminal_id IN (SELECT terminal_id FROM \"PosTerminal\" WHERE ship_id=?)",ship);
             jdbc.update("DELETE FROM \"AreaActivityAssignment\" WHERE area_object_id IN (SELECT ship_model_object_id FROM \"ShipModelObject\" WHERE ship_model_id=?)",model);
             jdbc.update("DELETE FROM \"OnboardActivity\" WHERE cruise_id IN (SELECT cruise_id FROM \"Cruise\" WHERE ship_id=?)",ship);
