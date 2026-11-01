@@ -35,6 +35,20 @@ public class IdempotencyService {
     }
 
     public <T> T execute(String idempotencyKey, UUID actorId, String operation, Object payload, Class<T> responseType, Supplier<T> action) {
+        return executeInternal(idempotencyKey, actorId, operation, payload, responseType, action, false);
+    }
+
+    /** Cruise + itinerary + completed replay record commit or roll back together. Other operations keep their existing contract. */
+    @org.springframework.transaction.annotation.Transactional(rollbackFor = Exception.class)
+    public CruiseResponse executeCruiseCreate(String key, UUID actorId, Object payload, Supplier<CruiseResponse> action) {
+        if (actorId == null || key == null || key.isBlank()) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "INVALID_INPUT", "Tạo chuyến cần actor và Idempotency-Key hợp lệ.");
+        }
+        return executeInternal(key, actorId, "CREATE_CRUISE", payload, CruiseResponse.class, action, true);
+    }
+
+    private <T> T executeInternal(String idempotencyKey, UUID actorId, String operation, Object payload,
+                                  Class<T> responseType, Supplier<T> action, boolean atomicCruise) {
         if (idempotencyKey == null || idempotencyKey.isBlank()) {
             return action.get();
         }
@@ -43,14 +57,15 @@ public class IdempotencyService {
         String requestHash = computeHash(canonicalJson(payload));
 
         IdempotencyReservationService.ReservationResult reservation =
-                reservationService.reserveKey(actorId, operation, trimmedKey, requestHash);
+                atomicCruise ? reservationService.reserveCruiseKey(actorId, trimmedKey, requestHash)
+                        : reservationService.reserveKey(actorId, operation, trimmedKey, requestHash);
 
         // Preserve replay of older records whose DTO had a stable textual representation.
         // New records always use canonical JSON; never weaken the payload-conflict check.
         if(reservation.getStatus()==IdempotencyReservationService.ReservationStatus.CONFLICT){
             String legacyHash=computeHash(payload!=null?payload.toString():"");
             if(!legacyHash.equals(requestHash)){
-                var legacy=reservationService.reserveKey(actorId,operation,trimmedKey,legacyHash);
+                var legacy=atomicCruise?reservationService.reserveCruiseKey(actorId,trimmedKey,legacyHash):reservationService.reserveKey(actorId,operation,trimmedKey,legacyHash);
                 if(legacy.getStatus()!=IdempotencyReservationService.ReservationStatus.CONFLICT){reservation=legacy;requestHash=legacyHash;}
             }
         }
@@ -117,8 +132,13 @@ public class IdempotencyService {
             } else if (result instanceof BookingDetailResponse bookingRes) {
                 resultingId = bookingRes.getBookingId();
             }
-            reservationService.completeKey(reservationId, json, resultingId);
+            if (atomicCruise) reservationService.completeKeyInCurrentTransaction(reservationId, json, resultingId);
+            else reservationService.completeKey(reservationId, json, resultingId);
         } catch (Exception e) {
+            if (atomicCruise) {
+                throw new BusinessException(HttpStatus.INTERNAL_SERVER_ERROR, "IDEMPOTENCY_COMPLETION_FAILED",
+                        "Không thể lưu kết quả yêu cầu; giao dịch tạo chuyến chưa được xác nhận và phải được hủy.");
+            }
             log.warn("Failed to serialize or complete idempotency record for key {}: {}", trimmedKey, e.getMessage());
         }
 

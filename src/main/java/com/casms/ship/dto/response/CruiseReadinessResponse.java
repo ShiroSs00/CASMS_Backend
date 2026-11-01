@@ -10,10 +10,10 @@ import java.util.List;
 import java.util.UUID;
 
 @Data
-@Schema(description = "Kết quả kiểm tra tính sẵn sàng vận hành & khởi hành của chuyến đi (Operational & Departure Readiness Gate - BE-08/BE-09)")
+@Schema(description = "Kết quả kiểm tra tính sẵn sàng vận hành & khởi hành của chuyến khởi hành (Operational & Departure Readiness Gate - BE-08/BE-09)")
 public class CruiseReadinessResponse {
 
-    @Schema(description = "ID chuyến đi", example = "3fa85f64-5717-4562-b3fc-2c963f66afa6")
+    @Schema(description = "ID chuyến khởi hành", example = "3fa85f64-5717-4562-b3fc-2c963f66afa6")
     private UUID cruiseId;
 
     @Schema(description = "Loại cổng kiểm tra (OPERATIONAL_GATE / DEPARTURE_GATE)", example = "DEPARTURE_GATE")
@@ -43,10 +43,10 @@ public class CruiseReadinessResponse {
     @Schema(description = "Đã có hải trình (Itinerary) được liên kết", example = "true")
     private boolean itineraryConfigured;
 
-    @Schema(description = "Đã phân công nhân sự vận hành cho chuyến đi hay chưa", example = "true")
+    @Schema(description = "Đã phân công nhân sự vận hành cho chuyến khởi hành hay chưa", example = "true")
     private boolean staffAssigned;
 
-    @Schema(description = "Đã phân công Thuyền trưởng (CAPTAIN) hợp lệ cho chuyến đi hay chưa", example = "true")
+    @Schema(description = "Đã phân công Thuyền trưởng (CAPTAIN) hợp lệ cho chuyến khởi hành hay chưa", example = "true")
     private boolean captainAssigned;
     private boolean onboardStaffAssigned;
 

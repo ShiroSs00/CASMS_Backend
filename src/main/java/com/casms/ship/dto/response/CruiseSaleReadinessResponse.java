@@ -16,10 +16,10 @@ import java.util.UUID;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@Schema(description = "Kết quả đánh giá tính sẵn sàng mở bán của chuyến đi (Sale Readiness Gate - BE-08/BE-09)")
+@Schema(description = "Kết quả đánh giá tính sẵn sàng mở bán của chuyến khởi hành (Sale Readiness Gate - BE-08/BE-09)")
 public class CruiseSaleReadinessResponse {
 
-    @Schema(description = "ID chuyến đi")
+    @Schema(description = "ID chuyến khởi hành")
     private UUID cruiseId;
 
     @Schema(description = "Loại cổng kiểm tra (SALE_GATE)")
@@ -30,7 +30,7 @@ public class CruiseSaleReadinessResponse {
     @Builder.Default
     private String policyVersion = "v3.0-2026";
 
-    @Schema(description = "Chuyến đi đã đạt điều kiện mở bán thương mại hay chưa")
+    @Schema(description = "Chuyến khởi hành đã đạt điều kiện mở bán thương mại hay chưa")
     private boolean ready;
 
     @Schema(description = "Tình trạng sẵn sàng vận hành tham chiếu")

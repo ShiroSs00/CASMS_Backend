@@ -31,6 +31,9 @@ public class DestinationService {
     private final DestinationRepository destinationRepository;
     private final PortRepository portRepository;
 
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.casms.audit.AuditService auditService;
+
     @Transactional
     public DestinationResponse create(DestinationCreateRequest request) {
         log.info("Creating new destination with name: {}", request.getDestinationName());
@@ -39,19 +42,34 @@ public class DestinationService {
             throw new BusinessException("DESTINATION_NAME_EXISTS", "Destination name already exists: " + request.getDestinationName());
         }
 
+        String countryCode = PortTimeZoneHelper.requireCountryCode(request.getCountryCode());
         Destination destination = new Destination();
         destination.setDestinationName(request.getDestinationName());
-        destination.setCountryCode(request.getCountryCode().toUpperCase());
+        destination.setCountryCode(countryCode);
         destination.setDescription(request.getDescription());
+        destination.setDomesticRegion(validRegion(request.getDomesticRegion(), destination.getCountryCode()));
         destination.setStatus(request.getStatus() != null ? request.getStatus() : DestinationStatus.ACTIVE);
 
-        destination = destinationRepository.save(destination);
+        destination = destinationRepository.saveAndFlush(destination);
+        auditService.recordDirectoryMutation("Destination", destination.getDestinationId(), "CREATE", java.util.Map.of(), snapshot(destination));
         return mapToResponse(destination);
     }
 
     @Transactional(readOnly = true)
     public Page<DestinationResponse> list(Pageable pageable) {
         return destinationRepository.findAll(pageable).map(this::mapToResponse);
+    }
+
+    @Transactional(readOnly = true)
+    public Page<DestinationResponse> list(String search, String countryCode, DestinationStatus status, Pageable pageable) {
+        return destinationRepository.findDirectory(search == null || search.isBlank() ? null : search.trim(), countryCode == null || countryCode.isBlank() ? null : countryCode.trim().toUpperCase(java.util.Locale.ROOT), status, pageable).map(this::mapToResponse);
+    }
+
+    private String validRegion(String region, String country) {
+        if (region == null || region.isBlank()) return null;
+        if (!"VN".equals(country) || !java.util.Set.of("BAC_BO","TRUNG_BO","NAM_BO").contains(region))
+            throw new BusinessException("INVALID_DOMESTIC_REGION", "Miền nội địa không hợp lệ với quốc gia.");
+        return region;
     }
 
     @Transactional(readOnly = true)
@@ -70,7 +88,10 @@ public class DestinationService {
     @Transactional
     public DestinationResponse update(UUID destinationId, DestinationUpdateRequest request) {
         Destination destination = getDestinationById(destinationId);
+        var before=snapshot(destination);
 
+        PortTimeZoneHelper.requireCountryCode(destination.getCountryCode());
+        if (request.getDestinationName() != null && request.getDestinationName().isBlank()) throw new BusinessException("INVALID_DESTINATION_NAME", "Tên điểm đến không được để trống.");
         if (request.getDestinationName() != null && !request.getDestinationName().equals(destination.getDestinationName())) {
             if (destinationRepository.existsByDestinationName(request.getDestinationName())) {
                 throw new BusinessException("DESTINATION_NAME_EXISTS", "Destination name already exists: " + request.getDestinationName());
@@ -81,18 +102,23 @@ public class DestinationService {
             destination.setDescription(request.getDescription());
         }
 
-        destination = destinationRepository.save(destination);
+        if (request.getDomesticRegion() != null) destination.setDomesticRegion(validRegion(request.getDomesticRegion(), destination.getCountryCode()));
+        destination = destinationRepository.saveAndFlush(destination);
+        auditService.recordDirectoryMutation("Destination", destination.getDestinationId(), "UPDATE",before,snapshot(destination));
         return mapToResponse(destination);
     }
 
     @Transactional
     public void deleteUnused(UUID destinationId) {
         Destination destination = getDestinationById(destinationId);
+        var before=snapshot(destination);
 
-        // Check if destination is used in any cruise stops
-        // For now, we allow deletion
+        if (destinationRepository.hasDirectoryReferences(destinationId)) {
+            throw new BusinessException(org.springframework.http.HttpStatus.CONFLICT, "DESTINATION_IN_USE", "Điểm đến đang được cảng hoặc lịch trình tham chiếu; không thể xóa.");
+        }
 
-        destinationRepository.delete(destination);
+        destinationRepository.deleteDirectoryRow(destinationId);
+        auditService.recordDirectoryMutation("Destination", destinationId, "DELETE_UNUSED",before,java.util.Map.of());
         log.info("Deleted unused destination: {}", destinationId);
     }
 
@@ -113,14 +139,17 @@ public class DestinationService {
     @Transactional(readOnly = true)
     public void validateDestination(UUID destinationId) {
         Destination destination = getDestinationById(destinationId);
-        // Additional validation logic can be added here
+        PortTimeZoneHelper.requireCountryCode(destination.getCountryCode());
     }
 
     @Transactional
     public DestinationResponse activate(UUID destinationId) {
         Destination destination = getDestinationById(destinationId);
+        var before=snapshot(destination);
+        PortTimeZoneHelper.requireCountryCode(destination.getCountryCode());
         destination.setStatus(DestinationStatus.ACTIVE);
-        destination = destinationRepository.save(destination);
+        destination = destinationRepository.saveAndFlush(destination);
+        auditService.recordDirectoryMutation("Destination", destination.getDestinationId(), "UPDATE",before,snapshot(destination));
         log.info("Activated destination: {}", destinationId);
         return mapToResponse(destination);
     }
@@ -128,8 +157,11 @@ public class DestinationService {
     @Transactional
     public DestinationResponse deactivate(UUID destinationId) {
         Destination destination = getDestinationById(destinationId);
+        var before=snapshot(destination);
+        PortTimeZoneHelper.requireCountryCode(destination.getCountryCode());
         destination.setStatus(DestinationStatus.INACTIVE);
-        destination = destinationRepository.save(destination);
+        destination = destinationRepository.saveAndFlush(destination);
+        auditService.recordDirectoryMutation("Destination", destination.getDestinationId(), "UPDATE",before,snapshot(destination));
         log.info("Deactivated destination: {}", destinationId);
         return mapToResponse(destination);
     }
@@ -145,6 +177,7 @@ public class DestinationService {
         res.setDestinationName(destination.getDestinationName());
         res.setCountryCode(destination.getCountryCode());
         res.setDescription(destination.getDescription());
+        res.setDomesticRegion(destination.getDomesticRegion());
         res.setStatus(destination.getStatus());
         res.setCreatedAt(destination.getCreatedAt());
         res.setUpdatedAt(destination.getUpdatedAt());
@@ -180,5 +213,8 @@ public class DestinationService {
             res.setDestinationName(port.getDestination().getDestinationName());
         }
         return res;
+    }
+    private java.util.Map<String,Object> snapshot(Destination d){
+        var fields=new java.util.LinkedHashMap<String,Object>();fields.put("destinationId",d.getDestinationId());fields.put("destinationName",d.getDestinationName());fields.put("countryCode",d.getCountryCode());fields.put("domesticRegion",d.getDomesticRegion());fields.put("description",d.getDescription());fields.put("status",d.getStatus());fields.put("createdAt",d.getCreatedAt());fields.put("updatedAt",d.getUpdatedAt());return fields;
     }
 }

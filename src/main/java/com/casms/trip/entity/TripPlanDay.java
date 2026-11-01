@@ -19,6 +19,9 @@ import java.util.UUID;
        uniqueConstraints = @UniqueConstraint(name = "uq_version_day_number", columnNames = {"version_id", "day_number"}))
 public class TripPlanDay {
 
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.JSON) @Column(name="departure_port_facts",columnDefinition="jsonb")
+    private com.casms.ship.dto.PortFacts departurePortFacts;
+
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     @Column(name = "day_id")

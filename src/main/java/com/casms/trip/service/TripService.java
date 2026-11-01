@@ -399,6 +399,14 @@ public class TripService {
                     "Revision của phiên bản không khớp (expected: " + request.getExpectedVersionRevision() + ", current: " + version.getRevision() + ")");
         }
 
+        if (request.getAction() == TripDayManageAction.REMOVE && versionRepository
+                .findByTrip_TripIdOrderByVersionNumberAsc(tripId).stream()
+                .filter(v -> v.getStatus() == TripScheduleVersionStatus.DRAFT)
+                .anyMatch(v -> !LegacyTemplateContentPolicy.legacyEntries(v).isEmpty())) {
+            throw new BusinessException(HttpStatus.CONFLICT, "LEGACY_TEMPLATE_REFERENCE_LOCKED",
+                    "Không thể xóa hoặc đánh lại số ngày khi bản nháp còn khung phục vụ lịch sử.");
+        }
+
         TripDurationGroup group = trip.getDurationGroup() != null ? trip.getDurationGroup() : TripDurationGroup.SHORT;
 
         if (request.getAction() == TripDayManageAction.ADD) {
@@ -560,6 +568,31 @@ public class TripService {
             actor = userRepository.findById(actorId).orElse(null);
         }
 
+        TripScheduleVersion sourceVer = null;
+        if (sourceVersionId != null) {
+            sourceVer = versionRepository.findById(sourceVersionId)
+                    .orElseThrow(() -> new ResourceNotFoundException("TripScheduleVersion", sourceVersionId));
+            if (sourceVer != null && sourceVer.getStatus() == TripScheduleVersionStatus.CANCELLED) {
+                throw new BusinessException(HttpStatus.BAD_REQUEST, "CANNOT_CLONE_CANCELLED_VERSION",
+                        "Không thể nhân bản (clone) từ phiên bản lịch trình đã bị hủy (CANCELLED).");
+            }
+        }
+        if (sourceVer == null) {
+            // Prioritize latest PUBLISHED version, then fallback to latest non-cancelled version
+            sourceVer = versionRepository.findByTrip_TripIdOrderByVersionNumberAsc(tripId).stream()
+                    .filter(v -> v.getStatus() == TripScheduleVersionStatus.PUBLISHED)
+                    .reduce((first, second) -> second)
+                    .orElseGet(() -> versionRepository.findByTrip_TripIdOrderByVersionNumberAsc(tripId).stream()
+                            .filter(v -> v.getStatus() != TripScheduleVersionStatus.CANCELLED)
+                            .reduce((first, second) -> second)
+                            .orElse(null));
+        }
+
+        if (sourceVer != null && !sourceVer.getTrip().getTripId().equals(tripId)) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "INVALID_INPUT", "Phiên bản nguồn không thuộc chuyến đi đang nhân bản.");
+        }
+        LegacyTemplateContentPolicy.rejectLegacyClone(sourceVer);
+
         Trip newTrip = new Trip();
         newTrip.setTripCode(businessCodeGenerator.next("TR"));
         newTrip.setName("Bản sao - " + sourceTrip.getName());
@@ -578,25 +611,6 @@ public class TripService {
         newTrip.setCreatedByUser(actor);
 
         newTrip = tripRepository.save(newTrip);
-
-        TripScheduleVersion sourceVer = null;
-        if (sourceVersionId != null) {
-            sourceVer = versionRepository.findById(sourceVersionId).orElse(null);
-            if (sourceVer != null && sourceVer.getStatus() == TripScheduleVersionStatus.CANCELLED) {
-                throw new BusinessException(HttpStatus.BAD_REQUEST, "CANNOT_CLONE_CANCELLED_VERSION",
-                        "Không thể nhân bản (clone) từ phiên bản lịch trình đã bị hủy (CANCELLED).");
-            }
-        }
-        if (sourceVer == null) {
-            // Prioritize latest PUBLISHED version, then fallback to latest non-cancelled version
-            sourceVer = versionRepository.findByTrip_TripIdOrderByVersionNumberAsc(tripId).stream()
-                    .filter(v -> v.getStatus() == TripScheduleVersionStatus.PUBLISHED)
-                    .reduce((first, second) -> second)
-                    .orElseGet(() -> versionRepository.findByTrip_TripIdOrderByVersionNumberAsc(tripId).stream()
-                            .filter(v -> v.getStatus() != TripScheduleVersionStatus.CANCELLED)
-                            .reduce((first, second) -> second)
-                            .orElse(null));
-        }
 
         TripScheduleVersion newVer = new TripScheduleVersion();
         newVer.setTrip(newTrip);
@@ -749,6 +763,8 @@ public class TripService {
                 throw new BusinessException(HttpStatus.BAD_REQUEST, "INVALID_INPUT", "sourceVersionId phải thuộc về cùng một Trip.");
             }
         }
+
+        LegacyTemplateContentPolicy.rejectLegacyClone(sourceVer);
 
         if (sourceVer != null) {
             newVer.setSourceVersionId(sourceVer.getVersionId());

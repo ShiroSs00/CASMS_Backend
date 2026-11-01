@@ -152,25 +152,25 @@ public class BookingService {
         mainflow.requireBookable(cruiseId);
         if (cruise.getOpenedForSaleAt() == null || cruise.getStatus() != CruiseStatus.PUBLISHED) {
             throw new BusinessException(HttpStatus.CONFLICT, "CRUISE_NOT_OPEN_FOR_SALE",
-                    "Chuyến đi chưa được công bố mở bán (Trạng thái: " + cruise.getStatus() + ")");
+                    "Chuyến khởi hành chưa được công bố mở bán (Trạng thái: " + cruise.getStatus() + ")");
         }
         if (cruise.getStoppedAt() != null) {
             throw new BusinessException(HttpStatus.CONFLICT, "CRUISE_SALE_STOPPED",
-                    "Chuyến đi đang tạm dừng mở bán, không thể tra cứu hoặc đặt phòng");
+                    "Chuyến khởi hành đang tạm dừng mở bán, không thể tra cứu hoặc đặt phòng");
         }
         Itinerary itinerary = itineraryRepository.findByCruiseCruiseId(cruise.getCruiseId())
-                .orElseThrow(() -> new BusinessException(HttpStatus.CONFLICT, "CRUISE_NOT_OPEN_FOR_SALE", "Chuyến đi chưa có lịch trình mở bán"));
+                .orElseThrow(() -> new BusinessException(HttpStatus.CONFLICT, "CRUISE_NOT_OPEN_FOR_SALE", "Chuyến khởi hành chưa có lịch trình mở bán"));
         if (itinerary.getStatus() == ItineraryStatus.SUSPENDED) {
             throw new BusinessException(HttpStatus.CONFLICT, "SALE_SUSPENDED",
-                    "Chuyến đi đang tạm dừng mở bán, không thể tra cứu hoặc đặt phòng");
+                    "Chuyến khởi hành đang tạm dừng mở bán, không thể tra cứu hoặc đặt phòng");
         }
         if (itinerary.getStatus() != ItineraryStatus.OPEN_FOR_SALE) {
             throw new BusinessException(HttpStatus.CONFLICT, "CRUISE_NOT_OPEN_FOR_SALE",
-                    "Lịch trình chuyến đi chưa mở bán thương mại");
+                    "Lịch trình chuyến khởi hành chưa mở bán thương mại");
         }
         if (cruise.getDepartureDatetime() != null && cruise.getDepartureDatetime().isBefore(Instant.now())) {
             throw new BusinessException("CRUISE_ALREADY_DEPARTED",
-                    "Chuyến đi đã khởi hành, không thể đặt phòng");
+                    "Chuyến khởi hành đã khởi hành, không thể đặt phòng");
         }
         if (cruise.getShip() == null) {
             throw new BusinessException("CRUISE_NO_SHIP", "Cruise does not have an assigned ship yet");
@@ -180,7 +180,7 @@ public class BookingService {
                 .filter(p -> p.getStatus() == PricingPolicyStatus.APPROVED);
         if (policyOpt.isEmpty()) {
             throw new BusinessException(HttpStatus.CONFLICT, "PRICING_POLICY_NOT_APPROVED",
-                    "Chính sách giá của chuyến đi chưa được phê duyệt, không thể tra cứu giá hoặc phòng mở bán");
+                    "Chính sách giá của chuyến khởi hành chưa được phê duyệt, không thể tra cứu giá hoặc phòng mở bán");
         }
 
         UUID shipId = cruise.getShip().getShipId();
@@ -287,6 +287,8 @@ public class BookingService {
     @Transactional
     public BookingDetailResponse createBooking(BookingCreateRequest request, CasmsPrincipal principal) {
         log.info("Creating new booking for cruise: {}", request.getCruiseId());
+        if (request.getCurrency() != null && !request.getCurrency().isBlank())
+            com.casms.common.util.NewWriteCurrency.requireUsd(request.getCurrency().trim().toUpperCase(java.util.Locale.ROOT));
         releaseExpiredHolds();
 
         if (request.getPassengers() == null || request.getPassengers().isEmpty()) {
@@ -336,12 +338,12 @@ public class BookingService {
         }
         // BE-08B / BE-R00: Gating - Check if itinerary exists and is OPEN_FOR_SALE
         Itinerary itinerary = itineraryRepository.findByCruiseCruiseId(cruise.getCruiseId())
-                .orElseThrow(() -> new BusinessException("CRUISE_NOT_OPEN_FOR_SALE", "Chuyến đi chưa có lịch trình mở bán thương mại"));
+                .orElseThrow(() -> new BusinessException("CRUISE_NOT_OPEN_FOR_SALE", "Chuyến khởi hành chưa có lịch trình mở bán thương mại"));
         if (itinerary.getStatus() == ItineraryStatus.SUSPENDED) {
-            throw new BusinessException("SALE_SUSPENDED", "Chuyến đi đang tạm dừng mở bán, không thể tiếp nhận đặt chỗ mới");
+            throw new BusinessException("SALE_SUSPENDED", "Chuyến khởi hành đang tạm dừng mở bán, không thể tiếp nhận đặt chỗ mới");
         }
         if (itinerary.getStatus() != ItineraryStatus.OPEN_FOR_SALE) {
-            throw new BusinessException("CRUISE_NOT_OPEN_FOR_SALE", "Chuyến đi chưa mở bán thương mại (Trạng thái lịch trình: " + itinerary.getStatus() + ")");
+            throw new BusinessException("CRUISE_NOT_OPEN_FOR_SALE", "Chuyến khởi hành chưa mở bán thương mại (Trạng thái lịch trình: " + itinerary.getStatus() + ")");
         }
         if (cruise.getDepartureDatetime().isBefore(Instant.now())) {
             throw new BusinessException("CRUISE_ALREADY_DEPARTED", "Cannot book a cruise that has already departed");
@@ -439,7 +441,7 @@ public class BookingService {
             }
             if (!validatedQuote.getCruise().getCruiseId().equals(cruise.getCruiseId())) {
                 throw new BusinessException(HttpStatus.UNPROCESSABLE_ENTITY, "QUOTE_CRUISE_MISMATCH",
-                        "Báo giá không thuộc về chuyến đi này");
+                        "Báo giá không thuộc về chuyến khởi hành này");
             }
             if ("INVALIDATED".equalsIgnoreCase(validatedQuote.getStatus()) || "CANCELLED".equalsIgnoreCase(validatedQuote.getStatus())) {
                 throw new BusinessException(HttpStatus.CONFLICT, "QUOTE_INVALIDATED",
@@ -498,9 +500,11 @@ public class BookingService {
         CruisePricingPolicy policy = cruisePricingPolicyRepository.findByCruise_CruiseId(cruise.getCruiseId())
                 .filter(p -> p.getStatus() == PricingPolicyStatus.APPROVED)
                 .orElseThrow(() -> new BusinessException(HttpStatus.UNPROCESSABLE_ENTITY, "PRICING_POLICY_MISSING",
-                        "Chuyến đi chưa có chính sách giá được phê duyệt. Không thể hoàn tất đặt chỗ."));
+                        "Chuyến khởi hành chưa có chính sách giá được phê duyệt. Không thể hoàn tất đặt chỗ."));
 
+        com.casms.common.util.NewWriteCurrency.requireUsd(policy.getCurrency());
         if (validatedQuote != null) {
+            com.casms.common.util.NewWriteCurrency.requireUsd(validatedQuote.getCurrency());
             if (!policy.getPolicyVersion().equals(validatedQuote.getPolicyVersion())) {
                 throw new BusinessException(HttpStatus.CONFLICT, "QUOTE_POLICY_MISMATCH",
                         "Báo giá thuộc phiên bản chính sách giá cũ (" + validatedQuote.getPolicyVersion() +
@@ -513,7 +517,7 @@ public class BookingService {
             BigDecimal baseFare = policy.getBaseFareForCabinType(cabin.getCabinType());
             if (baseFare == null) {
                 throw new BusinessException(HttpStatus.UNPROCESSABLE_ENTITY, "CABIN_TYPE_UNPRICED",
-                        "Hạng phòng " + cabin.getCabinType() + " chưa được định giá trong chính sách của chuyến đi");
+                        "Hạng phòng " + cabin.getCabinType() + " chưa được định giá trong chính sách của chuyến khởi hành");
             }
             BigDecimal multiplier = (cabin.getDeck() != null && cabin.getDeck().getPriceMultiplier() != null)
                     ? cabin.getDeck().getPriceMultiplier()
@@ -532,9 +536,10 @@ public class BookingService {
                         .existsByCruise_CruiseIdAndTourPackage_TourPackageIdAndActiveTrue(cruise.getCruiseId(), pkg.getTourPackageId());
                 if (!assignedToCruise) {
                     throw new BusinessException("PACKAGE_NOT_AVAILABLE_FOR_CRUISE",
-                            "Gói dịch vụ " + pkg.getPackageName() + " chưa được mở bán cho chuyến đi này");
+                            "Gói dịch vụ " + pkg.getPackageName() + " chưa được mở bán cho chuyến khởi hành này");
                 }
                 validatedPackages.put(pReq.getTourPackageId(), pkg);
+                com.casms.common.util.NewWriteCurrency.requireUsd(pkg.getCurrencyCode());
                 totalPackageAmount = totalPackageAmount.add(pkg.getPrice() != null ? pkg.getPrice() : BigDecimal.ZERO);
             }
         }
@@ -1342,7 +1347,7 @@ public class BookingService {
         notif.setRecipientUser(booking.getBookedByUser());
         notif.setBookingPassengerId(representative != null ? representative.getBookingPassengerId() : null);
         notif.setNotificationType("CONTRACT_SIGNING_INVITATION");
-        notif.setTitle("Thư mời ký hợp đồng & Xác nhận đặt chỗ chuyến đi " + booking.getBookingReference());
+        notif.setTitle("Thư mời ký hợp đồng & Xác nhận đặt chỗ chuyến khởi hành " + booking.getBookingReference());
         notif.setContent(String.format(
                 "Kính gửi %s,\n\n" +
                 "Đơn đặt chỗ mã [%s] cho chuyến du thuyền '%s' đã được tạo thành công.\n" +
@@ -1401,6 +1406,8 @@ public class BookingService {
         if (request == null) {
             throw new BusinessException(HttpStatus.BAD_REQUEST, "REQUEST_REQUIRED", "Yêu cầu báo giá không được để trống");
         }
+        if (request.getCurrency() != null && !request.getCurrency().isBlank())
+            com.casms.common.util.NewWriteCurrency.requireUsd(request.getCurrency().trim().toUpperCase(java.util.Locale.ROOT));
         if (request.getCruiseId() == null) {
             throw new BusinessException(HttpStatus.BAD_REQUEST, "CRUISE_ID_REQUIRED", "Cruise ID không được để trống");
         }
@@ -1419,51 +1426,52 @@ public class BookingService {
         mainflow.requireBookable(cruise.getCruiseId());
         if (cruise.getOpenedForSaleAt() == null || cruise.getStatus() != CruiseStatus.PUBLISHED) {
             throw new BusinessException(HttpStatus.UNPROCESSABLE_ENTITY, "INVALID_CRUISE_STATUS",
-                    "Chỉ có thể tạo báo giá cho chuyến đi đã phát hành (PUBLISHED). Trạng thái hiện tại: " + cruise.getStatus());
+                    "Chỉ có thể tạo báo giá cho chuyến khởi hành đã phát hành (PUBLISHED). Trạng thái hiện tại: " + cruise.getStatus());
         }
         if (cruise.getStoppedAt() != null) {
             throw new BusinessException(HttpStatus.UNPROCESSABLE_ENTITY, "CRUISE_SALE_STOPPED",
-                    "Chuyến đi đã bị dừng mở bán, không thể tạo báo giá.");
+                    "Chuyến khởi hành đã bị dừng mở bán, không thể tạo báo giá.");
         }
         Itinerary itinerary = itineraryRepository.findByCruiseCruiseId(cruise.getCruiseId())
                 .orElseThrow(() -> new BusinessException(HttpStatus.UNPROCESSABLE_ENTITY, "CRUISE_NOT_OPEN_FOR_SALE",
-                        "Chuyến đi chưa có lịch trình mở bán thương mại."));
+                        "Chuyến khởi hành chưa có lịch trình mở bán thương mại."));
         if (itinerary.getStatus() == ItineraryStatus.SUSPENDED) {
             throw new BusinessException(HttpStatus.UNPROCESSABLE_ENTITY, "SALE_SUSPENDED",
-                    "Chuyến đi đang tạm dừng mở bán, không thể tạo báo giá.");
+                    "Chuyến khởi hành đang tạm dừng mở bán, không thể tạo báo giá.");
         }
         if (itinerary.getStatus() != ItineraryStatus.OPEN_FOR_SALE) {
             throw new BusinessException(HttpStatus.UNPROCESSABLE_ENTITY, "CRUISE_NOT_OPEN_FOR_SALE",
-                    "Chuyến đi chưa mở bán thương mại (Trạng thái lịch trình: " + itinerary.getStatus() + ").");
+                    "Chuyến khởi hành chưa mở bán thương mại (Trạng thái lịch trình: " + itinerary.getStatus() + ").");
         }
         if (cruise.getDepartureDatetime() != null && cruise.getDepartureDatetime().isBefore(Instant.now())) {
             throw new BusinessException(HttpStatus.UNPROCESSABLE_ENTITY, "CRUISE_ALREADY_DEPARTED",
-                    "Chuyến đi đã khởi hành, không thể tạo báo giá.");
+                    "Chuyến khởi hành đã khởi hành, không thể tạo báo giá.");
         }
         if (cruise.getShip() == null) {
             throw new BusinessException(HttpStatus.UNPROCESSABLE_ENTITY, "CRUISE_NO_SHIP",
-                    "Chuyến đi chưa được gán tàu.");
+                    "Chuyến khởi hành chưa được gán tàu.");
         }
 
         CruisePricingPolicy policy = cruisePricingPolicyRepository.findByCruise_CruiseId(cruise.getCruiseId())
                 .filter(p -> p.getStatus() == PricingPolicyStatus.APPROVED)
                 .orElseThrow(() -> new BusinessException(HttpStatus.UNPROCESSABLE_ENTITY, "PRICING_POLICY_MISSING",
-                        "Chuyến đi chưa có chính sách giá được phê duyệt. Không thể phát hành báo giá."));
+                        "Chuyến khởi hành chưa có chính sách giá được phê duyệt. Không thể phát hành báo giá."));
 
         if (request.getCurrency() != null && !request.getCurrency().isBlank()) {
             if (!request.getCurrency().trim().equalsIgnoreCase(policy.getCurrency())) {
                 throw new BusinessException(HttpStatus.BAD_REQUEST, "CURRENCY_MISMATCH",
-                        "Đơn vị tiền tệ yêu cầu (" + request.getCurrency() + ") không khớp với chính sách chuyến đi (" + policy.getCurrency() + ").");
+                        "Đơn vị tiền tệ yêu cầu (" + request.getCurrency() + ") không khớp với chính sách chuyến khởi hành (" + policy.getCurrency() + ").");
             }
         }
         String currency = policy.getCurrency();
+        com.casms.common.util.NewWriteCurrency.requireUsd(currency);
 
         String saleScope = cruise.getSaleScope() != null ? cruise.getSaleScope().toUpperCase() : "WHOLE_CRUISE";
         if ("CABIN_ONLY".equals(saleScope)) {
             boolean hasPkg = request.getPassengers().stream().anyMatch(p -> p.getTourPackageId() != null);
             if (hasPkg) {
                 throw new BusinessException(HttpStatus.BAD_REQUEST, "PACKAGE_NOT_ALLOWED_IN_CABIN_ONLY_SCOPE",
-                        "Chuyến đi đang mở bán theo phạm vi CABIN_ONLY, không chấp nhận đính kèm gói tour/dịch vụ.");
+                        "Chuyến khởi hành đang mở bán theo phạm vi CABIN_ONLY, không chấp nhận đính kèm gói tour/dịch vụ.");
             }
         }
 
@@ -1488,7 +1496,7 @@ public class BookingService {
 
             if (!cabin.getShip().getShipId().equals(cruise.getShip().getShipId())) {
                 throw new BusinessException(HttpStatus.BAD_REQUEST, "CABIN_SHIP_MISMATCH",
-                        "Phòng " + cabin.getCabinNumber() + " không thuộc về tàu của chuyến đi: " + cruise.getShip().getShipName());
+                        "Phòng " + cabin.getCabinNumber() + " không thuộc về tàu của chuyến khởi hành: " + cruise.getShip().getShipName());
             }
 
             if (cabin.getStatus() != CabinStatus.AVAILABLE) {
@@ -1538,7 +1546,7 @@ public class BookingService {
             BigDecimal baseFare = policy.getBaseFareForCabinType(cabin.getCabinType());
             if (baseFare == null) {
                 throw new BusinessException(HttpStatus.UNPROCESSABLE_ENTITY, "CABIN_TYPE_UNPRICED",
-                        "Hạng phòng " + cabin.getCabinType() + " chưa được định giá trong chính sách của chuyến đi");
+                        "Hạng phòng " + cabin.getCabinType() + " chưa được định giá trong chính sách của chuyến khởi hành");
             }
             BigDecimal multiplier = (cabin.getDeck() != null && cabin.getDeck().getPriceMultiplier() != null)
                     ? cabin.getDeck().getPriceMultiplier()
@@ -1561,9 +1569,10 @@ public class BookingService {
                         .existsByCruise_CruiseIdAndTourPackage_TourPackageIdAndActiveTrue(cruise.getCruiseId(), pkg.getTourPackageId());
                 if (!assigned) {
                     throw new BusinessException(HttpStatus.UNPROCESSABLE_ENTITY, "PACKAGE_NOT_AVAILABLE_FOR_CRUISE",
-                            "Gói dịch vụ " + pkg.getPackageName() + " chưa được mở bán cho chuyến đi này");
+                            "Gói dịch vụ " + pkg.getPackageName() + " chưa được mở bán cho chuyến khởi hành này");
                 }
                 pkgId = pkg.getTourPackageId();
+                com.casms.common.util.NewWriteCurrency.requireUsd(pkg.getCurrencyCode());
                 pkgName = pkg.getPackageName();
                 pkgPrice = pkg.getPrice() != null ? pkg.getPrice() : BigDecimal.ZERO;
                 subtotalPackage = subtotalPackage.add(pkgPrice);

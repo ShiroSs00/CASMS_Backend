@@ -22,7 +22,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
-@Tag(name = "Cruise Stop Management", description = "Quản lý điểm dừng trong lịch trình chuyến đi")
+@Tag(name = "Cruise Stop Management", description = "Quản lý điểm dừng trong lịch trình chuyến khởi hành")
 @RestController
 @RequestMapping("/cruise-stops")
 @RequiredArgsConstructor

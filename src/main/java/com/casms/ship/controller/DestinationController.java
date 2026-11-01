@@ -27,9 +27,17 @@ import java.util.UUID;
 public class DestinationController {
 
     private final DestinationService service;
+    @org.springframework.beans.factory.annotation.Autowired private com.casms.audit.AuditRepository directoryAudit;
+    @GetMapping("/{destinationId}/history")
+    @PreAuthorize("hasRole('OPERATIONS_MANAGER') and hasAuthority('DESTINATION_READ')")
+    @Operation(summary="Lịch sử thay đổi danh mục",description="Audit thực tế của master; trước/sau khi có bằng chứng, không suy đoán lịch sử thiếu metadata.")
+    public ApiResponse<Page<com.casms.audit.AuditLog>> history(@PathVariable UUID destinationId,Pageable pageable){
+        service.detail(destinationId);return ApiResponse.success(directoryAudit.findByEntityIdOrderByOccurredAtDesc(destinationId,pageable));
+    }
+
 
     @Operation(summary = "Tạo điểm đến mới", description = "Đăng ký điểm đến du lịch mới vào hệ thống")
-    @PreAuthorize("hasAuthority('DESTINATION_CREATE')")
+    @PreAuthorize("hasRole('OPERATIONS_MANAGER') and hasAuthority('DESTINATION_CREATE')")
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<DestinationResponse> create(@RequestBody @Valid DestinationCreateRequest request) {
@@ -39,8 +47,8 @@ public class DestinationController {
     @Operation(summary = "Danh sách điểm đến", description = "Lấy danh sách điểm đến (hỗ trợ phân trang)")
     @PreAuthorize("hasAuthority('DESTINATION_READ')")
     @GetMapping
-    public ApiResponse<Page<DestinationResponse>> list(Pageable pageable) {
-        return ApiResponse.success(service.list(pageable));
+    public ApiResponse<Page<DestinationResponse>> list(@RequestParam(required=false) String search, @RequestParam(required=false) String countryCode, @RequestParam(required=false) com.casms.ship.enums.DestinationStatus status, Pageable pageable) {
+        return ApiResponse.success(service.list(search, countryCode, status, pageable));
     }
 
     @Operation(summary = "Danh sách điểm đến hoạt động", description = "Lấy danh sách tất cả điểm đến đang ACTIVE (không phân trang)")
@@ -59,7 +67,7 @@ public class DestinationController {
     }
 
     @Operation(summary = "Cập nhật điểm đến", description = "Cập nhật thông tin điểm đến (tên, mô tả)")
-    @PreAuthorize("hasAuthority('DESTINATION_UPDATE')")
+    @PreAuthorize("hasRole('OPERATIONS_MANAGER') and hasAuthority('DESTINATION_UPDATE')")
     @PatchMapping("/{destinationId}")
     public ApiResponse<DestinationResponse> update(
             @Parameter(description = "ID của điểm đến", required = true) @PathVariable UUID destinationId,
@@ -67,8 +75,8 @@ public class DestinationController {
         return ApiResponse.success(service.update(destinationId, request));
     }
 
-    @Operation(summary = "Xóa điểm đến chưa sử dụng", description = "Xóa điểm đến nếu chưa được gán cho bất kỳ điểm dừng chuyến đi nào")
-    @PreAuthorize("hasAuthority('DESTINATION_DELETE_UNUSED')")
+    @Operation(summary = "Xóa điểm đến chưa sử dụng", description = "Xóa điểm đến nếu chưa được gán cho bất kỳ điểm dừng chuyến khởi hành nào")
+    @PreAuthorize("hasRole('OPERATIONS_MANAGER') and hasAuthority('DESTINATION_DELETE_UNUSED')")
     @DeleteMapping("/{destinationId}/unused")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public ApiResponse<Void> deleteUnused(
@@ -95,7 +103,7 @@ public class DestinationController {
     }
 
     @Operation(summary = "Kích hoạt điểm đến", description = "Chuyển trạng thái điểm đến sang ACTIVE")
-    @PreAuthorize("hasAuthority('DESTINATION_UPDATE')")
+    @PreAuthorize("hasRole('OPERATIONS_MANAGER') and hasAuthority('DESTINATION_UPDATE')")
     @PatchMapping("/{destinationId}/activate")
     public ApiResponse<DestinationResponse> activate(
             @Parameter(description = "ID của điểm đến", required = true) @PathVariable UUID destinationId) {
@@ -103,7 +111,7 @@ public class DestinationController {
     }
 
     @Operation(summary = "Ngừng kích hoạt điểm đến", description = "Chuyển trạng thái điểm đến sang INACTIVE")
-    @PreAuthorize("hasAuthority('DESTINATION_UPDATE')")
+    @PreAuthorize("hasRole('OPERATIONS_MANAGER') and hasAuthority('DESTINATION_UPDATE')")
     @PatchMapping("/{destinationId}/deactivate")
     public ApiResponse<DestinationResponse> deactivate(
             @Parameter(description = "ID của điểm đến", required = true) @PathVariable UUID destinationId) {

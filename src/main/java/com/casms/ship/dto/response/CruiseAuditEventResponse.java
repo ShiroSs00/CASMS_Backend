@@ -13,16 +13,16 @@ import java.util.UUID;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@Schema(description = "Bản ghi nhật ký kiểm toán sự kiện và quyết định vận hành của chuyến đi (BE-25 Audit Trail)")
+@Schema(description = "Bản ghi nhật ký kiểm toán sự kiện và quyết định vận hành của chuyến khởi hành (BE-25 Audit Trail)")
 public class CruiseAuditEventResponse {
 
     @Schema(description = "ID sự kiện kiểm toán")
     private UUID eventId;
 
-    @Schema(description = "ID chuyến đi")
+    @Schema(description = "ID chuyến khởi hành")
     private UUID cruiseId;
 
-    @Schema(description = "Mã chuyến đi")
+    @Schema(description = "Mã chuyến khởi hành")
     private String cruiseCode;
 
     @Schema(description = "Loại sự kiện (SOURCE_MATERIALIZE, SHIP_ASSIGN, SHIP_CHANGE, SALE_OPEN, SALE_STOP, SALE_RESUME, CHANGE_APPLY, DEPARTURE_START, CRUISE_COMPLETE, READINESS_EVAL)")
@@ -61,7 +61,7 @@ public class CruiseAuditEventResponse {
     @Schema(description = "ID phiên bản lịch trình mẫu nguồn (nếu có)")
     private UUID sourceVersionId;
 
-    @Schema(description = "Số revision của chuyến đi tại thời điểm ghi nhận")
+    @Schema(description = "Số revision của chuyến khởi hành tại thời điểm ghi nhận")
     private Long revision;
 
     @Schema(description = "Thời điểm ghi nhận sự kiện")

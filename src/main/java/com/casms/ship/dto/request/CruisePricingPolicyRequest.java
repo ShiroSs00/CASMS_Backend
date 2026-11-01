@@ -16,7 +16,7 @@ import java.math.BigDecimal;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@Schema(description = "Yêu cầu cấu hình chính sách giá thương mại cho chuyến đi (BE-H01)")
+@Schema(description = "Yêu cầu cấu hình chính sách giá thương mại cho chuyến khởi hành (BE-H01)")
 public class CruisePricingPolicyRequest {
 
     @Schema(description = "Phiên bản chính sách giá (ví dụ: PRC-2026.10-V1). Tự động tạo nếu để trống", example = "PRC-2026.10-V1")

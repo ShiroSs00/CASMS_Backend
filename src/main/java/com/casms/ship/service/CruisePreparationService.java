@@ -384,7 +384,7 @@ public class CruisePreparationService {
         for (CruisePreparationSection section : sections) {
             if ("CONFIRMED".equalsIgnoreCase(section.getStatus())) {
                 section.setStatus("RETURNED");
-                section.setReturnReason("Hủy xác nhận tự động do thay đổi thông tin chuyến đi: " + reason);
+                section.setReturnReason("Hủy xác nhận tự động do thay đổi thông tin chuyến khởi hành: " + reason);
                 section.setReturnedAt(Instant.now());
                 var actor=currentActor();
                 section.setReturnedByUserId(actor==null?null:actor.getUserId());

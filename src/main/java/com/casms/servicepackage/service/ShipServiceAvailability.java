@@ -37,7 +37,7 @@ public class ShipServiceAvailability {
         var rows=jdbc.queryForList("SELECT ship_id FROM \"Cruise\" WHERE cruise_id=? FOR UPDATE",cruiseId);
         if(rows.isEmpty())throw new ResourceNotFoundException("Cruise",cruiseId);
         UUID shipId=(UUID)rows.getFirst().get("ship_id");
-        if(shipId==null)throw new BusinessException(HttpStatus.UNPROCESSABLE_ENTITY,"CRUISE_SHIP_REQUIRED","Chuyến đi chưa được gán tàu, không thể gắn dịch vụ hoặc gói dịch vụ.");
+        if(shipId==null)throw new BusinessException(HttpStatus.UNPROCESSABLE_ENTITY,"CRUISE_SHIP_REQUIRED","Chuyến khởi hành chưa được gán tàu, không thể gắn dịch vụ hoặc gói dịch vụ.");
         List<Map<String,Object>> missing=new ArrayList<>();
         for(UUID id:new LinkedHashSet<>(serviceIds)) {
             boolean present=Boolean.TRUE.equals(jdbc.queryForObject("SELECT EXISTS(SELECT 1 FROM \"DeckServiceAssignment\" a JOIN \"Deck\" d USING(deck_id) JOIN \"Service\" s USING(service_id) WHERE d.ship_id=? AND a.service_id=? AND s.status='ACTIVE')",Boolean.class,shipId,id));

@@ -19,6 +19,11 @@ public class TripPlanStopDraftDto {
     @Schema(description = "Khóa tương quan do client sinh (duy nhất trong version)", example = "stop-hph-01")
     private String clientKey;
 
+    @jakarta.validation.Valid
+    @Schema(description="Visit children; omitted/null preserves existing visits, [] explicitly removes visits in DRAFT. Never inferred from legacy destinationId.")
+    private java.util.List<DestinationVisitDraftDto> visits;
+
+
     @NotNull(message = "Port ID is required")
     @Schema(description = "ID cảng ghé thăm")
     private UUID portId;

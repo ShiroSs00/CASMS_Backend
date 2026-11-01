@@ -64,7 +64,7 @@ class PaymentServiceTest {
         booking.setBookingStatus(BookingStatus.Draft);
         booking.setAgreedFareAmount(new BigDecimal("10000000"));
         booking.setRequiredDepositAmount(new BigDecimal("3000000"));
-        booking.setCurrency("VND");
+        booking.setCurrency("USD");
 
         payment = new Payment();
         payment.setPaymentId(paymentId);
@@ -72,7 +72,7 @@ class PaymentServiceTest {
         payment.setOperationType(PaymentOperationType.Collect);
         payment.setPaymentMethod(PaymentMethod.GatewaySandbox);
         payment.setRequestedAmount(new BigDecimal("10000000"));
-        payment.setCurrency("VND");
+        payment.setCurrency("USD");
         payment.setStatus(PaymentStatus.Pending);
         payment.setIdempotencyKey("KEY-123456");
     }
@@ -97,6 +97,16 @@ class PaymentServiceTest {
         assertEquals(PaymentStatus.Pending, resp.getStatus());
         assertEquals("KEY-123456", resp.getIdempotencyKey());
         verify(paymentRepository).save(any(Payment.class));
+    }
+
+    @Test
+    void createPayment_rejectsNewForeignCurrencyWithoutSaving() {
+        PaymentCreateRequest req = new PaymentCreateRequest();
+        req.setBookingId(bookingId); req.setRequestedAmount(new BigDecimal("10"));
+        req.setPaymentMethod(PaymentMethod.Cash); req.setIdempotencyKey("USD-ONLY-TEST"); req.setCurrency("VND");
+        when(paymentRepository.findByIdempotencyKey("USD-ONLY-TEST")).thenReturn(Optional.empty());
+        BusinessException error = assertThrows(BusinessException.class, () -> paymentService.createPayment(req));
+        assertEquals("CURRENCY_USD_REQUIRED", error.getCode()); verify(paymentRepository, never()).save(any());
     }
 
     @Test

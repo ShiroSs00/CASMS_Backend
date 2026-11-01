@@ -11,7 +11,7 @@ import java.time.Instant;
 import java.util.UUID;
 
 @Data
-@Schema(description = "Yêu cầu cập nhật điểm dừng chuyến đi")
+@Schema(description = "Yêu cầu cập nhật điểm dừng chuyến khởi hành")
 public class CruiseStopUpdateRequest {
 
     @Schema(description = "ID lịch trình", example = "3fa85f64-5717-4562-b3fc-2c963f66afa6")

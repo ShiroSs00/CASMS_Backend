@@ -24,7 +24,7 @@ public class OperationalIssueUpdateRequest {
     @NotBlank(message = "Description cannot be blank")
     private String description;
 
-    @Schema(description = "(Bất biến / Bị bỏ qua) ID chuyến đi gắn với sự cố", accessMode = Schema.AccessMode.READ_ONLY)
+    @Schema(description = "(Bất biến / Bị bỏ qua) ID chuyến khởi hành gắn với sự cố", accessMode = Schema.AccessMode.READ_ONLY)
     private UUID cruiseId;
 
     @Schema(description = "(Bất biến / Bị bỏ qua) ID tàu gắn với sự cố", accessMode = Schema.AccessMode.READ_ONLY)

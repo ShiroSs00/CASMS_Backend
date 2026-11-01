@@ -29,7 +29,8 @@ public class PortCreateRequest {
     @Size(min = 2, max = 2, message = "Country code must be 2 characters")
     private String countryCode;
 
-    @Schema(description = "Múi giờ IANA (nếu để trống, hệ thống tự động suy luận theo mã quốc gia, ví dụ JP -> Asia/Tokyo)", example = "Asia/Tokyo")
+    @Schema(description = "Múi giờ cảng IANA bắt buộc do người dùng xác nhận; không tự gán theo quốc gia", example = "Asia/Tokyo")
+    @NotBlank(message = "Port time zone is required")
     @Size(max = 100, message = "Time zone ID must not exceed 100 characters")
     private String timeZoneId;
 
@@ -41,9 +42,21 @@ public class PortCreateRequest {
     private String description;
 
     @Schema(description = "Vĩ độ", example = "35.4522")
+    @jakarta.validation.constraints.DecimalMin("-90")
+    @jakarta.validation.constraints.DecimalMax("90")
+    @jakarta.validation.constraints.NotNull(message = "Latitude is required")
     private BigDecimal latitude;
 
+    @Schema(description = "Nguồn tọa độ thành phố/đảo bắt buộc khi tạo Port. provider=OPEN_METEO_GEOCODING, dataset=GEONAMES, coordinateReferenceType=GEOCODED_LOCALITY; recordedAt do server ghi.")
+    @jakarta.validation.constraints.NotNull(message = "Select a Geocoding result for a new port")
+    @jakarta.validation.Valid
+    private com.casms.ship.dto.PortCoordinateSource coordinateSource;
+
+
     @Schema(description = "Kinh độ", example = "139.6486")
+    @jakarta.validation.constraints.DecimalMin("-180")
+    @jakarta.validation.constraints.DecimalMax("180")
+    @jakarta.validation.constraints.NotNull(message = "Longitude is required")
     private BigDecimal longitude;
 
     @Schema(description = "Loại vị trí cảng/neo đậu (PORT, PIER, ANCHORAGE)", example = "PORT")
@@ -51,4 +64,4 @@ public class PortCreateRequest {
 
     @Schema(description = "Trạng thái ban đầu", example = "ACTIVE")
     private PortStatus status = PortStatus.ACTIVE;
-}
+}

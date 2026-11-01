@@ -19,7 +19,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 import java.util.UUID;
 
-@Tag(name = "Itinerary Change History Management", description = "Quản lý và tra cứu lịch sử thay đổi lịch trình chuyến đi")
+@Tag(name = "Itinerary Change History Management", description = "Quản lý và tra cứu lịch sử thay đổi lịch trình chuyến khởi hành")
 @RestController
 @RequestMapping("/itinerary-change-history")
 public class ItineraryChangeHistoryController {
@@ -32,7 +32,7 @@ public class ItineraryChangeHistoryController {
         this.service = service;
     }
 
-    @Operation(summary = "Ghi nhận thay đổi lịch trình", description = "Thêm bản ghi mới vào lịch sử điều chỉnh lịch trình chuyến đi")
+    @Operation(summary = "Ghi nhận thay đổi lịch trình", description = "Thêm bản ghi mới vào lịch sử điều chỉnh lịch trình chuyến khởi hành")
     @PreAuthorize("hasAuthority('ITINERARY_CHANGE_RECORD')")
     @PostMapping
     public ResponseEntity<ItineraryChangeHistoryResponse> append(

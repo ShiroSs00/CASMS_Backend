@@ -18,7 +18,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 import java.util.UUID;
 
-@Tag(name = "Itinerary Day Management", description = "Quản lý ngày trong lịch trình chuyến đi")
+@Tag(name = "Itinerary Day Management", description = "Quản lý ngày trong lịch trình chuyến khởi hành")
 @RestController
 @RequestMapping("/itinerary-days")
 @RequiredArgsConstructor

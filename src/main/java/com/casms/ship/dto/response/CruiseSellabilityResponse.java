@@ -19,13 +19,13 @@ import java.util.UUID;
 @Schema(description = "Mô hình trạng thái mở bán công khai authoritative (Public Sellability Read Model - BE-15)")
 public class CruiseSellabilityResponse {
 
-    @Schema(description = "ID chuyến đi")
+    @Schema(description = "ID chuyến khởi hành")
     private UUID cruiseId;
 
-    @Schema(description = "Mã chuyến đi")
+    @Schema(description = "Mã chuyến khởi hành")
     private String cruiseCode;
 
-    @Schema(description = "Tên chuyến đi")
+    @Schema(description = "Tên chuyến khởi hành")
     private String cruiseName;
 
     @Schema(description = "Thời gian khởi hành")

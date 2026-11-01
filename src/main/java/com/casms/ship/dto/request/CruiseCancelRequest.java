@@ -5,7 +5,7 @@ import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
 
 @Data
-@Schema(description = "Yêu cầu hủy chuyến đi")
+@Schema(description = "Yêu cầu hủy chuyến khởi hành")
 public class CruiseCancelRequest {
 
     @Schema(description = "Lý do hủy chuyến", example = "Điều kiện thời tiết xấu do bão", requiredMode = Schema.RequiredMode.REQUIRED)

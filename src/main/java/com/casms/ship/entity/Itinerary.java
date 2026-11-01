@@ -19,6 +19,11 @@ import java.util.UUID;
 @Table(name = "\"Itinerary\"")
 public class Itinerary {
 
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.JSON) @Column(name="departure_port_facts",columnDefinition="jsonb")
+    private com.casms.ship.dto.PortFacts departurePortFacts;
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.JSON) @Column(name="return_port_facts",columnDefinition="jsonb")
+    private com.casms.ship.dto.PortFacts returnPortFacts;
+
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     @Column(name = "itinerary_id")
@@ -27,6 +32,13 @@ public class Itinerary {
     @OneToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "cruise_id", nullable = false, unique = true)
     private Cruise cruise;
+
+    // Immutable source facts captured on first materialization; null for historical rows.
+    @Column(name = "source_duration_nights")
+    private Integer sourceDurationNights;
+
+    @Column(name = "source_content_hash", length = 64)
+    private String sourceContentHash;
 
     @Column(name = "itinerary_name", length = 200)
     private String itineraryName;

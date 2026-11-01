@@ -74,6 +74,8 @@ public class ServiceRequestService {
   // Serialize capacity checks for this service to prevent concurrent reservations exceeding capacity.
   var s=services.findByIdForUpdate(serviceId).orElseThrow(()->missing("Service",serviceId));
   if(s.getStatus()!=ServiceStatus.ACTIVE) throw new IllegalStateException("Service is not available");
+  if (s.getCurrencyCode() != null && !s.getCurrencyCode().isBlank())
+      com.casms.common.util.NewWriteCurrency.requireUsd(s.getCurrencyCode());
   int effectiveQuantity = quantity == null ? 1 : quantity;
   if(effectiveQuantity<1)throw new IllegalArgumentException("Quantity must be positive");
   if (scheduleId == null) assertCapacity(s, effectiveQuantity, 0);
@@ -100,6 +102,12 @@ public class ServiceRequestService {
           bp = candidates.get(0);
       }
   }
+  if (schedule != null && (bp == null || schedule.getCruise() == null
+          || bp.getBooking().getCruise() == null
+          || !schedule.getCruise().getCruiseId().equals(bp.getBooking().getCruise().getCruiseId()))) {
+      throw new com.casms.common.exception.BusinessException(org.springframework.http.HttpStatus.UNPROCESSABLE_ENTITY,
+          "SERVICE_SCHEDULE_CRUISE_MISMATCH", "Lịch phục vụ không thuộc chuyến khởi hành của hành khách.");
+  }
   ServiceRequest r=new ServiceRequest(); r.setPassenger(passenger); r.setService(s); r.setServiceSchedule(schedule); r.setUnitPriceSnapshot(s.getPrice()); r.setCurrencySnapshot(s.getCurrencyCode()); r.setIdempotencyKey(idempotencyKey==null||idempotencyKey.isBlank()?null:idempotencyKey); r.setBookingPassenger(bp); r.setBooking(bp==null?null:bp.getBooking()); r.setQuantity(effectiveQuantity); r.setNote(note); r.setRequestTime(Instant.now()); r.setStatus(ServiceRequestStatus.REQUESTED); return requests.save(r);
  }
  public ServiceRequest updatePending(UUID id, UUID userId, boolean staff, Integer quantity, String note) {
@@ -107,7 +115,17 @@ public class ServiceRequestService {
   if(posLedger.isPosRequest(id))throw new com.casms.common.exception.BusinessException("POS_CHARGE_IMMUTABLE","Cancel the POS request to restore its allowance, then record a new one; charged quantities cannot be edited");
   if(quantity==null||quantity<1)throw new IllegalArgumentException("Quantity must be positive");
   var service=services.findByIdForUpdate(r.getService().getServiceId()).orElseThrow(()->missing("Service",r.getService().getServiceId()));
-  assertCapacity(service, quantity, r.getQuantity());
+  if (r.getServiceSchedule() == null) {
+      assertCapacity(service, quantity, r.getQuantity());
+  } else {
+      var schedule = schedules.lockById(r.getServiceSchedule().getServiceScheduleId())
+          .orElseThrow(() -> missing("Service schedule", r.getServiceSchedule().getServiceScheduleId()));
+      if (!schedule.getService().getServiceId().equals(service.getServiceId()) || !"OPEN".equals(schedule.getStatus()))
+          throw new IllegalStateException("Service schedule is not open for this service");
+      long other = requests.sumActiveQuantityForSchedule(schedule.getServiceScheduleId(),
+          List.of(ServiceRequestStatus.REQUESTED, ServiceRequestStatus.ACCEPTED, ServiceRequestStatus.IN_PROGRESS)) - r.getQuantity();
+      if (other + quantity > schedule.getCapacity()) throw new IllegalStateException("Requested quantity exceeds remaining schedule capacity");
+  }
   r.setQuantity(quantity); r.setNote(note); return r;
  }
  public ServiceRequest transition(UUID id, UUID userId, String action) {

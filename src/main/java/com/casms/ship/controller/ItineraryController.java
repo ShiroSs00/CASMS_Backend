@@ -25,7 +25,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 import java.util.UUID;
 
-@Tag(name = "Itinerary Management", description = "Quản lý lịch trình chuyến đi du thuyền")
+@Tag(name = "Itinerary Management", description = "Quản lý lịch trình chuyến khởi hành du thuyền")
 @RestController
 @RequestMapping("/itineraries")
 @RequiredArgsConstructor
@@ -34,7 +34,7 @@ public class ItineraryController {
     private final ItineraryService service;
     private final PassengerItineraryService passengerItineraryService;
 
-    @Operation(summary = "Lịch trình của tôi", description = "Trả lịch trình chuyến đi của các booking gắn với hành khách đã xác thực, kèm riêng các hoạt động đã đăng ký.")
+    @Operation(summary = "Lịch trình của tôi", description = "Trả lịch trình chuyến khởi hành của các booking gắn với hành khách đã xác thực, kèm riêng các hoạt động đã đăng ký.")
     @PreAuthorize("hasAuthority('BOOKING_READ')")
     @GetMapping("/mine")
     public ApiResponse<List<PassengerItineraryResponse>> mine(
@@ -45,7 +45,7 @@ public class ItineraryController {
         return ApiResponse.success(passengerItineraryService.mine(principal.getUserId()));
     }
 
-    @Operation(summary = "Tạo lịch trình mới", description = "Tạo lịch trình mới cho một chuyến đi (mặc định trạng thái DRAFT)")
+    @Operation(summary = "Tạo lịch trình mới", description = "Tạo lịch trình mới cho một chuyến khởi hành (mặc định trạng thái DRAFT)")
     @PreAuthorize("hasAuthority('ITINERARY_CREATE')")
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
@@ -92,7 +92,7 @@ public class ItineraryController {
         return ApiResponse.success("Deleted draft itinerary successfully", null);
     }
 
-    @Operation(summary = "Kiểm tra tính khả thi", description = "Kiểm tra tính khả thi của lịch trình (khoảng ngày, ngày tuần tự, phù hợp với chuyến đi)")
+    @Operation(summary = "Kiểm tra tính khả thi", description = "Kiểm tra tính khả thi của lịch trình (khoảng ngày, ngày tuần tự, phù hợp với chuyến khởi hành)")
     @PreAuthorize("hasAuthority('ITINERARY_VALIDATE')")
     @PostMapping("/{itineraryId}/validate-feasibility")
     public ApiResponse<Void> validateFeasibility(

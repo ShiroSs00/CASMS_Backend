@@ -15,13 +15,13 @@ import java.util.UUID;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@Schema(description = "Kết quả áp dụng thay đổi lịch trình, tàu hoặc cấu hình chuyến đi (BE-R05b / C11, C17)")
+@Schema(description = "Kết quả áp dụng thay đổi lịch trình, tàu hoặc cấu hình chuyến khởi hành (BE-R05b / C11, C17)")
 public class CruiseApplyChangeResponse {
 
-    @Schema(description = "ID chuyến đi")
+    @Schema(description = "ID chuyến khởi hành")
     private UUID cruiseId;
 
-    @Schema(description = "Mã chuyến đi")
+    @Schema(description = "Mã chuyến khởi hành")
     private String cruiseCode;
 
     @Schema(description = "Revision mới sau khi áp dụng thay đổi")

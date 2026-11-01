@@ -14,22 +14,22 @@ import java.util.UUID;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@Schema(description = "Kết quả kiểm tra tính tương thích và khả dụng của tàu đối với chuyến đi")
+@Schema(description = "Kết quả kiểm tra tính tương thích và khả dụng của tàu đối với chuyến khởi hành")
 public class ShipCompatibilityResponse {
 
-    @Schema(description = "ID chuyến đi")
+    @Schema(description = "ID chuyến khởi hành")
     private UUID cruiseId;
 
     @Schema(description = "ID tàu được kiểm tra")
     private UUID shipId;
 
-    @Schema(description = "Tàu có tương thích để gán vào chuyến đi hay không")
+    @Schema(description = "Tàu có tương thích để gán vào chuyến khởi hành hay không")
     private boolean compatible;
 
     @Schema(description = "Tàu có đang ở trạng thái ACTIVE hay không")
     private boolean shipActive;
 
-    @Schema(description = "Lịch trình tàu có trống trong khoảng thời gian chuyến đi hay không")
+    @Schema(description = "Lịch trình tàu có trống trong khoảng thời gian chuyến khởi hành hay không")
     private boolean scheduleAvailable;
 
     @Schema(description = "Sức chứa của tàu có đủ đáp ứng lượng khách đã đặt hay không")
@@ -47,7 +47,7 @@ public class ShipCompatibilityResponse {
     @Schema(description = "Tổng sức chứa hành khách của tàu")
     private int totalCapacity;
 
-    @Schema(description = "Số lượng hành khách đã đặt chỗ trên chuyến đi")
+    @Schema(description = "Số lượng hành khách đã đặt chỗ trên chuyến khởi hành")
     private long bookedPassengersCount;
 
     @Builder.Default

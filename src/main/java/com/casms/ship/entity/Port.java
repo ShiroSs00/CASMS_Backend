@@ -36,10 +36,14 @@ public class Port {
     @Column(name = "time_zone_id", nullable = false, length = 100)
     private String timeZoneId;
 
-    @Column(name = "latitude", precision = 9, scale = 6)
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "coordinate_source", columnDefinition = "jsonb")
+    private com.casms.ship.dto.PortCoordinateSource coordinateSource;
+
+    @Column(name = "latitude", columnDefinition = "numeric")
     private BigDecimal latitude;
 
-    @Column(name = "longitude", precision = 9, scale = 6)
+    @Column(name = "longitude", columnDefinition = "numeric")
     private BigDecimal longitude;
 
     @Enumerated(EnumType.STRING)

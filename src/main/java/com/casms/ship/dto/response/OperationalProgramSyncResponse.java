@@ -18,7 +18,7 @@ import java.util.UUID;
 @Schema(description = "Kết quả đồng bộ chương trình vận hành (Onboard Activities, Shore Excursions) từ Trip Plan Entry")
 public class OperationalProgramSyncResponse {
 
-    @Schema(description = "ID chuyến đi")
+    @Schema(description = "ID chuyến khởi hành")
     private UUID cruiseId;
 
     @Schema(description = "Số lượng hoạt động trên tàu (Onboard Activities) đã đồng bộ")

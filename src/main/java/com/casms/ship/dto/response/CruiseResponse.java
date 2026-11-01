@@ -9,16 +9,16 @@ import java.time.Instant;
 import java.util.UUID;
 
 @Data
-@Schema(description = "Thông tin chi tiết chuyến đi du thuyền (Cruise)")
+@Schema(description = "Thông tin chi tiết chuyến khởi hành du thuyền (Cruise)")
 public class CruiseResponse {
 
-    @Schema(description = "ID chuyến đi (UUID)", example = "3fa85f64-5717-4562-b3fc-2c963f66afa6")
+    @Schema(description = "ID chuyến khởi hành (UUID)", example = "3fa85f64-5717-4562-b3fc-2c963f66afa6")
     private UUID cruiseId;
 
-    @Schema(description = "Mã chuyến đi do hệ thống cấp", example = "CR-0001")
+    @Schema(description = "Mã chuyến khởi hành do hệ thống cấp", example = "CR-0001")
     private String cruiseCode;
 
-    @Schema(description = "Tên chuyến đi", example = "Hải trình khám phá Vịnh Hạ Long 3N2Đ")
+    @Schema(description = "Tên chuyến khởi hành", example = "Hải trình khám phá Vịnh Hạ Long 3N2Đ")
     private String cruiseName;
 
     @Schema(description = "ID của tàu được gán", example = "3fa85f64-5717-4562-b3fc-2c963f66afa6")
@@ -30,7 +30,7 @@ public class CruiseResponse {
     @Schema(description = "Mã của tàu được gán", example = "SH-0001")
     private String shipCode;
 
-    @Schema(description = "Loại chuyến đi", example = "MULTI_DAYS")
+    @Schema(description = "Loại chuyến khởi hành", example = "MULTI_DAYS")
     private CruiseCruiseType cruiseType;
 
     @Schema(description = "Thời điểm khởi hành (ISO-8601)")
@@ -51,16 +51,16 @@ public class CruiseResponse {
     @Schema(description = "Tên cảng trở về", example = "Cảng Quốc tế Tuần Châu")
     private String returnPortName;
 
-    @Schema(description = "Trạng thái chuyến đi (DRAFT, PUBLISHED, IN_PROGRESS, COMPLETED, CANCELLED)", example = "DRAFT")
+    @Schema(description = "Trạng thái chuyến khởi hành (DRAFT, PUBLISHED, IN_PROGRESS, COMPLETED, CANCELLED)", example = "DRAFT")
     private CruiseStatus status;
 
-    @Schema(description = "ID Trip mẫu nguồn (D01)")
+    @Schema(description = "ID Chuyến đi nguồn (D01)")
     private UUID sourceTripId;
 
-    @Schema(description = "Mã Trip mẫu nguồn", example = "TP-0001")
+    @Schema(description = "Mã Chuyến đi nguồn", example = "TP-0001")
     private String sourceTripCode;
 
-    @Schema(description = "ID phiên bản TripScheduleVersion nguồn (D01)")
+    @Schema(description = "ID Phiên bản lịch trình nguồn (D01)")
     private UUID sourceVersionId;
 
     @Schema(description = "Số phiên bản nguồn", example = "2")

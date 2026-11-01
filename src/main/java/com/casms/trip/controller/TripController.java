@@ -47,7 +47,7 @@ public class TripController {
     private final TripScheduleVersionService versionService;
     private final IdempotencyService idempotencyService;
 
-    @Operation(summary = "Hàng đợi duyệt lịch trình (Review Queue)", description = "Lấy danh sách các phiên bản lịch trình đang ở trạng thái IN_REVIEW chờ duyệt, hỗ trợ phân trang và sắp xếp.")
+    @Operation(summary = "Tra cứu hồ sơ Template Review lịch sử", deprecated = true, description = "Chỉ đọc hồ sơ IN_REVIEW lịch sử để tương thích; không dùng làm hàng đợi thao tác OPS hiện hành. Queue xét duyệt kế hoạch chuyến dùng /cruise-plans.")
     @PreAuthorize("hasAuthority('TRIP_PLAN_REVIEW')")
     @GetMapping("/review-queue")
     public ApiResponse<Page<TripReviewQueueItemResponse>> getReviewQueue(Pageable pageable) {

@@ -75,7 +75,7 @@ public class ShipController {
         return ApiResponse.success(service.update(shipId, request));
     }
 
-    @Operation(summary = "Xóa tàu chưa sử dụng", description = "Xóa tàu nếu tàu chưa được gán cho bất kỳ chuyến đi (Cruise) nào")
+    @Operation(summary = "Xóa tàu chưa sử dụng", description = "Xóa tàu nếu tàu chưa được gán cho bất kỳ chuyến khởi hành (Cruise) nào")
     @PreAuthorize("hasAuthority('SHIP_DELETE')")
     @DeleteMapping("/{shipId}/unused")
     @ResponseStatus(HttpStatus.NO_CONTENT)
@@ -85,7 +85,7 @@ public class ShipController {
         return ApiResponse.success("Deleted unused ship successfully", null);
     }
 
-    @Operation(summary = "Thay đổi trạng thái tàu", description = "Cập nhật trạng thái tàu (ACTIVE, MAINTENANCE, INACTIVE). Chặn chuyển sang MAINTENANCE/INACTIVE nếu tàu đang trong chuyến đi")
+    @Operation(summary = "Thay đổi trạng thái tàu", description = "Cập nhật trạng thái tàu (ACTIVE, MAINTENANCE, INACTIVE). Chặn chuyển sang MAINTENANCE/INACTIVE nếu tàu đang trong chuyến khởi hành")
     @PreAuthorize("hasAuthority('SHIP_STATUS_CHANGE')")
     @PostMapping("/{shipId}/status")
     public ApiResponse<ShipResponse> changeStatus(
@@ -112,7 +112,7 @@ public class ShipController {
         return ApiResponse.success(service.getCapacitySummary(shipId));
     }
 
-    @Operation(summary = "Danh sách chuyến đi bị ảnh hưởng", description = "Tìm các chuyến đi của tàu nằm trong khoảng thời gian chỉ định (thường dùng khi cần đưa tàu vào bảo trì)")
+    @Operation(summary = "Danh sách chuyến khởi hành bị ảnh hưởng", description = "Tìm các chuyến khởi hành của tàu nằm trong khoảng thời gian chỉ định (thường dùng khi cần đưa tàu vào bảo trì)")
     @PreAuthorize("hasAuthority('SHIP_AFFECTED_CRUISES')")
     @GetMapping("/{shipId}/affected-cruises")
     public ApiResponse<List<CruiseSummaryResponse>> getAffectedCruises(
@@ -122,7 +122,7 @@ public class ShipController {
         return ApiResponse.success(service.getAffectedCruises(shipId, start, end));
     }
 
-    @Operation(summary = "Chuyến đi hiện tại của tàu", description = "Lấy chuyến đi đang diễn ra (IN_PROGRESS) của tàu tại thời điểm hiện tại")
+    @Operation(summary = "Chuyến khởi hành hiện tại của tàu", description = "Lấy chuyến khởi hành đang diễn ra (IN_PROGRESS) của tàu tại thời điểm hiện tại")
     @PreAuthorize("hasAuthority('SHIP_CURRENT_CRUISE')")
     @GetMapping("/{shipId}/current-cruise")
     public ApiResponse<CruiseSummaryResponse> getCurrentCruise(

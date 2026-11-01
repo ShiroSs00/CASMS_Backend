@@ -261,6 +261,10 @@ public class RolePermissionInitializer implements CommandLineRunner {
                 Permission.PORT_ACTIVATE,
                 Permission.PORT_DEACTIVATE,
                 Permission.PORT_VALIDATE,
+                Permission.PORT_CALL_WINDOW_READ,
+                Permission.PORT_CALL_WINDOW_CREATE,
+                Permission.PORT_CALL_WINDOW_UPDATE,
+                Permission.PORT_CALL_WINDOW_VERIFY,
                 Permission.DESTINATION_CREATE,
                 Permission.DESTINATION_READ,
                 Permission.DESTINATION_UPDATE,
@@ -626,7 +630,10 @@ public class RolePermissionInitializer implements CommandLineRunner {
                 .orElseGet(RolePermission::new);
 
         rolePermission.setRole(role);
-        rolePermission.setPermissions(EnumSet.copyOf(permissions));
+        Set<Permission> effective = EnumSet.copyOf(permissions);
+        // PORT-01 is additive: retain existing OPS grants, including manual grants unrelated to this task.
+        if (role == Role.OPERATIONS_MANAGER) effective.addAll(rolePermission.getPermissions());
+        rolePermission.setPermissions(effective);
 
         rolePermissionRepository.save(rolePermission);
 

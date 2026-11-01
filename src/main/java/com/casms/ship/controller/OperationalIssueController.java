@@ -23,7 +23,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 import java.util.UUID;
 
-@Tag(name = "Operational Issue Management", description = "Quản lý, báo cáo và giải quyết sự cố vận hành trên tàu/chuyến đi")
+@Tag(name = "Operational Issue Management", description = "Quản lý, báo cáo và giải quyết sự cố vận hành trên tàu/chuyến khởi hành")
 @RestController
 @RequestMapping("/operational-issues")
 @RequiredArgsConstructor
@@ -31,7 +31,7 @@ public class OperationalIssueController {
 
     private final OperationalIssueService issueService;
 
-    @Operation(summary = "Báo cáo sự cố mới", description = "Tạo báo cáo sự cố vận hành mới phát sinh trên tàu hoặc chuyến đi")
+    @Operation(summary = "Báo cáo sự cố mới", description = "Tạo báo cáo sự cố vận hành mới phát sinh trên tàu hoặc chuyến khởi hành")
     @PreAuthorize("hasAuthority('OPERATIONAL_ISSUE_CREATE')")
     @PostMapping
     public ResponseEntity<ApiResponse<OperationalIssueResponse>> report(
@@ -46,7 +46,7 @@ public class OperationalIssueController {
                 .body(ApiResponse.success(issueService.report(request, principal.getUserId())));
     }
 
-    @Operation(summary = "Danh sách sự cố", description = "Lấy danh sách các sự cố vận hành theo bộ lọc (trạng thái, tàu, chuyến đi)")
+    @Operation(summary = "Danh sách sự cố", description = "Lấy danh sách các sự cố vận hành theo bộ lọc (trạng thái, tàu, chuyến khởi hành)")
     @PreAuthorize("hasAuthority('OPERATIONAL_ISSUE_READ')")
     @GetMapping
     public ResponseEntity<ApiResponse<List<OperationalIssueResponse>>> list(

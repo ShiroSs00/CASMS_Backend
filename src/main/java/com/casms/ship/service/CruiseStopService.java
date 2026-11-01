@@ -146,6 +146,7 @@ public class CruiseStopService {
         stop.setArrivalItineraryDay(arrivalDay);
         stop.setDepartureItineraryDay(departureDay);
         stop.setPort(port);
+        stop.setPortFacts(com.casms.ship.dto.PortFacts.capture(port));
         stop.setDestination(dest);
         stop.setStopOrder(request.getStopOrder());
         stop.setPlannedArrival(request.getPlannedArrival());
@@ -237,6 +238,7 @@ public class CruiseStopService {
             // GAP-1 / BE-11.2: country scope on port change
             validatePortCountryScope(port, stop.getItinerary());
             stop.setPort(port);
+        stop.setPortFacts(com.casms.ship.dto.PortFacts.capture(port));
         }
 
         if (request.getDestinationId() != null) {
@@ -536,11 +538,11 @@ public class CruiseStopService {
         res.setArrivalItineraryDayId(stop.getArrivalItineraryDay().getItineraryDayId());
         res.setDepartureItineraryDayId(stop.getDepartureItineraryDay().getItineraryDayId());
         res.setPortId(stop.getPort().getPortId());
-        res.setPortCode(stop.getPort().getPortCode());
-        res.setPortName(stop.getPort().getPortName());
+        res.setPortCode(stop.getPortFacts()==null?null:stop.getPortFacts().portCode());
+        res.setPortName(stop.getPortFacts()==null?null:stop.getPortFacts().portName());
 
-        if (stop.getPort() != null) {
-            String portTz = stop.getPort().getTimeZoneId();
+        if (stop.getPortFacts() != null) {
+            String portTz = stop.getPortFacts().timeZoneId();
             res.setPortTimeZoneId(portTz);
             res.setPortUtcOffset(PortTimeZoneHelper.calculateUtcOffset(portTz));
             res.setFormattedPortTimeZone(PortTimeZoneHelper.formatTimeZoneDisplay(portTz));

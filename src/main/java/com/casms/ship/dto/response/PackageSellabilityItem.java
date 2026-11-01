@@ -13,7 +13,7 @@ import java.util.UUID;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@Schema(description = "Tình trạng mở bán của gói tour đính kèm chuyến đi - BE-15")
+@Schema(description = "Tình trạng mở bán của gói tour đính kèm chuyến khởi hành - BE-15")
 public class PackageSellabilityItem {
 
     @Schema(description = "ID gói dịch vụ")

@@ -13,13 +13,13 @@ import java.util.UUID;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@Schema(description = "Công việc xử lý tác động thay đổi chuyến đi (C17 Recovery Task)")
+@Schema(description = "Công việc xử lý tác động thay đổi chuyến khởi hành (C17 Recovery Task)")
 public class CruiseImpactTaskResponse {
 
     @Schema(description = "ID công việc")
     private UUID taskId;
 
-    @Schema(description = "ID chuyến đi")
+    @Schema(description = "ID chuyến khởi hành")
     private UUID cruiseId;
 
     @Schema(description = "Mã định danh công việc (duy nhất)")

@@ -59,6 +59,9 @@ public class ItineraryDay {
     @Column(name = "ship_time_zone_id", length = 100)
     private String shipTimeZoneId;
 
+    @Column(name = "source_day_description", columnDefinition = "TEXT")
+    private String sourceDayDescription;
+
     @Column(name = "description", length = 500)
     private String description;
 

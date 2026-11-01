@@ -14,10 +14,10 @@ import java.util.UUID;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@Schema(description = "Kết quả đánh giá tác động thay đổi chuyến đi (Change Impact Assessment / C11, C17)")
+@Schema(description = "Kết quả đánh giá tác động thay đổi chuyến khởi hành (Change Impact Assessment / C11, C17)")
 public class CruiseChangeImpactResponse {
 
-    @Schema(description = "ID chuyến đi")
+    @Schema(description = "ID chuyến khởi hành")
     private UUID cruiseId;
 
     @Schema(description = "Revision hiện tại của Cruise")

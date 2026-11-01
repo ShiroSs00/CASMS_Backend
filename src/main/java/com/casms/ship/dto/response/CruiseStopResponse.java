@@ -10,7 +10,7 @@ import java.time.Instant;
 import java.util.UUID;
 
 @Data
-@Schema(description = "Thông tin chi tiết điểm dừng chuyến đi")
+@Schema(description = "Thông tin chi tiết điểm dừng chuyến khởi hành")
 public class CruiseStopResponse {
 
     @Schema(description = "ID điểm dừng", example = "3fa85f64-5717-4562-b3fc-2c963f66afa6")

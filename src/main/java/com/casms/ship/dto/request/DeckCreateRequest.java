@@ -10,21 +10,21 @@ import java.math.BigDecimal;
 import java.util.UUID;
 
 @Data
-@Schema(description = "Yêu cầu tạo mới tầng/boong tàu")
+@Schema(description = "Yêu cầu tạo mới boong tàu")
 public class DeckCreateRequest {
 
-    @Schema(description = "ID của tàu sở hữu tầng này", example = "3fa85f64-5717-4562-b3fc-2c963f66afa6", requiredMode = Schema.RequiredMode.REQUIRED)
+    @Schema(description = "ID của tàu sở hữu boong này", example = "3fa85f64-5717-4562-b3fc-2c963f66afa6", requiredMode = Schema.RequiredMode.REQUIRED)
     @NotNull(message = "Ship ID is required")
     private UUID shipId;
 
-    @Schema(description = "Số thứ tự tầng (Nếu để trống, tự động tăng)", example = "3")
+    @Schema(description = "Số thứ tự boong (Nếu để trống, tự động tăng)", example = "3")
     @Min(value = 1, message = "Deck number must be at least 1")
     private Integer deckNumber;
 
-    @Schema(description = "Tên hiển thị của tầng", example = "Promenade Deck")
+    @Schema(description = "Tên hiển thị của boong", example = "Promenade Deck")
     private String deckName;
 
-    @Schema(description = "Hệ số giá tầng boong (mặc định 1.00, ví dụ 1.15 là +15%)", example = "1.15")
+    @Schema(description = "Hệ số điều chỉnh giá cơ sở theo boong. Giá cơ sở theo loại phòng nhân hệ số; 1.00 giữ nguyên giá cơ sở. Không nhân trực tiếp vào giá gói dịch vụ hoặc phí cảng.", example = "1.15")
     @DecimalMin(value = "0.50", message = "Price multiplier must be at least 0.50")
     @DecimalMax(value = "5.00", message = "Price multiplier cannot exceed 5.00")
     private BigDecimal priceMultiplier;

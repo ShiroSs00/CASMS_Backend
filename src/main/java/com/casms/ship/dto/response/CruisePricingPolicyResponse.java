@@ -15,7 +15,7 @@ import java.util.UUID;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@Schema(description = "Thông tin chi tiết chính sách giá thương mại của chuyến đi (BE-H01)")
+@Schema(description = "Thông tin chi tiết chính sách giá thương mại của chuyến khởi hành (BE-H01)")
 public class CruisePricingPolicyResponse {
 
     @Schema(description = "ID chính sách giá")
@@ -29,13 +29,13 @@ public class CruisePricingPolicyResponse {
     private String decisionReason;
     private String snapshotHash;
 
-    @Schema(description = "ID chuyến đi")
+    @Schema(description = "ID chuyến khởi hành")
     private UUID cruiseId;
 
-    @Schema(description = "Mã chuyến đi")
+    @Schema(description = "Mã chuyến khởi hành")
     private String cruiseCode;
 
-    @Schema(description = "Tên chuyến đi")
+    @Schema(description = "Tên chuyến khởi hành")
     private String cruiseName;
 
     @Schema(description = "Phiên bản chính sách giá hiệu lực")

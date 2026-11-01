@@ -103,9 +103,7 @@ public class TripCatalogController {
 
         List<TripCatalogResponse.DurationGroupCatalogItem> durationGroups = List.of(
                 new TripCatalogResponse.DurationGroupCatalogItem("SHORT", "Chuyến ngắn", 1, 2, 1),
-                new TripCatalogResponse.DurationGroupCatalogItem("MEDIUM", "Chuyến trung bình", 2, 3, 2),
-                new TripCatalogResponse.DurationGroupCatalogItem("LONG", "Chuyến dài ngày", 3, 5, 3),
-                new TripCatalogResponse.DurationGroupCatalogItem("EXTENDED", "Hải trình mở rộng", 5, 30, 7)
+                new TripCatalogResponse.DurationGroupCatalogItem("LONG", "Chuyến dài ngày", 3, 5, 3)
         );
 
         TripCatalogResponse response = TripCatalogResponse.builder()
@@ -516,6 +514,7 @@ public class TripCatalogController {
                         .portId(p.getPortId())
                         .portCode(p.getPortCode())
                         .portName(p.getPortName())
+                        .localityName(p.getCoordinateSource()==null?null:p.getCoordinateSource().getLocationName())
                         .countryCode(p.getCountryCode())
                         .domesticRegion(VietnamGeographyRegistry.resolveDomesticRegion(p))
                         .timeZoneId(p.getTimeZoneId())

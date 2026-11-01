@@ -142,6 +142,7 @@ public class TripScheduleVersionService {
                             + request.getExpectedRevision() + ", current: " + version.getRevision());
         }
 
+        List<TripPlanEntry> preservedLegacy = LegacyTemplateContentPolicy.protectSave(version, request);
         Trip trip = version.getTrip();
         if (request.getDays() == null || request.getDays().size() != trip.getDurationDays()) {
             throw new BusinessException(HttpStatus.BAD_REQUEST, "INVALID_DAY_COUNT",
@@ -345,11 +346,10 @@ public class TripScheduleVersionService {
             }
             stop.setPort(portCache.get(stopDto.getPortId()));
             if (stopDto.getDestinationId() != null) {
-                Destination dest = destinationRepository.findById(stopDto.getDestinationId()).orElse(null);
+                Destination dest = destinationRepository.findById(stopDto.getDestinationId())
+                        .orElseThrow(() -> new ResourceNotFoundException("Destination", stopDto.getDestinationId()));
                 stop.setDestination(dest);
-            } else {
-                stop.setDestination(null);
-            }
+            } // Legacy destinationId is independent of visits; omission must preserve it.
             stop.setStopOrder(stopDto.getStopOrder());
             stop.setArrivalDayNumber(stopDto.getArrivalDayNumber());
             stop.setPlannedArrivalTime(stopDto.getPlannedArrivalTime());
@@ -362,12 +362,33 @@ public class TripScheduleVersionService {
             stop.setIsEmbarkation(Boolean.TRUE.equals(stopDto.getIsEmbarkation()));
             stop.setIsDisembarkation(Boolean.TRUE.equals(stopDto.getIsDisembarkation()));
 
+            // Older clients omitting visits must not erase children they do not understand.
+            if (stopDto.getVisits() != null) {
+                var oldVisits=stop.getVisits().stream().collect(java.util.stream.Collectors.toMap(com.casms.trip.entity.DestinationVisit::getClientKey,v->v));
+                java.util.Set<String> visitKeys=new java.util.HashSet<>();java.util.Set<Integer> visitOrders=new java.util.HashSet<>();
+                var nextVisits=new java.util.ArrayList<com.casms.trip.entity.DestinationVisit>();
+                for (var dto : stopDto.getVisits()) {
+                    if(dto==null || dto.clientKey()==null || dto.clientKey().isBlank() || dto.clientKey().length()>100 || !visitKeys.add(dto.clientKey()) || dto.sequence()==null || dto.sequence()<1 || !visitOrders.add(dto.sequence()) || dto.destinationId()==null)
+                        throw new BusinessException(HttpStatus.BAD_REQUEST,"INVALID_DESTINATION_VISIT","Mỗi lượt tham quan cần điểm đến, khóa riêng và thứ tự dương không trùng trong lần ghé.");
+                    var visit=oldVisits.get(dto.clientKey());
+                    if(dto.visitId()!=null && (visit==null || !dto.visitId().equals(visit.getVisitId())))
+                        throw new BusinessException(HttpStatus.BAD_REQUEST,"VISIT_PARENT_MISMATCH","Lượt tham quan không thuộc lần ghé trong phiên bản này.");
+                    if(visit==null){visit=new com.casms.trip.entity.DestinationVisit();visit.setStop(stop);visit.setClientKey(dto.clientKey());}
+                    var destination=destinationRepository.findById(dto.destinationId()).orElseThrow(()->new ResourceNotFoundException("Destination",dto.destinationId()));
+                    boolean same=visit.getDestination()!=null&&visit.getDestination().getDestinationId().equals(dto.destinationId());
+                    if(!same && destination.getStatus()!=com.casms.ship.enums.DestinationStatus.ACTIVE)
+                        throw new BusinessException("INACTIVE_DESTINATION","Chọn điểm đến đang hoạt động cho lượt tham quan mới.");
+                    visit.setDestination(destination);visit.setSequence(dto.sequence());visit.setDestinationNameSnapshot(null);nextVisits.add(visit);
+                }
+                stop.getVisits().clear();stop.getVisits().addAll(nextVisits);
+            }
             updatedStops.add(stop);
             activeStopKeyMap.put(stop.getClientKey(), stop);
         }
 
         // 3. Reconcile Entries
-        List<TripPlanEntryDraftDto> entryDtos = request.getEntries() != null ? request.getEntries() : List.of();
+        List<TripPlanEntryDraftDto> entryDtos = request.getEntries() == null ? List.of()
+                : request.getEntries().stream().filter(e -> e.getKind() != TripPlanEntryKind.SERVING_WINDOW).toList();
         Set<String> entryKeys = new HashSet<>();
 
         for (TripPlanEntryDraftDto entryDto : entryDtos) {
@@ -436,7 +457,7 @@ public class TripScheduleVersionService {
         Map<String, TripPlanEntry> existingEntryMap = version.getEntries().stream()
                 .collect(Collectors.toMap(TripPlanEntry::getClientKey, e -> e));
 
-        List<TripPlanEntry> updatedEntries = new ArrayList<>();
+        List<TripPlanEntry> updatedEntries = new ArrayList<>(preservedLegacy);
         for (TripPlanEntryDraftDto entryDto : entryDtos) {
             TripPlanEntry entry = existingEntryMap.get(entryDto.getClientKey());
             if (entry == null) {
@@ -466,7 +487,8 @@ public class TripScheduleVersionService {
             entry.setServiceId(entryDto.getServiceId());
             entry.setSeriesClientKey(entryDto.getSeriesClientKey());
             if (entryDto.getDestinationId() != null) {
-                Destination dest = destinationRepository.findById(entryDto.getDestinationId()).orElse(null);
+                Destination dest = destinationRepository.findById(entryDto.getDestinationId())
+                        .orElseThrow(() -> new ResourceNotFoundException("Destination", entryDto.getDestinationId()));
                 entry.setDestination(dest);
             } else {
                 entry.setDestination(null);
@@ -571,73 +593,29 @@ public class TripScheduleVersionService {
                 .build();
     }
 
+    private BusinessException templateReviewRetired() {
+        return new BusinessException(HttpStatus.GONE, "TEMPLATE_REVIEW_RETIRED",
+                "Quy trình duyệt mẫu lịch trình đã dừng. Quản lý lịch trình kiểm tra và chốt mẫu; Quản lý vận hành xét duyệt kế hoạch của chuyến khởi hành riêng.");
+    }
+
     @Transactional
     public TripScheduleVersionDetailResponse submitForReview(UUID tripId, Integer versionNumber, UUID actorId) {
-        TripScheduleVersion version = getVersion(tripId, versionNumber);
-        return executeSubmitForReview(version, null, actorId);
+        throw templateReviewRetired();
     }
 
     @Transactional
     public TripScheduleVersionDetailResponse submitForReviewById(UUID versionId, Long expectedRevision, UUID actorId) {
-        TripScheduleVersion version = versionRepository.findById(versionId)
-                .orElseThrow(() -> new ResourceNotFoundException("TripScheduleVersion", versionId));
-        return executeSubmitForReview(version, expectedRevision, actorId);
-    }
-
-    private TripScheduleVersionDetailResponse executeSubmitForReview(TripScheduleVersion version, Long expectedRevision, UUID actorId) {
-        throw new BusinessException(HttpStatus.GONE, "TEMPLATE_REVIEW_RETIRED", "CRM finalizes templates without OPS review");
+        throw templateReviewRetired();
     }
 
     @Transactional
     public TripScheduleVersionDetailResponse returnToDraft(UUID tripId, Integer versionNumber, VersionReturnRequest request, UUID actorId) {
-        TripScheduleVersion version = getVersion(tripId, versionNumber);
-        return executeReturnToDraft(version, request, actorId, "REJECTION_REASON_REQUIRED");
+        throw templateReviewRetired();
     }
 
     @Transactional
     public TripScheduleVersionDetailResponse returnToDraftById(UUID versionId, VersionReturnRequest request, UUID actorId) {
-        TripScheduleVersion version = versionRepository.findById(versionId)
-                .orElseThrow(() -> new ResourceNotFoundException("TripScheduleVersion", versionId));
-        return executeReturnToDraft(version, request, actorId, "REJECTION_REASON_REQUIRED");
-    }
-
-    private TripScheduleVersionDetailResponse executeReturnToDraft(TripScheduleVersion version, VersionReturnRequest request, UUID actorId, String emptyReasonCode) {
-        if (version.getTrip().getStatus() == TripStatus.ARCHIVED) {
-            throw new BusinessException(HttpStatus.CONFLICT, "TRIP_ARCHIVED",
-                    "Không thể trả về bản nháp phiên bản của Trip đã được lưu trữ (ARCHIVED)");
-        }
-
-        if (version.getStatus() != TripScheduleVersionStatus.IN_REVIEW) {
-            throw new BusinessException(HttpStatus.CONFLICT, "INVALID_STATUS",
-                    "Chỉ có thể trả về bản nháp từ trạng thái IN_REVIEW.");
-        }
-
-        if (request.getExpectedRevision() != null && !request.getExpectedRevision().equals(version.getRevision())) {
-            throw new BusinessException(HttpStatus.CONFLICT, "STALE_REVISION",
-                    "Revision của phiên bản không khớp (expected: " + request.getExpectedRevision() + ", current: " + version.getRevision() + ")");
-        }
-
-        if (request.getRejectionReason() == null || request.getRejectionReason().isBlank()) {
-            throw new BusinessException(HttpStatus.BAD_REQUEST, emptyReasonCode,
-                    "Cần cung cấp lý do từ chối / trả về bản nháp.");
-        }
-
-        version.setStatus(TripScheduleVersionStatus.DRAFT);
-        version.setRejectionReason(request.getRejectionReason().trim());
-        version.setSubmittedRevision(null);
-        version.setUpdatedAt(Instant.now());
-
-        version = versionRepository.save(version);
-        versionRepository.flush();
-        log.info("Returned Trip {} Version {} to DRAFT with reason: {}",
-                version.getTrip().getTripCode(), version.getVersionNumber(), request.getRejectionReason());
-
-        if (auditService != null) {
-            auditService.record(actorId, "RETURN", "TripScheduleVersion", version.getVersionId(),
-                    "SUCCESS", "Returned to draft: " + request.getRejectionReason());
-        }
-
-        return mapToDetailResponse(version);
+        throw templateReviewRetired();
     }
 
     @Transactional
@@ -690,61 +668,22 @@ public class TripScheduleVersionService {
 
     @Transactional
     public TripScheduleVersionDetailResponse withdraw(UUID tripId, Integer versionNumber, VersionWithdrawRequest request, UUID actorId) {
-        TripScheduleVersion version = getVersion(tripId, versionNumber);
-        return executeWithdraw(version, request, actorId);
+        throw templateReviewRetired();
     }
 
     @Transactional
     public TripScheduleVersionDetailResponse withdrawById(UUID versionId, VersionWithdrawRequest request, UUID actorId) {
-        TripScheduleVersion version = versionRepository.findById(versionId)
-                .orElseThrow(() -> new ResourceNotFoundException("TripScheduleVersion", versionId));
-        return executeWithdraw(version, request, actorId);
-    }
-
-    private TripScheduleVersionDetailResponse executeWithdraw(TripScheduleVersion version, VersionWithdrawRequest request, UUID actorId) {
-        if (version.getTrip().getStatus() == TripStatus.ARCHIVED) {
-            throw new BusinessException(HttpStatus.CONFLICT, "TRIP_ARCHIVED",
-                    "Không thể thu hồi phiên bản của Trip đã được lưu trữ (ARCHIVED)");
-        }
-
-        if (version.getStatus() != TripScheduleVersionStatus.IN_REVIEW) {
-            throw new BusinessException(HttpStatus.CONFLICT, "INVALID_STATUS",
-                    "Chỉ có thể thu hồi phiên bản đang ở trạng thái IN_REVIEW.");
-        }
-
-        if (request != null && request.getExpectedRevision() != null && !request.getExpectedRevision().equals(version.getRevision())) {
-            throw new BusinessException(HttpStatus.CONFLICT, "STALE_REVISION",
-                    "Revision của phiên bản không khớp (expected: " + request.getExpectedRevision() + ", current: " + version.getRevision() + ")");
-        }
-
-        version.setStatus(TripScheduleVersionStatus.DRAFT);
-        version.setSubmittedRevision(null);
-        version.setSubmittedAt(null);
-        version.setUpdatedAt(Instant.now());
-
-        version = versionRepository.save(version);
-        versionRepository.flush();
-        log.info("Withdrawn Trip {} Version {} from IN_REVIEW to DRAFT by actor {}",
-                version.getTrip().getTripCode(), version.getVersionNumber(), actorId);
-
-        if (auditService != null) {
-            String detail = "Withdrawn from review" + (request != null && request.getReason() != null && !request.getReason().isBlank()
-                    ? ": " + request.getReason().trim() : "");
-            auditService.record(actorId, "WITHDRAW", "TripScheduleVersion", version.getVersionId(),
-                    "SUCCESS", detail);
-        }
-
-        return mapToDetailResponse(version);
+        throw templateReviewRetired();
     }
 
     @Deprecated
     public TripScheduleVersionDetailResponse publishVersion(UUID tripId, Integer versionNumber, UUID actorId) {
-        throw new BusinessException(HttpStatus.GONE, "TEMPLATE_REVIEW_RETIRED", "Use CRM template finalization");
+        throw templateReviewRetired();
     }
 
     @Deprecated
     public TripScheduleVersionDetailResponse publishVersionById(UUID versionId, Long expectedRevision, UUID actorId) {
-        throw new BusinessException(HttpStatus.GONE, "TEMPLATE_REVIEW_RETIRED", "Use CRM template finalization");
+        throw templateReviewRetired();
     }
 
     /** CRM finalizes its own template. This is never OPS approval of a Cruise Plan. */
@@ -753,12 +692,17 @@ public class TripScheduleVersionService {
         TripScheduleVersion version = versionRepository.findById(versionId)
                 .orElseThrow(() -> new ResourceNotFoundException("TripScheduleVersion", versionId));
         if (actorId == null) throw new BusinessException(HttpStatus.UNAUTHORIZED, "AUTH_REQUIRED", "Authentication required");
+        User approver = userRepository.findById(actorId)
+                .orElseThrow(() -> new BusinessException(HttpStatus.FORBIDDEN, "FINALIZE_ROLE_REQUIRED", "Chỉ Quản lý lịch trình được chốt mẫu lịch trình."));
+        if (!approver.hasRole(com.casms.identity.enums.Role.CRUISE_MANAGER)) {
+            throw new BusinessException(HttpStatus.FORBIDDEN, "FINALIZE_ROLE_REQUIRED", "Chỉ Quản lý lịch trình được chốt mẫu lịch trình.");
+        }
         if (version.getTrip().getStatus() == TripStatus.ARCHIVED)
             throw new BusinessException(HttpStatus.CONFLICT, "TRIP_ARCHIVED", "Archived template cannot be finalized");
         if (expectedRevision == null || !expectedRevision.equals(version.getRevision()))
             throw new BusinessException(HttpStatus.CONFLICT, "STALE_REVISION", "Expected revision is required and must match");
         if (version.getStatus() != TripScheduleVersionStatus.DRAFT)
-            throw new BusinessException(HttpStatus.CONFLICT, "VERSION_FROZEN", "Only draft templates can be finalized; withdraw legacy review first");
+            throw new BusinessException(HttpStatus.CONFLICT, "VERSION_FROZEN", "Chỉ chốt mẫu đang soạn (DRAFT). Phiên bản theo quy trình duyệt cũ được giữ nguyên để tra cứu lịch sử.");
         // Revalidate in transaction
         List<PlanViolation> violations = validateVersionInternal(version);
         List<PlanViolation> errorViolations = violations.stream()
@@ -771,11 +715,8 @@ public class TripScheduleVersionService {
                     Map.of("violations", errorViolations));
         }
 
-        User approver = null;
-        if (actorId != null) {
-            approver = userRepository.findById(actorId).orElse(null);
-        }
-
+        version.getStops().forEach(stop->{stop.setPortFacts(com.casms.ship.dto.PortFacts.capture(stop.getPort()));stop.getVisits().forEach(visit->visit.setDestinationNameSnapshot(visit.getDestination().getDestinationName()));});
+        version.getDays().forEach(day->day.setDeparturePortFacts(com.casms.ship.dto.PortFacts.capture(day.getDeparturePort())));
         version.setContentHash(computeContentHash(version));
         version.setStatus(TripScheduleVersionStatus.PUBLISHED);
         version.setPublishedBy(approver);
@@ -921,6 +862,8 @@ public class TripScheduleVersionService {
                 .reduce((first, second) -> second)
                 .orElseThrow();
 
+        LegacyTemplateContentPolicy.rejectLegacyClone(latestPublished);
+
         User creator = null;
         if (actorId != null) {
             creator = userRepository.findById(actorId).orElse(null);
@@ -965,6 +908,9 @@ public class TripScheduleVersionService {
             newStop.setClientKey(oldStop.getClientKey());
             newStop.setPort(oldStop.getPort());
             newStop.setDestination(oldStop.getDestination());
+            for(var oldVisit:oldStop.getVisits()){
+                var visit=new com.casms.trip.entity.DestinationVisit();visit.setStop(newStop);visit.setClientKey(oldVisit.getClientKey());visit.setDestination(oldVisit.getDestination());visit.setSequence(oldVisit.getSequence());newStop.getVisits().add(visit);
+            }
             newStop.setStopOrder(oldStop.getStopOrder());
             newStop.setArrivalDayNumber(oldStop.getArrivalDayNumber());
             newStop.setPlannedArrivalTime(oldStop.getPlannedArrivalTime());
@@ -1058,6 +1004,27 @@ public class TripScheduleVersionService {
         List<TripPlanDay> days = version.getDays();
         List<TripPlanStop> stops = version.getStops();
         List<TripPlanEntry> entries = version.getEntries();
+
+        Set<Integer> actualDayNumbers = days.stream().map(TripPlanDay::getDayNumber).collect(Collectors.toSet());
+        if (actualDayNumbers.size() != days.size()
+                || java.util.stream.IntStream.rangeClosed(1, days.size()).anyMatch(n -> !actualDayNumbers.contains(n))) {
+            violations.add(PlanViolation.builder().code("INVALID_DAY_SEQUENCE").severity("ERROR")
+                    .entityType("VERSION").field("days").fieldPath("days").actionHint("ADJUST_DAY_COUNT")
+                    .message("Các ngày trong lịch trình phải duy nhất và liên tiếp từ ngày 1.").build());
+        }
+
+        // Validate the built itinerary, not a duration entered again by the client.
+        if (trip.getDurationGroup() == null || !trip.getDurationGroup().isValidDays(days.size())) {
+            violations.add(PlanViolation.builder()
+                    .code("INVALID_DURATION")
+                    .severity("ERROR")
+                    .entityType("VERSION")
+                    .field("durationGroup")
+                    .fieldPath("trip.durationGroup")
+                    .actionHint("ADJUST_DAY_COUNT")
+                    .message("Số ngày trong lịch trình (" + days.size() + ") không thuộc nhóm thời lượng đã chọn.")
+                    .build());
+        }
 
         // 1. Validate Day Count
         if (days.size() != trip.getDurationDays()) {
@@ -1490,6 +1457,16 @@ public class TripScheduleVersionService {
 
         // Validate entries
         for (TripPlanEntry entry : entries) {
+            if (entry.getKind() != TripPlanEntryKind.SERVING_WINDOW
+                    && entry.getStartDayNumber() != null && entry.getEndDayNumber() != null
+                    && entry.getPlannedStartTime() != null && entry.getPlannedEndTime() != null
+                    && toTimelineMinutes(entry.getEndDayNumber(), entry.getPlannedEndTime(), true)
+                    <= toTimelineMinutes(entry.getStartDayNumber(), entry.getPlannedStartTime(), false)) {
+                violations.add(PlanViolation.builder().code("INVALID_ENTRY_TIME").severity("ERROR")
+                        .entityType("ENTRY").clientKey(entry.getClientKey()).dayNumber(entry.getStartDayNumber())
+                        .field("plannedEndTime").fieldPath("entries[clientKey=" + entry.getClientKey() + "].plannedEndTime")
+                        .actionHint("EDIT_FIELD").message("Thời điểm kết thúc hoạt động phải sau thời điểm bắt đầu.").build());
+            }
             if (entry.getStartDayNumber() == null || entry.getEndDayNumber() == null
                     || entry.getStartDayNumber() < 1 || entry.getEndDayNumber() > trip.getDurationDays()
                     || entry.getStartDayNumber() > entry.getEndDayNumber()) {
@@ -1782,7 +1759,7 @@ public class TripScheduleVersionService {
         res.setDayType(day.getDayType());
         res.setDayRole(day.getDayRole());
         res.setDeparturePortId(day.getDeparturePort() == null ? null : day.getDeparturePort().getPortId());
-        res.setDeparturePortName(day.getDeparturePort() == null ? null : day.getDeparturePort().getPortName());
+        res.setDeparturePortName(day.getVersion().getStatus()==TripScheduleVersionStatus.DRAFT ? (day.getDeparturePort()==null?null:day.getDeparturePort().getPortName()) : day.getDeparturePortFacts()==null?null:day.getDeparturePortFacts().portName());
         res.setPlannedDepartureTime(day.getPlannedDepartureTime());
         res.setShipTimeZoneId(day.getShipTimeZoneId());
         res.setTitle(day.getTitle());
@@ -1793,6 +1770,9 @@ public class TripScheduleVersionService {
     public TripPlanStopResponse mapToStopResponse(TripPlanStop stop) {
         TripPlanStopResponse res = new TripPlanStopResponse();
         res.setStopId(stop.getStopId());
+        boolean frozen=stop.getVersion().getStatus()!=TripScheduleVersionStatus.DRAFT;
+        var facts=stop.getPortFacts();res.setHistoricalPortFactsCaptured(facts!=null);
+        res.setVisits(stop.getVisits().stream().sorted(java.util.Comparator.comparing(com.casms.trip.entity.DestinationVisit::getSequence)).map(v->new com.casms.trip.dto.response.DestinationVisitResponse(v.getVisitId(),v.getClientKey(),v.getDestination().getDestinationId(),frozen?v.getDestinationNameSnapshot():v.getDestination().getDestinationName(),v.getSequence())).toList());
         res.setClientKey(stop.getClientKey());
         if (stop.getPort() != null) {
             res.setPortId(stop.getPort().getPortId());
@@ -1802,6 +1782,7 @@ public class TripScheduleVersionService {
             res.setDomesticRegion(resolveDomesticRegion(stop.getPort()));
             res.setTimeZoneId(stop.getPort().getTimeZoneId());
         }
+        if(frozen){res.setPortCode(facts==null?null:facts.portCode());res.setPortName(facts==null?null:facts.portName());res.setCountryCode(facts==null?null:facts.countryCode());res.setTimeZoneId(facts==null?null:facts.timeZoneId());res.setDomesticRegion(facts==null?null:facts.domesticRegion());}
         if (stop.getDestination() != null) {
             res.setDestinationId(stop.getDestination().getDestinationId());
             res.setDestinationName(stop.getDestination().getDestinationName());
@@ -1932,6 +1913,8 @@ public class TripScheduleVersionService {
                   .append(stop.getPort() != null ? stop.getPort().getPortId() : "").append(",")
                   .append(stop.getArrivalDayNumber()).append(",")
                   .append(stop.getDepartureDayNumber()).append(");");
+                for(var visit:stop.getVisits().stream().sorted(java.util.Comparator.comparing(com.casms.trip.entity.DestinationVisit::getSequence)).toList())
+                    sb.append("V(").append(stop.getClientKey()).append(":").append(visit.getClientKey()).append(":").append(visit.getDestination().getDestinationId()).append(":").append(visit.getSequence()).append(");");
             }
             for (TripPlanEntry entry : version.getEntries()) {
                 sb.append("E(").append(entry.getClientKey()).append(",")
@@ -1979,9 +1962,10 @@ public class TripScheduleVersionService {
                 .map(TripPlanDay::getDeparturePort).filter(Objects::nonNull).findFirst()
                 .orElse(firstStop == null ? null : firstStop.getPort());
 
+        var originFacts=v.getDays().stream().filter(d->Integer.valueOf(1).equals(d.getDayNumber())).map(TripPlanDay::getDeparturePortFacts).filter(Objects::nonNull).findFirst().orElse(firstStop==null?null:firstStop.getPortFacts());
         List<String> stopSummaries = stops.stream()
                 .filter(s -> s.getPort() != null)
-                .map(s -> String.format("%s (%s)", s.getPort().getPortName(), s.getPort().getPortCode()))
+                .map(s -> s.getPortFacts()==null?"Chưa lưu thông tin cảng tại thời điểm chốt":String.format("%s (%s)",s.getPortFacts().portName(),s.getPortFacts().portCode()))
                 .toList();
 
         return EligibleTripSourceResponse.builder()
@@ -1998,11 +1982,11 @@ public class TripScheduleVersionService {
                 .countryCodes(CountryScopeValidator.resolveAllowedCountries(trip))
                 .domesticRegions(trip != null ? trip.getDomesticRegions() : Collections.emptyList())
                 .departurePortId(originPort == null ? null : originPort.getPortId())
-                .departurePortName(originPort == null ? null : originPort.getPortName())
-                .departurePortCode(originPort == null ? null : originPort.getPortCode())
+                .departurePortName(originFacts==null?null:originFacts.portName())
+                .departurePortCode(originFacts==null?null:originFacts.portCode())
                 .returnPortId(lastStop != null && lastStop.getPort() != null ? lastStop.getPort().getPortId() : null)
-                .returnPortName(lastStop != null && lastStop.getPort() != null ? lastStop.getPort().getPortName() : null)
-                .returnPortCode(lastStop != null && lastStop.getPort() != null ? lastStop.getPort().getPortCode() : null)
+                .returnPortName(lastStop==null||lastStop.getPortFacts()==null?null:lastStop.getPortFacts().portName())
+                .returnPortCode(lastStop==null||lastStop.getPortFacts()==null?null:lastStop.getPortFacts().portCode())
                 .totalStops(stops.size())
                 .stopsSummary(stopSummaries)
                 .build();

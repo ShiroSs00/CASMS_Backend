@@ -19,16 +19,16 @@ import java.util.UUID;
 @RestController
 @RequestMapping({"/cruises/{cruiseId}/pricing-policy", "/cruise/{cruiseId}/pricing-policy", "/api/cruises/{cruiseId}/pricing-policy", "/api/cruise/{cruiseId}/pricing-policy"})
 @RequiredArgsConstructor
-@Tag(name = "Cruise Pricing Policy", description = "Quản lý chính sách giá thương mại của chuyến đi (BE-H01)")
+@Tag(name = "Cruise Pricing Policy", description = "Quản lý chính sách giá thương mại của chuyến khởi hành (BE-H01)")
 public class CruisePricingPolicyController {
 
     private final CruisePricingPolicyService pricingPolicyService;
 
-    @Operation(summary = "Xem chính sách giá của chuyến đi", description = "Truy xuất cấu hình giá, phí cảng, thuế, tiền cọc và điều khoản hủy vé")
+    @Operation(summary = "Xem chính sách giá của chuyến khởi hành", description = "Truy xuất cấu hình giá, phí cảng, thuế, tiền cọc và điều khoản hủy vé")
     @PreAuthorize("hasAnyAuthority('CRUISE_READ', 'CRUISE_UPDATE_DRAFT', 'CRUISE_OPEN_SALE', 'BOOKING_READ')")
     @GetMapping
     public ApiResponse<CruisePricingPolicyResponse> getPricingPolicy(
-            @Parameter(description = "ID chuyến đi", required = true) @PathVariable UUID cruiseId) {
+            @Parameter(description = "ID chuyến khởi hành", required = true) @PathVariable UUID cruiseId) {
         return ApiResponse.success(pricingPolicyService.getPricingPolicy(cruiseId));
     }
 
@@ -36,7 +36,7 @@ public class CruisePricingPolicyController {
     @PreAuthorize("hasRole('CRUISE_MANAGER') and hasAuthority('CRUISE_UPDATE_DRAFT')")
     @PutMapping
     public ApiResponse<CruisePricingPolicyResponse> savePricingPolicy(
-            @Parameter(description = "ID chuyến đi", required = true) @PathVariable UUID cruiseId,
+            @Parameter(description = "ID chuyến khởi hành", required = true) @PathVariable UUID cruiseId,
             @RequestBody @Valid CruisePricingPolicyRequest request,
             @AuthenticationPrincipal CasmsPrincipal principal) {
         UUID actorId = principal != null ? principal.getUserId() : null;
@@ -48,7 +48,7 @@ public class CruisePricingPolicyController {
     @PreAuthorize("hasRole('OPERATIONS_MANAGER') and hasAuthority('CRUISE_PRICING_APPROVE')")
     @PostMapping("/approve")
     public ApiResponse<CruisePricingPolicyResponse> approvePricingPolicy(
-            @Parameter(description = "ID chuyến đi", required = true) @PathVariable UUID cruiseId,
+            @Parameter(description = "ID chuyến khởi hành", required = true) @PathVariable UUID cruiseId,
             @RequestBody @Valid CruisePricingPolicyService.Review request,
             @AuthenticationPrincipal CasmsPrincipal principal) {
         UUID actorId = principal != null ? principal.getUserId() : null;

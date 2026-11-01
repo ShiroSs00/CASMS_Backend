@@ -275,7 +275,19 @@ public class TripPlanningContractTest {
                 .andExpect(jsonPath("$.data.fleetIntegrationStatus").value("DEFERRED_EXTERNAL"))
                 .andExpect(jsonPath("$.data.operatingAreas[0]").value("Vịnh Hạ Long"))
                 .andExpect(jsonPath("$.data.tripTypes", hasItems("ROUND_TRIP", "ONE_WAY")))
-                .andExpect(jsonPath("$.data.supportedPolicies", hasItem("PORT_CALL_BUFFER_30M")));
+                .andExpect(jsonPath("$.data.supportedPolicies", contains(
+                        "PORT_CALL_BUFFER_30M", "EMBARKATION_DAY_1", "DISEMBARKATION_LAST_DAY",
+                        "MAKER_CHECKER_SEPARATION", "TIME_BASIS_PORT_OR_SHIP", "DECK_CABIN_REFERENCE_POLICY")))
+                .andExpect(jsonPath("$.data.durationGroups", hasSize(2)))
+                .andExpect(jsonPath("$.data.durationGroups[*].code", contains("SHORT", "LONG")))
+                .andExpect(jsonPath("$.data.durationGroups[0].minDays").value(1))
+                .andExpect(jsonPath("$.data.durationGroups[0].maxDays").value(2))
+                .andExpect(jsonPath("$.data.durationGroups[0].defaultDays").value(1))
+                .andExpect(jsonPath("$.data.durationGroups[1].minDays").value(3))
+                .andExpect(jsonPath("$.data.durationGroups[1].maxDays").value(5))
+                .andExpect(jsonPath("$.data.durationGroups[1].defaultDays").value(3))
+                .andExpect(jsonPath("$.data.domesticRegions[*].code", contains("BAC_BO", "TRUNG_BO", "NAM_BO")))
+                .andExpect(jsonPath("$.data.countries[*].code", contains("VN", "SG", "TH", "MY", "JP")));
     }
 
     // 6. GET /trips/{tripId}/schedule-versions

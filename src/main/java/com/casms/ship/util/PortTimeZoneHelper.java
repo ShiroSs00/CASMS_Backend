@@ -21,6 +21,25 @@ public final class PortTimeZoneHelper {
 
     private PortTimeZoneHelper() {}
 
+    /** ISO country validation shared by Port and Destination writes; not a timezone default. */
+    public static String requireCountryCode(String value) {
+        String code = value == null ? "" : value.trim().toUpperCase(Locale.ROOT);
+        if (!Set.of(Locale.getISOCountries()).contains(code)) {
+            throw new BusinessException("INVALID_COUNTRY_CODE", "Chọn mã quốc gia ISO-2 hợp lệ.");
+        }
+        return code;
+    }
+
+    public static String requirePortTimeZone(String value) {
+        if (value == null || value.isBlank()) throw new BusinessException("TIME_ZONE_REQUIRED", "Chọn múi giờ cảng; hệ thống không tự gán múi giờ.");
+        String zone = value.trim();
+        if (!isValidTimeZoneId(zone) || !ZoneId.getAvailableZoneIds().contains(zone)) {
+            throw new BusinessException("INVALID_TIME_ZONE", "Chọn múi giờ IANA hợp lệ trong danh mục.");
+        }
+        return zone;
+    }
+
+
     /**
      * Múi giờ chuẩn trên tàu (Ship Base Timezone) cố định Asia/Ho_Chi_Minh (G06 / BE-04).
      */

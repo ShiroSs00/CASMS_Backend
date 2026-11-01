@@ -13,13 +13,13 @@ import java.util.UUID;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@Schema(description = "Tổng hợp tồn kho và năng lực tiếp nhận của chuyến đi (BE-10)")
+@Schema(description = "Tổng hợp tồn kho và năng lực tiếp nhận của chuyến khởi hành (BE-10)")
 public class CruiseInventorySummaryResponse {
 
-    @Schema(description = "ID chuyến đi")
+    @Schema(description = "ID chuyến khởi hành")
     private UUID cruiseId;
 
-    @Schema(description = "Mã chuyến đi")
+    @Schema(description = "Mã chuyến khởi hành")
     private String cruiseCode;
 
     @Schema(description = "ID tàu được gán")
@@ -46,10 +46,10 @@ public class CruiseInventorySummaryResponse {
     @Schema(description = "Số lượng hành khách đang giữ chỗ (Draft/Held)")
     private long heldPassengersCount;
 
-    @Schema(description = "Sức chứa còn lại của toàn bộ chuyến đi")
+    @Schema(description = "Sức chứa còn lại của toàn bộ chuyến khởi hành")
     private long remainingCapacity;
 
-    @Schema(description = "Chuyến đi còn có thể bán tiếp hay không (remainingCapacity > 0 && ít nhất 1 hạng phòng canSell)")
+    @Schema(description = "Chuyến khởi hành còn có thể bán tiếp hay không (remainingCapacity > 0 && ít nhất 1 hạng phòng canSell)")
     private boolean canSell;
 
     @Schema(description = "Số gói dịch vụ đang kích hoạt mở bán")

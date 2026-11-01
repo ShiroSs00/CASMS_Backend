@@ -34,7 +34,7 @@ public class AvailableCabinResponse {
     @Schema(description = "Tổng sức chứa của phòng", example = "2")
     private Integer capacity;
 
-    @Schema(description = "Số chỗ còn trống trong phòng cho chuyến đi này", example = "2")
+    @Schema(description = "Số chỗ còn trống trong phòng cho chuyến khởi hành này", example = "2")
     private Integer remainingCapacity;
 
     @Schema(description = "Phòng có hỗ trợ người khuyết tật không", example = "false")

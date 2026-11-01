@@ -15,7 +15,7 @@ import java.util.UUID;
 @NoArgsConstructor
 @AllArgsConstructor
 @JsonIgnoreProperties(ignoreUnknown = true)
-@Schema(description = "Yêu cầu đánh giá tác động thay đổi lịch trình, tàu hoặc cấu hình chuyến đi (C11, C17)")
+@Schema(description = "Yêu cầu đánh giá tác động thay đổi lịch trình, tàu hoặc cấu hình chuyến khởi hành (C11, C17)")
 public class CruiseChangeImpactRequest {
 
     @Schema(description = "Thời điểm khởi hành mới dự kiến")

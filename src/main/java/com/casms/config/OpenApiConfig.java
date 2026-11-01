@@ -59,18 +59,18 @@ public class OpenApiConfig {
                         new Server().url(contextPath).description("Local Development Server (Context Path)")
                 ))
                 .tags(List.of(
-                        new Tag().name("Cruise Management").description("APIs quản lý kế hoạch và vòng đời chuyến đi du thuyền (Tạo, gán tàu, duyệt, phát hành, vận hành, hủy)"),
-                        new Tag().name("Cruise Regulation Management").description("APIs quản lý và áp dụng quy định vận hành cho chuyến đi du thuyền"),
-                        new Tag().name("Cruise Stop Management").description("APIs quản lý điểm dừng trong lịch trình chuyến đi"),
+                        new Tag().name("Cruise Management").description("APIs quản lý kế hoạch và vòng đời chuyến khởi hành du thuyền (Tạo, gán tàu, duyệt, phát hành, vận hành, hủy)"),
+                        new Tag().name("Cruise Regulation Management").description("APIs quản lý và áp dụng quy định vận hành cho chuyến khởi hành du thuyền"),
+                        new Tag().name("Cruise Stop Management").description("APIs quản lý điểm dừng trong lịch trình chuyến khởi hành"),
                         new Tag().name("Ship Management").description("APIs quản lý tàu (Tạo mới, cập nhật, đổi trạng thái, kiểm tra lịch trình, sức chứa)"),
                         new Tag().name("Ship Regulation Management").description("APIs quản lý và áp dụng quy định vận hành cho tàu du lịch"),
                         new Tag().name("Deck Management").description("APIs quản lý tầng/boong tàu (Tạo mới, cập nhật, danh sách cabin, sức chứa boong)"),
                         new Tag().name("Cabin Management").description("APIs quản lý phòng/cabin (Tạo mới, cập nhật, tìm phòng trống, khóa/mở phòng, lịch sử gán)"),
                         new Tag().name("Port Management").description("APIs quản lý cảng biển (Tạo mới, cập nhật, kích hoạt, vô hiệu hóa, sẵn sàng vận hành)"),
                         new Tag().name("Destination Management").description("APIs quản lý điểm đến du lịch"),
-                        new Tag().name("Itinerary Management").description("APIs quản lý lịch trình chuyến đi du thuyền"),
-                        new Tag().name("Itinerary Day Management").description("APIs quản lý ngày trong lịch trình chuyến đi"),
-                        new Tag().name("Itinerary Change History Management").description("APIs quản lý và tra cứu lịch sử thay đổi lịch trình chuyến đi"),
+                        new Tag().name("Itinerary Management").description("APIs quản lý lịch trình chuyến khởi hành du thuyền"),
+                        new Tag().name("Itinerary Day Management").description("APIs quản lý ngày trong lịch trình chuyến khởi hành"),
+                        new Tag().name("Itinerary Change History Management").description("APIs quản lý và tra cứu lịch sử thay đổi lịch trình chuyến khởi hành"),
                         new Tag().name("Operational Regulation Management").description("APIs quản lý danh mục quy định vận hành và an toàn hàng hải"),
                         new Tag().name("Operational Issue Management").description("APIs quản lý, báo cáo và giải quyết sự cố vận hành"),
                         new Tag().name("Activities & Excursions").description("APIs hoạt động trên tàu và tham quan trên bờ"),
@@ -107,7 +107,7 @@ public class OpenApiConfig {
     @Bean
     public GroupedOpenApi shipAndCruiseApi() {
         return GroupedOpenApi.builder()
-                .group("2. Đội tàu & Chuyến đi (Fleet & Cruise)")
+                .group("2. Đội tàu & Chuyến khởi hành (Fleet & Cruise)")
                 .pathsToMatch(
                         "/cruise/**", "/cruises/**",
                         "/api/cruise/**", "/api/cruises/**",

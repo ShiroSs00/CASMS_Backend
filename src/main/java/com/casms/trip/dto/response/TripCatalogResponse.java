@@ -41,7 +41,7 @@ public class TripCatalogResponse {
     private List<CountryCatalogItem> countries = new ArrayList<>();
 
     @Builder.Default
-    @Schema(description = "Danh mục nhóm thời lượng hành trình")
+    @Schema(description = "Nhóm thời lượng: SHORT (1–2 ngày, mặc định 1), LONG (3–5 ngày, mặc định 3)")
     private List<DurationGroupCatalogItem> durationGroups = new ArrayList<>();
 
     @Data
@@ -65,6 +65,7 @@ public class TripCatalogResponse {
     @AllArgsConstructor
     @NoArgsConstructor
     public static class DurationGroupCatalogItem {
+        @Schema(description = "Mã nhóm thời lượng", allowableValues = {"SHORT", "LONG"})
         private String code;
         private String name;
         private int minDays;

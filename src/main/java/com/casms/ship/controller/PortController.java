@@ -30,6 +30,14 @@ public class
 PortController {
 
     private final PortService service;
+    @org.springframework.beans.factory.annotation.Autowired private com.casms.audit.AuditRepository directoryAudit;
+    @GetMapping("/{portId}/history")
+    @PreAuthorize("hasRole('OPERATIONS_MANAGER') and hasAuthority('PORT_READ')")
+    @Operation(summary="Lịch sử thay đổi danh mục",description="Audit thực tế của master; trước/sau khi có bằng chứng, không suy đoán lịch sử thiếu metadata.")
+    public ApiResponse<Page<com.casms.audit.AuditLog>> history(@PathVariable UUID portId,Pageable pageable){
+        service.detail(portId);return ApiResponse.success(directoryAudit.findByEntityIdOrderByOccurredAtDesc(portId,pageable));
+    }
+
 
     @Operation(summary = "Danh sách múi giờ IANA", description = "Lấy danh sách các múi giờ IANA chuẩn cho dropdown (hỗ trợ tìm kiếm theo tên hoặc mã quốc gia)")
     @PreAuthorize("permitAll()")
@@ -51,8 +59,8 @@ PortController {
         return ApiResponse.success(service.resolveTimeZoneByCountry(countryCode));
     }
 
-    @Operation(summary = "Tạo cảng mới", description = "Đăng ký cảng biển mới vào hệ thống")
-    @PreAuthorize("hasAuthority('PORT_CREATE')")
+    @Operation(summary = "Tạo cảng mới", description = "OPS tạo Port UUID local từ kết quả Geocoding được chọn; latitude/longitude/coordinateSource bắt buộc. ID ngoài chỉ là metadata, không unique. Country/timezone nghiệp vụ được xác nhận riêng; audit atomic.")
+    @PreAuthorize("hasRole('OPERATIONS_MANAGER') and hasAuthority('PORT_CREATE')")
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<PortResponse> create(@RequestBody @Valid PortCreateRequest request) {
@@ -95,8 +103,8 @@ PortController {
         return ApiResponse.success(service.detail(portId));
     }
 
-    @Operation(summary = "Cập nhật cảng", description = "Cập nhật thông tin cảng (tên, tọa độ, múi giờ)")
-    @PreAuthorize("hasAuthority('PORT_UPDATE')")
+    @Operation(summary = "Cập nhật cảng", description = "PATCH không đổi tọa độ giữ nguyên coordinateSource, kể cả legacy null. Đổi tọa độ phải gửi đủ latitude, longitude và coordinateSource mới; server gán recordedAt. Không dùng timezone Geocoding để ghi đè timeZoneId. Audit trước/sau atomic.")
+    @PreAuthorize("hasRole('OPERATIONS_MANAGER') and hasAuthority('PORT_UPDATE')")
     @PatchMapping("/{portId}")
     public ApiResponse<PortResponse> update(
             @Parameter(description = "ID của cảng", required = true) @PathVariable UUID portId,
@@ -104,8 +112,8 @@ PortController {
         return ApiResponse.success(service.update(portId, request));
     }
 
-    @Operation(summary = "Xóa cảng chưa sử dụng", description = "Xóa cảng nếu cảng chưa được gán cho bất kỳ điểm dừng chuyến đi nào")
-    @PreAuthorize("hasAuthority('PORT_DELETE_UNUSED')")
+    @Operation(summary = "Xóa cảng chưa sử dụng", description = "Xóa cảng nếu cảng chưa được gán cho bất kỳ điểm dừng chuyến khởi hành nào")
+    @PreAuthorize("hasRole('OPERATIONS_MANAGER') and hasAuthority('PORT_DELETE_UNUSED')")
     @DeleteMapping("/{portId}/unused")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public ApiResponse<Void> deleteUnused(
@@ -115,7 +123,7 @@ PortController {
     }
 
     @Operation(summary = "Kích hoạt cảng", description = "Chuyển trạng thái cảng sang ACTIVE")
-    @PreAuthorize("hasAuthority('PORT_ACTIVATE')")
+    @PreAuthorize("hasRole('OPERATIONS_MANAGER') and hasAuthority('PORT_ACTIVATE')")
     @PostMapping("/{portId}/activate")
     public ApiResponse<PortResponse> activate(
             @Parameter(description = "ID của cảng", required = true) @PathVariable UUID portId) {
@@ -123,7 +131,7 @@ PortController {
     }
 
     @Operation(summary = "Vô hiệu hóa cảng", description = "Chuyển trạng thái cảng sang INACTIVE")
-    @PreAuthorize("hasAuthority('PORT_DEACTIVATE')")
+    @PreAuthorize("hasRole('OPERATIONS_MANAGER') and hasAuthority('PORT_DEACTIVATE')")
     @PostMapping("/{portId}/deactivate")
     public ApiResponse<PortResponse> deactivate(
             @Parameter(description = "ID của cảng", required = true) @PathVariable UUID portId) {

@@ -26,13 +26,13 @@ public class BookingDetailResponse {
     private BookingStatus bookingStatus;
 
     // Thông tin chuyến đi
-    @Schema(description = "ID chuyến đi")
+    @Schema(description = "ID chuyến khởi hành")
     private UUID cruiseId;
 
-    @Schema(description = "Mã chuyến đi", example = "CRUISE-2026-001")
+    @Schema(description = "Mã chuyến khởi hành", example = "CRUISE-2026-001")
     private String cruiseCode;
 
-    @Schema(description = "Tên chuyến đi", example = "Hành trình Vịnh Hạ Long 3N2Đ")
+    @Schema(description = "Tên chuyến khởi hành", example = "Hành trình Vịnh Hạ Long 3N2Đ")
     private String cruiseName;
 
     @Schema(description = "Tên tàu", example = "CASMS Serenade of the Seas")
