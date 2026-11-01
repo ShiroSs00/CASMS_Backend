@@ -19,7 +19,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 import java.util.UUID;
 
-@Tag(name = "Guidance Sessions", description = "Quản lý các buổi phổ cập thông tin, hướng dẫn an toàn cứu sinh trước chuyến đi")
+@Tag(name = "Guidance Sessions", description = "Quản lý các buổi phổ cập thông tin, hướng dẫn an toàn cứu sinh trước chuyến khởi hành")
 @RestController
 @RequestMapping("/checkin/guidance-sessions")
 @RequiredArgsConstructor
@@ -27,7 +27,7 @@ public class GuidanceSessionController {
 
     private final GuidanceSessionService guidanceSessionService;
 
-    @Operation(summary = "Tạo buổi phổ cập thông tin trước chuyến", description = "Lên lịch buổi hướng dẫn an toàn, cứu sinh hoặc quy định chuyến đi cho hành khách")
+    @Operation(summary = "Tạo buổi phổ cập thông tin trước chuyến", description = "Lên lịch buổi hướng dẫn an toàn, cứu sinh hoặc quy định chuyến khởi hành cho hành khách")
     @PreAuthorize("hasRole('OPERATIONS_MANAGER') and hasAuthority('CRUISE_READ')")
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
@@ -36,11 +36,11 @@ public class GuidanceSessionController {
         throw new com.casms.common.exception.BusinessException(HttpStatus.GONE,"GUIDANCE_SCOPED_API_REQUIRED","Use the Cruise-scoped guidance API with window, content and capacity");
     }
 
-    @Operation(summary = "Danh sách các buổi phổ cập theo chuyến đi", description = "Lấy tất cả các buổi hướng dẫn được thiết lập cho một chuyến đi cụ thể")
+    @Operation(summary = "Danh sách các buổi phổ cập theo chuyến khởi hành", description = "Lấy tất cả các buổi hướng dẫn được thiết lập cho một chuyến khởi hành cụ thể")
     @PreAuthorize("permitAll()")
     @GetMapping("/cruise/{cruiseId}")
     public ApiResponse<List<GuidanceSessionResponse>> listByCruise(
-            @Parameter(description = "ID chuyến đi", required = true) @PathVariable UUID cruiseId) {
+            @Parameter(description = "ID chuyến khởi hành", required = true) @PathVariable UUID cruiseId) {
         return ApiResponse.success(guidanceSessionService.listByCruise(cruiseId));
     }
 

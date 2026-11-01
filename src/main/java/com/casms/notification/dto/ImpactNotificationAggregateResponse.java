@@ -16,10 +16,10 @@ import java.util.UUID;
 @Schema(description = "Báo cáo tổng hợp an toàn về tiến độ phát thông báo tác động (BE-19 Safe Aggregate, không lộ PII)")
 public class ImpactNotificationAggregateResponse {
 
-    @Schema(description = "ID chuyến đi")
+    @Schema(description = "ID chuyến khởi hành")
     private UUID cruiseId;
 
-    @Schema(description = "Mã chuyến đi")
+    @Schema(description = "Mã chuyến khởi hành")
     private String cruiseCode;
 
     @Schema(description = "Tổng số booking bị ảnh hưởng bởi thay đổi")

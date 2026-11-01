@@ -58,7 +58,8 @@ public class LegacyTripScheduleVersionController {
                 versionService.saveDraft(tripId, versionNumber, request, actorId));
     }
 
-    @Operation(summary = "Gửi phê duyệt phiên bản", description = "Gửi phiên bản từ DRAFT sang IN_REVIEW.")
+    @Operation(summary = "Template Review đã dừng", deprecated = true, description = "Endpoint tương thích cũ; luôn trả 410 TEMPLATE_REVIEW_RETIRED sau kiểm tra xác thực/quyền, không đổi trạng thái hoặc revision. CRM dùng endpoint finalize; OPS xét duyệt kế hoạch chuyến qua /cruise-plans.")
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "410", description = "TEMPLATE_REVIEW_RETIRED — dữ liệu lịch sử giữ nguyên")
     @PreAuthorize("hasAuthority('TRIP_PLAN_SUBMIT')")
     @PostMapping("/{versionNumber}/submit")
     public ApiResponse<TripScheduleVersionDetailResponse> submitForReview(
@@ -70,20 +71,22 @@ public class LegacyTripScheduleVersionController {
                 versionService.submitForReview(tripId, versionNumber, actorId));
     }
 
-    @Operation(summary = "Trả về bản nháp", description = "Từ chối duyệt và trả phiên bản từ IN_REVIEW về DRAFT (bắt buộc kèm lý do từ chối)")
+    @Operation(summary = "Template Review đã dừng", deprecated = true, description = "Endpoint tương thích cũ; luôn trả 410 TEMPLATE_REVIEW_RETIRED sau kiểm tra xác thực/quyền, không đổi trạng thái hoặc revision. CRM dùng endpoint finalize; OPS xét duyệt kế hoạch chuyến qua /cruise-plans.")
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "410", description = "TEMPLATE_REVIEW_RETIRED — dữ liệu lịch sử giữ nguyên")
     @PreAuthorize("hasAuthority('TRIP_PLAN_REVIEW')")
     @PostMapping("/{versionNumber}/return-to-draft")
     public ApiResponse<TripScheduleVersionDetailResponse> returnToDraft(
             @Parameter(description = "ID của Trip", required = true) @PathVariable UUID tripId,
             @Parameter(description = "Số thứ tự phiên bản", required = true) @PathVariable Integer versionNumber,
-            @Valid @RequestBody VersionReturnRequest request,
+            @RequestBody(required = false) VersionReturnRequest request,
             @AuthenticationPrincipal CasmsPrincipal principal) {
         UUID actorId = principal != null ? principal.getUserId() : null;
         return ApiResponse.success("Returned version to draft successfully",
                 versionService.returnToDraft(tripId, versionNumber, request, actorId));
     }
 
-    @Operation(summary = "Phê duyệt xuất bản (Maker-Checker)", description = "Phê duyệt phiên bản từ IN_REVIEW sang PUBLISHED.")
+    @Operation(summary = "Template Review đã dừng", deprecated = true, description = "Endpoint tương thích cũ; luôn trả 410 TEMPLATE_REVIEW_RETIRED sau kiểm tra xác thực/quyền, không đổi trạng thái hoặc revision. CRM dùng endpoint finalize; OPS xét duyệt kế hoạch chuyến qua /cruise-plans.")
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "410", description = "TEMPLATE_REVIEW_RETIRED — dữ liệu lịch sử giữ nguyên")
     @PreAuthorize("hasAuthority('TRIP_PLAN_REVIEW')")
     @PostMapping("/{versionNumber}/publish")
     public ApiResponse<TripScheduleVersionDetailResponse> publishVersion(
@@ -97,7 +100,8 @@ public class LegacyTripScheduleVersionController {
                 versionService.publishVersion(tripId, versionNumber, principal.getUserId()));
     }
 
-    @Operation(summary = "Thu hồi phiên bản đang chờ duyệt (Withdraw from Review)", description = "Thu hồi phiên bản từ IN_REVIEW về DRAFT.")
+    @Operation(summary = "Template Review đã dừng", deprecated = true, description = "Endpoint tương thích cũ; luôn trả 410 TEMPLATE_REVIEW_RETIRED sau kiểm tra xác thực/quyền, không đổi trạng thái hoặc revision. CRM dùng endpoint finalize; OPS xét duyệt kế hoạch chuyến qua /cruise-plans.")
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "410", description = "TEMPLATE_REVIEW_RETIRED — dữ liệu lịch sử giữ nguyên")
     @PreAuthorize("hasAuthority('TRIP_PLAN_SUBMIT') or hasAuthority('TRIP_PLAN_WRITE')")
     @PostMapping("/{versionNumber}/withdraw")
     public ApiResponse<TripScheduleVersionDetailResponse> withdraw(

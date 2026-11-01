@@ -115,34 +115,11 @@ class PortDestinationTimeZoneServiceTest {
     }
 
     @Test
-    @DisplayName("PortService.create: Tự động suy luận múi giờ Asia/Tokyo khi tạo cảng ở Nhật Bản mà không cần nhập timeZoneId")
-    void testCreatePortAutoResolvesJapanTimeZone() {
-        PortCreateRequest request = new PortCreateRequest();
-        request.setPortCode("JPYOK");
-        request.setPortName("Yokohama Osanbashi Terminal");
-        request.setCountryCode("JP");
-        request.setTimeZoneId(null); // Không nhập múi giờ
-        request.setLatitude(new BigDecimal("35.4522"));
-        request.setLongitude(new BigDecimal("139.6486"));
-
-        when(portRepository.existsByPortCode("JPYOK")).thenReturn(false);
-        when(portRepository.save(any(Port.class))).thenAnswer(invocation -> {
-            Port p = invocation.getArgument(0);
-            p.setPortId(UUID.randomUUID());
-            p.setCreatedAt(Instant.now());
-            p.setUpdatedAt(Instant.now());
-            return p;
-        });
-
-        PortResponse response = portService.create(request);
-
-        assertNotNull(response);
-        assertEquals("JPYOK", response.getPortCode());
-        assertEquals("JP", response.getCountryCode());
-        assertEquals("Asia/Tokyo", response.getTimeZoneId());
-        assertEquals("+09:00", response.getUtcOffset());
-        assertEquals("Asia/Tokyo (UTC+09:00)", response.getFormattedTimeZone());
-        assertNotNull(response.getCurrentLocalTime());
+    @DisplayName("PortService.create requires explicit business timezone and never defaults by country")
+    void testCreatePortRequiresBusinessTimeZone() {
+        PortCreateRequest request=new PortCreateRequest();request.setPortCode("JPYOK");request.setPortName("Yokohama");request.setCountryCode("JP");
+        var error=assertThrows(com.casms.common.exception.BusinessException.class,()->portService.create(request));
+        assertEquals("TIME_ZONE_REQUIRED",error.getCode());verify(portRepository,never()).saveAndFlush(any());
     }
 
     @Test

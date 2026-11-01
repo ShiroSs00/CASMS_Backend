@@ -22,6 +22,7 @@ import java.util.*;
 public class CruiseMainflowService {
     private final JdbcTemplate jdbc;
     private final ObjectMapper mapper;
+    private final PortWindowEvaluator portWindowEvaluator;
     private final org.springframework.beans.factory.ObjectProvider<CruiseService> cruiseServices;
 
     @org.springframework.beans.factory.annotation.Autowired
@@ -48,7 +49,7 @@ public class CruiseMainflowService {
     public record View(UUID cruiseId, long revision, String planStatus, Long submittedRevision, String cruiseCode, String submittedByName, UUID submittedBy, Instant submittedAt,
                        UUID reviewedBy, Instant reviewedAt, String reason, JsonNode submittedSnapshot,
                        String fingerprint, String readyStatus, UUID readyBy, Instant readyAt,
-                       List<String> planBlockers, List<String> readyBlockers, List<String> allowedActions, Windows windows, List<ProgramIssue> programIssues) {}
+                       List<String> planBlockers, List<String> readyBlockers, List<String> allowedActions, Windows windows, List<ProgramIssue> programIssues, List<com.casms.ship.dto.PortWindowContract.Check> portWindowChecks) {}
     public record ProgramIssue(String code,String kind,UUID itemId,String name,Instant startsAt,Instant endsAt,Instant earliestStart,Instant latestEnd,String timeZoneId) {}
 
     private Map<String,Object> cruise(UUID id, boolean lock) {
@@ -75,9 +76,11 @@ public class CruiseMainflowService {
         Map<String,Object> out = new TreeMap<>();
         String c=jdbc.queryForObject("SELECT (to_jsonb(c)-ARRAY['status','revision','created_at','updated_at','opened_for_sale_at','opened_for_sale_by','sale_event_identity','sale_scope','stopped_at','stopped_by','stop_reason','stop_evidence','stop_scope','stop_event_identity','actual_departure_datetime','actual_return_datetime','departure_actor_id','completion_actor_id','closure_notes','preparation_coordinator_id'])::text FROM \"Cruise\" c WHERE cruise_id=?",String.class,id);
         out.put("cruise",json(c));
-        out.put("itinerary",json(aggregate("SELECT to_jsonb(i)-ARRAY['status','approval_inherited','approved_at','approved_by_user_id','content_modified_after_materialization','created_at','updated_at'] FROM \"Itinerary\" i WHERE cruise_id=?",id)));
+        out.put("itinerary",json(aggregate("SELECT to_jsonb(i)-ARRAY['status','approval_inherited','approved_at','approved_by_user_id','content_modified_after_materialization','created_at','updated_at']-(CASE WHEN i.departure_port_facts IS NULL AND i.return_port_facts IS NULL THEN ARRAY['departure_port_facts','return_port_facts'] ELSE ARRAY[]::text[] END) FROM \"Itinerary\" i WHERE cruise_id=?",id)));
         out.put("days",json(aggregate("SELECT to_jsonb(d) FROM \"ItineraryDay\" d JOIN \"Itinerary\" i USING(itinerary_id) WHERE i.cruise_id=?",id)));
-        out.put("stops",json(aggregate("SELECT to_jsonb(s)-ARRAY['actual_arrival','actual_departure','updated_at'] FROM \"CruiseStop\" s JOIN \"Itinerary\" i USING(itinerary_id) WHERE i.cruise_id=?",id)));
+        out.put("stops",json(aggregate("SELECT to_jsonb(s)-ARRAY['actual_arrival','actual_departure','updated_at']-(CASE WHEN s.port_facts IS NULL AND s.source_stop_id IS NULL AND s.port_window_evidence IS NULL THEN ARRAY['port_facts','source_stop_id','port_window_evidence'] ELSE ARRAY[]::text[] END) FROM \"CruiseStop\" s JOIN \"Itinerary\" i USING(itinerary_id) WHERE i.cruise_id=?",id)));
+        String visits=aggregate("SELECT to_jsonb(v) FROM \"CruiseDestinationVisit\" v JOIN \"CruiseStop\" s USING(cruise_stop_id) JOIN \"Itinerary\" i USING(itinerary_id) WHERE i.cruise_id=?",id);
+        if(!"[]".equals(visits))out.put("destinationVisits",json(visits));
         out.put("activities",json(aggregate("SELECT to_jsonb(a)-ARRAY['updated_at','status'] FROM \"OnboardActivity\" a WHERE cruise_id=?",id)));
         out.put("excursions",json(aggregate("SELECT to_jsonb(e)-ARRAY['updated_at','status'] FROM \"ShoreExcursion\" e JOIN \"CruiseStop\" s USING(cruise_stop_id) JOIN \"Itinerary\" i USING(itinerary_id) WHERE i.cruise_id=?",id)));
         out.put("policy",json(aggregate("SELECT to_jsonb(p)-ARRAY['status','approved_at','approved_by','created_at','updated_at','revision','submitted_by','submitted_at','reviewed_by','reviewed_at','decision_reason','submitted_snapshot','snapshot_hash'] FROM \"CruisePricingPolicy\" p WHERE cruise_id=? AND policy_number=(SELECT max(policy_number) FROM \"CruisePricingPolicy\" WHERE cruise_id=p.cruise_id)",id)));
@@ -118,6 +121,9 @@ public class CruiseMainflowService {
     }
     private List<String> planBlockers(UUID id, Map<String,Object> c,List<ProgramIssue> issues) {
         List<String> b=new ArrayList<>();
+        var windowChecks=portWindowEvaluator.cruise(id);
+        if(windowChecks.isEmpty())b.add("WINDOW_NOT_CONFIGURED");
+        else windowChecks.stream().filter(check->!"PASS".equals(check.status())).map(com.casms.ship.dto.PortWindowContract.Check::code).distinct().forEach(b::add);
         if(c.get("ship_id")==null)b.add("SHIP_REQUIRED");
         // Source-less legacy Cruises keep their actual schedule; never invent a template link.
         if(c.get("source_trip_id")!=null&&c.get("source_version_id")==null)b.add("SOURCE_VERSION_REQUIRED");
@@ -199,7 +205,7 @@ public class CruiseMainflowService {
         return new View(id,revision(r),status(r),(Long)r.get("submitted_revision"),(String)c.get("cruise_code"),submitterNames.isEmpty()?null:submitterNames.getFirst(),(UUID)r.get("submitted_by"),time(r.get("submitted_at")),
                 (UUID)r.get("reviewed_by"),time(r.get("reviewed_at")),(String)r.get("reason"),json(r.get("snapshot")),
                 fingerprint,readyStatus,(UUID)r.get("ready_by"),time(r.get("ready_at")),planIssues,b,actions,
-                new Windows(((Number)c.get("revision")).longValue(),time(c.get("booking_opens_at")),time(c.get("booking_closes_at")),time(c.get("guidance_opens_at")),time(c.get("guidance_closes_at"))),issues);
+                new Windows(((Number)c.get("revision")).longValue(),time(c.get("booking_opens_at")),time(c.get("booking_closes_at")),time(c.get("guidance_opens_at")),time(c.get("guidance_closes_at"))),issues,portWindowEvaluator.cruise(id));
     }
     public List<View> queue() {
         return jdbc.queryForList("SELECT cruise_id FROM \"CruisePlanReview\" WHERE status='SUBMITTED' ORDER BY submitted_at",UUID.class).stream().map(this::get).toList();
@@ -261,6 +267,7 @@ public class CruiseMainflowService {
             }
             case "WITHDRAW" -> {if(!"SUBMITTED".equals(before))throw conflict();pricingServices.getObject().recallForPlan(id,actor,false);after="WITHDRAWN";}
             case "APPROVE","REJECT","REQUEST_REVISION" -> {
+                if("APPROVE".equals(action))portWindowEvaluator.requireCruise(id);
                 boolean reopening="REQUEST_REVISION".equals(action)&&"APPROVED".equals(before)&&(!get(id).readyBlockers().isEmpty()||pricingReturned(id));
                 if(!"SUBMITTED".equals(before)&&!reopening)throw conflict();
                 if(Objects.equals(actor,r.get("submitted_by")))throw new BusinessException(HttpStatus.FORBIDDEN,"SELF_APPROVAL_FORBIDDEN","Submitter cannot review its own plan");
@@ -295,7 +302,7 @@ public class CruiseMainflowService {
         if(auth==null||!(auth.getPrincipal() instanceof com.casms.security.principal.CasmsPrincipal principal)
                 ||!Objects.equals(actor,principal.getUserId())||!principal.hasRole(com.casms.identity.enums.Role.OPERATIONS_MANAGER)||!principal.hasAuthority("CRUISE_VALIDATE"))
             throw new BusinessException(HttpStatus.FORBIDDEN,"READY_ACTION_FORBIDDEN","Only authenticated OPS may confirm Ready");
-        cruise(id,true);expected(row(id),request.expectedRevision());View evaluated=get(id);
+        cruise(id,true);expected(row(id),request.expectedRevision());portWindowEvaluator.requireCruise(id);View evaluated=get(id);
         if(!Objects.equals(request.fingerprint(),evaluated.fingerprint()))throw new BusinessException(HttpStatus.CONFLICT,"READINESS_FINGERPRINT_STALE","Readiness changed");
         if(!evaluated.readyBlockers().isEmpty())throw new BusinessException(HttpStatus.UNPROCESSABLE_ENTITY,"READY_CHECK_FAILED","Readiness checks incomplete",Map.of("blockers",evaluated.readyBlockers()));
         jdbc.update("UPDATE \"CruisePlanReview\" SET ready_by=?,ready_at=now(),ready_fingerprint=?,ready_evidence=?::jsonb,revision=revision+1 WHERE cruise_id=?",actor,evaluated.fingerprint(),planSnapshot(id),id);

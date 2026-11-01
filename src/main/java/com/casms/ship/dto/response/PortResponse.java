@@ -43,6 +43,10 @@ public class PortResponse {
     @Schema(description = "Vĩ độ", example = "20.8449")
     private BigDecimal latitude;
 
+    @Schema(description = "Nguồn tọa độ địa danh; không phải xác minh vị trí chính xác của cảng. Null cho dữ liệu legacy; externalLocationId độc lập với portId.")
+    private com.casms.ship.dto.PortCoordinateSource coordinateSource;
+
+
     @Schema(description = "Kinh độ", example = "106.6881")
     private BigDecimal longitude;
 

@@ -24,6 +24,9 @@ public class DestinationResponse {
     @Schema(description = "Mô tả điểm đến", example = "Vịnh Hạ Long - Di sản thiên nhiên thế giới")
     private String description;
 
+    @Schema(description = "Miền nội địa hiện có: BAC_BO, TRUNG_BO, NAM_BO; không suy từ Port")
+    private String domesticRegion;
+
     @Schema(description = "Trạng thái điểm đến", example = "ACTIVE")
     private DestinationStatus status;
 

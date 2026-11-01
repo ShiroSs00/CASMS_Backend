@@ -14,7 +14,7 @@ import java.util.UUID;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@Schema(description = "Thông tin chi tiết một phân hệ chuẩn bị của chuyến đi")
+@Schema(description = "Thông tin chi tiết một phân hệ chuẩn bị của chuyến khởi hành")
 public class CruisePreparationSectionResponse {
 
     @Schema(description = "Mã phân hệ chuẩn bị", example = "TECHNICAL_NAUTICAL")

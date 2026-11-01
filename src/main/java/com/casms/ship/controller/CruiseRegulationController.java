@@ -20,7 +20,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
-@Tag(name = "Cruise Regulation Management", description = "Quản lý và áp dụng quy định vận hành cho chuyến đi du thuyền (Cruise)")
+@Tag(name = "Cruise Regulation Management", description = "Quản lý và áp dụng quy định vận hành cho chuyến khởi hành du thuyền (Cruise)")
 @RestController
 @RequestMapping({"/cruises/{cruiseId}/regulations", "/cruise/{cruiseId}/regulations"})
 @RequiredArgsConstructor
@@ -28,7 +28,7 @@ public class CruiseRegulationController {
 
     private final CruiseRegulationService cruiseRegulationService;
 
-    @Operation(summary = "Gán quy định cho chuyến đi", description = "Áp dụng một quy định vận hành cụ thể vào chuyến đi du thuyền")
+    @Operation(summary = "Gán quy định cho chuyến khởi hành", description = "Áp dụng một quy định vận hành cụ thể vào chuyến khởi hành du thuyền")
     @PreAuthorize("hasAuthority('CRUISE_REGULATION_ASSIGN')")
     @PostMapping
     public ResponseEntity<ApiResponse<CruiseRegulationResponse>> assign(
@@ -41,7 +41,7 @@ public class CruiseRegulationController {
                 .body(ApiResponse.success(cruiseRegulationService.assign(request)));
     }
 
-    @Operation(summary = "Kiểm tra xung đột trước khi gán cho chuyến đi", description = "Precheck xung đột quy định trước khi thực hiện gán cho chuyến đi")
+    @Operation(summary = "Kiểm tra xung đột trước khi gán cho chuyến khởi hành", description = "Precheck xung đột quy định trước khi thực hiện gán cho chuyến khởi hành")
     @PreAuthorize("hasAuthority('CRUISE_REGULATION_READ')")
     @PostMapping("/precheck")
     public ResponseEntity<ApiResponse<RegulationConflictResponse>> precheck(
@@ -51,7 +51,7 @@ public class CruiseRegulationController {
                 cruiseRegulationService.precheck(cruiseId, request.getRegulationId())));
     }
 
-    @Operation(summary = "Danh sách quy định của chuyến đi", description = "Lấy danh sách tất cả các quy định đang áp dụng cho chuyến đi")
+    @Operation(summary = "Danh sách quy định của chuyến khởi hành", description = "Lấy danh sách tất cả các quy định đang áp dụng cho chuyến khởi hành")
     @PreAuthorize("hasAuthority('CRUISE_REGULATION_READ')")
     @GetMapping
     public ResponseEntity<ApiResponse<List<CruiseRegulationResponse>>> list(
@@ -59,7 +59,7 @@ public class CruiseRegulationController {
         return ResponseEntity.ok(ApiResponse.success(cruiseRegulationService.list(cruiseId)));
     }
 
-    @Operation(summary = "Snapshot quy định hiệu lực của chuyến đi", description = "Lấy snapshot các quy định hiệu lực trực tiếp và kế thừa của chuyến đi")
+    @Operation(summary = "Snapshot quy định hiệu lực của chuyến khởi hành", description = "Lấy snapshot các quy định hiệu lực trực tiếp và kế thừa của chuyến khởi hành")
     @PreAuthorize("hasAuthority('CRUISE_REGULATION_READ')")
     @GetMapping("/effective")
     public ResponseEntity<ApiResponse<RegulationAssignmentSnapshotResponse>> getEffectiveSnapshot(
@@ -69,7 +69,7 @@ public class CruiseRegulationController {
                 cruiseRegulationService.getEffectiveSnapshot(cruiseId, at)));
     }
 
-    @Operation(summary = "Gỡ quy định khỏi chuyến đi", description = "Gỡ bỏ áp dụng quy định khỏi chuyến đi")
+    @Operation(summary = "Gỡ quy định khỏi chuyến khởi hành", description = "Gỡ bỏ áp dụng quy định khỏi chuyến khởi hành")
     @PreAuthorize("hasAuthority('CRUISE_REGULATION_REMOVE')")
     @DeleteMapping("/{regulationId}")
     public ResponseEntity<Void> remove(

@@ -50,7 +50,7 @@ public class TripScheduleVersionController {
         return ApiResponse.success(versionService.getVersionDetailById(versionId));
     }
 
-    @Operation(summary = "Lưu toàn bộ nội dung cây lịch trình", description = "Atomic save tree: days[] + stops[] + entries[]. Đối chiếu optimistic lock qua expectedRevision.")
+    @Operation(summary = "Lưu toàn bộ nội dung cây lịch trình", description = "Atomic save tree: days[] + stops[] + entries[]. Đối chiếu expectedRevision. SERVING_WINDOW lịch sử bị bỏ khỏi payload vẫn được giữ nguyên; tạo/sửa hoặc đổi kind trả 422 LEGACY_SERVING_WINDOW_READ_ONLY. Xóa stop đang được legacy tham chiếu trả 409 LEGACY_TEMPLATE_REFERENCE_LOCKED. Giao dịch bị từ chối không đổi dữ liệu/revision.")
     @PreAuthorize("hasAuthority('TRIP_PLAN_WRITE')")
     @PutMapping("/{versionId}/content")
     public ApiResponse<TripScheduleVersionDetailResponse> saveContent(
@@ -70,7 +70,8 @@ public class TripScheduleVersionController {
         return ApiResponse.success(versionService.validateVersion(versionId));
     }
 
-    @PreAuthorize("hasAuthority('TRIP_PLAN_WRITE') and hasAuthority('CRUISE_CREATE')")
+    @Operation(summary = "CRM chốt mẫu lịch trình", description = "Chỉ CRUISE_MANAGER; DRAFT, expectedRevision phải khớp; BE kiểm tra lại cấu trúc và thời lượng. NEEDS_SAILING_DATE là kiểm tra hoãn, không chặn chốt mẫu. Kết quả PUBLISHED bất biến; không phải OPS duyệt Cruise Plan.")
+    @PreAuthorize("hasRole('CRUISE_MANAGER') and hasAuthority('TRIP_PLAN_WRITE') and hasAuthority('TRIP_PLAN_VALIDATE')")
     @PostMapping("/{versionId}/finalize")
     public ApiResponse<TripScheduleVersionDetailResponse> finalizeTemplate(
             @PathVariable UUID versionId, @RequestBody ActionRevisionRequest request,
@@ -79,7 +80,8 @@ public class TripScheduleVersionController {
                 principal != null ? principal.getUserId() : null));
     }
 
-    @Operation(summary = "Gửi phê duyệt phiên bản", description = "Chuyển trạng thái từ DRAFT sang IN_REVIEW sau khi qua khâu thẩm định tự động.")
+    @Operation(summary = "Template Review đã dừng", deprecated = true, description = "Endpoint tương thích cũ; luôn trả 410 TEMPLATE_REVIEW_RETIRED sau kiểm tra xác thực/quyền, không đổi trạng thái hoặc revision. CRM dùng endpoint finalize; OPS xét duyệt kế hoạch chuyến qua /cruise-plans.")
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "410", description = "TEMPLATE_REVIEW_RETIRED — dữ liệu lịch sử giữ nguyên")
     @PreAuthorize("hasAuthority('TRIP_PLAN_SUBMIT')")
     @PostMapping("/{versionId}/submit")
     public ApiResponse<TripScheduleVersionDetailResponse> submitForReview(
@@ -92,12 +94,13 @@ public class TripScheduleVersionController {
                 versionService.submitForReviewById(versionId, expectedRevision, actorId));
     }
 
-    @Operation(summary = "Trả về bản nháp", description = "Người đánh giá từ chối duyệt và trả về DRAFT (bắt buộc kèm lý do từ chối)")
+    @Operation(summary = "Template Review đã dừng", deprecated = true, description = "Endpoint tương thích cũ; luôn trả 410 TEMPLATE_REVIEW_RETIRED sau kiểm tra xác thực/quyền, không đổi trạng thái hoặc revision. CRM dùng endpoint finalize; OPS xét duyệt kế hoạch chuyến qua /cruise-plans.")
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "410", description = "TEMPLATE_REVIEW_RETIRED — dữ liệu lịch sử giữ nguyên")
     @PreAuthorize("hasAuthority('TRIP_PLAN_REVIEW')")
     @PostMapping("/{versionId}/return")
     public ApiResponse<TripScheduleVersionDetailResponse> returnToDraft(
             @Parameter(description = "ID của phiên bản lịch trình", required = true) @PathVariable UUID versionId,
-            @Valid @RequestBody VersionReturnRequest request,
+            @RequestBody(required = false) VersionReturnRequest request,
             @AuthenticationPrincipal CasmsPrincipal principal) {
         UUID actorId = principal != null ? principal.getUserId() : null;
         return ApiResponse.success("Returned version to draft successfully",
@@ -116,7 +119,8 @@ public class TripScheduleVersionController {
                 versionService.cancelDraftById(versionId, request, actorId));
     }
 
-    @Operation(summary = "Thu hồi phiên bản đang chờ duyệt (Withdraw from Review)", description = "Thu hồi phiên bản từ IN_REVIEW về DRAFT để tiếp tục chỉnh sửa trước khi người duyệt thẩm định, giải phóng khỏi hàng đợi duyệt.")
+    @Operation(summary = "Template Review đã dừng", deprecated = true, description = "Endpoint tương thích cũ; luôn trả 410 TEMPLATE_REVIEW_RETIRED sau kiểm tra xác thực/quyền, không đổi trạng thái hoặc revision. CRM dùng endpoint finalize; OPS xét duyệt kế hoạch chuyến qua /cruise-plans.")
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "410", description = "TEMPLATE_REVIEW_RETIRED — dữ liệu lịch sử giữ nguyên")
     @PreAuthorize("hasAuthority('TRIP_PLAN_SUBMIT') or hasAuthority('TRIP_PLAN_WRITE')")
     @PostMapping("/{versionId}/withdraw")
     public ApiResponse<TripScheduleVersionDetailResponse> withdraw(
@@ -128,7 +132,8 @@ public class TripScheduleVersionController {
                 versionService.withdrawById(versionId, request, actorId));
     }
 
-    @Operation(summary = "Phê duyệt xuất bản (Maker-Checker)", description = "Phê duyệt phiên bản từ IN_REVIEW sang PUBLISHED. Tự động kiểm tra thẩm định lại và quy tắc Maker-Checker.")
+    @Operation(summary = "Template Review đã dừng", deprecated = true, description = "Endpoint tương thích cũ; luôn trả 410 TEMPLATE_REVIEW_RETIRED sau kiểm tra xác thực/quyền, không đổi trạng thái hoặc revision. CRM dùng endpoint finalize; OPS xét duyệt kế hoạch chuyến qua /cruise-plans.")
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "410", description = "TEMPLATE_REVIEW_RETIRED — dữ liệu lịch sử giữ nguyên")
     @PreAuthorize("hasAuthority('TRIP_PLAN_REVIEW')")
     @PostMapping("/{versionId}/publish")
     public ApiResponse<TripScheduleVersionDetailResponse> publishVersion(
@@ -143,7 +148,7 @@ public class TripScheduleVersionController {
                 versionService.publishVersionById(versionId, expectedRevision, principal.getUserId()));
     }
 
-    @Operation(summary = "Hàng đợi duyệt lịch trình (Review Queue)", description = "Lấy danh sách các phiên bản lịch trình đang ở trạng thái IN_REVIEW chờ duyệt, hỗ trợ phân trang và sắp xếp.")
+    @Operation(summary = "Tra cứu hồ sơ Template Review lịch sử", deprecated = true, description = "Chỉ đọc dữ liệu IN_REVIEW lịch sử để tương thích; không phải hàng đợi thao tác OPS trong workflow hiện hành. OPS xét duyệt kế hoạch chuyến tại /cruise-plans.")
     @PreAuthorize("hasAuthority('TRIP_PLAN_REVIEW')")
     @GetMapping("/review-queue")
     public ApiResponse<Page<TripReviewQueueItemResponse>> getReviewQueue(Pageable pageable) {

@@ -31,7 +31,7 @@ import java.util.List;
 import com.casms.trip.service.IdempotencyService;
 import java.util.UUID;
 
-@Tag(name = "Booking & Contracts", description = "Quản lý đặt chỗ chuyến đi, hành khách tự chọn phòng và hợp đồng")
+@Tag(name = "Booking & Contracts", description = "Quản lý đặt chỗ chuyến khởi hành, hành khách tự chọn phòng và hợp đồng")
 @RestController
 @RequestMapping("/booking")
 @RequiredArgsConstructor
@@ -41,10 +41,10 @@ public class BookingController {
     private final IdempotencyService idempotencyService;
 
     @Operation(summary = "Tra cứu phòng trống để tự chọn (Công khai / Khách vãng lai)",
-               description = "Tìm kiếm danh sách phòng trống trên tàu của chuyến đi để hành khách xem sơ đồ và tự chọn phòng (Không yêu cầu đăng nhập)")
+               description = "Tìm kiếm danh sách phòng trống trên tàu của chuyến khởi hành để hành khách xem sơ đồ và tự chọn phòng (Không yêu cầu đăng nhập)")
     @GetMapping("/available-cabins")
     public ApiResponse<List<AvailableCabinResponse>> getAvailableCabins(
-            @Parameter(description = "ID của chuyến đi", required = true) @RequestParam UUID cruiseId,
+            @Parameter(description = "ID của chuyến khởi hành", required = true) @RequestParam UUID cruiseId,
             @Parameter(description = "ID tầng/boong (tùy chọn)") @RequestParam(required = false) UUID deckId,
             @Parameter(description = "Hạng phòng (INTERIOR, OCEAN_VIEW, BALCONY, SUITE)") @RequestParam(required = false) CabinType cabinType,
             @Parameter(description = "Sức chứa tối thiểu yêu cầu") @RequestParam(required = false) Integer minCapacity) {
@@ -55,7 +55,7 @@ public class BookingController {
             description = "Dùng cabinId trong kết quả để gửi POST /booking; modelNodeKey và transforms dùng để gắn phòng được chọn vào GLB")
     @GetMapping("/3d-available-cabins")
     public ApiResponse<List<AvailableCabinResponse>> getThreeDimensionalAvailableCabins(
-            @Parameter(description = "ID chuyến đi", required = true) @RequestParam UUID cruiseId,
+            @Parameter(description = "ID chuyến khởi hành", required = true) @RequestParam UUID cruiseId,
             @Parameter(description = "ID deck (tùy chọn)") @RequestParam(required = false) UUID deckId,
             @Parameter(description = "Loại cabin (tùy chọn)") @RequestParam(required = false) CabinType cabinType,
             @Parameter(description = "Sức chứa còn trống tối thiểu") @RequestParam(required = false) Integer minCapacity) {
@@ -63,7 +63,7 @@ public class BookingController {
     }
 
     @Operation(summary = "Yêu cầu báo giá chính thức (BE-11 Authoritative Quote API)",
-               description = "Tính toán báo giá chi tiết theo chính sách thương mại của chuyến đi, bao gồm cabin, gói tour, phụ phí cảng, thuế và lịch thanh toán. Báo giá có TTL 30 phút.")
+               description = "Tính toán báo giá chi tiết theo chính sách thương mại của chuyến khởi hành, bao gồm cabin, gói tour, phụ phí cảng, thuế và lịch thanh toán. Báo giá có TTL 30 phút.")
     @PostMapping("/quotes")
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<BookingQuoteResponse> createQuote(
@@ -86,7 +86,7 @@ public class BookingController {
         return ApiResponse.success(bookingService.getQuote(quoteId, principal, guestToken));
     }
 
-    @Operation(summary = "Tạo đặt chỗ chuyến đi (Hỗ trợ cả khách chưa đăng nhập và đã đăng nhập - BE-16 / BE-H03 Idempotency)",
+    @Operation(summary = "Tạo đặt chỗ chuyến khởi hành (Hỗ trợ cả khách chưa đăng nhập và đã đăng nhập - BE-16 / BE-H03 Idempotency)",
                description = "Hành khách tự chọn cabin cụ thể và gói dịch vụ. Bắt buộc Idempotency-Key header đối với khách hàng để chống duplicate booking khi mạng chập chờn hoặc retry timeout.")
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
@@ -134,7 +134,7 @@ public class BookingController {
     @PreAuthorize("hasAnyAuthority('BOOKING_READ')")
     @GetMapping
     public ApiResponse<Page<BookingSummaryResponse>> list(
-            @Parameter(description = "Lọc theo chuyến đi") @RequestParam(required = false) UUID cruiseId,
+            @Parameter(description = "Lọc theo chuyến khởi hành") @RequestParam(required = false) UUID cruiseId,
             @Parameter(description = "Lọc theo trạng thái (Draft, Confirmed, Cancelled)") @RequestParam(required = false) BookingStatus status,
             Pageable pageable,
             @AuthenticationPrincipal CasmsPrincipal principal) {

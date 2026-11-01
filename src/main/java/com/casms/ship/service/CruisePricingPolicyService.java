@@ -44,7 +44,7 @@ public class CruisePricingPolicyService {
 
         CruisePricingPolicy policy = pricingPolicyRepository.findByCruise_CruiseId(cruiseId)
                 .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "PRICING_POLICY_NOT_FOUND",
-                        "Chính sách giá cho chuyến đi " + cruise.getCruiseCode() + " chưa được thiết lập"));
+                        "Chính sách giá cho chuyến khởi hành " + cruise.getCruiseCode() + " chưa được thiết lập"));
 
         return toResponse(policy);
     }

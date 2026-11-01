@@ -96,7 +96,7 @@ public class CruisePackageService {
         // BE-H14: Không bật package nếu whole Cruise đang stop
         if (cruise.getStoppedAt() != null && (cruise.getStopScope() == null || "WHOLE_CRUISE".equalsIgnoreCase(cruise.getStopScope()) || "CRUISE".equalsIgnoreCase(cruise.getStopScope()))) {
             throw new BusinessException(HttpStatus.UNPROCESSABLE_ENTITY, "CRUISE_STOPPED",
-                    "Không thể kích hoạt gói tour khi chuyến đi đang bị tạm dừng bán toàn bộ (whole cruise is stopped)");
+                    "Không thể kích hoạt gói tour khi chuyến khởi hành đang bị tạm dừng bán toàn bộ (whole cruise is stopped)");
         }
 
         CruiseTourPackage ctp = cruiseTourPackageRepository
@@ -122,7 +122,7 @@ public class CruisePackageService {
     public void validatePackageSaleScopeGate(Cruise cruise, CruiseTourPackage ctp) {
         if (cruise.getStatus() == CruiseStatus.CANCELLED || cruise.getStatus() == CruiseStatus.COMPLETED) {
             throw new BusinessException(HttpStatus.UNPROCESSABLE_ENTITY, "CRUISE_INVALID_STATUS",
-                    "Không thể mở bán gói tour cho chuyến đi đã hủy hoặc đã hoàn tất");
+                    "Không thể mở bán gói tour cho chuyến khởi hành đã hủy hoặc đã hoàn tất");
         }
 
         TourPackage pkg = ctp.getTourPackage();
@@ -150,7 +150,7 @@ public class CruisePackageService {
             if ((pkg.getStartDate() != null && dep.isBefore(pkg.getStartDate())) ||
                 (pkg.getEndDate() != null && ret.isAfter(pkg.getEndDate()))) {
                 throw new BusinessException(HttpStatus.UNPROCESSABLE_ENTITY, "PACKAGE_DATE_MISMATCH",
-                        "Gói tour không có hiệu lực trong toàn bộ khoảng thời gian của chuyến đi");
+                        "Gói tour không có hiệu lực trong toàn bộ khoảng thời gian của chuyến khởi hành");
             }
         }
 

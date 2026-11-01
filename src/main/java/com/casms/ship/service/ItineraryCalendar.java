@@ -16,7 +16,7 @@ public final class ItineraryCalendar {
     public static void validate(Cruise cruise, LocalDate start, LocalDate end) {
         if (!Objects.equals(start(cruise), start) || !Objects.equals(end(cruise), end))
             throw new BusinessException(HttpStatus.UNPROCESSABLE_ENTITY,"ITINERARY_CRUISE_DATES_MISMATCH",
-                    "Ngày đầu phải là ngày khởi hành và ngày cuối phải là ngày kết thúc lần khởi hành theo giờ tàu Việt Nam.");
+                    "Ngày đầu phải là ngày khởi hành và ngày cuối phải là ngày kết thúc chuyến khởi hành theo giờ tàu Việt Nam.");
     }
     public static LocalDate day(Itinerary itinerary, Integer number, LocalDate requested) {
         if (number == null || number < 1) throw new BusinessException("INVALID_DAY_NUMBER", "Day number must be positive");

@@ -46,6 +46,9 @@ public class OnboardActivity {
     @Column(name = "end_time", nullable = false)
     private Instant endTime;
 
+    @Column(name = "meeting_point", length = 255)
+    private String meetingPoint;
+
     @Column(name = "location", length = 250)
     private String location;
 

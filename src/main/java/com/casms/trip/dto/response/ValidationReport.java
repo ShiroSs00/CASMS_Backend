@@ -23,7 +23,7 @@ public class ValidationReport {
     @Schema(description = "Revision của phiên bản lúc thẩm định")
     private Long revision;
 
-    @Schema(description = "Kết luận bản kế hoạch có đủ điều kiện để gửi phê duyệt hay không")
+    @Schema(description = "Kết luận cấu trúc bản kế hoạch đủ điều kiện chốt mẫu bởi CRM; không có nghĩa các deferredChecks đã đạt")
     private Boolean validForSubmit;
 
     @Builder.Default

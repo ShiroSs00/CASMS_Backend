@@ -50,7 +50,7 @@ public class CruisePreparationController {
     @PreAuthorize("hasAuthority('CRUISE_PREPARATION_READ')")
     @GetMapping
     public ApiResponse<CruisePreparationResponse> getPreparation(
-            @Parameter(description = "ID chuyến đi", required = true) @PathVariable UUID cruiseId,
+            @Parameter(description = "ID chuyến khởi hành", required = true) @PathVariable UUID cruiseId,
             @AuthenticationPrincipal CasmsPrincipal principal) {
         return ApiResponse.success(preparationService.getPreparationDashboard(cruiseId, principal));
     }
@@ -59,7 +59,7 @@ public class CruisePreparationController {
     @PreAuthorize("hasRole('CRUISE_MANAGER') and hasAuthority('CRUISE_PREPARATION_SUBMIT')")
     @PostMapping("/{sectionCode}/submit")
     public ApiResponse<CruisePreparationSectionResponse> submitSection(
-            @Parameter(description = "ID chuyến đi", required = true) @PathVariable UUID cruiseId,
+            @Parameter(description = "ID chuyến khởi hành", required = true) @PathVariable UUID cruiseId,
             @Parameter(description = "Mã phân hệ chuẩn bị", required = true) @PathVariable String sectionCode,
             @RequestBody @Valid CruisePreparationSubmitRequest request,
             @AuthenticationPrincipal CasmsPrincipal principal) {
@@ -75,7 +75,7 @@ public class CruisePreparationController {
     @PreAuthorize("hasRole('OPERATIONS_MANAGER') and hasAuthority('CRUISE_PREPARATION_CONFIRM')")
     @PostMapping("/{sectionCode}/confirm")
     public ApiResponse<CruisePreparationSectionResponse> confirmSection(
-            @Parameter(description = "ID chuyến đi", required = true) @PathVariable UUID cruiseId,
+            @Parameter(description = "ID chuyến khởi hành", required = true) @PathVariable UUID cruiseId,
             @Parameter(description = "Mã phân hệ chuẩn bị", required = true) @PathVariable String sectionCode,
             @RequestBody(required = false) CruisePreparationConfirmRequest request,
             @AuthenticationPrincipal CasmsPrincipal principal) {
@@ -89,7 +89,7 @@ public class CruisePreparationController {
     @PreAuthorize("hasRole('OPERATIONS_MANAGER') and hasAuthority('CRUISE_PREPARATION_CONFIRM')")
     @PostMapping("/{sectionCode}/return")
     public ApiResponse<CruisePreparationSectionResponse> returnSection(
-            @Parameter(description = "ID chuyến đi", required = true) @PathVariable UUID cruiseId,
+            @Parameter(description = "ID chuyến khởi hành", required = true) @PathVariable UUID cruiseId,
             @Parameter(description = "Mã phân hệ chuẩn bị", required = true) @PathVariable String sectionCode,
             @RequestBody @Valid CruisePreparationReturnRequest request,
             @AuthenticationPrincipal CasmsPrincipal principal) {

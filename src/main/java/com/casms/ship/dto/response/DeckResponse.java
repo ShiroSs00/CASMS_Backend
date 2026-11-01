@@ -7,25 +7,25 @@ import java.time.Instant;
 import java.util.UUID;
 
 @Data
-@Schema(description = "Thông tin tầng/boong tàu")
+@Schema(description = "Thông tin boong tàu")
 public class DeckResponse {
 
-    @Schema(description = "ID duy nhất của tầng (UUID)", example = "3fa85f64-5717-4562-b3fc-2c963f66afa6")
+    @Schema(description = "ID duy nhất của boong (UUID)", example = "3fa85f64-5717-4562-b3fc-2c963f66afa6")
     private UUID deckId;
 
     @Schema(description = "ID của tàu sở hữu", example = "3fa85f64-5717-4562-b3fc-2c963f66afa6")
     private UUID shipId;
 
-    @Schema(description = "Số thứ tự tầng", example = "3")
+    @Schema(description = "Số thứ tự boong", example = "3")
     private Integer deckNumber;
 
-    @Schema(description = "Tên hiển thị của tầng", example = "Promenade Deck")
+    @Schema(description = "Tên hiển thị của boong", example = "Promenade Deck")
     private String deckName;
 
     private boolean serviceLevel;
     private String modelMetadataJson;
 
-    @Schema(description = "Hệ số giá tầng boong (mặc định 1.00)", example = "1.15")
+    @Schema(description = "Hệ số điều chỉnh giá cơ sở theo boong; nhân giá cơ sở theo loại phòng, 1.00 giữ nguyên giá cơ sở.", example = "1.15")
     private BigDecimal priceMultiplier;
 
     private Double modelPositionX;

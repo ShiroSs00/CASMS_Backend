@@ -36,6 +36,13 @@ public class IdempotencyReservationService {
         private final IdempotencyRecord record;
     }
 
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public ReservationResult reserveCruiseKey(UUID actorId, String key, String hash) {
+        int inserted = repository.reserveCruise(UUID.randomUUID(), actorId, key, hash);
+        ReservationResult current = checkStatus(actorId, "CREATE_CRUISE", key, hash);
+        return inserted == 1 ? new ReservationResult(ReservationStatus.RESERVED, current.getRecord()) : current;
+    }
+
     public ReservationResult reserveKey(UUID actorId, String operation, String idempotencyKey, String requestHash) {
         ReservationResult existing = checkStatus(actorId, operation, idempotencyKey, requestHash);
         if (existing.getStatus() != ReservationStatus.RESERVED) {
@@ -79,8 +86,9 @@ public class IdempotencyReservationService {
                 || existing.getResultingId() != null) {
             return new ReservationResult(ReservationStatus.CACHED, existing);
         }
-        // If the record has no result and is older than 60 seconds, treat it as abandoned/dead and allow re-execution
-        if (existing.getCreatedAt() != null && existing.getCreatedAt().isBefore(Instant.now().minusSeconds(60))) {
+        // Never expire an uncertain CREATE_CRUISE request: elapsed time does not prove the Cruise was not committed.
+        // Other operations keep their existing stale-reservation policy.
+        if (!"CREATE_CRUISE".equals(operation) && existing.getCreatedAt() != null && existing.getCreatedAt().isBefore(Instant.now().minusSeconds(60))) {
             log.warn("Stale idempotency record detected for key {} (operation: {}, created: {}). Releasing stale key.",
                     idempotencyKey, operation, existing.getCreatedAt());
             try {
@@ -102,6 +110,15 @@ public class IdempotencyReservationService {
             record.setResultingId(resultingId);
             repository.saveAndFlush(record);
         });
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void completeKeyInCurrentTransaction(UUID idempotencyId, String responsePayload, UUID resultingId) {
+        IdempotencyRecord record = repository.findById(idempotencyId)
+                .orElseThrow(() -> new IllegalStateException("Cruise idempotency reservation missing"));
+        record.setResponsePayload(responsePayload);
+        record.setResultingId(resultingId);
+        repository.saveAndFlush(record);
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)

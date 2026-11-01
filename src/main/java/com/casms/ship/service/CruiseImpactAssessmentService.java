@@ -121,7 +121,7 @@ public class CruiseImpactAssessmentService {
             Instant effectiveRet = (newRet != null ? newRet : cruise.getReturnDatetime());
             if (effectiveDep != null && effectiveRet != null &&
                     cruiseRepository.existsOverlappingCruisesExcluding(newShipId, cruiseId, effectiveDep, effectiveRet)) {
-                blockers.add("Tàu mới bị trùng lịch vận hành với chuyến đi khác trong khoảng thời gian này");
+                blockers.add("Tàu mới bị trùng lịch vận hành với chuyến khởi hành khác trong khoảng thời gian này");
             }
 
             if (newShip.getTotalCapacity() < bookedPassengers) {
@@ -188,7 +188,7 @@ public class CruiseImpactAssessmentService {
                     .targetId(cruiseId.toString())
                     .category("PASSENGER_NOTIFICATION")
                     .title("Thông báo dời lịch khởi hành cho hành khách")
-                    .description("Chuyến đi thay đổi ngày khởi hành từ " + cruise.getDepartureDatetime() + " sang " + newDep + ". Cần liên hệ thông báo hành khách.")
+                    .description("Chuyến khởi hành thay đổi ngày khởi hành từ " + cruise.getDepartureDatetime() + " sang " + newDep + ". Cần liên hệ thông báo hành khách.")
                     .status("PENDING")
                     .severity("WARNING")
                     .evidence("Số booking: " + affectedBookings + ", Số hành khách: " + bookedPassengers)
@@ -306,7 +306,7 @@ public class CruiseImpactAssessmentService {
         // BE-R07: Resolve kiểm task thuộc Cruise trong URL
         if (cruiseId != null && !task.getCruise().getCruiseId().equals(cruiseId)) {
             throw new BusinessException("TASK_CRUISE_MISMATCH",
-                    "Công việc " + taskId + " không thuộc chuyến đi được chỉ định trong URL (" + cruiseId + ")");
+                    "Công việc " + taskId + " không thuộc chuyến khởi hành được chỉ định trong URL (" + cruiseId + ")");
         }
 
         // BE-R07: Task đã xong không ghi đè lại

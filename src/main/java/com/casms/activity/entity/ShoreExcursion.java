@@ -49,6 +49,16 @@ public class ShoreExcursion {
     @Column(name = "planned_return_time", nullable = false)
     private Instant plannedReturnTime;
 
+    @Column(name = "location_text", length = 255)
+    private String locationText;
+
+    @Column(name = "notes", columnDefinition = "TEXT")
+    private String notes;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "destination_id")
+    private com.casms.ship.entity.Destination destination;
+
     @Column(name = "meeting_point", nullable = false, length = 250)
     private String meetingPoint;
 

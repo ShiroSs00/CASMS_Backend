@@ -183,7 +183,7 @@ public class CruiseRegulationService {
                     .severity("BLOCKING")
                     .canProceed(false)
                     .code("REGULATION_CONFLICT_BLOCKING")
-                    .message("Quy định xung đột giá trị với quy định hiện có trên chuyến đi.")
+                    .message("Quy định xung đột giá trị với quy định hiện có trên chuyến khởi hành.")
                     .comparedWith(comparedItems)
                     .build();
         }

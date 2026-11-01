@@ -24,6 +24,7 @@ public class PlanningSourcePortResponse {
 
     @Schema(description = "Tên cảng biển", example = "Saigon Hiep Phuoc Cruise Port")
     private String portName;
+    private String localityName;
 
     @Schema(description = "Mã quốc gia ISO", example = "VN")
     private String countryCode;

@@ -60,6 +60,21 @@ class MigrationChecksumLockTest {
         }
     }
 
+    @Test
+    void migrationVersionsAreUniqueWithinEachFlywayLocation() throws IOException {
+        var resolver=new PathMatchingResourcePatternResolver();
+        for(String location:LOCATIONS){
+            var scriptsByVersion=new java.util.HashMap<String,String>();
+            for(Resource resource:resolver.getResources("classpath*:db/"+location+"/*.sql")){
+                String script=resource.getFilename();
+                if(script==null||!script.startsWith("V"))continue;
+                String version=script.substring(1,script.indexOf("__"));
+                String previous=scriptsByVersion.putIfAbsent(version,script);
+                assertTrue(previous==null,()->"Duplicate Flyway version "+version+": "+previous+" and "+script);
+            }
+        }
+    }
+
     private static Properties loadLock() throws IOException {
         Properties lock = new Properties();
         try (InputStream in = MigrationChecksumLockTest.class.getResourceAsStream("/flyway/migration-checksums.properties")) {

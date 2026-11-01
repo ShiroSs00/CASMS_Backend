@@ -14,19 +14,19 @@ import java.util.UUID;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@Schema(description = "Báo cáo tổng hợp tình trạng chuẩn bị liên phòng ban cho chuyến đi (BE-07 / Mainflow S3)")
+@Schema(description = "Báo cáo tổng hợp tình trạng chuẩn bị liên phòng ban cho chuyến khởi hành (BE-07 / Mainflow S3)")
 public class CruisePreparationResponse {
 
-    @Schema(description = "ID chuyến đi")
+    @Schema(description = "ID chuyến khởi hành")
     private UUID cruiseId;
 
-    @Schema(description = "Mã chuyến đi", example = "CR-0001")
+    @Schema(description = "Mã chuyến khởi hành", example = "CR-0001")
     private String cruiseCode;
 
-    @Schema(description = "Tên chuyến đi")
+    @Schema(description = "Tên chuyến khởi hành")
     private String cruiseName;
 
-    @Schema(description = "Trạng thái chuyến đi hiện tại (DRAFT, PUBLISHED, ...)", example = "DRAFT")
+    @Schema(description = "Trạng thái chuyến khởi hành hiện tại (DRAFT, PUBLISHED, ...)", example = "DRAFT")
     private String cruiseStatus;
 
     private UUID coordinatorUserId;

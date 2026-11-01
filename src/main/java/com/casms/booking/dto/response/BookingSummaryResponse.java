@@ -19,13 +19,13 @@ public class BookingSummaryResponse {
     @Schema(description = "Mã tham chiếu đặt chỗ", example = "BK-20261019-9B3E")
     private String bookingReference;
 
-    @Schema(description = "ID chuyến đi")
+    @Schema(description = "ID chuyến khởi hành")
     private UUID cruiseId;
 
-    @Schema(description = "Mã chuyến đi", example = "CRUISE-2026-001")
+    @Schema(description = "Mã chuyến khởi hành", example = "CRUISE-2026-001")
     private String cruiseCode;
 
-    @Schema(description = "Tên chuyến đi", example = "Hành trình Vịnh Hạ Long 3N2Đ")
+    @Schema(description = "Tên chuyến khởi hành", example = "Hành trình Vịnh Hạ Long 3N2Đ")
     private String cruiseName;
 
     @Schema(description = "Trạng thái đặt chỗ", example = "Draft")
@@ -40,7 +40,7 @@ public class BookingSummaryResponse {
     @Schema(description = "Số lượng hành khách", example = "2")
     private Integer passengerCount;
 
-    @Schema(description = "Thời điểm khởi hành chuyến đi")
+    @Schema(description = "Thời điểm khởi hành chuyến khởi hành")
     private Instant departureDatetime;
 
     @Schema(description = "Thời điểm tạo đặt chỗ")

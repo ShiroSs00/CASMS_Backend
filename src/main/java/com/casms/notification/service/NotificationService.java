@@ -96,9 +96,9 @@ public class NotificationService {
                 continue;
             }
 
-            String title = String.format("[CASMS] Thông báo điều chỉnh chuyến đi %s (%s)",
+            String title = String.format("[CASMS] Thông báo điều chỉnh chuyến khởi hành %s (%s)",
                     cruise.getCruiseName(), cruise.getCruiseCode());
-            String content = String.format("Kính gửi Quý khách,\nChuyến đi %s (Mã đặt chỗ: %s) có sự điều chỉnh lịch trình khởi hành sang thời gian mới: %s.\nQuý khách có thể yêu cầu đổi lịch hoặc hoàn tiền theo điều kiện hợp đồng đã ký kết.\nTrân trọng cảm ơn.",
+            String content = String.format("Kính gửi Quý khách,\nChuyến khởi hành %s (Mã đặt chỗ: %s) có sự điều chỉnh lịch trình khởi hành sang thời gian mới: %s.\nQuý khách có thể yêu cầu đổi lịch hoặc hoàn tiền theo điều kiện hợp đồng đã ký kết.\nTrân trọng cảm ơn.",
                     cruise.getCruiseName(), booking.getBookingReference(), cruise.getDepartureDatetime());
 
             // 1. Lưu bản ghi Outbox đáng tin cậy với Channel Semantics rõ ràng

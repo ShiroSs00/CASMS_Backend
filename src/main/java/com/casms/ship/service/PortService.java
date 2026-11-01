@@ -32,11 +32,15 @@ public class PortService {
     private final PortRepository portRepository;
     private final DestinationRepository destinationRepository;
 
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.casms.audit.AuditService auditService;
+
     @Transactional
     public PortResponse create(PortCreateRequest request) {
         log.info("Creating new port with code: {}", request.getPortCode());
 
-        if (portRepository.existsByPortCode(request.getPortCode())) {
+        String portCode = request.getPortCode().trim().toUpperCase(java.util.Locale.ROOT);
+        if (portRepository.existsByPortCode(portCode)) {
             throw new BusinessException("PORT_CODE_EXISTS", "Port code already exists: " + request.getPortCode());
         }
 
@@ -46,35 +50,25 @@ public class PortService {
                     .orElseThrow(() -> new ResourceNotFoundException("Destination", request.getDestinationId()));
         }
 
-        String rawCountryCode = request.getCountryCode() != null ? request.getCountryCode().trim().toUpperCase() : null;
-        if (rawCountryCode == null && destination != null) {
-            rawCountryCode = destination.getCountryCode();
-        }
-        final String effectiveCountryCode = rawCountryCode;
-
-        String timeZoneId = request.getTimeZoneId();
-        if (timeZoneId == null || timeZoneId.isBlank()) {
-            timeZoneId = PortTimeZoneHelper.resolveDefaultTimeZoneByCountry(effectiveCountryCode)
-                    .orElseThrow(() -> new BusinessException("TIME_ZONE_REQUIRED",
-                            "Không thể tự động suy luận múi giờ cho quốc gia: " + effectiveCountryCode + ". Vui lòng nhập timeZoneId theo chuẩn IANA."));
-            log.info("Auto-resolved timezone for port {} ({}) -> {}", request.getPortCode(), effectiveCountryCode, timeZoneId);
-        } else if (!PortTimeZoneHelper.isValidTimeZoneId(timeZoneId)) {
-            throw new BusinessException("INVALID_TIME_ZONE", "Múi giờ IANA không hợp lệ: " + timeZoneId);
-        }
+        String effectiveCountryCode = PortTimeZoneHelper.requireCountryCode(request.getCountryCode());
+        String timeZoneId = PortTimeZoneHelper.requirePortTimeZone(request.getTimeZoneId());
 
         Port port = new Port();
-        port.setPortCode(request.getPortCode().toUpperCase());
-        port.setPortName(request.getPortName());
+        port.setPortCode(portCode);
+        port.setPortName(request.getPortName().trim());
         port.setCountryCode(effectiveCountryCode);
         port.setTimeZoneId(timeZoneId);
         port.setDestination(destination);
         port.setDescription(request.getDescription());
         port.setLatitude(request.getLatitude());
         port.setLongitude(request.getLongitude());
+        validateCoordinates(request.getLatitude(), request.getLongitude());
+        port.setCoordinateSource(newCoordinateSource(request.getCoordinateSource()));
         port.setLocationType(request.getLocationType() != null ? request.getLocationType() : PortLocationType.PORT);
         port.setStatus(request.getStatus() != null ? request.getStatus() : PortStatus.ACTIVE);
 
-        port = portRepository.save(port);
+        port = portRepository.saveAndFlush(port);
+        auditService.recordDirectoryMutation("Port", port.getPortId(), "CREATE", java.util.Map.of(), snapshot(port));
         return mapToResponse(port);
     }
 
@@ -142,9 +136,24 @@ public class PortService {
     @Transactional
     public PortResponse update(UUID portId, PortUpdateRequest request) {
         Port port = getPortById(portId);
+        var before = snapshot(port);
+        boolean geographic = request.getCoordinateSource() != null
+                || (request.getLatitude() != null && !sameNumber(request.getLatitude(), port.getLatitude()))
+                || (request.getLongitude() != null && !sameNumber(request.getLongitude(), port.getLongitude()));
+        if (geographic) {
+            validateCoordinates(request.getLatitude(), request.getLongitude());
+            var selectedSource = newCoordinateSource(request.getCoordinateSource());
+            port.setLatitude(request.getLatitude());
+            port.setLongitude(request.getLongitude());
+            port.setCoordinateSource(selectedSource);
+        }
+        // An unrelated PATCH (including unchanged legacy coordinates) keeps existing provenance verbatim.
+        PortTimeZoneHelper.requireCountryCode(port.getCountryCode());
+        PortTimeZoneHelper.requirePortTimeZone(request.getTimeZoneId() == null ? port.getTimeZoneId() : request.getTimeZoneId());
 
         if (request.getPortName() != null) {
-            port.setPortName(request.getPortName());
+            if (request.getPortName().isBlank()) throw new BusinessException("INVALID_PORT_NAME", "Tên cảng không được để trống.");
+            port.setPortName(request.getPortName().trim());
         }
         if (request.getDescription() != null) {
             port.setDescription(request.getDescription());
@@ -154,23 +163,13 @@ public class PortService {
                     .orElseThrow(() -> new ResourceNotFoundException("Destination", request.getDestinationId()));
             port.setDestination(destination);
         }
-        if (request.getLatitude() != null) {
-            port.setLatitude(request.getLatitude());
-        }
-        if (request.getLongitude() != null) {
-            port.setLongitude(request.getLongitude());
-        }
-        if (request.getTimeZoneId() != null) {
-            if (!PortTimeZoneHelper.isValidTimeZoneId(request.getTimeZoneId())) {
-                throw new BusinessException("INVALID_TIME_ZONE", "Múi giờ IANA không hợp lệ: " + request.getTimeZoneId());
-            }
-            port.setTimeZoneId(request.getTimeZoneId());
-        }
+        if (request.getTimeZoneId() != null) port.setTimeZoneId(PortTimeZoneHelper.requirePortTimeZone(request.getTimeZoneId()));
         if (request.getLocationType() != null) {
             port.setLocationType(request.getLocationType());
         }
 
-        port = portRepository.save(port);
+        port = portRepository.saveAndFlush(port);
+        auditService.recordDirectoryMutation("Port", port.getPortId(), "UPDATE", before, snapshot(port));
         return mapToResponse(port);
     }
 
@@ -178,24 +177,30 @@ public class PortService {
     public void deleteUnused(UUID portId) {
         Port port = getPortById(portId);
 
-        // Check if port is used in any cruise stops
-        // This would require checking CruiseStopRepository
-        // For now, we allow deletion
+        if (portRepository.hasDirectoryReferences(portId)) {
+            throw new BusinessException(org.springframework.http.HttpStatus.CONFLICT, "PORT_IN_USE", "Cảng đang được lịch trình hoặc chuyến khởi hành tham chiếu; không thể xóa.");
+        }
 
+        var before = snapshot(port);
         portRepository.delete(port);
+        auditService.recordDirectoryMutation("Port", portId, "DELETE_UNUSED", before, java.util.Map.of());
         log.info("Deleted unused port: {}", portId);
     }
 
     @Transactional
     public PortResponse activate(UUID portId) {
         Port port = getPortById(portId);
+        var before = snapshot(port);
 
         if (port.getStatus() == PortStatus.ACTIVE) {
             return mapToResponse(port);
         }
 
+        PortTimeZoneHelper.requireCountryCode(port.getCountryCode());
+        PortTimeZoneHelper.requirePortTimeZone(port.getTimeZoneId());
         port.setStatus(PortStatus.ACTIVE);
-        port = portRepository.save(port);
+        port = portRepository.saveAndFlush(port);
+        auditService.recordDirectoryMutation("Port", port.getPortId(), "ACTIVATE", before, snapshot(port));
         log.info("Activated port: {}", portId);
         return mapToResponse(port);
     }
@@ -203,6 +208,7 @@ public class PortService {
     @Transactional
     public PortResponse deactivate(UUID portId) {
         Port port = getPortById(portId);
+        var before = snapshot(port);
 
         if (port.getStatus() == PortStatus.INACTIVE) {
             return mapToResponse(port);
@@ -211,8 +217,11 @@ public class PortService {
         // Check if port is used in any active cruise stops
         // For now, allow deactivation
 
+        PortTimeZoneHelper.requireCountryCode(port.getCountryCode());
+        PortTimeZoneHelper.requirePortTimeZone(port.getTimeZoneId());
         port.setStatus(PortStatus.INACTIVE);
-        port = portRepository.save(port);
+        port = portRepository.saveAndFlush(port);
+        auditService.recordDirectoryMutation("Port", port.getPortId(), "DEACTIVATE", before, snapshot(port));
         log.info("Deactivated port: {}", portId);
         return mapToResponse(port);
     }
@@ -220,7 +229,8 @@ public class PortService {
     @Transactional(readOnly = true)
     public void validatePort(UUID portId) {
         Port port = getPortById(portId);
-        // Additional validation logic can be added here
+        PortTimeZoneHelper.requireCountryCode(port.getCountryCode());
+        PortTimeZoneHelper.requirePortTimeZone(port.getTimeZoneId());
     }
 
     @Transactional(readOnly = true)
@@ -229,8 +239,61 @@ public class PortService {
         return port.getStatus() == PortStatus.ACTIVE;
     }
 
+    private boolean sameNumber(java.math.BigDecimal first, java.math.BigDecimal second) {
+        return first != null && second != null && first.compareTo(second) == 0;
+    }
+
+    private void validateCoordinates(java.math.BigDecimal latitude, java.math.BigDecimal longitude) {
+        if (latitude == null || longitude == null || latitude.abs().compareTo(java.math.BigDecimal.valueOf(90)) > 0
+                || longitude.abs().compareTo(java.math.BigDecimal.valueOf(180)) > 0) {
+            throw new BusinessException(org.springframework.http.HttpStatus.UNPROCESSABLE_ENTITY,
+                    "INVALID_PORT_COORDINATES", "Chọn kết quả Geocoding có đủ tọa độ hợp lệ.");
+        }
+    }
+
+    private com.casms.ship.dto.PortCoordinateSource newCoordinateSource(com.casms.ship.dto.PortCoordinateSource input) {
+        if (input == null || !"OPEN_METEO_GEOCODING".equals(input.getProvider()) || !"GEONAMES".equals(input.getDataset())
+                || !"GEOCODED_LOCALITY".equals(input.getCoordinateReferenceType()) || input.getExternalLocationId() == null
+                || input.getExternalLocationId() < 1 || input.getExternalLocationId() > 9007199254740991L
+                || input.getLocationName() == null || input.getLocationName().isBlank()) {
+            throw new BusinessException(org.springframework.http.HttpStatus.UNPROCESSABLE_ENTITY,
+                    "PORT_COORDINATE_SOURCE_REQUIRED", "Tạo cảng hoặc đổi tọa độ cần chọn kết quả GeoNames qua Open-Meteo hợp lệ.");
+        }
+        var source = new com.casms.ship.dto.PortCoordinateSource();
+        source.setProvider(input.getProvider());
+        source.setDataset(input.getDataset());
+        source.setExternalLocationId(input.getExternalLocationId());
+        source.setLocationName(input.getLocationName());
+        source.setCoordinateReferenceType(input.getCoordinateReferenceType());
+        source.setCountryCode(input.getCountryCode());
+        source.setFeatureCode(input.getFeatureCode());
+        source.setTimezone(input.getTimezone());
+        source.setAdmin1(input.getAdmin1());
+        source.setRecordedAt(java.time.Instant.now()); // Never trust a client timestamp.
+        return source;
+    }
+
+    private java.util.Map<String,Object> snapshot(Port port) {
+        var fields = new java.util.LinkedHashMap<String,Object>();
+        fields.put("portId", port.getPortId());
+        fields.put("portCode", port.getPortCode());
+        fields.put("portName", port.getPortName());
+        fields.put("countryCode", port.getCountryCode());
+        fields.put("timeZoneId", port.getTimeZoneId());
+        fields.put("latitude", port.getLatitude());
+        fields.put("longitude", port.getLongitude());
+        fields.put("coordinateSource", port.getCoordinateSource());
+        fields.put("description", port.getDescription());
+        fields.put("locationType", port.getLocationType());
+        fields.put("destinationId", port.getDestination() == null ? null : port.getDestination().getDestinationId());
+        fields.put("status", port.getStatus());
+        fields.put("createdAt", port.getCreatedAt());
+        fields.put("updatedAt", port.getUpdatedAt());
+        return fields;
+    }
+
     private Port getPortById(UUID portId) {
-        return portRepository.findById(portId)
+        return (org.springframework.transaction.support.TransactionSynchronizationManager.isCurrentTransactionReadOnly() ? portRepository.findById(portId) : portRepository.lockDirectory(portId))
                 .orElseThrow(() -> new ResourceNotFoundException("Port", portId));
     }
 
@@ -246,6 +309,7 @@ public class PortService {
         res.setFormattedTimeZone(PortTimeZoneHelper.formatTimeZoneDisplay(port.getTimeZoneId()));
         res.setCurrentLocalTime(PortTimeZoneHelper.getCurrentLocalTimeIso(port.getTimeZoneId()));
         res.setLatitude(port.getLatitude());
+        res.setCoordinateSource(port.getCoordinateSource());
         res.setLongitude(port.getLongitude());
         res.setLocationType(port.getLocationType() != null ? port.getLocationType() : PortLocationType.PORT);
         res.setStatus(port.getStatus());

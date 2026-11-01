@@ -16,7 +16,7 @@ import java.util.UUID;
 @Setter
 public class BookingCreateRequest {
 
-    @Schema(description = "ID của chuyến đi muốn đặt", example = "11111111-2222-3333-4444-555555555555", requiredMode = Schema.RequiredMode.REQUIRED)
+    @Schema(description = "ID của chuyến khởi hành muốn đặt", example = "11111111-2222-3333-4444-555555555555", requiredMode = Schema.RequiredMode.REQUIRED)
     @NotNull(message = "Cruise ID is required")
     private UUID cruiseId;
 
@@ -24,7 +24,7 @@ public class BookingCreateRequest {
     @Size(min = 3, max = 3, message = "Currency must be a 3-character ISO code")
     private String currency;
 
-    @Schema(description = "Danh sách hành khách tham gia chuyến đi (tối thiểu 1 người)", requiredMode = Schema.RequiredMode.REQUIRED)
+    @Schema(description = "Danh sách hành khách tham gia chuyến khởi hành (tối thiểu 1 người)", requiredMode = Schema.RequiredMode.REQUIRED)
     @NotEmpty(message = "At least one passenger must be included in the booking")
     @Valid
     private List<PassengerBookingItemRequest> passengers;

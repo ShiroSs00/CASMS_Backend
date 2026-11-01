@@ -15,4 +15,7 @@ public class DestinationUpdateRequest {
     @Schema(description = "Mô tả điểm đến", example = "Vịnh Hạ Long - Di sản thiên nhiên thế giới")
     @Size(max = 1000, message = "Description must not exceed 1000 characters")
     private String description;
+
+    @Schema(description = "Miền nội địa hiện có: BAC_BO, TRUNG_BO, NAM_BO; không suy từ Port")
+    private String domesticRegion;
 }

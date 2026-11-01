@@ -80,4 +80,10 @@ public class TripPlanStop {
 
     @OneToMany(mappedBy = "stop", fetch = FetchType.LAZY)
     private List<TripPlanEntry> shoreEntries = new ArrayList<>();
+
+    @OneToMany(mappedBy="stop",cascade=CascadeType.ALL,orphanRemoval=true) @OrderBy("sequence ASC, clientKey ASC")
+    private List<DestinationVisit> visits=new ArrayList<>();
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.JSON) @Column(name="port_facts",columnDefinition="jsonb")
+    private com.casms.ship.dto.PortFacts portFacts;
+
 }

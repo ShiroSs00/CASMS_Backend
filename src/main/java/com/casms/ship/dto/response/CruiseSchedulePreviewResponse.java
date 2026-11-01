@@ -24,10 +24,10 @@ import java.util.UUID;
 @Schema(description = "Kết quả tính toán xem trước hải trình và lịch trình thực tế cho chuyến khởi hành (C02)")
 public class CruiseSchedulePreviewResponse {
 
-    @Schema(description = "ID của Trip mẫu nguồn")
+    @Schema(description = "ID của Chuyến đi nguồn")
     private UUID sourceTripId;
 
-    @Schema(description = "Mã Trip mẫu nguồn", example = "VN-DOM-01")
+    @Schema(description = "Mã Chuyến đi nguồn", example = "VN-DOM-01")
     private String sourceTripCode;
 
     @Schema(description = "Tên Trip nguồn", example = "Hải trình khám phá Vịnh Hạ Long 3N2Đ")
@@ -81,6 +81,14 @@ public class CruiseSchedulePreviewResponse {
     @Schema(description = "Cờ xác định lịch trình đã được lưu vào database hay chưa (false = xem trước/chưa lưu, true = đã lưu)")
     private Boolean materialized;
 
+    @Schema(description = "Kết quả evaluator dùng dữ liệu hiện hành cho ngày thực tế. Chỉ VERIFIED + ACTIVE + effective có thể cho PASS; closure chặn. Không phải xác nhận cầu cảng.")
+    private String portCallWindowStatus;
+    private java.util.List<com.casms.ship.dto.PortWindowContract.Check> portWindowChecks;
+    private List<String> materializationBlockers;
+    private String dependency;
+    private String sourceContentHash;
+
+
     @Schema(description = "Danh sách cảnh báo liên quan đến tính toán múi giờ và lịch trình")
     private List<String> warnings;
 
@@ -109,6 +117,7 @@ public class CruiseSchedulePreviewResponse {
 
         @Schema(description = "Tiêu đề ngày")
         private String title;
+        private String description;
 
         @Schema(description = "Múi giờ tàu áp dụng cho ngày này", example = "Asia/Ho_Chi_Minh")
         private String shipTimeZoneId;
@@ -128,6 +137,10 @@ public class CruiseSchedulePreviewResponse {
     public static class ProjectedStopDto {
         @Schema(description = "ID của lần cập cảng thực tế đã lưu (CruiseStopId) - null khi ở chế độ preview")
         private UUID cruiseStopId;
+        private com.casms.ship.dto.PortFacts portFacts;
+        private java.util.List<com.casms.ship.dto.PortWindowContract.Check> portWindowChecks;
+        private java.util.List<com.casms.trip.dto.response.DestinationVisitResponse> visits;
+
 
         @Schema(description = "ID của điểm dừng mẫu nguồn")
         private UUID sourceStopId;
@@ -175,6 +188,12 @@ public class CruiseSchedulePreviewResponse {
     @AllArgsConstructor
     @Schema(description = "Thông tin hoạt động / chương trình dự kiến")
     public static class ProjectedEntryDto {
+        private String title;
+        private String timeZoneId;
+        private String locationText;
+        private String meetingPoint;
+        private String notes;
+
         @Schema(description = "ID mục lịch trình nguồn")
         private UUID sourceEntryId;
 

@@ -13,7 +13,7 @@ import java.time.LocalTime;
 import java.util.UUID;
 
 @Data
-@Schema(description = "Dự thảo mục kế hoạch (hoạt động trên tàu, tour trên bờ, hoặc khung giờ dịch vụ)")
+@Schema(description = "Dự thảo hoạt động trên tàu hoặc tour trên bờ; SERVING_WINDOW chỉ giữ để đọc/đối chiếu lịch sử, không được tạo hoặc sửa")
 public class TripPlanEntryDraftDto {
 
     @NotBlank(message = "Client key is required for correlation")
@@ -25,7 +25,7 @@ public class TripPlanEntryDraftDto {
     private Integer dayNumber;
 
     @NotNull(message = "Entry kind is required")
-    @Schema(description = "Loại mục kế hoạch (ONBOARD_ACTIVITY, SHORE_EXCURSION, SERVING_WINDOW)", example = "SHORE_EXCURSION")
+    @Schema(description = "Loại mục mới: ONBOARD_ACTIVITY hoặc SHORE_EXCURSION. SERVING_WINDOW legacy chỉ đọc; có thể bỏ khỏi payload mà không bị xóa", example = "SHORE_EXCURSION")
     private TripPlanEntryKind kind;
 
     @Schema(description = "Khóa tương quan clientKey của điểm dừng (BẮT BUỘC nếu kind == SHORE_EXCURSION)", example = "stop-hph-01")

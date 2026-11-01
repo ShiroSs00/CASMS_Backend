@@ -14,6 +14,9 @@ import java.util.UUID;
 public class TripPlanStopResponse {
 
     private UUID stopId;
+    private java.util.List<DestinationVisitResponse> visits;
+    private Boolean historicalPortFactsCaptured;
+
     private String clientKey;
     private UUID portId;
     private String portCode;

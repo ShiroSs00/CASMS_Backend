@@ -137,6 +137,12 @@ public enum Permission {
     PORT_DEACTIVATE,
     PORT_VALIDATE,
 
+    // PortCallWindow groundwork only; persistence/API/workflow belong to PORT-02 onward.
+    PORT_CALL_WINDOW_READ,
+    PORT_CALL_WINDOW_CREATE,
+    PORT_CALL_WINDOW_UPDATE,
+    PORT_CALL_WINDOW_VERIFY,
+
     // Destination permissions
     DESTINATION_CREATE,
     DESTINATION_READ,

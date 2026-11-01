@@ -79,7 +79,7 @@ public class OperationalProgramMappingService {
                     .shoreExcursionsCount(0)
                     .servingWindowsCount(0)
                     .items(new ArrayList<>())
-                    .warnings(List.of("Chuyến đi không có phiên bản nguồn (sourceVersion)"))
+                    .warnings(List.of("Chuyến khởi hành không có phiên bản nguồn (sourceVersion)"))
                     .syncedAt(Instant.now())
                     .build();
         }
@@ -99,6 +99,11 @@ public class OperationalProgramMappingService {
         List<TripPlanEntry> entries = tripPlanEntryRepository
                 .findByVersion_VersionIdOrderByStartDayNumberAscPlannedStartTimeAsc(sourceVersion.getVersionId());
 
+        if (entries.stream().anyMatch(entry -> entry.getKind() == TripPlanEntryKind.SERVING_WINDOW)) {
+            throw new com.casms.common.exception.BusinessException(org.springframework.http.HttpStatus.CONFLICT,
+                    "LEGACY_SOURCE_MATERIALIZATION_BLOCKED", "Nguồn có khung phục vụ lịch sử; cần quyết định CR-REVIEW-04 trước khi tạo chương trình.");
+        }
+
         if (cruise.getDepartureDatetime() == null) {
             log.warn("Cruise {} has no departureDatetime, skipping program mapping", cruise.getCruiseId());
             return OperationalProgramSyncResponse.builder()
@@ -107,7 +112,7 @@ public class OperationalProgramMappingService {
                     .shoreExcursionsCount(0)
                     .servingWindowsCount(0)
                     .items(new ArrayList<>())
-                    .warnings(List.of("Chuyến đi chưa được thiết lập thời điểm khởi hành (departureDatetime)"))
+                    .warnings(List.of("Chuyến khởi hành chưa được thiết lập thời điểm khởi hành (departureDatetime)"))
                     .syncedAt(Instant.now())
                     .build();
         }
@@ -238,6 +243,7 @@ public class OperationalProgramMappingService {
                             existing.setActivityName(entry.getTitle());
                             existing.setCategory(entry.getCategory());
                             existing.setDescription(entry.getNotes());
+                            existing.setMeetingPoint(entry.getMeetingPoint());
                             existing.setStartTime(startTime);
                             existing.setEndTime(endTime);
                             if (entry.getLocationText() != null && !entry.getLocationText().isBlank()) {
@@ -276,6 +282,7 @@ public class OperationalProgramMappingService {
                         activity.setActivityName(entry.getTitle());
                         activity.setCategory(entry.getCategory());
                         activity.setDescription(entry.getNotes());
+                        activity.setMeetingPoint(entry.getMeetingPoint());
                         activity.setStartTime(startTime);
                         activity.setEndTime(endTime);
                         activity.setLocation(entry.getLocationText() != null ? entry.getLocationText() :
@@ -568,6 +575,9 @@ public class OperationalProgramMappingService {
                             // Cập nhật an toàn chỉ thời gian và điểm dừng
                             existing.setCruiseStop(matchedStop);
                             existing.setPort(matchedStop.getPort());
+                            existing.setLocationText(entry.getLocationText());
+                            existing.setNotes(entry.getNotes());
+                            existing.setDestination(entry.getDestination());
                             existing.setExcursionName(entry.getTitle());
                             existing.setStartTime(startTime);
                             existing.setPlannedReturnTime(endTime);
@@ -618,6 +628,9 @@ public class OperationalProgramMappingService {
                         ShoreExcursion excursion = new ShoreExcursion();
                         excursion.setCruiseStop(matchedStop);
                         excursion.setPort(matchedStop.getPort());
+                        excursion.setLocationText(entry.getLocationText());
+                        excursion.setNotes(entry.getNotes());
+                        excursion.setDestination(entry.getDestination());
                         excursion.setExcursionCode(excursionCode);
                         excursion.setExcursionName(entry.getTitle());
                         excursion.setStartTime(startTime);
@@ -693,20 +706,9 @@ public class OperationalProgramMappingService {
             } catch (com.casms.common.exception.BusinessException ex) {
                 throw ex;
             } catch (Exception ex) {
-                log.error("Error mapping trip plan entry {} (clientKey={}): {}",
-                        entry.getEntryId(), entry.getClientKey(), ex.getMessage(), ex);
-                String err = "Lỗi khi xử lý mục " + entry.getTitle() + ": " + ex.getMessage();
-                warnings.add(err);
-                items.add(OperationalProgramMappingItemResponse.builder()
-                        .sourceEntryId(entry.getEntryId())
-                        .clientKey(entry.getClientKey())
-                        .kind(entry.getKind())
-                        .title(entry.getTitle())
-                        .status("FAILED")
-                        .reason(err)
-                        .action("RETRY_OR_FIX_INPUT")
-                        .warnings(List.of(ex.getMessage() != null ? ex.getMessage() : ex.getClass().getSimpleName()))
-                        .build());
+                log.error("Program materialization failed for source entry {}", entry.getEntryId(), ex);
+                throw new com.casms.common.exception.BusinessException(org.springframework.http.HttpStatus.UNPROCESSABLE_ENTITY,
+                        "SOURCE_PROGRAM_MATERIALIZATION_FAILED", "Không thể sao chép đầy đủ chương trình nguồn; giao dịch phải được hủy.");
             }
         }
 

@@ -18,7 +18,7 @@ import java.util.UUID;
 public class CruiseSchedulePreviewRequest {
 
     @NotNull(message = "sourceVersionId là bắt buộc")
-    @Schema(description = "ID của phiên bản TripScheduleVersion nguồn đã xuất bản (PUBLISHED)", required = true)
+    @Schema(description = "ID của Phiên bản lịch trình nguồn đã xuất bản (PUBLISHED)", required = true)
     private UUID sourceVersionId;
 
     @NotNull(message = "departureDatetime là bắt buộc")

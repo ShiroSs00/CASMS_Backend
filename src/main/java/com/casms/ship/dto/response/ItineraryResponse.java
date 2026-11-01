@@ -17,10 +17,10 @@ public class ItineraryResponse {
     @Schema(description = "ID lịch trình", example = "3fa85f64-5717-4562-b3fc-2c963f66afa6")
     private UUID itineraryId;
 
-    @Schema(description = "ID chuyến đi liên quan", example = "3fa85f64-5717-4562-b3fc-2c963f66afa6")
+    @Schema(description = "ID chuyến khởi hành liên quan", example = "3fa85f64-5717-4562-b3fc-2c963f66afa6")
     private UUID cruiseId;
 
-    @Schema(description = "Mã chuyến đi", example = "CR-0001")
+    @Schema(description = "Mã chuyến khởi hành", example = "CR-0001")
     private String cruiseCode;
 
     @Schema(description = "Tên lịch trình", example = "Lịch trình Hạ Long 3N2Đ")
