@@ -24,6 +24,8 @@ public interface PaymentRepository extends JpaRepository<Payment, UUID> {
 
     Optional<Payment> findByIdempotencyKey(String idempotencyKey);
 
+    Optional<Payment> findByProcessorReference(String processorReference);
+
     boolean existsByProcessorReferenceAndPaymentIdNot(String processorReference, UUID paymentId);
 
     boolean existsByInternalReceiptReferenceAndPaymentIdNot(String internalReceiptReference, UUID paymentId);

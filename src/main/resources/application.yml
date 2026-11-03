@@ -1,4 +1,4 @@
-  spring:
+﻿  spring:
     application:
       name: CASMS
 
@@ -69,3 +69,15 @@
       doc-expansion: none
       filter: true
       try-it-out-enabled: true
+
+  casms:
+    payment:
+      sepay:
+        enabled: ${SEPAY_ENABLED:true}
+        api-key: ${SEPAY_API_KEY:}
+        bank-name: ${SEPAY_BANK_NAME:MBBank}
+        account-number: ${SEPAY_ACCOUNT_NUMBER:0379969696}
+        account-name: ${SEPAY_ACCOUNT_NAME:CASMS CRUISE}
+        usd-to-vnd-rate: ${SEPAY_USD_TO_VND_RATE:25400}
+        qr-template: ${SEPAY_QR_TEMPLATE:compact}
+        tolerance-percent: ${SEPAY_TOLERANCE_PERCENT:1.0}
