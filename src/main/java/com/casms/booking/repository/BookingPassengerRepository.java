@@ -58,6 +58,10 @@ public interface BookingPassengerRepository extends JpaRepository<BookingPasseng
     List<BookingPassenger> findActivePassengersByCruiseId(@Param("cruiseId") UUID cruiseId);
 
     List<BookingPassenger> findByBookingBookingId(UUID bookingId);
+    @Query("select count(p) from BookingPassenger p where p.booking.cruise.cruiseId=:cruiseId "
+            +"and p.cabinSelectionMode=com.casms.booking.enums.CabinSelectionMode.CATEGORY_HOLD and p.fareCabinCategory=:category "
+            +"and p.participationStatus=com.casms.booking.enums.BookingPassengerParticipationStatus.Active and p.booking.bookingStatus=:status")
+    long countCategoryResources(@Param("cruiseId") UUID cruiseId,@Param("category") String category,@Param("status") BookingStatus status);
     List<BookingPassenger> findByPassenger_PassengerId(UUID passengerId);
     List<BookingPassenger> findByPassenger_User_UserId(UUID userId);
 }

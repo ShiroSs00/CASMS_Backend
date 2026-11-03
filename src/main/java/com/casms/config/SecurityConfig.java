@@ -55,6 +55,7 @@ public class SecurityConfig {
                                 "/booking/recovery"
                         ).permitAll()
                         .requestMatchers(HttpMethod.GET,
+                                "/cruises/*/public-itinerary",
                                 "/booking/quotes/**",
                                 "/cruise",
                                 "/cruise/**",

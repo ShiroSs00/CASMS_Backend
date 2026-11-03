@@ -54,6 +54,7 @@ public class CruiseImpactAssessmentService {
     private final CruiseImpactTaskRepository cruiseImpactTaskRepository;
     private final CruiseTourPackageRepository cruiseTourPackageRepository;
     private final UserRepository userRepository;
+    private final CruiseShipAssignmentPolicy shipAssignmentPolicy;
 
     @Transactional(readOnly = true)
     public CruiseChangeImpactResponse previewChangeImpact(UUID cruiseId, CruiseChangeImpactRequest request) {
@@ -98,6 +99,8 @@ public class CruiseImpactAssessmentService {
 
         boolean shipImpacted = false;
         UUID newShipId = request.getNewShipId();
+        var shipSafety = newShipId == null ? null : shipAssignmentPolicy.assess(cruiseId, newShipId, "CHANGE");
+        if (shipSafety != null) blockers.addAll(shipSafety.blockers());
 
         String eventIdentity = (request.getEventIdentity() != null && !request.getEventIdentity().isBlank())
                 ? request.getEventIdentity()
@@ -106,6 +109,9 @@ public class CruiseImpactAssessmentService {
 
         if (newShipId != null && (cruise.getShip() == null || !cruise.getShip().getShipId().equals(newShipId))) {
             shipImpacted = true;
+            if (cruise.getStatus() != com.casms.ship.enums.CruiseStatus.DRAFT
+                    && cruise.getStatus() != com.casms.ship.enums.CruiseStatus.PUBLISHED)
+                blockers.add("Trạng thái chuyến khởi hành không cho phép đổi tàu.");
             Ship newShip = shipRepository.findById(newShipId)
                     .orElseThrow(() -> new ResourceNotFoundException("Ship", newShipId));
 
@@ -124,7 +130,7 @@ public class CruiseImpactAssessmentService {
                 blockers.add("Tàu mới bị trùng lịch vận hành với chuyến khởi hành khác trong khoảng thời gian này");
             }
 
-            if (newShip.getTotalCapacity() < bookedPassengers) {
+            if (newShip.getTotalCapacity() == null || newShip.getTotalCapacity() < 1 || newShip.getTotalCapacity() < bookedPassengers) {
                 blockers.add(String.format("Sức chứa tàu mới (%d) nhỏ hơn số khách đã đặt (%d)",
                         newShip.getTotalCapacity(), bookedPassengers));
             }
@@ -227,6 +233,7 @@ public class CruiseImpactAssessmentService {
         return CruiseChangeImpactResponse.builder()
                 .cruiseId(cruiseId)
                 .currentRevision(cruise.getRevision())
+                .shipAssignmentSafety(shipSafety)
                 .scheduleImpacted(scheduleImpacted)
                 .dateShiftDays(dateShiftDays)
                 .shipImpacted(shipImpacted)

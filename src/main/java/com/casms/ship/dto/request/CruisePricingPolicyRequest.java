@@ -54,21 +54,21 @@ public class CruisePricingPolicyRequest {
     @Schema(description = "Tỷ lệ thuế áp dụng (ví dụ: 0.08 tương đương 8%)", example = "0.08")
     private BigDecimal taxRate = BigDecimal.ZERO;
 
-    @Builder.Default
+    @jakarta.validation.constraints.NotNull
     @DecimalMin(value = "0.0", message = "Tỷ lệ đặt cọc không được âm")
     @DecimalMax(value = "1.0", message = "Tỷ lệ đặt cọc tối đa là 1.0 (100%)")
     @Schema(description = "Tỷ lệ đặt cọc bắt buộc (ví dụ: 0.30 tương đương 30%)", example = "0.30")
-    private BigDecimal depositPercentage = BigDecimal.valueOf(0.30);
+    private BigDecimal depositPercentage;
 
-    @Builder.Default
+    @jakarta.validation.constraints.NotNull
     @Min(value = 0, message = "Số ngày hạn tất toán cuối cùng không được âm")
     @Schema(description = "Số ngày trước khởi hành cần thanh toán toàn bộ tiền vé còn lại", example = "14")
-    private int finalPaymentDueDays = 14;
+    private Integer finalPaymentDueDays;
 
-    @Builder.Default
+    @jakarta.validation.constraints.NotNull
     @Min(value = 0, message = "Số ngày cutoff thanh toán đủ 100% không được âm")
     @Schema(description = "Khoảng ngày cận khởi hành bắt buộc thanh toán 100% không cho đặt cọc", example = "7")
-    private int fullPaymentCutoffDays = 7;
+    private Integer fullPaymentCutoffDays;
 
     @Schema(description = "Điều khoản và chính sách hủy vé / hoàn tiền chi tiết",
             example = "Hủy trước 30 ngày hoàn 100%; hủy 14-29 ngày hoàn 50%; dưới 14 ngày không hoàn tiền.")

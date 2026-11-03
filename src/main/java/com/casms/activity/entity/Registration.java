@@ -20,6 +20,8 @@ public class Registration {
     @GeneratedValue(strategy = GenerationType.UUID)
     @Column(name = "registration_id")
     private UUID registrationId;
+    @Column(name="fare_benefit_snapshot_id")
+    private UUID fareBenefitSnapshotId;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "passenger_id", nullable = false)

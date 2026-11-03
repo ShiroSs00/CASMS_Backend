@@ -22,6 +22,7 @@ import java.util.*;
 @RequiredArgsConstructor
 public class CruisePlanMutationGuard {
     private final CruiseMainflowService plans;
+    private final CruiseShipAssignmentPolicy shipAssignments;
     private final JdbcTemplate jdbc;
     private final PlatformTransactionManager transactions;
     private final jakarta.persistence.EntityManager em;
@@ -48,6 +49,21 @@ public class CruisePlanMutationGuard {
             return new TransactionTemplate(transactions).execute(tx -> {
                 List<UUID> ids=operational?List.of((UUID)call.getArgs()[0]):resolve(type,method,call.getArgs());
                 for(UUID id:ids) {
+                    if(type.equals("CruiseService")) {
+                        String operation=method.equals("assignShip")?"ASSIGN":method.equals("changeAssignedShip")?"CHANGE":method.equals("unassignShip")?"UNASSIGN":null;
+                        UUID requested=null;
+                        Object[] args=call.getArgs();
+                        if(operation!=null) {
+                            if(!operation.equals("UNASSIGN"))requested=(UUID)args[1];
+                            shipAssignments.requireActor(null);
+                        } else if(method.equals("applyChange")&&field(args[1],"newShipId")!=null) {
+                            operation="CHANGE";requested=(UUID)field(args[1],"newShipId");shipAssignments.requireActor(null);
+                        }
+                        if(operation!=null) {
+                            plans.lockOperational(id);
+                            shipAssignments.requireSafeDownstream(id,requested,operation);
+                        }
+                    }
                     if(operational)plans.lockOperational(id);else plans.assertEditable(id);
                     if(!operational && structural(type,method,call.getArgs()) && "FIXED".equals(jdbc.queryForObject("SELECT itinerary_mode FROM \"Cruise\" WHERE cruise_id=?",String.class,id)))
                         throw new BusinessException(HttpStatus.CONFLICT,"FIXED_ITINERARY_READ_ONLY","Fixed cruise itinerary cannot be structurally edited");
@@ -91,7 +107,10 @@ public class CruisePlanMutationGuard {
             case "ShoreExcursionService" -> id=method.equals("create")?lookup("SELECT i.cruise_id FROM \"CruiseStop\" s JOIN \"Itinerary\" i USING(itinerary_id) WHERE cruise_stop_id=?",field(args[0],"cruiseStopId")):lookup("SELECT i.cruise_id FROM \"ShoreExcursion\" e JOIN \"CruiseStop\" s USING(cruise_stop_id) JOIN \"Itinerary\" i USING(itinerary_id) WHERE shore_excursion_id=?",args[0]);
             case "ServicepackageService" -> {
                 Object packageId=method.equals("savePackage")?field(args[0],"tourPackageId"):args[0];
-                return packageId==null?List.of():jdbc.queryForList("SELECT cruise_id FROM \"CruiseTourPackage\" WHERE tour_package_id=? ORDER BY cruise_id",UUID.class,packageId);
+                var owners=new TreeSet<UUID>();
+                if(packageId!=null)owners.addAll(jdbc.queryForList("SELECT cruise_id FROM \"CruiseTourPackage\" WHERE tour_package_id=? UNION SELECT owner_cruise_id FROM \"TourPackage\" WHERE tour_package_id=? AND owner_cruise_id IS NOT NULL",UUID.class,packageId,packageId));
+                if(method.equals("savePackage")&&field(args[0],"ownerCruiseId")!=null)owners.add((UUID)field(args[0],"ownerCruiseId"));
+                return List.copyOf(owners);
             }
             default -> throw new IllegalStateException("Unmapped material writer");
         }

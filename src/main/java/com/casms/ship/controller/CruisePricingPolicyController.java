@@ -32,8 +32,8 @@ public class CruisePricingPolicyController {
         return ApiResponse.success(pricingPolicyService.getPricingPolicy(cruiseId));
     }
 
-    @Operation(summary = "Cấu hình / cập nhật chính sách giá", description = "Thiết lập giá cơ sở từng hạng phòng, tỷ lệ cọc, thuế và hạn thanh toán")
-    @PreAuthorize("hasRole('CRUISE_MANAGER') and hasAuthority('CRUISE_UPDATE_DRAFT')")
+    @Operation(summary = "OPS cấu hình chính sách thương mại", description = "OPS quản lý nội dung và phiên bản chính sách; CRM chỉ sử dụng chính sách được ban hành. Không có giá trị nghiệp vụ mặc định.")
+    @PreAuthorize("hasRole('OPERATIONS_MANAGER') and hasAuthority('CRUISE_PRICING_APPROVE')")
     @PutMapping
     public ApiResponse<CruisePricingPolicyResponse> savePricingPolicy(
             @Parameter(description = "ID chuyến khởi hành", required = true) @PathVariable UUID cruiseId,
@@ -56,7 +56,7 @@ public class CruisePricingPolicyController {
                 pricingPolicyService.review(cruiseId,"approve",request,actorId));
     }
     @PostMapping("/submit")
-    @PreAuthorize("hasRole('CRUISE_MANAGER') and hasAuthority('CRUISE_UPDATE_DRAFT')")
+    @PreAuthorize("hasRole('OPERATIONS_MANAGER') and hasAuthority('CRUISE_PRICING_APPROVE')")
     public ApiResponse<CruisePricingPolicyResponse> submit(@PathVariable UUID cruiseId,@RequestBody CruisePricingPolicyService.Review request,@AuthenticationPrincipal CasmsPrincipal actor){return ApiResponse.success(pricingPolicyService.review(cruiseId,"submit",request,actor.getUserId()));}
     @PostMapping("/return")
     @PreAuthorize("hasRole('OPERATIONS_MANAGER') and hasAuthority('CRUISE_PRICING_APPROVE')")

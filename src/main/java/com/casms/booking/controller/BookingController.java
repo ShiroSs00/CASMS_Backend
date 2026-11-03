@@ -39,6 +39,15 @@ public class BookingController {
 
     private final BookingService bookingService;
     private final IdempotencyService idempotencyService;
+    private final com.casms.cruisepackage.service.CruisePackageEntitlementService fareEntitlements;
+
+    @GetMapping({"/{bookingId}/cruise-package-entitlements","/{bookingId}/fare-entitlements"})
+    @PreAuthorize("hasAuthority('BOOKING_READ')")
+    public ApiResponse<List<com.casms.cruisepackage.service.CruisePackageEntitlementService.EntitlementView>> fareEntitlements(
+            @PathVariable UUID bookingId,@AuthenticationPrincipal CasmsPrincipal principal) {
+        bookingService.detail(bookingId,principal); // Reuse existing Booking ownership/staff access boundary.
+        return ApiResponse.success(fareEntitlements.list(bookingId));
+    }
 
     @Operation(summary = "Tra cứu phòng trống để tự chọn (Công khai / Khách vãng lai)",
                description = "Tìm kiếm danh sách phòng trống trên tàu của chuyến khởi hành để hành khách xem sơ đồ và tự chọn phòng (Không yêu cầu đăng nhập)")
@@ -47,7 +56,9 @@ public class BookingController {
             @Parameter(description = "ID của chuyến khởi hành", required = true) @RequestParam UUID cruiseId,
             @Parameter(description = "ID tầng/boong (tùy chọn)") @RequestParam(required = false) UUID deckId,
             @Parameter(description = "Hạng phòng (INTERIOR, OCEAN_VIEW, BALCONY, SUITE)") @RequestParam(required = false) CabinType cabinType,
-            @Parameter(description = "Sức chứa tối thiểu yêu cầu") @RequestParam(required = false) Integer minCapacity) {
+            @Parameter(description = "Sức chứa tối thiểu yêu cầu") @RequestParam(required = false) Integer minCapacity,
+            @RequestParam(required=false) UUID bookingPassengerId,@AuthenticationPrincipal CasmsPrincipal principal) {
+        if(bookingPassengerId!=null)return ApiResponse.success(bookingService.getAvailableCabinsForBooking(cruiseId,deckId,cabinType,minCapacity,bookingPassengerId,principal,false));
         return ApiResponse.success(bookingService.getAvailableCabins(cruiseId, deckId, cabinType, minCapacity));
     }
 
@@ -58,12 +69,14 @@ public class BookingController {
             @Parameter(description = "ID chuyến khởi hành", required = true) @RequestParam UUID cruiseId,
             @Parameter(description = "ID deck (tùy chọn)") @RequestParam(required = false) UUID deckId,
             @Parameter(description = "Loại cabin (tùy chọn)") @RequestParam(required = false) CabinType cabinType,
-            @Parameter(description = "Sức chứa còn trống tối thiểu") @RequestParam(required = false) Integer minCapacity) {
+            @Parameter(description = "Sức chứa còn trống tối thiểu") @RequestParam(required = false) Integer minCapacity,
+            @RequestParam(required=false) UUID bookingPassengerId,@AuthenticationPrincipal CasmsPrincipal principal) {
+        if(bookingPassengerId!=null)return ApiResponse.success(bookingService.getAvailableCabinsForBooking(cruiseId,deckId,cabinType,minCapacity,bookingPassengerId,principal,true));
         return ApiResponse.success(bookingService.getThreeDimensionalAvailableCabins(cruiseId, deckId, cabinType, minCapacity));
     }
 
     @Operation(summary = "Yêu cầu báo giá chính thức (BE-11 Authoritative Quote API)",
-               description = "Tính toán báo giá chi tiết theo chính sách thương mại của chuyến khởi hành, bao gồm cabin, gói tour, phụ phí cảng, thuế và lịch thanh toán. Báo giá có TTL 30 phút.")
+               description = "Báo giá theo chính sách thương mại được duyệt. Hạn hiệu lực phải có nguồn cấu hình hợp lệ; thiếu policy trả BUSINESS_POLICY_REQUIRED, không dùng TTL mặc định. Báo giá không giữ chỗ.")
     @PostMapping("/quotes")
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<BookingQuoteResponse> createQuote(
@@ -185,7 +198,7 @@ public class BookingController {
 
     @Operation(summary = "Đổi phòng cho hành khách",
                description = "Chuyển hành khách sang phòng trống khác trên cùng con tàu theo yêu cầu")
-    @PreAuthorize("hasAnyAuthority('BOOKING_CABIN_ASSIGN', 'BOOKING_UPDATE')")
+    @PreAuthorize("hasAnyAuthority('BOOKING_CABIN_ASSIGN', 'BOOKING_UPDATE') or (hasRole('PASSENGER') and hasAuthority('BOOKING_READ'))")
     @PostMapping("/change-cabin")
     public ApiResponse<BookingDetailResponse> changeCabin(
             @RequestBody @Valid CabinChangeRequest request,

@@ -16,7 +16,7 @@ import java.util.UUID;
 public class CruiseMainflowController {
     private final CruiseMainflowService service;
     @GetMapping("/{cruiseId}/ship-assignment-context")
-    @PreAuthorize("hasRole('CRUISE_MANAGER') and hasAnyAuthority('CRUISE_ASSIGN_SHIP','CRUISE_CHANGE_SHIP','CRUISE_UNASSIGN_SHIP')")
+    @PreAuthorize("(hasRole('CRUISE_MANAGER') and hasAnyAuthority('CRUISE_ASSIGN_SHIP','CRUISE_CHANGE_SHIP','CRUISE_UNASSIGN_SHIP')) or hasAuthority('CRUISE_READ') or hasAuthority('SHIP_READ')")
     public ApiResponse<CruiseMainflowService.AssignmentContext> assignmentContext(@PathVariable UUID cruiseId) {
         return ApiResponse.success(service.assignmentContext(cruiseId));
     }

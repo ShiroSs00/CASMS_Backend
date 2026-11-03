@@ -89,8 +89,8 @@ public class CruisePackageService {
     @Transactional
     public CruiseTourPackageResponse activatePackage(UUID cruiseId, UUID tourPackageId) {
         mainflow.requireReady(cruiseId);
-        if(!mainflow.commercialBlockers(cruiseId).isEmpty())throw new BusinessException(HttpStatus.CONFLICT,"PRICING_POLICY_APPROVAL_REQUIRED","Current USD pricing revision requires OPS approval");
-        Cruise cruise = cruiseRepository.findById(cruiseId)
+        mainflow.requireCommercialPolicies(cruiseId);
+        Cruise cruise = cruiseRepository.findByIdForUpdate(cruiseId)
                 .orElseThrow(() -> new ResourceNotFoundException("Cruise", cruiseId));
 
         // BE-H14: Không bật package nếu whole Cruise đang stop
@@ -103,6 +103,9 @@ public class CruisePackageService {
                 .findByCruise_CruiseIdAndTourPackage_TourPackageId(cruiseId, tourPackageId)
                 .orElseThrow(() -> new ResourceNotFoundException("CruiseTourPackage", tourPackageId));
 
+        mainflow.requireBookable(cruiseId);
+        requireResumeScope(cruise, ctp);
+
         // Idempotent: nếu đã active thì trả về an toàn, không phát sinh thao tác lặp
         if (ctp.isActive()) {
             log.info("Package {} is already active on cruise {}, skipping duplicate activation", tourPackageId, cruiseId);
@@ -113,6 +116,18 @@ public class CruisePackageService {
 
         ctp.setActive(true);
         return toResponse(cruiseTourPackageRepository.save(ctp));
+    }
+
+    /** An inactive legacy assignment does not retain proof that SELECTED_PACKAGES authorized it. */
+    public void requireResumeScope(Cruise cruise, CruiseTourPackage assignment) {
+        boolean proven = "WHOLE_CRUISE".equals(cruise.getSaleScope())
+                || ("SELECTED_PACKAGES".equals(cruise.getSaleScope()) && assignment.isActive());
+        if (cruise.getOpenedForSaleAt() == null || !proven) {
+            throw new BusinessException(HttpStatus.CONFLICT, "SALE_SCOPE_RECONFIRMATION_REQUIRED",
+                    "Chưa chứng minh gói dịch vụ thuộc phạm vi đã mở bán. OPS cần xác nhận lại lựa chọn qua Open Sale.",
+                    java.util.Map.of("scope", "PACKAGE", "targetId", assignment.getTourPackage().getTourPackageId(),
+                            "allowedActions", java.util.List.of("REVIEW_SALE_SCOPE"), "evaluatedAt", Instant.now()));
+        }
     }
 
     /**

@@ -67,4 +67,5 @@ public class CruiseChangeImpactResponse {
 
     @Schema(description = "Có thể tiến hành áp dụng thay đổi hay không")
     private boolean canProceed;
+    private ShipAssignmentSafetyResponse shipAssignmentSafety;
 }
