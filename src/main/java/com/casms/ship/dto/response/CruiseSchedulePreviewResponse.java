@@ -81,10 +81,6 @@ public class CruiseSchedulePreviewResponse {
     @Schema(description = "Cờ xác định lịch trình đã được lưu vào database hay chưa (false = xem trước/chưa lưu, true = đã lưu)")
     private Boolean materialized;
 
-    @Schema(description = "Kết quả evaluator dùng dữ liệu hiện hành cho ngày thực tế. Chỉ VERIFIED + ACTIVE + effective có thể cho PASS; closure chặn. Không phải xác nhận cầu cảng.")
-    private String portCallWindowStatus;
-    private java.util.List<com.casms.ship.dto.PortWindowContract.Check> portWindowChecks;
-    private List<String> materializationBlockers;
     private String dependency;
     private String sourceContentHash;
 
@@ -138,7 +134,6 @@ public class CruiseSchedulePreviewResponse {
         @Schema(description = "ID của lần cập cảng thực tế đã lưu (CruiseStopId) - null khi ở chế độ preview")
         private UUID cruiseStopId;
         private com.casms.ship.dto.PortFacts portFacts;
-        private java.util.List<com.casms.ship.dto.PortWindowContract.Check> portWindowChecks;
         private java.util.List<com.casms.trip.dto.response.DestinationVisitResponse> visits;
 
 

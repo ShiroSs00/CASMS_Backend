@@ -287,13 +287,13 @@ class RolePermissionInitializerTest {
         assertFalse(perms.contains(Permission.ITINERARY_CREATE));
     }
     @Test
-    void mergeRetainsOpsWindowGrantsAndManualOpsGrantsWithoutGrantingCrmWrites(){
+    void mergeRetiresPortWindowGrantsAndRetainsUnrelatedManualOpsGrants(){
         var ops=new RolePermission();ops.setRole(Role.OPERATIONS_MANAGER);
-        ops.setPermissions(java.util.EnumSet.of(Permission.USER_READ));
+        ops.setPermissions(java.util.EnumSet.of(Permission.USER_READ,Permission.PORT_CALL_WINDOW_READ,Permission.PORT_CALL_WINDOW_CREATE,Permission.PORT_CALL_WINDOW_UPDATE,Permission.PORT_CALL_WINDOW_VERIFY));
         when(rolePermissionRepository.findByRole(any(Role.class))).thenAnswer(call->call.getArgument(0)==Role.OPERATIONS_MANAGER?java.util.Optional.of(ops):java.util.Optional.empty());
         initializer.initializeRolePermissions();
         assertTrue(ops.getPermissions().contains(Permission.USER_READ));
-        assertTrue(ops.getPermissions().containsAll(Set.of(Permission.PORT_CALL_WINDOW_READ,Permission.PORT_CALL_WINDOW_CREATE,Permission.PORT_CALL_WINDOW_UPDATE,Permission.PORT_CALL_WINDOW_VERIFY)));
+        assertTrue(ops.getPermissions().stream().noneMatch(Permission::isRetired));
         var crm=rolePermissionsMap.get(Role.CRUISE_MANAGER);
         assertFalse(crm.contains(Permission.PORT_CALL_WINDOW_CREATE));
         assertFalse(crm.contains(Permission.PORT_CALL_WINDOW_UPDATE));

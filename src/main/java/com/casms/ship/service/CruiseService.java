@@ -183,7 +183,6 @@ public class CruiseService {
             // G04 & BE-03: Khóa thời lượng và cảng từ lịch nguồn; tự tính toán returnDatetime từ departureDatetime và schedule projection
             CruiseSchedulePreviewResponse projection = scheduleMaterializationService.previewSchedule(
                     sourceVersion.getVersionId(), request.getDepartureDatetime());
-            scheduleMaterializationService.requireMaterializationAllowed(projection);
             if (projection.getReturnDatetime() != null) {
                 request.setReturnDatetime(projection.getReturnDatetime());
             }

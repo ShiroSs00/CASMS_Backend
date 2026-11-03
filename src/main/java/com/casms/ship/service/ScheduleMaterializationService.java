@@ -67,7 +67,7 @@ public class ScheduleMaterializationService {
     private final OperationalProgramMappingService operationalProgramMappingService;
     private final OnboardActivityRepository onboardActivityRepository;
     private final ShoreExcursionRepository shoreExcursionRepository;
-    private final PortWindowEvaluator portWindowEvaluator;
+    private final CruisePortValidationService portValidation;
 
     /**
      * Preview (C02): Tính toán xem trước toàn bộ lịch trình thực tế mà không commit database.
@@ -95,12 +95,6 @@ public class ScheduleMaterializationService {
         }
 
         return computeProjectedSchedule(version, departureDatetime);
-    }
-
-    /** Create always reprojects and reevaluates inside its own transaction; never trusts an FE PASS. */
-    public void requireMaterializationAllowed(CruiseSchedulePreviewResponse projection) {
-        if(!"PASS".equals(projection.getPortCallWindowStatus()))
-            throw new BusinessException(org.springframework.http.HttpStatus.UNPROCESSABLE_ENTITY,"PORT_CALL_WINDOW_VALIDATION_REQUIRED","Chưa đáp ứng khung giờ cảng cho ngày thực tế.",Map.of("portWindowChecks",projection.getPortWindowChecks()==null?List.of():projection.getPortWindowChecks()));
     }
 
     /**
@@ -131,7 +125,6 @@ public class ScheduleMaterializationService {
 
         // 1. Tính toán trước toàn bộ lịch
         CruiseSchedulePreviewResponse projection = computeProjectedSchedule(version, cruise.getDepartureDatetime());
-        requireMaterializationAllowed(projection);
 
         // 2. Cập nhật ngày kết thúc chuyến đi và khóa sourceVersionRevision
         if (projection.getReturnDatetime() != null) {
@@ -219,7 +212,6 @@ public class ScheduleMaterializationService {
                 stop.setPort(port);
                 stop.setSourceStopId(sourceStop.getStopId());
                 stop.setPortFacts(stopDto.getPortFacts());
-                stop.setPortWindowEvidence(stopDto.getPortWindowChecks());
                 for(var sourceVisit:sourceStop.getVisits()){
                     var visit=new com.casms.ship.entity.CruiseDestinationVisit();visit.setStop(stop);visit.setSourceVisitId(sourceVisit.getVisitId());visit.setDestination(sourceVisit.getDestination());visit.setSequence(sourceVisit.getSequence());visit.setDestinationNameSnapshot(sourceVisit.getDestinationNameSnapshot()!=null?sourceVisit.getDestinationNameSnapshot():sourceVisit.getDestination().getDestinationName());stop.getVisits().add(visit);
                 }
@@ -321,7 +313,6 @@ public class ScheduleMaterializationService {
                         .countryCode(s.getPortFacts()==null?null:s.getPortFacts().countryCode())
                         .portTimeZoneId(s.getPortFacts()==null?null:s.getPortFacts().timeZoneId())
                         .portFacts(s.getPortFacts())
-                        .portWindowChecks(s.getPortWindowEvidence())
                         .visits(s.getVisits().stream().map(v->new com.casms.trip.dto.response.DestinationVisitResponse(v.getVisitId(),v.getSourceVisitId().toString(),v.getDestination().getDestinationId(),v.getDestinationNameSnapshot(),v.getSequence())).toList())
                         .plannedArrival(s.getPlannedArrival())
                         .plannedDeparture(s.getPlannedDeparture())
@@ -709,26 +700,17 @@ public class ScheduleMaterializationService {
                     .build());
         }
 
-        // Lock unique ports in stable order for write transactions, then use current authoritative policy.
-        if(!org.springframework.transaction.support.TransactionSynchronizationManager.isCurrentTransactionReadOnly()){
-            var lockIds=new java.util.TreeSet<UUID>();projectedStops.forEach(call->lockIds.add(call.getPortId()));if(departurePort!=null)lockIds.add(departurePort.getPortId());lockIds.forEach(id->portRepository.lockDirectory(id).orElseThrow());
-        }
-        java.util.List<com.casms.ship.dto.PortWindowContract.Check> portChecks=new java.util.ArrayList<>();
-        for(var projected:projectedStops){var checks=portWindowEvaluator.evaluate(projected.getPortId(),projected.getPortTimeZoneId(),projected.getPlannedArrival(),projected.getPlannedDeparture());projected.setPortWindowChecks(checks);portChecks.addAll(checks);}
-        if(departurePort!=null&&projectedStops.stream().noneMatch(c->c.getPortId().equals(departurePort.getPortId())&&Objects.equals(c.getPlannedDeparture(),departureDatetime))){
-            var departureFacts=departureDay!=null&&departureDay.getDeparturePortFacts()!=null?departureDay.getDeparturePortFacts():com.casms.ship.dto.PortFacts.capture(departurePort);
-            portChecks.addAll(portWindowEvaluator.departureMovement(departurePort.getPortId(),departureFacts.timeZoneId(),departureDatetime));
-        }
-        boolean portPassed=!portChecks.isEmpty()&&portChecks.stream().allMatch(c->"PASS".equals(c.status()));
+        var departureFacts = departurePort == null ? null
+                : departureDay != null && departureDay.getDeparturePortFacts() != null
+                ? departureDay.getDeparturePortFacts() : com.casms.ship.dto.PortFacts.capture(departurePort);
+        portValidation.requireSchedule(projectedStops, departurePort == null ? null : departurePort.getPortId(),
+                departureFacts == null ? null : departureFacts.timeZoneId(), departureDatetime);
         // Tính toán returnDatetime
         Instant returnDatetime = projectedReturn;
 
         return CruiseSchedulePreviewResponse.builder()
                 .materialized(false)
                 .sourceContentHash(version.getContentHash())
-                .portCallWindowStatus(portPassed?"PASS":"BLOCK")
-                .portWindowChecks(portChecks)
-                .materializationBlockers(portPassed?List.of():portChecks.isEmpty()?List.of("WINDOW_NOT_CONFIGURED"):portChecks.stream().filter(c->!"PASS".equals(c.status())).map(com.casms.ship.dto.PortWindowContract.Check::code).distinct().toList())
                 .sourceTripId(trip.getTripId())
                 .sourceTripCode(trip.getTripCode())
                 .sourceTripName(trip.getName())

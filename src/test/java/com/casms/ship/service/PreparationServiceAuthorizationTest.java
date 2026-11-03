@@ -66,7 +66,7 @@ class PreparationServiceAuthorizationTest {
  }
  @Test void crmCannotBypassReadyControllerByCallingServiceWithOpsPermission(){
   UUID id=UUID.randomUUID();actor(id,true,false,true);
-  var plans=new CruiseMainflowService(jdbc,mapper,mock(PortWindowEvaluator.class),mock(org.springframework.beans.factory.ObjectProvider.class));
+  var plans=new CruiseMainflowService(jdbc,mapper,mock(CruisePortValidationService.class),mock(CruiseShipAssignmentPolicy.class),mock(com.casms.cruisepackage.service.CruisePackageCabinMappingService.class),mock(org.springframework.beans.factory.ObjectProvider.class));
   assertEquals("READY_ACTION_FORBIDDEN",assertThrows(BusinessException.class,()->plans.setReady(UUID.randomUUID(),new CruiseMainflowService.Action(1L,null,null),id)).getCode());
   verifyNoInteractions(jdbc);
  }

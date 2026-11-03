@@ -38,7 +38,7 @@ class ScheduleMaterializationServiceTest {
     @Mock private CruiseStopRepository cruiseStopRepository;
     @Mock private CruiseRepository cruiseRepository;
     @Mock private PortRepository portRepository;
-    @Mock private PortWindowEvaluator portWindowEvaluator;
+    @Mock private CruisePortValidationService portValidation;
     @Mock private com.casms.ship.service.OperationalProgramMappingService operationalProgramMappingService;
     @Mock private com.casms.activity.repository.OnboardActivityRepository onboardActivityRepository;
     @Mock private com.casms.activity.repository.ShoreExcursionRepository shoreExcursionRepository;
@@ -131,9 +131,6 @@ class ScheduleMaterializationServiceTest {
         testVersion.setStops(stops);
         testVersion.setEntries(new ArrayList<>());
 
-        lenient().when(portRepository.lockDirectory(any())).thenAnswer(i->Optional.of(i.getArgument(0).equals(portHph.getPortId())?portHph:portDan));
-        lenient().when(portWindowEvaluator.evaluate(any(),any(),any(),any())).thenReturn(List.of(new com.casms.ship.dto.PortWindowContract.Check(portHph.getPortId(),"ARRIVAL","PASS","MATCHED","Matched",null,"Asia/Ho_Chi_Minh",UUID.randomUUID(),1L,"Authority",null,null,Instant.now(),List.of())));
-        lenient().when(portWindowEvaluator.departureMovement(any(),any(),any())).thenReturn(List.of());
         departureTime = Instant.parse("2026-11-01T01:00:00Z"); // 08:00 UTC+7
     }
 

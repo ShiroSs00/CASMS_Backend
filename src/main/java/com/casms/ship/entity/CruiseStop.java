@@ -26,8 +26,6 @@ public class CruiseStop {
     @Column(name="source_stop_id") private UUID sourceStopId;
     @OneToMany(mappedBy="stop",cascade=CascadeType.ALL,orphanRemoval=true) @OrderBy("sequence ASC")
     private java.util.List<CruiseDestinationVisit> visits=new java.util.ArrayList<>();
-    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.JSON) @Column(name="port_window_evidence",columnDefinition="jsonb")
-    private java.util.List<com.casms.ship.dto.PortWindowContract.Check> portWindowEvidence;
 
 
     @ManyToOne(fetch = FetchType.LAZY)

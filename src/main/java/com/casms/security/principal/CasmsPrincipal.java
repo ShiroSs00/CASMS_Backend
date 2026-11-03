@@ -45,6 +45,7 @@ public class CasmsPrincipal implements UserDetails {
                 rolePermissionRepository.findByRole(role).ifPresent(rp -> {
                     if (rp.getPermissions() != null) {
                         for (Permission p : rp.getPermissions()) {
+                            if (p.isRetired()) continue;
                             authorities.add(new SimpleGrantedAuthority(p.name()));
                         }
                     }
@@ -88,6 +89,7 @@ public class CasmsPrincipal implements UserDetails {
     }
 
     public boolean hasPermission(Permission permission) {
+        if (permission.isRetired()) return false;
         if (user.hasRole(Role.POS)) return false;
         return user.getRoles().stream()
                 .flatMap(role -> {

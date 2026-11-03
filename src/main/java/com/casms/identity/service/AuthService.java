@@ -126,6 +126,7 @@ public class AuthService {
                 rolePermissionRepository.findByRole(role).ifPresent(rp -> {
                     if (rp.getPermissions() != null) {
                         for (Permission p : rp.getPermissions()) {
+                            if (p.isRetired()) continue;
                             permissions.add(p.name());
                         }
                     }

@@ -34,6 +34,22 @@ import static org.mockito.Mockito.*;
 @ExtendWith(MockitoExtension.class)
 class AuthServiceTest {
 
+    @Test
+    void retiredPermissionsFromHistoricalRowsAreNotEffectiveAuthorities() {
+        sampleUser.setRoles(EnumSet.of(Role.OPERATIONS_MANAGER));
+        RolePermission mapping = new RolePermission();
+        mapping.setRole(Role.OPERATIONS_MANAGER);
+        mapping.setPermissions(EnumSet.of(Permission.PORT_READ, Permission.PORT_CALL_WINDOW_READ,
+                Permission.PORT_CALL_WINDOW_CREATE, Permission.PORT_CALL_WINDOW_UPDATE, Permission.PORT_CALL_WINDOW_VERIFY));
+        when(rolePermissionRepository.findByRole(Role.OPERATIONS_MANAGER)).thenReturn(Optional.of(mapping));
+
+        assertEquals(Set.of("PORT_READ"), authService.getEffectivePermissions(sampleUser));
+        CasmsPrincipal principal = new CasmsPrincipal(sampleUser, rolePermissionRepository);
+        assertTrue(principal.hasPermission(Permission.PORT_READ));
+        assertFalse(principal.hasPermission(Permission.PORT_CALL_WINDOW_READ));
+        assertTrue(principal.getAuthorities().stream().noneMatch(authority -> authority.getAuthority().startsWith("PORT_CALL_WINDOW_")));
+    }
+
     @Mock
     private UserRepository userRepository;
 

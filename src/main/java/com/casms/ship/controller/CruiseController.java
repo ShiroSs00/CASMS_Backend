@@ -75,7 +75,7 @@ public class CruiseController {
     private final CruiseAuditService cruiseAuditService;
 
     @Operation(summary = "Xem trước lịch trình chuyến khởi hành (Preview)", description = "Tính toán ngày thực tế cho các ngày và điểm dừng từ phiên bản TripScheduleVersion đã phát hành mà không lưu vào DB (C02)")
-    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "422", description = "VERSION_NOT_PUBLISHED / TRIP_ARCHIVED / SOURCE_DURATION_INVALID: nguồn không hợp lệ. Preview thành công vẫn có thể trả portCallWindowStatus=BLOCK với portWindowChecks và materializationBlockers; Create luôn đánh giá lại bằng evaluator hiện có.")
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "422", description = "VERSION_NOT_PUBLISHED / TRIP_ARCHIVED / SOURCE_DURATION_INVALID: nguồn không hợp lệ. Preview/Create vẫn kiểm tra thời gian, phạm vi quốc gia, trạng thái cảng và múi giờ hiện hành.")
     @PreAuthorize("hasAnyAuthority('CRUISE_CREATE', 'CRUISE_READ', 'TRIP_READ')")
     @PostMapping("/preview-schedule")
     public ApiResponse<CruiseSchedulePreviewResponse> previewSchedule(
@@ -92,9 +92,9 @@ public class CruiseController {
         return ApiResponse.success(scheduleMaterializationService.getCruiseSchedule(cruiseId));
     }
 
-    @Operation(summary = "Tạo chuyến khởi hành mới", description = "Tạo Cruise DRAFT và snapshot atomic từ TripScheduleVersion đã PUBLISHED thuộc Trip chưa ARCHIVED. Bắt buộc sourceVersionId và expectedSourceVersionRevision khớp preview. Thời lượng kế thừa từ nguồn. Có thể gán tàu ngay hoặc gán sau. Yêu cầu Idempotency-Key header. Đọc snapshot, sourceContentHash, durationDays/durationNights và bằng chứng khung giờ cảng qua GET /cruise/{cruiseId}/schedule.")
+    @Operation(summary = "Tạo chuyến khởi hành mới", description = "Tạo Cruise DRAFT và snapshot atomic từ TripScheduleVersion đã PUBLISHED thuộc Trip chưa ARCHIVED. Bắt buộc sourceVersionId và expectedSourceVersionRevision khớp preview. Thời lượng kế thừa từ nguồn. Có thể gán tàu ngay hoặc gán sau. Yêu cầu Idempotency-Key header. Đọc snapshot, sourceContentHash, durationDays/durationNights qua GET /cruise/{cruiseId}/schedule.")
     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "409", description = "STALE_PREVIEW: thiếu hoặc sai revision nguồn. LEGACY_SOURCE_MATERIALIZATION_BLOCKED: nguồn chứa SERVING_WINDOW lịch sử.")
-    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "422", description = "SOURCE_VERSION_REQUIRED / VERSION_NOT_PUBLISHED / TRIP_ARCHIVED / SOURCE_DURATION_INVALID / PORT_CALL_WINDOW_VALIDATION_REQUIRED / ITINERARY_ALREADY_MATERIALIZED. Không ghi thành công một phần.")
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "422", description = "SOURCE_VERSION_REQUIRED / VERSION_NOT_PUBLISHED / TRIP_ARCHIVED / SOURCE_DURATION_INVALID / ITINERARY_ALREADY_MATERIALIZED. Không ghi thành công một phần.")
     @PreAuthorize("hasRole('CRUISE_MANAGER') and hasAuthority('CRUISE_CREATE')")
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)

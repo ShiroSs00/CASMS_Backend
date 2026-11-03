@@ -182,7 +182,14 @@ public class PortService {
         }
 
         var before = snapshot(port);
-        portRepository.delete(port);
+        try {
+            portRepository.delete(port);
+            // Historical storage keeps its foreign keys; never cascade-delete archived evidence.
+            portRepository.flush();
+        } catch (org.springframework.dao.DataIntegrityViolationException referenced) {
+            throw new BusinessException(org.springframework.http.HttpStatus.CONFLICT, "PORT_IN_USE",
+                    "Cảng đang được dữ liệu lịch sử tham chiếu; không thể xóa.");
+        }
         auditService.recordDirectoryMutation("Port", portId, "DELETE_UNUSED", before, java.util.Map.of());
         log.info("Deleted unused port: {}", portId);
     }

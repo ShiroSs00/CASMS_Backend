@@ -48,9 +48,7 @@ public interface PortRepository extends JpaRepository<Port, UUID> {
             @Param("countryCodes") List<String> countryCodes,
             @Param("search") String search);
     @Query(value = """
-            SELECT EXISTS (SELECT 1 FROM "PortCallWindow" WHERE port_id=:id)
-                OR EXISTS (SELECT 1 FROM "PortCallWindowException" WHERE port_id=:id)
-                OR EXISTS (SELECT 1 FROM "Cruise" WHERE departure_port_id=:id OR return_port_id=:id)
+            SELECT EXISTS (SELECT 1 FROM "Cruise" WHERE departure_port_id=:id OR return_port_id=:id)
                 OR EXISTS (SELECT 1 FROM "CruiseStop" WHERE port_id=:id)
                 OR EXISTS (SELECT 1 FROM "TripPlanStop" WHERE port_id=:id)
                 OR EXISTS (SELECT 1 FROM "TripPlanDay" WHERE departure_port_id=:id)

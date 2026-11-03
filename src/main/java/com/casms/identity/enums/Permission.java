@@ -138,11 +138,12 @@ public enum Permission {
     PORT_DEACTIVATE,
     PORT_VALIDATE,
 
-    // PortCallWindow groundwork only; persistence/API/workflow belong to PORT-02 onward.
-    PORT_CALL_WINDOW_READ,
-    PORT_CALL_WINDOW_CREATE,
-    PORT_CALL_WINDOW_UPDATE,
-    PORT_CALL_WINDOW_VERIFY,
+    // Retired values retained ONLY to deserialize historical RolePermissionMapping rows.
+    // No endpoint, role initialization or effective authority uses these permissions.
+    @Deprecated PORT_CALL_WINDOW_READ,
+    @Deprecated PORT_CALL_WINDOW_CREATE,
+    @Deprecated PORT_CALL_WINDOW_UPDATE,
+    @Deprecated PORT_CALL_WINDOW_VERIFY,
 
     // Destination permissions
     DESTINATION_CREATE,
@@ -286,5 +287,13 @@ public enum Permission {
     TRIP_PLAN_WRITE,
     TRIP_PLAN_VALIDATE,
     TRIP_PLAN_SUBMIT,
-    TRIP_PLAN_REVIEW
+    TRIP_PLAN_REVIEW;
+
+    public boolean isRetired() {
+        return switch (this) {
+            case PORT_CALL_WINDOW_READ, PORT_CALL_WINDOW_CREATE,
+                    PORT_CALL_WINDOW_UPDATE, PORT_CALL_WINDOW_VERIFY -> true;
+            default -> false;
+        };
+    }
 }

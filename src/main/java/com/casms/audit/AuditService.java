@@ -59,7 +59,7 @@ public class AuditService {
         if (authentication == null || !(authentication.getPrincipal() instanceof com.casms.security.principal.CasmsPrincipal actor)) {
             throw new com.casms.common.exception.BusinessException(org.springframework.http.HttpStatus.UNAUTHORIZED, "AUTH_REQUIRED", "Yêu cầu đăng nhập để cập nhật danh mục.");
         }
-        String permission = (entityType.startsWith("PortCallWindow") ? "PORT_CALL_WINDOW" : entityType.toUpperCase(java.util.Locale.ROOT)) + "_" + operation;
+        String permission = entityType.toUpperCase(java.util.Locale.ROOT) + "_" + operation;
         if (!actor.hasRole(com.casms.identity.enums.Role.OPERATIONS_MANAGER) || !actor.hasAuthority(permission)) {
             throw new com.casms.common.exception.BusinessException(org.springframework.http.HttpStatus.FORBIDDEN, "DIRECTORY_MANAGE_FORBIDDEN", "Chỉ Quản lý vận hành có quyền tương ứng được cập nhật danh mục này.");
         }
@@ -89,14 +89,4 @@ public class AuditService {
         auditRepository.saveAndFlush(event);
     }
 
-    /** Current-policy evidence is appended without rewriting the materialized schedule or review fingerprint. */
-    @Transactional(propagation = Propagation.MANDATORY)
-    public void recordPortWindowEvaluation(UUID cruiseId,java.util.List<com.casms.ship.dto.PortWindowContract.Check> checks){
-        var auth=org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
-        if(auth==null||!(auth.getPrincipal() instanceof com.casms.security.principal.CasmsPrincipal actor))
-            throw new com.casms.common.exception.BusinessException(org.springframework.http.HttpStatus.UNAUTHORIZED,"AUTH_REQUIRED","Yêu cầu đăng nhập.");
-        AuditLog log=new AuditLog();log.setActorUserId(actor.getUserId());log.setEntityType("Cruise");log.setEntityId(cruiseId);log.setAction("PORT_WINDOW_REVALIDATE");log.setResult("SUCCESS");
-        try{log.setDetail(objectMapper.writeValueAsString(checks));}catch(com.fasterxml.jackson.core.JsonProcessingException ex){throw new IllegalStateException("Cannot capture Port window evidence",ex);}
-        auditRepository.saveAndFlush(log);
-    }
 }
