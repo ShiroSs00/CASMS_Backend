@@ -8,10 +8,14 @@ import lombok.Setter;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.UUID;
 
 @Getter
 @Setter
 public class InstallmentResponse {
+
+    @Schema(description = "ID đợt thanh toán")
+    private UUID installmentId;
 
     @Schema(description = "Số thứ tự đợt thanh toán", example = "1")
     private Integer sequenceNo;

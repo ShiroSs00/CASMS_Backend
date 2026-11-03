@@ -52,7 +52,8 @@ public class SecurityConfig {
                                 "/booking/available-cabins",
                                 "/booking/3d-available-cabins",
                                 "/booking/lookup",
-                                "/booking/recovery"
+                                "/booking/recovery",
+                                "/payment/sepay/**"
                         ).permitAll()
                         .requestMatchers(HttpMethod.GET,
                                 "/cruises/*/public-itinerary",

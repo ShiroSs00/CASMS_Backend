@@ -1544,6 +1544,7 @@ public class BookingService {
         List<InstallmentResponse> installmentResponses = new ArrayList<>();
         for (Installment inst : installments) {
             InstallmentResponse iRes = new InstallmentResponse();
+            iRes.setInstallmentId(inst.getInstallmentId());
             iRes.setSequenceNo(inst.getSequenceNo());
             iRes.setInstallmentType(inst.getInstallmentType());
             iRes.setRequiredAmount(inst.getRequiredAmount());
@@ -1597,7 +1598,7 @@ public class BookingService {
         if (payment.getPaymentMethod() == null) return false;
         return switch (payment.getPaymentMethod()) {
             case Cash -> payment.getInternalReceiptReference() != null && !payment.getInternalReceiptReference().isBlank();
-            case GatewaySandbox -> payment.getProcessorReference() != null && !payment.getProcessorReference().isBlank();
+            case GatewaySandbox, Sepay -> payment.getProcessorReference() != null && !payment.getProcessorReference().isBlank();
         };
     }
 
