@@ -37,4 +37,16 @@ public class BookingPassenger {
 
     @Column(name = "requested_cabin_category", length = 255)
     private String requestedCabinCategory;
+
+    // NULL mode/Fare fields preserve legacy records. Category holds use Booking's existing lifecycle/expiry.
+    @Enumerated(EnumType.STRING)
+    @Column(name="cabin_selection_mode",length=20)
+    private com.casms.booking.enums.CabinSelectionMode cabinSelectionMode;
+    @Column(name="cabin_group_key",length=100) private String cabinGroupKey;
+    @Column(name="fare_offer_id") private UUID fareOfferId;
+    @Column(name="fare_price_revision_id") private UUID farePriceRevisionId;
+    @Column(name="fare_template_version_id") private UUID fareTemplateVersionId;
+    @Column(name="fare_cabin_category",length=30) private String fareCabinCategory;
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.JSON)
+    @Column(name="fare_selection_payload",columnDefinition="jsonb") private String fareSelectionPayload;
 }

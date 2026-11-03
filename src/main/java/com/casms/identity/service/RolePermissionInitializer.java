@@ -135,6 +135,7 @@ public class RolePermissionInitializer implements CommandLineRunner {
         // SHIP_MANAGER owns operational status; ADMIN owns technical/model configuration.
         saveRolePermission(Role.SHIP_MANAGER, EnumSet.of(
                 Permission.SHIP_READ,
+                Permission.SHIP_CABIN_CATEGORY_MAPPING_CONFIRM,
                 Permission.SHIP_STATUS_CHANGE,
                 Permission.SHIP_SCHEDULE_CHECK,
                 Permission.SHIP_CAPACITY_SUMMARY,
@@ -308,6 +309,8 @@ public class RolePermissionInitializer implements CommandLineRunner {
 
         // BOOKING_AGENT: tiếp nhận, cập nhật, điều phối phòng, hủy và xác nhận booking
         saveRolePermission(Role.BOOKING_AGENT, EnumSet.of(
+                // Read remains restricted to active CruiseStaff assignments by CruiseStaffAccessPolicy.
+                Permission.CRUISE_MANIFEST_READ,
                 Permission.SERVICE_READ, Permission.SERVICE_REQUEST_READ, Permission.TOUR_PACKAGE_ASSIGN,
                 Permission.BOOKING_CREATE,
                 Permission.BOOKING_READ,

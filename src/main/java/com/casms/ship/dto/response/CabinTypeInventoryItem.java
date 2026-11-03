@@ -40,10 +40,10 @@ public class CabinTypeInventoryItem {
     @Schema(description = "Tổng số chỗ đang bị chiếm dụng (booked + held)")
     private long occupiedSlots;
 
-    @Schema(description = "Số chỗ còn lại có thể bán")
+    @Schema(description = "Số chỗ còn lại có thể bán của hạng phòng, giới hạn bởi chỗ phòng khả dụng và sức chứa hành khách còn lại của Ship; các hạng dùng chung hạn mức tàu")
     private long remainingSlots;
 
-    @Schema(description = "Hạng phòng này còn được phép bán hay không (remainingSlots > 0 && operationalCabins > 0)")
+    @Schema(description = "Hạng phòng còn chỗ bán khi Ship còn sức chứa hành khách, remainingSlots > 0 và operationalCabins > 0")
     private boolean canSell;
 
     @Schema(description = "Số phòng hỗ trợ người khuyết tật (Accessible)")

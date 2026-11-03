@@ -65,5 +65,10 @@ public interface CabinAssignmentRepository extends JpaRepository<CabinAssignment
     long countActiveAssignmentsByCruiseId(@Param("cruiseId") UUID cruiseId);
 
     Optional<CabinAssignment> findByBookingPassengerBookingPassengerIdAndValidToIsNull(UUID bookingPassengerId);
+    @Query("select count(a) from CabinAssignment a where a.cabin.cabinId=:cabinId and a.validTo is null "
+            +"and a.bookingPassenger.booking.cruise.cruiseId=:cruiseId and a.bookingPassenger.booking.bookingId<>:bookingId "
+            +"and a.bookingPassenger.participationStatus=com.casms.booking.enums.BookingPassengerParticipationStatus.Active "
+            +"and a.bookingPassenger.booking.bookingStatus<>com.casms.booking.enums.BookingStatus.Cancelled")
+    long countOtherBookingAssignments(@Param("cabinId") UUID cabinId,@Param("cruiseId") UUID cruiseId,@Param("bookingId") UUID bookingId);
     List<CabinAssignment> findByBookingPassengerBookingPassengerId(UUID bookingPassengerId);
 }

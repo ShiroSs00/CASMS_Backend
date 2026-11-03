@@ -109,7 +109,8 @@ public class PosService {
         return repository.requestIds(a.terminal().terminalId(),a.area().id(),a.area().shipId(),a.assignment().cruiseId()).stream().map(id->serviceRequests.get(id,user.getUserId(),true))
                 .filter(r->allowed.contains(r.getService().getServiceId())).map(PosService::requestView).toList();
     }
-    public ServiceRequestView action(String token,CasmsPrincipal user,UUID request,String action) {
+    public ServiceRequestView action(String token,CasmsPrincipal user,UUID request,String action) {return action(token,user,request,action,null,null);}
+    public ServiceRequestView action(String token,CasmsPrincipal user,UUID request,String action,Integer fulfilledQuantity,String unitCode) {
         var a=access(token,user);
         PosPermission permission=switch(action) {
             case "assign"->PosPermission.SERVICE_REQUEST_ASSIGN;
@@ -120,7 +121,7 @@ public class PosService {
         require(a,r.getService().getServiceId(),permission);
         if(r.getBooking()==null || !a.assignment().cruiseId().equals(r.getBooking().getCruise().getCruiseId()) || r.getBooking().getCruise().getShip()==null
                 || !a.area().shipId().equals(r.getBooking().getCruise().getShip().getShipId()))throw denied("Request is outside this POS ship");
-        return requestView(serviceRequests.transition(request,user.getUserId(),action));
+        return requestView(serviceRequests.transition(request,user.getUserId(),action,fulfilledQuantity,unitCode));
     }
     public PosDtos.Sale sell(String token,CasmsPrincipal user,PosDtos.SaleInput input) {
         var a=access(token,user);
@@ -159,6 +160,7 @@ public class PosService {
         if(total.precision()-total.scale()>15)throw invalid("POS_AMOUNT_TOO_LARGE","Sale exceeds supported monetary precision");
         ledger.assertCanSpend(account,passenger.getPassengerId(),total);
         var request=serviceRequests.createForPos(input.bookingPassengerId(),input.serviceId(),input.scheduleId(),input.quantity());
+        if(request.getFareBenefitSnapshotId()!=null)throw invalid("BENEFIT_ALREADY_INCLUDED","This purchased benefit is included without an additional charge; use the existing service-request fulfillment flow");
         UUID saleId=UUID.randomUUID();Instant now=Instant.now();
         var transaction=transaction(account,passenger,user,total,TransactionType.CHARGE,"POS_SALE",saleId,now);
         var charge=new Charge();charge.setTransaction(transaction);charge.setPassenger(passenger);charge.setSourceType("POS_SALE");
@@ -246,7 +248,7 @@ public class PosService {
         return new ServiceRequestView(r.getServiceRequestId(),r.getPassenger().getPassengerId(),r.getService().getServiceId(),
                 r.getServiceSchedule()==null?null:r.getServiceSchedule().getServiceScheduleId(),r.getBooking()==null?null:r.getBooking().getBookingId(),
                 r.getBookingPassenger()==null?null:r.getBookingPassenger().getBookingPassengerId(),r.getQuantity(),r.getUnitPriceSnapshot(),r.getCurrencySnapshot(),r.getNote(),r.getStatus().name(),
-                r.getAssignedUser()==null?null:r.getAssignedUser().getUserId(),r.getRequestTime(),r.getCompletedAt());
+                r.getAssignedUser()==null?null:r.getAssignedUser().getUserId(),r.getRequestTime(),r.getCompletedAt(),r.getFareBenefitSnapshotId(),r.getFareFulfillmentUnitCode(),r.getFareFulfilledQuantity());
     }
     private static String secret() {byte[] bytes=new byte[32];RANDOM.nextBytes(bytes);return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);}
     static String hash(String value) {

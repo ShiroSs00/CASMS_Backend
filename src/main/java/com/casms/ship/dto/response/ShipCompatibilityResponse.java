@@ -26,13 +26,13 @@ public class ShipCompatibilityResponse {
     @Schema(description = "Tàu có tương thích để gán vào chuyến khởi hành hay không")
     private boolean compatible;
 
-    @Schema(description = "Tàu có đang ở trạng thái ACTIVE hay không")
+    @Schema(description = "Tàu có đang ở trạng thái cho phép khai thác READY hoặc IN_SERVICE hay không")
     private boolean shipActive;
 
     @Schema(description = "Lịch trình tàu có trống trong khoảng thời gian chuyến khởi hành hay không")
     private boolean scheduleAvailable;
 
-    @Schema(description = "Sức chứa của tàu có đủ đáp ứng lượng khách đã đặt hay không")
+    @Schema(description = "Sức chứa hành khách Ship.totalCapacity hợp lệ và đủ cho các hành khách đang giữ/đặt chỗ; không có hạn mức riêng của Departure")
     private boolean capacitySufficient;
 
     @Schema(description = "Tàu đã được cấu hình đầy đủ boong và phòng hay chưa")
@@ -45,9 +45,9 @@ public class ShipCompatibilityResponse {
     private long cabinsCount;
 
     @Schema(description = "Tổng sức chứa hành khách của tàu")
-    private int totalCapacity;
+    private Integer totalCapacity;
 
-    @Schema(description = "Số lượng hành khách đã đặt chỗ trên chuyến khởi hành")
+    @Schema(description = "Số hành khách Active trong các Booking Draft/Confirmed, gồm cả giữ chỗ theo convention hiện có")
     private long bookedPassengersCount;
 
     @Builder.Default

@@ -53,13 +53,14 @@ public class CruisePricingPolicyService {
     private final com.fasterxml.jackson.databind.ObjectMapper mapper;
     private final CruiseMainflowService plans;
 
-    private void actor(UUID actorId, boolean review) {
+    /** Policy ownership is OPS for both configuration/submission and review (CR-BE-POLICY-SOURCE). */
+    private void actor(UUID actorId) {
         var auth=org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
         if(auth==null || !(auth.getPrincipal() instanceof com.casms.security.principal.CasmsPrincipal principal)
             || !Objects.equals(actorId,principal.getUserId())
-            || !principal.hasRole(review?com.casms.identity.enums.Role.OPERATIONS_MANAGER:com.casms.identity.enums.Role.CRUISE_MANAGER)
-            || !principal.hasPermission(review?com.casms.identity.enums.Permission.CRUISE_PRICING_APPROVE:com.casms.identity.enums.Permission.CRUISE_UPDATE_DRAFT))
-            throw new org.springframework.security.access.AccessDeniedException("Pricing actor requires role and effective permission");
+            || !principal.hasRole(com.casms.identity.enums.Role.OPERATIONS_MANAGER)
+            || !principal.hasPermission(com.casms.identity.enums.Permission.CRUISE_PRICING_APPROVE))
+            throw new org.springframework.security.access.AccessDeniedException("Chỉ OPS có quyền quản lý chính sách thương mại mới được thực hiện thao tác này.");
     }
     private BusinessException conflict(String code){return new BusinessException(HttpStatus.CONFLICT,code,"Pricing policy state or revision changed");}
     private void revision(CruisePricingPolicy policy,Long expected){
@@ -85,7 +86,19 @@ public class CruisePricingPolicyService {
     public CruisePricingPolicyResponse savePricingPolicy(UUID cruiseId,CruisePricingPolicyRequest request,UUID actorId,boolean ignored){return savePricingPolicy(cruiseId,request,actorId);}
     @Transactional
     public CruisePricingPolicyResponse savePricingPolicy(UUID cruiseId,CruisePricingPolicyRequest request,UUID actorId){
-        actor(actorId,false);plans.assertEditable(cruiseId);
+        var cruise=cruiseRepository.findByIdForUpdate(cruiseId).orElseThrow(()->new ResourceNotFoundException("Cruise",cruiseId));
+        actor(actorId);
+        if(usesCruisePackagePricing(cruise))throw new BusinessException(HttpStatus.UNPROCESSABLE_ENTITY,"CRUISE_PACKAGE_PRICE_SEPARATE","Chuyến dùng Gói du thuyền: cấu hình giá gói theo domain riêng và dùng commercial-terms cho thanh toán/hủy/phí.");
+        return persistPolicy(cruiseId,request,actorId);
+    }
+    private CruisePricingPolicyResponse persistPolicy(UUID cruiseId,CruisePricingPolicyRequest request,UUID actorId){
+        actor(actorId);plans.assertEditable(cruiseId);
+        if(request.getDepositPercentage()==null||request.getDepositPercentage().signum()<0
+                ||request.getDepositPercentage().compareTo(BigDecimal.ONE)>0
+                ||request.getFinalPaymentDueDays()==null||request.getFinalPaymentDueDays()<0
+                ||request.getFullPaymentCutoffDays()==null||request.getFullPaymentCutoffDays()<0)
+            throw new BusinessException(HttpStatus.UNPROCESSABLE_ENTITY,"BUSINESS_POLICY_REQUIRED",
+                    "Phải cấu hình tường minh tỷ lệ cọc, hạn thanh toán và cutoff; không có giá trị mặc định.");
         var cruise=cruiseRepository.findByIdForUpdate(cruiseId).orElseThrow(()->new ResourceNotFoundException("Cruise",cruiseId));
         var current=pricingPolicyRepository.findByCruise_CruiseId(cruiseId).orElse(null);revision(current,request.getExpectedRevision());
         if(!"USD".equals(request.getCurrency()))throw new BusinessException(HttpStatus.UNPROCESSABLE_ENTITY,"CURRENCY_USD_REQUIRED","New pricing writes require USD");
@@ -106,9 +119,36 @@ public class CruisePricingPolicyService {
         return toResponse(policy);
     }
     public record Review(Long expectedRevision,String reason){}
+    /** Payment/cancellation/fee terms only; package prices have their own revisions and maker/checker. */
+    public record CommercialTerms(@jakarta.validation.constraints.NotNull @jakarta.validation.constraints.Min(0) Long expectedRevision,
+            @jakarta.validation.constraints.NotNull @jakarta.validation.constraints.Pattern(regexp="USD") String currency,
+            @jakarta.validation.constraints.NotNull @jakarta.validation.constraints.DecimalMin("0") BigDecimal portFeePerPassenger,
+            @jakarta.validation.constraints.NotNull @jakarta.validation.constraints.DecimalMin("0") @jakarta.validation.constraints.DecimalMax("1") BigDecimal taxRate,
+            @jakarta.validation.constraints.NotNull @jakarta.validation.constraints.DecimalMin("0") @jakarta.validation.constraints.DecimalMax("1") BigDecimal depositPercentage,
+            @jakarta.validation.constraints.NotNull @jakarta.validation.constraints.Min(0) Integer finalPaymentDueDays,
+            @jakarta.validation.constraints.NotNull @jakarta.validation.constraints.Min(0) Integer fullPaymentCutoffDays,
+            @jakarta.validation.constraints.NotBlank String cancellationPolicy) {}
+    public boolean usesCruisePackagePricing(Cruise cruise) {
+        return cruise.getSourceVersion()!=null || Boolean.TRUE.equals(jdbc.queryForObject(
+                "SELECT EXISTS(SELECT 1 FROM \"DepartureFarePackage\" WHERE cruise_id=?)",Boolean.class,cruise.getCruiseId()));
+    }
+    @Transactional
+    public CruisePricingPolicyResponse saveCommercialTerms(UUID cruiseId,CommercialTerms input,UUID actorId) {
+        actor(actorId);
+        var cruise=cruiseRepository.findByIdForUpdate(cruiseId).orElseThrow(()->new ResourceNotFoundException("Cruise",cruiseId));
+        if(!usesCruisePackagePricing(cruise))throw conflict("CRUISE_PACKAGE_PRICING_REQUIRED");
+        var prior=pricingPolicyRepository.findByCruise_CruiseId(cruiseId).orElse(null);
+        var request=new CruisePricingPolicyRequest();request.setExpectedRevision(input.expectedRevision());request.setCurrency(input.currency());
+        // Historical cabin prices survive; this contract cannot write or clear them.
+        request.setInteriorBaseFare(prior==null?null:prior.getInteriorBaseFare());request.setOceanViewBaseFare(prior==null?null:prior.getOceanViewBaseFare());
+        request.setBalconyBaseFare(prior==null?null:prior.getBalconyBaseFare());request.setSuiteBaseFare(prior==null?null:prior.getSuiteBaseFare());
+        request.setPortFeePerPassenger(input.portFeePerPassenger());request.setTaxRate(input.taxRate());request.setDepositPercentage(input.depositPercentage());
+        request.setFinalPaymentDueDays(input.finalPaymentDueDays());request.setFullPaymentCutoffDays(input.fullPaymentCutoffDays());request.setCancellationPolicy(input.cancellationPolicy());
+        return persistPolicy(cruiseId,request,actorId);
+    }
     @Transactional
     public CruisePricingPolicyResponse review(UUID cruiseId,String action,Review request,UUID actorId){
-        boolean submit=action.equals("submit");actor(actorId,!submit);
+        boolean submit=action.equals("submit");actor(actorId);
         cruiseRepository.findByIdForUpdate(cruiseId).orElseThrow(()->new ResourceNotFoundException("Cruise",cruiseId));
         var p=pricingPolicyRepository.findByCruise_CruiseId(cruiseId).orElseThrow(()->new ResourceNotFoundException("Pricing policy",cruiseId));revision(p,request.expectedRevision());
         if(submit){
@@ -132,12 +172,8 @@ public class CruisePricingPolicyService {
     }
     @Transactional
     public void recallForPlan(UUID cruiseId, UUID actorId, boolean reviewer) {
-        var auth=org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
-        if(auth==null || !(auth.getPrincipal() instanceof com.casms.security.principal.CasmsPrincipal principal)
-            || !Objects.equals(actorId,principal.getUserId())
-            || !principal.hasRole(reviewer?com.casms.identity.enums.Role.OPERATIONS_MANAGER:com.casms.identity.enums.Role.CRUISE_MANAGER)
-            || !principal.hasPermission(reviewer?com.casms.identity.enums.Permission.ITINERARY_APPROVE:com.casms.identity.enums.Permission.CRUISE_UPDATE_DRAFT))
-            throw new org.springframework.security.access.AccessDeniedException("Plan recall requires role and effective permission");
+        // Compatibility entry point; Plan transitions no longer recall an OPS-owned policy implicitly.
+        actor(actorId);
         cruiseRepository.findByIdForUpdate(cruiseId).orElseThrow(()->new ResourceNotFoundException("Cruise",cruiseId));
         var p=pricingPolicyRepository.findByCruise_CruiseId(cruiseId).orElseThrow(()->new ResourceNotFoundException("Pricing policy",cruiseId));
         if(p.getStatus()!=PricingPolicyStatus.PENDING_APPROVAL)return;
@@ -147,7 +183,7 @@ public class CruisePricingPolicyService {
     }
     /** Legacy no-revision route cannot approve. */
     @Transactional
-    public CruisePricingPolicyResponse approvePricingPolicy(UUID cruiseId,UUID actorId){actor(actorId,true);throw conflict("STALE_REVISION");}
+    public CruisePricingPolicyResponse approvePricingPolicy(UUID cruiseId,UUID actorId){actor(actorId);throw conflict("STALE_REVISION");}
     @Transactional(readOnly=true)
     public java.util.List<java.util.Map<String,Object>> history(UUID id){
         cruiseRepository.findById(id).orElseThrow(()->new ResourceNotFoundException("Cruise",id));
@@ -156,7 +192,7 @@ public class CruisePricingPolicyService {
 
     private void validateFaresForApproval(Cruise cruise, CruisePricingPolicy policy) {
         // If ship is assigned, verify all cabin types on ship have configured (non-null) base fares
-        if (cruise.getShip() != null) {
+        if (!usesCruisePackagePricing(cruise) && cruise.getShip() != null) {
             UUID shipId = cruise.getShip().getShipId();
             for (CabinType type : CabinType.values()) {
                 long count = cabinRepository.countByShipShipIdAndCabinType(shipId, type);
@@ -165,7 +201,7 @@ public class CruisePricingPolicyService {
                             "Tàu có hạng phòng " + type + " nhưng chưa được cấu hình giá cơ sở trong chính sách");
                 }
             }
-        } else {
+        } else if (!usesCruisePackagePricing(cruise)) {
             // General validation: at least Interior base fare must be configured
             if (policy.getInteriorBaseFare() == null) {
                 throw new BusinessException(HttpStatus.UNPROCESSABLE_ENTITY, "PRICING_POLICY_FARE_MISSING",
@@ -204,6 +240,7 @@ public class CruisePricingPolicyService {
                 .pricingPolicyId(policy.getPricingPolicyId())
                 .policyNumber(policy.getPolicyNumber()).revision(policy.getRevision()).submittedBy(policy.getSubmittedBy()).submittedAt(policy.getSubmittedAt()).reviewedBy(policy.getReviewedBy()).reviewedAt(policy.getReviewedAt()).decisionReason(policy.getDecisionReason()).snapshotHash(policy.getSnapshotHash())
                 .cruiseId(cruise != null ? cruise.getCruiseId() : null)
+                .cruisePackagePricing(cruise != null && usesCruisePackagePricing(cruise))
                 .cruiseCode(cruise != null ? cruise.getCruiseCode() : null)
                 .cruiseName(cruise != null ? cruise.getCruiseName() : null)
                 .policyVersion(policy.getPolicyVersion())

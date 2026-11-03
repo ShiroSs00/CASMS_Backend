@@ -31,6 +31,7 @@ public class CruisePricingPolicyResponse {
 
     @Schema(description = "ID chuyến khởi hành")
     private UUID cruiseId;
+    private boolean cruisePackagePricing;
 
     @Schema(description = "Mã chuyến khởi hành")
     private String cruiseCode;

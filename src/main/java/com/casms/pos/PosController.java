@@ -105,8 +105,9 @@ public class PosController {
     @PreAuthorize("hasAuthority('POS_ACCESS') and principal.enabled and principal.accountNonLocked")
     @PostMapping("/pos/requests/{requestId}/actions/{action}")
     public ApiResponse<ServiceRequestView> action(@PathVariable UUID requestId,@PathVariable String action,
-            @RequestHeader("X-POS-Session") String session,@AuthenticationPrincipal CasmsPrincipal employee) {
-        return ApiResponse.success(service.action(session,employee,requestId,action));
+            @RequestHeader("X-POS-Session") String session,@AuthenticationPrincipal CasmsPrincipal employee,
+            @Valid @RequestBody(required=false) com.casms.servicepackage.controller.ServicepackageController.ServiceFulfillmentDto fulfillment) {
+        return ApiResponse.success(service.action(session,employee,requestId,action,fulfillment==null?null:fulfillment.fulfilledQuantity(),fulfillment==null?null:fulfillment.unitCode()));
     }
     @Operation(summary="Record onboard service usage against internal spending allowance",
             description="Requires scoped SERVICE_SALE. This records debt/history for settlement after the cruise, never cash collection. Existing confirmed booking, active account/member, allocated finite allowance, in-progress cruise, capacity and spending limits are validated. Price is read from the catalogue. Retries with the same terminal/idempotency key return the original entry.")

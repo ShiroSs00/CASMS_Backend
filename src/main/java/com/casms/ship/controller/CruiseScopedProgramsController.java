@@ -48,11 +48,12 @@ public class CruiseScopedProgramsController {
     public record ServingInput(@NotNull UUID serviceId,UUID cruiseStopId,UUID supplierId,@NotNull java.time.Instant startsAt,
                                @NotNull java.time.Instant endsAt,@NotBlank String location,@NotNull @Positive Integer capacity) {}
     @GetMapping("/program-options")
-    @PreAuthorize("(hasRole('CRUISE_MANAGER') and hasAuthority('CRUISE_UPDATE_DRAFT')) or (hasRole('OPERATIONS_MANAGER') and hasAuthority('CRUISE_READ'))")
+    @PreAuthorize("(hasRole('CRUISE_MANAGER') and hasAuthority('CRUISE_UPDATE_DRAFT')) or (hasRole('OPERATIONS_MANAGER') and hasAuthority('CRUISE_READ')) or (hasRole('ACTIVITY_SERVICE_MANAGER') and hasAuthority('SERVICE_UPDATE'))")
     @Transactional(readOnly=true)
     public ApiResponse<Map<String,Object>> options(@PathVariable UUID cruiseId){
-        plans.get(cruiseId);
+        var view=plans.get(cruiseId);
         return ApiResponse.success(Map.of(
+            "cruiseRevision",view.windows().expectedRevision(),
             "ship",jdbc.queryForMap("SELECT c.ship_id AS id,s.ship_name AS name FROM \"Cruise\" c LEFT JOIN \"Ship\" s USING(ship_id) WHERE c.cruise_id=?",cruiseId),
             "decks",jdbc.queryForList("SELECT d.deck_id AS id,d.deck_name AS name,d.deck_number AS number,d.ship_id AS \"shipId\" FROM \"Deck\" d JOIN \"Cruise\" c ON c.ship_id=d.ship_id WHERE c.cruise_id=? ORDER BY d.deck_number,d.deck_id",cruiseId),
             "services",jdbc.queryForList("SELECT s.service_id AS id,s.service_name AS name,s.requires_schedule AS scheduled FROM \"Service\" s WHERE s.status='ACTIVE' AND EXISTS(SELECT 1 FROM \"DeckServiceAssignment\" a JOIN \"Deck\" d USING(deck_id) JOIN \"Cruise\" c ON c.ship_id=d.ship_id WHERE c.cruise_id=? AND a.service_id=s.service_id) ORDER BY s.service_name",cruiseId),
@@ -219,6 +220,50 @@ public class CruiseScopedProgramsController {
             default -> throw new IllegalArgumentException("Unknown component kind");
         }finish(cruiseId);return ApiResponse.success(null);
     }
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.casms.ship.service.DepartureSaleTermsService saleTerms;
+
+    @GetMapping("/commercial-terms/sale")
+    @PreAuthorize("hasRole('OPERATIONS_MANAGER') and hasAuthority('CRUISE_PRICING_APPROVE')")
+    @io.swagger.v3.oas.annotations.Operation(summary="Read Departure tax and port fee approval and revision")
+    public ApiResponse<com.casms.ship.service.DepartureSaleTermsService.View> saleTerms(@PathVariable UUID cruiseId) {
+        return ApiResponse.success(saleTerms.read(cruiseId));
+    }
+
+    @GetMapping("/commercial-terms/sale/history")
+    @PreAuthorize("hasRole('OPERATIONS_MANAGER') and hasAuthority('CRUISE_PRICING_APPROVE')")
+    @io.swagger.v3.oas.annotations.Operation(summary="Read private sale terms audit history")
+    public ApiResponse<List<com.casms.ship.service.DepartureSaleTermsService.HistoryEntry>> saleTermsHistory(@PathVariable UUID cruiseId) {
+        return ApiResponse.success(saleTerms.history(cruiseId));
+    }
+
+    @PutMapping("/commercial-terms/sale")
+    @PreAuthorize("hasRole('OPERATIONS_MANAGER') and hasAuthority('CRUISE_PRICING_APPROVE')")
+    @io.swagger.v3.oas.annotations.Operation(summary="Configure USD sale tax and port fee applicability",
+        description="Use expectedRevision 0 to create. Applicable charges require a value. Not applicable requires a reason and no numeric value.")
+    public ApiResponse<com.casms.ship.service.DepartureSaleTermsService.View> saveSaleTerms(@PathVariable UUID cruiseId,
+            @Valid @RequestBody com.casms.ship.service.DepartureSaleTermsService.Write input,
+            @AuthenticationPrincipal CasmsPrincipal principal) {
+        return ApiResponse.success(saleTerms.save(cruiseId,input,principal.getUserId()));
+    }
+
+    @PostMapping("/commercial-terms/sale/{action:submit|approve|return}")
+    @PreAuthorize("hasRole('OPERATIONS_MANAGER') and hasAuthority('CRUISE_PRICING_APPROVE')")
+    @io.swagger.v3.oas.annotations.Operation(summary="Submit, independently approve, or return a sale terms revision",
+        description="A maker or submitter cannot review the revision. Return requires a reason. Revision and submitted hash are checked.")
+    public ApiResponse<com.casms.ship.service.DepartureSaleTermsService.View> reviewSaleTerms(@PathVariable UUID cruiseId,
+            @PathVariable String action, @Valid @RequestBody com.casms.ship.service.DepartureSaleTermsService.Review input,
+            @AuthenticationPrincipal CasmsPrincipal principal) {
+        return ApiResponse.success(saleTerms.review(cruiseId,action,input,principal.getUserId()));
+    }
+
+    @PutMapping("/commercial-terms")
+    @PreAuthorize("hasRole('OPERATIONS_MANAGER') and hasAuthority('CRUISE_PRICING_APPROVE')")
+    public ApiResponse<com.casms.ship.dto.response.CruisePricingPolicyResponse> commercialTerms(@PathVariable UUID cruiseId,@RequestHeader("If-Match") Long expected,
+            @Valid @RequestBody com.casms.ship.service.CruisePricingPolicyService.CommercialTerms input,@AuthenticationPrincipal CasmsPrincipal principal){
+        start(cruiseId,expected);var result=pricing.saveCommercialTerms(cruiseId,input,principal.getUserId());finish(cruiseId);return ApiResponse.success(result);
+    }
     @PutMapping("/pricing-policy")
+    @PreAuthorize("hasRole('OPERATIONS_MANAGER') and hasAuthority('CRUISE_PRICING_APPROVE')")
     public ApiResponse<com.casms.ship.dto.response.CruisePricingPolicyResponse> policy(@PathVariable UUID cruiseId,@RequestHeader("If-Match") Long expected,@Valid @RequestBody CruisePricingPolicyRequest input,@AuthenticationPrincipal CasmsPrincipal principal){start(cruiseId,expected);var result=pricing.savePricingPolicy(cruiseId,input,principal.getUserId(),false);finish(cruiseId);return ApiResponse.success(result);}
 }

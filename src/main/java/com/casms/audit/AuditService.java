@@ -19,6 +19,20 @@ public class AuditService {
     @org.springframework.beans.factory.annotation.Autowired
     private com.fasterxml.jackson.databind.ObjectMapper objectMapper;
 
+    /** Fare fulfillment and its existing operational usage record commit or roll back together. */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void recordFareFulfillment(UUID grantId,String operationType,UUID operationId,int quantity,String unitCode) {
+        var auth=org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+        if(auth==null||!(auth.getPrincipal() instanceof com.casms.security.principal.CasmsPrincipal actor))
+            throw new com.casms.common.exception.BusinessException(org.springframework.http.HttpStatus.UNAUTHORIZED,"AUTH_REQUIRED","Cần tài khoản thao tác để ghi nhận fulfillment.");
+        AuditLog event=new AuditLog();event.setActorUserId(actor.getUserId());event.setAction("FARE_BENEFIT_FULFILLED");
+        event.setEntityType(operationType);event.setEntityId(operationId);event.setResult("SUCCESS");
+        try {event.setDetail(objectMapper.writeValueAsString(java.util.Map.of("grantId",grantId,"operationId",operationId,
+                "operationType",operationType,"fulfilledQuantity",quantity,"usageUnit",unitCode)));}
+        catch(com.fasterxml.jackson.core.JsonProcessingException failure){throw new com.casms.common.exception.BusinessException("ENTITLEMENT_AUDIT_FAILED","Không thể ghi audit fulfillment; không tiêu thụ quyền lợi.");}
+        auditRepository.saveAndFlush(event);
+    }
+
     @Async
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void record(UUID actorUserId, String action, String entityType,

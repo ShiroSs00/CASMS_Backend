@@ -45,16 +45,50 @@ public class CruiseStaffService {
     private final CruiseRepository cruiseRepository;
     private final UserRepository userRepository;
     private final CruisePreparationService cruisePreparationService;
+    private final jakarta.persistence.EntityManager entityManager;
+
+    private void requireActor(UUID actorId, String permission) {
+        var authentication = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null || !(authentication.getPrincipal() instanceof com.casms.security.principal.CasmsPrincipal principal)
+                || !java.util.Objects.equals(actorId, principal.getUserId())
+                || !principal.hasRole(Role.OPERATIONS_MANAGER) || !principal.hasAuthority(permission))
+            throw new org.springframework.security.access.AccessDeniedException("Cruise staffing requires Operations Manager and effective permission");
+    }
+
+    private boolean eligibleAccount(User user) {
+        return user.getStatus() == UserStatus.ACTIVE && user.isStaff() && user.getRoles() != null
+                && user.getRoles().stream().anyMatch(STAFF_ROLES::contains);
+    }
+
+    public record StaffOption(UUID userId, String username, List<String> allowedRoles) {}
+    public record AssignmentOptions(List<String> roles, List<StaffOption> users) {}
+
+    /** Expose existing assignment semantics; this is not staff availability or coverage. */
+    @Transactional(readOnly = true)
+    public AssignmentOptions assignmentOptions(UUID cruiseId, UUID actorId) {
+        requireActor(actorId, "CRUISE_STAFF_ASSIGN");
+        if (!cruiseRepository.existsById(cruiseId)) throw new ResourceNotFoundException("Cruise", cruiseId);
+        var roles = ALLOWED_ASSIGNMENT_ROLES.stream().sorted().toList();
+        var users = userRepository.findByStatus(UserStatus.ACTIVE).stream().filter(this::eligibleAccount)
+                .map(user -> new StaffOption(user.getUserId(), user.getUsername(), roles.stream()
+                        .filter(role -> !"ONBOARD_STAFF".equals(role) || user.hasRole(Role.ONBOARD_STAFF)).toList()))
+                .sorted(java.util.Comparator.comparing(StaffOption::username)).toList();
+        return new AssignmentOptions(roles, users);
+    }
 
     @Transactional
     public CruiseStaffResponse assignStaff(UUID cruiseId, CruiseStaffRequest request, UUID actorId) {
+        requireActor(actorId, "CRUISE_STAFF_ASSIGN");
         log.info("Assigning staff user {} to cruise {} with role {}", request.getUserId(), cruiseId, request.getRoleInCruise());
 
-        Cruise cruise = cruiseRepository.findById(cruiseId)
+        Cruise cruise = cruiseRepository.findByIdForUpdate(cruiseId)
                 .orElseThrow(() -> new ResourceNotFoundException("Cruise not found with id: " + cruiseId));
 
         User user = userRepository.findById(request.getUserId())
                 .orElseThrow(() -> new ResourceNotFoundException("User not found with id: " + request.getUserId()));
+        // Serialize duplicate/conflict checks for this account across different Cruises.
+        entityManager.lock(user, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        entityManager.refresh(user);
 
         if (user.getStatus() != UserStatus.ACTIVE) {
             throw new BusinessException("INACTIVE_USER", "Cannot assign inactive user as cruise staff");
@@ -120,6 +154,10 @@ public class CruiseStaffService {
 
     @Transactional
     public void removeStaff(UUID cruiseId, UUID userId, UUID actorId) {
+        requireActor(actorId, "CRUISE_STAFF_REMOVE");
+        cruiseRepository.findByIdForUpdate(cruiseId).orElseThrow(() -> new ResourceNotFoundException("Cruise", cruiseId));
+        var account = userRepository.findById(userId).orElseThrow(() -> new ResourceNotFoundException("User", userId));
+        entityManager.lock(account, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
         CruiseStaff staff = cruiseStaffRepository
                 .findFirstByCruise_CruiseIdAndUser_UserIdAndStatusOrderByAssignedAtDesc(cruiseId, userId, "ACTIVE")
                 .orElseThrow(() -> new ResourceNotFoundException(
@@ -143,6 +181,11 @@ public class CruiseStaffService {
                 .fullName(staff.getUser().getUsername())
                 .roleInCruise(staff.getRoleInCruise())
                 .assignedAt(staff.getAssignedAt())
+                .assignedBy(staff.getAssignedBy() == null ? null : staff.getAssignedBy().getUserId())
+                .assignedByName(staff.getAssignedBy() == null ? null : staff.getAssignedBy().getUsername())
+                .endedAt(staff.getEndedAt())
+                .endedBy(staff.getEndedBy() == null ? null : staff.getEndedBy().getUserId())
+                .endedByName(staff.getEndedBy() == null ? null : staff.getEndedBy().getUsername())
                 .status(staff.getStatus())
                 .notes(staff.getNotes())
                 .build();

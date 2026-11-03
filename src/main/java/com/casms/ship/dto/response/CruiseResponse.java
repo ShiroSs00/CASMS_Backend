@@ -127,4 +127,5 @@ public class CruiseResponse {
     private Instant updatedAt;
     private String itineraryMode;
     private String plannedScope;
+    private ShipAssignmentSafetyResponse shipAssignmentSafety;
 }

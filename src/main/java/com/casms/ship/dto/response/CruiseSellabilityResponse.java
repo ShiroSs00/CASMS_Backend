@@ -37,7 +37,19 @@ public class CruiseSellabilityResponse {
     @Schema(description = "Có thể mở bán/nhận booking ngay lúc này hay không (AND Cruise status, Itinerary OPEN_FOR_SALE, not stopped, departure in future, inventory > 0)")
     private boolean sellable;
 
-    @Schema(description = "Trạng thái mở bán thống nhất duy nhất (OPEN_FOR_SALE, STOPPED, NOT_YET_OPEN, DEPARTED, SOLD_OUT, DRAFT, CANCELLED)")
+    @Schema(description = "Eligible for public sale display, independently of transaction policies. Does not authorize Booking.")
+    private boolean publicDisplayEligible;
+
+    @Schema(description = "Public display state using existing sale state values. Legacy saleState and sellable retain transaction semantics.")
+    private String publicSaleState;
+
+    @Schema(description = "Persisted Open Sale decision time. A historical decision alone does not establish current availability.")
+    private Instant openedForSaleAt;
+
+    @Schema(description = "Thời điểm Backend đánh giá; đây không phải giữ chỗ hoặc bảo đảm tồn kho")
+    private Instant evaluatedAt;
+
+    @Schema(description = "Legacy transaction sale state (OPEN_FOR_SALE, STOPPED, NOT_YET_OPEN, DEPARTED, SOLD_OUT, DRAFT, CANCELLED). Use publicSaleState for public display independently of transaction policies.")
     private String saleState;
 
     @Schema(description = "Lý do tạm dừng mở bán (nếu có)")

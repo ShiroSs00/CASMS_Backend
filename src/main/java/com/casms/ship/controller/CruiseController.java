@@ -75,7 +75,7 @@ public class CruiseController {
     private final CruiseAuditService cruiseAuditService;
 
     @Operation(summary = "Xem trước lịch trình chuyến khởi hành (Preview)", description = "Tính toán ngày thực tế cho các ngày và điểm dừng từ phiên bản TripScheduleVersion đã phát hành mà không lưu vào DB (C02)")
-    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "422", description = "SOURCE_DURATION_INVALID: thời lượng nguồn không khớp. Preview trả portCallWindowStatus=BLOCK và dependency=PORT-05 khi chưa có evaluator/dữ liệu khung giờ cảng; không được hiểu lịch tính được là đã đủ điều kiện tạo")
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "422", description = "VERSION_NOT_PUBLISHED / TRIP_ARCHIVED / SOURCE_DURATION_INVALID: nguồn không hợp lệ. Preview thành công vẫn có thể trả portCallWindowStatus=BLOCK với portWindowChecks và materializationBlockers; Create luôn đánh giá lại bằng evaluator hiện có.")
     @PreAuthorize("hasAnyAuthority('CRUISE_CREATE', 'CRUISE_READ', 'TRIP_READ')")
     @PostMapping("/preview-schedule")
     public ApiResponse<CruiseSchedulePreviewResponse> previewSchedule(
@@ -92,8 +92,9 @@ public class CruiseController {
         return ApiResponse.success(scheduleMaterializationService.getCruiseSchedule(cruiseId));
     }
 
-    @Operation(summary = "Tạo chuyến khởi hành mới", description = "Khởi tạo bản ghi chuyến khởi hành (mặc định ở trạng thái DRAFT). Có thể gán tàu ngay hoặc gán sau. Yêu cầu Idempotency-Key header.")
-    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "422", description = "SOURCE_DURATION_INVALID / PORT_CALL_WINDOW_VALIDATION_REQUIRED: từ chối nguồn sai hoặc thiếu kết quả khung giờ cảng cho ngày thực tế (PORT-05). 409 LEGACY_SOURCE_MATERIALIZATION_BLOCKED khi nguồn chứa SERVING_WINDOW lịch sử. Không ghi thành công một phần")
+    @Operation(summary = "Tạo chuyến khởi hành mới", description = "Tạo Cruise DRAFT và snapshot atomic từ TripScheduleVersion đã PUBLISHED thuộc Trip chưa ARCHIVED. Bắt buộc sourceVersionId và expectedSourceVersionRevision khớp preview. Thời lượng kế thừa từ nguồn. Có thể gán tàu ngay hoặc gán sau. Yêu cầu Idempotency-Key header. Đọc snapshot, sourceContentHash, durationDays/durationNights và bằng chứng khung giờ cảng qua GET /cruise/{cruiseId}/schedule.")
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "409", description = "STALE_PREVIEW: thiếu hoặc sai revision nguồn. LEGACY_SOURCE_MATERIALIZATION_BLOCKED: nguồn chứa SERVING_WINDOW lịch sử.")
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "422", description = "SOURCE_VERSION_REQUIRED / VERSION_NOT_PUBLISHED / TRIP_ARCHIVED / SOURCE_DURATION_INVALID / PORT_CALL_WINDOW_VALIDATION_REQUIRED / ITINERARY_ALREADY_MATERIALIZED. Không ghi thành công một phần.")
     @PreAuthorize("hasRole('CRUISE_MANAGER') and hasAuthority('CRUISE_CREATE')")
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
@@ -131,7 +132,7 @@ public class CruiseController {
         Page<CruiseResponse> page = bookingView
                 ? service.listOpenForSale(shipId, unassigned, cruiseType, sourceTripId, sourceVersionId, pageable)
                 : service.list(status, shipId, unassigned, cruiseType, sourceTripId, sourceVersionId, pageable);
-        if (!hasCruiseRead) {
+        if (bookingView) {
             page = page.map(this::sanitizeForPublic);
         }
         return ApiResponse.success(page);
@@ -147,12 +148,9 @@ public class CruiseController {
         validateSaleState(saleState);
         CruiseResponse response = service.detail(cruiseId);
         boolean hasCruiseRead = auth != null && auth.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("CRUISE_READ"));
-        if ((!hasCruiseRead || bookingOnly(auth) || saleState != null)
-                && (response.getStatus() != CruiseStatus.PUBLISHED
-                || !"OPEN_FOR_SALE".equals(service.getPublicSellability(cruiseId).getSaleState()))) {
-            throw new org.springframework.security.access.AccessDeniedException("Chuyến khởi hành chưa mở bán");
-        }
-        if (!hasCruiseRead) {
+        if (!hasCruiseRead || bookingOnly(auth) || saleState != null)
+            service.requirePublicSaleVisible(cruiseId);
+        if (!hasCruiseRead || bookingOnly(auth) || saleState != null) {
             response = sanitizeForPublic(response);
         }
         return ApiResponse.success(response);
@@ -174,6 +172,8 @@ public class CruiseController {
         if (res == null) return null;
         res.setStoppedByUsername(null);
         res.setStopEvidence(null);
+        res.setStopReason(null);
+        res.setShipAssignmentSafety(null);
         res.setStopEventIdentity(null);
         res.setOpenedForSaleByUsername(null);
         res.setSaleEventIdentity(null);
@@ -204,8 +204,8 @@ public class CruiseController {
         return ApiResponse.success("Deleted draft cruise successfully", null);
     }
 
-    @Operation(summary = "Gán tàu cho chuyến khởi hành", description = "Gán tàu đang ACTIVE và không bị trùng lịch cho chuyến khởi hành (khi chuyến ở trạng thái DRAFT hoặc PUBLISHED)")
-    @PreAuthorize("hasAuthority('CRUISE_ASSIGN_SHIP')")
+    @Operation(summary = "Gán tàu cho chuyến khởi hành", description = "Quản lý lịch trình có CRUISE_ASSIGN_SHIP chọn tàu READY/IN_SERVICE cho chuyến DRAFT/PUBLISHED và kế hoạch cho phép sửa. Kiểm tra lịch, cấu hình, sức chứa hành khách do Ship quản lý và dữ liệu phụ thuộc; không có hạn mức sức chứa riêng của Departure.")
+    @PreAuthorize("hasRole('CRUISE_MANAGER') and hasAuthority('CRUISE_ASSIGN_SHIP')")
     @PostMapping("/{cruiseId}/assign-ship")
     public ApiResponse<CruiseResponse> assignShip(
             @Parameter(description = "ID chuyến khởi hành", required = true) @PathVariable UUID cruiseId,
@@ -215,8 +215,8 @@ public class CruiseController {
         return ApiResponse.success(service.assignShip(cruiseId, shipId, actorId));
     }
 
-    @Operation(summary = "Thay đổi tàu đã gán", description = "Đổi sang tàu khác cho chuyến khởi hành (kiểm tra tàu mới ACTIVE, không trùng lịch, và sức chứa đáp ứng lượng khách đã đặt)")
-    @PreAuthorize("hasAuthority('CRUISE_CHANGE_SHIP')")
+    @Operation(summary = "Thay đổi tàu đã gán", description = "Quản lý lịch trình có CRUISE_ASSIGN_SHIP đổi tàu sau khi kiểm tra điều kiện hiện hành. Khi có dữ liệu phụ thuộc hoặc chuyến PUBLISHED, phải qua preview-change-impact/apply-change; dữ liệu chưa có cơ chế chuyển an toàn sẽ chặn.")
+    @PreAuthorize("hasRole('CRUISE_MANAGER') and hasAuthority('CRUISE_ASSIGN_SHIP')")
     @PutMapping("/{cruiseId}/change-assigned-ship")
     public ApiResponse<CruiseResponse> changeAssignedShip(
             @Parameter(description = "ID chuyến khởi hành", required = true) @PathVariable UUID cruiseId,
@@ -227,7 +227,7 @@ public class CruiseController {
     }
 
     @Operation(summary = "Hủy gán tàu khỏi chuyến khởi hành", description = "Gỡ bỏ tàu khỏi chuyến khởi hành (chỉ áp dụng khi chuyến ở trạng thái DRAFT và chưa có đặt chỗ)")
-    @PreAuthorize("hasAuthority('CRUISE_UNASSIGN_SHIP')")
+    @PreAuthorize("hasRole('CRUISE_MANAGER') and hasAuthority('CRUISE_ASSIGN_SHIP')")
     @PostMapping("/{cruiseId}/unassign-ship")
     public ApiResponse<CruiseResponse> unassignShip(
             @Parameter(description = "ID chuyến khởi hành", required = true) @PathVariable UUID cruiseId,
@@ -311,8 +311,16 @@ public class CruiseController {
 
     // ==================== CRUISE STAFF ASSIGNMENT ====================
 
+    @Operation(summary = "Tài khoản và vai trò phân công nhân sự được hỗ trợ", description = "Danh sách theo quy tắc CruiseStaff hiện có; lịch trùng được kiểm tra lại khi phân công. Không phải API availability/coverage.")
+    @PreAuthorize("hasRole('OPERATIONS_MANAGER') and hasAuthority('CRUISE_STAFF_ASSIGN')")
+    @GetMapping("/{cruiseId}/staff/options")
+    public ApiResponse<CruiseStaffService.AssignmentOptions> staffOptions(@PathVariable UUID cruiseId,
+            @AuthenticationPrincipal CasmsPrincipal principal) {
+        return ApiResponse.success(staffService.assignmentOptions(cruiseId, principal.getUserId()));
+    }
+
     @Operation(summary = "Phân công nhân viên / thủy thủ đoàn vào chuyến khởi hành", description = "Gán nhân viên vào chuyến khởi hành, kiểm tra nhân viên active và không bị trùng lịch tàu khác")
-    @PreAuthorize("hasAuthority('CRUISE_STAFF_ASSIGN')")
+    @PreAuthorize("hasRole('OPERATIONS_MANAGER') and hasAuthority('CRUISE_STAFF_ASSIGN')")
     @PostMapping("/{cruiseId}/staff")
     public ApiResponse<CruiseStaffResponse> assignStaff(
             @Parameter(description = "ID chuyến khởi hành", required = true) @PathVariable UUID cruiseId,
@@ -331,7 +339,7 @@ public class CruiseController {
     }
 
     @Operation(summary = "Hủy phân công nhân viên khỏi chuyến khởi hành", description = "Gỡ bỏ nhân sự khỏi chuyến khởi hành")
-    @PreAuthorize("hasAuthority('CRUISE_STAFF_REMOVE')")
+    @PreAuthorize("hasRole('OPERATIONS_MANAGER') and hasAuthority('CRUISE_STAFF_REMOVE')")
     @DeleteMapping("/{cruiseId}/staff/{userId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public ApiResponse<Void> removeStaff(
@@ -357,8 +365,18 @@ public class CruiseController {
     @PreAuthorize("permitAll()")
     @GetMapping("/{cruiseId}/packages")
     public ApiResponse<List<CruiseTourPackageResponse>> listPackages(
-            @Parameter(description = "ID chuyến khởi hành", required = true) @PathVariable UUID cruiseId) {
-        return ApiResponse.success(packageService.listPackages(cruiseId));
+            @Parameter(description = "ID chuyến khởi hành", required = true) @PathVariable UUID cruiseId,
+            org.springframework.security.core.Authentication auth) {
+        boolean internalRead = auth != null && !bookingOnly(auth)
+                && auth.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("CRUISE_READ"));
+        if (internalRead) return ApiResponse.success(packageService.listPackages(cruiseId));
+        service.requirePubliclyVisible(cruiseId);
+        var allowed = service.getPublicSellability(cruiseId).getAvailablePackages().stream()
+                .filter(com.casms.ship.dto.response.PackageSellabilityItem::isSellable)
+                .map(com.casms.ship.dto.response.PackageSellabilityItem::getTourPackageId)
+                .collect(java.util.stream.Collectors.toSet());
+        return ApiResponse.success(packageService.listPackages(cruiseId).stream()
+                .filter(p -> allowed.contains(p.getTourPackageId())).toList());
     }
 
     @Operation(summary = "Gỡ gói dịch vụ khỏi chuyến khởi hành", description = "Ngừng mở bán gói dịch vụ trên chuyến khởi hành")
@@ -409,7 +427,7 @@ public class CruiseController {
     }
 
     @Operation(summary = "Xem trước tác động khi đổi tàu (C05, C11)", description = "Đánh giá ảnh hưởng đến sức chứa, phân bổ phòng và các hoạt động trên tàu khi đổi sang tàu khác")
-    @PreAuthorize("hasAnyAuthority('CRUISE_READ', 'CRUISE_CHANGE_SHIP', 'SHIP_READ')")
+    @PreAuthorize("hasAnyAuthority('CRUISE_READ', 'CRUISE_CHANGE_SHIP', 'CRUISE_ASSIGN_SHIP', 'SHIP_READ')")
     @GetMapping("/{cruiseId}/preview-ship-change")
     public ApiResponse<ShipChangeImpactResponse> previewShipChangeImpact(
             @PathVariable UUID cruiseId,
@@ -426,7 +444,7 @@ public class CruiseController {
     }
 
     @Operation(summary = "Xem trước tác động thay đổi lịch trình hoặc cấu hình (C11, C17)", description = "Đánh giá tác động dời ngày, đổi tàu đối với khách đặt, tour, hoạt động và sinh ra danh sách công việc xử lý")
-    @PreAuthorize("hasAnyAuthority('CRUISE_READ', 'CRUISE_VALIDATE', 'CRUISE_UPDATE_DRAFT')")
+    @PreAuthorize("hasAnyAuthority('CRUISE_READ', 'CRUISE_VALIDATE', 'CRUISE_UPDATE_DRAFT', 'CRUISE_ASSIGN_SHIP')")
     @PostMapping(value = {"/{cruiseId}/preview-change-impact", "/{cruiseId}/change-impact"})
     public ApiResponse<CruiseChangeImpactResponse> previewChangeImpact(
             @PathVariable UUID cruiseId,
@@ -467,7 +485,7 @@ public class CruiseController {
 
     @Operation(summary = "Áp dụng thay đổi lịch trình, tàu hoặc cấu hình (BE-R05b / C11, C17)",
                description = "Áp dụng thay đổi toàn diện với kiểm tra dữ liệu mới nhất, bảo vệ booking hiện có và đồng bộ các đối tượng phụ thuộc")
-    @PreAuthorize("hasAnyAuthority('CRUISE_UPDATE_DRAFT', 'CRUISE_STATUS_CHANGE')")
+    @PreAuthorize("hasAnyAuthority('CRUISE_UPDATE_DRAFT', 'CRUISE_STATUS_CHANGE') or (hasRole('CRUISE_MANAGER') and hasAuthority('CRUISE_ASSIGN_SHIP') and #request.newShipId != null and #request.newDepartureDatetime == null and #request.newReturnDatetime == null and #request.newDeparturePortId == null and #request.newReturnPortId == null)")
     @PostMapping("/{cruiseId}/apply-change")
     public ApiResponse<CruiseApplyChangeResponse> applyChange(
             @PathVariable UUID cruiseId,
@@ -509,8 +527,9 @@ public class CruiseController {
     @GetMapping("/{cruiseId}/sale-readiness")
     public ApiResponse<CruiseSaleReadinessResponse> getSaleReadiness(
             @PathVariable UUID cruiseId, @RequestParam(defaultValue = "WHOLE_CRUISE") String saleScope,
-            @RequestParam(required = false) java.util.Set<UUID> selectedPackageIds) {
-        return ApiResponse.success(service.validateSaleReadiness(cruiseId, saleScope, selectedPackageIds));
+            @RequestParam(required = false) java.util.Set<UUID> selectedPackageIds,
+            @RequestParam(required = false) java.util.Set<UUID> selectedCruisePackageOfferIds) {
+        return ApiResponse.success(service.validateSaleReadiness(cruiseId, saleScope, selectedPackageIds,selectedCruisePackageOfferIds));
     }
 
     @Operation(summary = "Đánh giá điều kiện khởi hành của chuyến khởi hành (Departure Readiness Gate - BE-08)", description = "Kiểm tra toàn diện điều kiện khởi hành bao gồm thuyền trưởng, nhân sự, và 5 phân hệ chuẩn bị liên phòng ban")
@@ -522,7 +541,7 @@ public class CruiseController {
     }
 
     @Operation(summary = "Mở bán chuyến khởi hành hoặc sản phẩm dịch vụ (BE-08B / BE-13 / BE-H04)", description = "Kích hoạt trạng thái PUBLISHED cho chuyến khởi hành và OPEN_FOR_SALE cho lịch trình sau khi đạt kiểm tra sale readiness theo scope")
-    @PreAuthorize("hasAuthority('CRUISE_OPEN_SALE')")
+    @PreAuthorize("hasRole('OPERATIONS_MANAGER') and hasAuthority('CRUISE_OPEN_SALE')")
     @PostMapping("/{cruiseId}/open-sale")
     public ApiResponse<CruiseResponse> openSale(
             @PathVariable UUID cruiseId,
@@ -533,7 +552,7 @@ public class CruiseController {
     }
 
     @Operation(summary = "Kích hoạt gói dịch vụ để mở bán (BE-12)", description = "Chuyển trạng thái gói dịch vụ từ cấu hình danh mục sang sẵn sàng bán")
-    @PreAuthorize("hasAuthority('CRUISE_OPEN_SALE')")
+    @PreAuthorize("hasRole('OPERATIONS_MANAGER') and hasAuthority('CRUISE_OPEN_SALE')")
     @PostMapping("/{cruiseId}/packages/{tourPackageId}/activate")
     public ApiResponse<CruiseTourPackageResponse> activatePackage(
             @PathVariable UUID cruiseId,
@@ -542,7 +561,7 @@ public class CruiseController {
     }
 
     @Operation(summary = "Hủy kích hoạt bán gói dịch vụ (BE-12)", description = "Đưa gói dịch vụ về lại trạng thái cấu hình mà không xóa khỏi chuyến khởi hành")
-    @PreAuthorize("hasAuthority('CRUISE_STOP_SALE')")
+    @PreAuthorize("hasRole('OPERATIONS_MANAGER') and hasAuthority('CRUISE_STOP_SALE')")
     @PostMapping("/{cruiseId}/packages/{tourPackageId}/deactivate")
     public ApiResponse<CruiseTourPackageResponse> deactivatePackage(
             @PathVariable UUID cruiseId,
@@ -551,7 +570,7 @@ public class CruiseController {
     }
 
     @Operation(summary = "Tạm dừng mở bán chuyến khởi hành hoặc gói dịch vụ cụ thể (BE-08B / C16)", description = "Tạm dừng nhận booking mới khi điều kiện vận hành bị vi phạm mà không làm hủy các booking hiện có")
-    @PreAuthorize("hasAuthority('CRUISE_STOP_SALE')")
+    @PreAuthorize("hasRole('OPERATIONS_MANAGER') and hasAuthority('CRUISE_STOP_SALE')")
     @PostMapping("/{cruiseId}/stop-sale")
     public ApiResponse<CruiseResponse> stopSale(
             @PathVariable UUID cruiseId,
@@ -562,7 +581,7 @@ public class CruiseController {
     }
 
     @Operation(summary = "Tiếp tục mở bán sau khi tạm dừng (BE-08B / C16)", description = "Mở lại bán cho toàn bộ chuyến khởi hành hoặc gói dịch vụ sau khi kiểm tra lại sale readiness")
-    @PreAuthorize("hasAuthority('CRUISE_RESUME_SALE')")
+    @PreAuthorize("hasRole('OPERATIONS_MANAGER') and hasAuthority('CRUISE_RESUME_SALE')")
     @PostMapping("/{cruiseId}/resume-sale")
     public ApiResponse<CruiseResponse> resumeSale(
             @PathVariable UUID cruiseId,
@@ -577,7 +596,11 @@ public class CruiseController {
     @PreAuthorize("permitAll()")
     @GetMapping("/{cruiseId}/sellability")
     public ApiResponse<CruiseSellabilityResponse> getPublicSellability(
-            @Parameter(description = "ID chuyến khởi hành", required = true) @PathVariable UUID cruiseId) {
+            @Parameter(description = "ID chuyến khởi hành", required = true) @PathVariable UUID cruiseId,
+            org.springframework.security.core.Authentication auth) {
+        boolean internalRead = auth != null && !bookingOnly(auth)
+                && auth.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("CRUISE_READ"));
+        if (!internalRead) service.requirePubliclyVisible(cruiseId);
         return ApiResponse.success(service.getPublicSellability(cruiseId));
     }
 

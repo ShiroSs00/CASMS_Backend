@@ -128,6 +128,7 @@ public class CruiseService {
     private final TripScheduleVersionRepository tripScheduleVersionRepository;
     private final ScheduleMaterializationService scheduleMaterializationService;
     private final CruiseStaffRepository cruiseStaffRepository;
+    private final CruiseStaffAccessPolicy cruiseStaffAccessPolicy;
     private final CruiseRegulationService cruiseRegulationService;
     private final OnboardActivityRepository onboardActivityRepository;
     private final ShoreExcursionRepository shoreExcursionRepository;
@@ -141,18 +142,27 @@ public class CruiseService {
     private final CruiseImpactAssessmentService cruiseImpactAssessmentService;
     private final CruisePreparationService cruisePreparationService;
     private final CruisePricingPolicyRepository cruisePricingPolicyRepository;
+    private final com.casms.ship.service.CruisePricingPolicyService cruisePricingPolicyService;
     private final OperationalIssueRepository operationalIssueRepository;
     private final CruiseAuditService cruiseAuditService;
     private final CruisePackageService cruisePackageService;
     private final CruiseMainflowService mainflow;
+    private final CruiseShipAssignmentPolicy shipAssignmentPolicy;
+    private final com.casms.cruisepackage.service.CruisePackageService farePackages;
+    private final com.casms.cruisepackage.service.CruisePackageCabinMappingService cabinMappings;
+    private final org.springframework.beans.factory.ObjectProvider<com.casms.booking.service.BookingService> bookingServices;
 
     @Transactional
     public CruiseResponse create(CruiseCreateRequest request) {
+        // MF02-DEP-001: source-less records are legacy read/update data, never a new departure.
+        if (request.getSourceVersionId() == null) {
+            throw new BusinessException("SOURCE_VERSION_REQUIRED", "sourceVersionId là bắt buộc khi tạo chuyến khởi hành mới.");
+        }
         if (request.getDepartureDatetime() == null) {
             throw new BusinessException("INVALID_SCHEDULE", "Departure datetime is required");
         }
 
-        // D01 / C15 / G01: Link cruise to an existing published TripScheduleVersion (optional)
+        // D01 / C15 / G01: Every new departure links to a published TripScheduleVersion.
         TripScheduleVersion sourceVersion = null;
         if (request.getSourceVersionId() != null) {
             sourceVersion = tripScheduleVersionRepository.findById(request.getSourceVersionId())
@@ -161,7 +171,7 @@ public class CruiseService {
                 throw new BusinessException("VERSION_NOT_PUBLISHED",
                         "Source TripScheduleVersion must be in PUBLISHED status (current: " + sourceVersion.getStatus() + ")");
             }
-            if (sourceVersion.getTrip() != null && sourceVersion.getTrip().getStatus() == TripStatus.ARCHIVED) {
+            if (sourceVersion.getTrip() == null || sourceVersion.getTrip().getStatus() == TripStatus.ARCHIVED) {
                 throw new BusinessException("TRIP_ARCHIVED", "Trip nguồn đã bị ARCHIVED hoặc không tồn tại.");
             }
             if (request.getExpectedSourceVersionRevision() == null || !Objects.equals(request.getExpectedSourceVersionRevision(), sourceVersion.getRevision())) {
@@ -220,8 +230,10 @@ public class CruiseService {
         }
 
         Ship ship = null;
+        UUID initialShipActor = null;
         if (request.getShipId() != null) {
-            ship = shipRepository.findById(request.getShipId())
+            initialShipActor = shipAssignmentPolicy.requireActor(null);
+            ship = shipRepository.findByIdForUpdate(request.getShipId())
                     .orElseThrow(() -> new ResourceNotFoundException("Ship", request.getShipId()));
 
             if (!ShipStatus.isOperational(ship.getStatus())) {
@@ -231,6 +243,8 @@ public class CruiseService {
             if (cruiseRepository.existsOverlappingCruises(ship.getShipId(), request.getDepartureDatetime(), request.getReturnDatetime())) {
                 throw new BusinessException("SHIP_SCHEDULE_CONFLICT", "Ship already has an overlapping active cruise in this schedule window");
             }
+            requireShipConfiguration(ship.getShipId());
+            requireShipCapacity(ship, null);
         }
 
         // BE-11: Validate departure + return port country scope when sourceVersion is present
@@ -277,6 +291,12 @@ public class CruiseService {
             scheduleMaterializationService.materializeSchedule(cruise, sourceVersion);
         }
         cruisePreparationService.initializeSections(cruise);
+        if (ship != null) {
+            cruiseAuditService.recordEvent(cruise, "SHIP_ASSIGNMENT", "EVT-CREATE-SHIP-" + cruise.getCruiseId(),
+                    initialShipActor, "CRUISE_MANAGER", "CRUISE_ASSIGN_SHIP", "WHOLE_CRUISE",
+                    "Ship=UNASSIGNED", "Ship=" + ship.getShipName() + " (" + ship.getShipId() + ")",
+                    "Phân công tàu khi tạo chuyến khởi hành", "Capacity=" + ship.getTotalCapacity());
+        }
         return mapToResponse(cruise);
     }
 
@@ -316,7 +336,7 @@ public class CruiseService {
                                                UUID sourceTripId, UUID sourceVersionId, Pageable pageable) {
         List<CruiseResponse> open = list(CruiseStatus.PUBLISHED, shipId, unassigned, cruiseType,
                 sourceTripId, sourceVersionId, Pageable.unpaged(pageable.getSort())).stream()
-                .filter(c -> "OPEN_FOR_SALE".equals(getPublicSellability(c.getCruiseId()).getSaleState())).toList();
+                .filter(c -> getPublicSellability(c.getCruiseId()).isPublicDisplayEligible()).toList();
         if (pageable.isUnpaged()) return new org.springframework.data.domain.PageImpl<>(open);
         int start = (int) Math.min(pageable.getOffset(), open.size());
         int end = (int) Math.min((long) start + pageable.getPageSize(), open.size());
@@ -394,6 +414,9 @@ public class CruiseService {
         }
 
         if (cruise.getShip() != null && (request.getDepartureDatetime() != null || request.getReturnDatetime() != null)) {
+            UUID assignedShipId = cruise.getShip().getShipId();
+            shipRepository.findByIdForUpdate(assignedShipId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Ship", assignedShipId));
             if (cruiseRepository.existsOverlappingCruisesExcluding(cruise.getShip().getShipId(), cruise.getCruiseId(), effectiveDeparture, effectiveReturn)) {
                 throw new BusinessException("SHIP_SCHEDULE_CONFLICT", "Assigned ship has an overlapping active cruise in the updated schedule");
             }
@@ -496,6 +519,7 @@ public class CruiseService {
 
     @Transactional
     public CruiseResponse assignShip(UUID cruiseId, UUID shipId, UUID actorId) {
+        actorId = shipAssignmentPolicy.requireActor(actorId);
         Cruise cruise = cruiseRepository.findByIdForUpdate(cruiseId)
                 .orElseThrow(() -> new ResourceNotFoundException("Cruise", cruiseId));
 
@@ -536,16 +560,21 @@ public class CruiseService {
             throw new BusinessException("SHIP_SCHEDULE_CONFLICT", "Ship has an overlapping active cruise during this period");
         }
 
+        shipAssignmentPolicy.requireSafeDownstream(cruiseId, shipId, "ASSIGN");
+        requireShipCapacity(ship, cruiseId);
+
         cruise.setShip(ship);
         cruise = cruiseRepository.save(cruise);
         cruiseRepository.flush();
 
+        cruisePreparationService.invalidateSignoffs(cruiseId, "Phân công tàu " + ship.getShipName());
+
         cruiseAuditService.recordEvent(
                 cruise,
                 "SHIP_ASSIGNMENT",
-                "EVT-ASSIGN-" + cruise.getCruiseCode() + "-" + shipId,
+                "EVT-ASSIGN-" + cruise.getCruiseCode() + "-" + shipId + "-" + cruise.getRevision(),
                 actorId,
-                "CRM",
+                "CRUISE_MANAGER",
                 "CRUISE_ASSIGN_SHIP",
                 "WHOLE_CRUISE",
                 "Ship=UNASSIGNED",
@@ -564,6 +593,7 @@ public class CruiseService {
 
     @Transactional
     public CruiseResponse changeAssignedShip(UUID cruiseId, UUID newShipId, UUID actorId) {
+        actorId = shipAssignmentPolicy.requireActor(actorId);
         Cruise cruise = cruiseRepository.findByIdForUpdate(cruiseId)
                 .orElseThrow(() -> new ResourceNotFoundException("Cruise", cruiseId));
 
@@ -572,12 +602,15 @@ public class CruiseService {
         }
 
         if (cruise.getShip() != null && cruise.getShip().getShipId().equals(newShipId)) {
-            return mapToResponse(cruise);
+            var response = mapToResponse(cruise);
+            response.setShipAssignmentSafety(shipAssignmentPolicy.assess(cruiseId, newShipId, "CHANGE"));
+            return response;
         }
 
         // BE-18: Chặn đi tắt qua PUT /change-assigned-ship khi đã mở bán hoặc đã có booking; bắt buộc đi qua impact path
+        var shipSafety = shipAssignmentPolicy.requireSafeDownstream(cruiseId, newShipId, "CHANGE");
         long bookedCount = bookingRepository.countByCruiseCruiseId(cruiseId);
-        if (cruise.getStatus() == CruiseStatus.PUBLISHED || bookedCount > 0) {
+        if (cruise.getStatus() == CruiseStatus.PUBLISHED || bookedCount > 0 || shipAssignmentPolicy.requiresImpact(cruiseId)) {
             throw new BusinessException(HttpStatus.CONFLICT, "CHANGE_SHIP_REQUIRES_IMPACT_WORKFLOW",
                     "Chuyến khởi hành đã mở bán hoặc đã có đặt chỗ. Thay đổi tàu bắt buộc phải thực hiện thông qua quy trình đánh giá tác động (/preview-change-impact và /apply-change)");
         }
@@ -604,11 +637,7 @@ public class CruiseService {
             throw new BusinessException("SHIP_SCHEDULE_CONFLICT", "New ship has an overlapping active cruise during this period");
         }
 
-        long bookedPassengers = bookingPassengerRepository.countActivePassengersByCruiseId(cruiseId);
-        if (newShip.getTotalCapacity() < bookedPassengers) {
-            throw new BusinessException("INSUFFICIENT_SHIP_CAPACITY",
-                    "New ship capacity (" + newShip.getTotalCapacity() + ") is less than current booked passengers (" + bookedPassengers + ")");
-        }
+        requireShipEligibility(newShip, cruiseId, cruise.getDepartureDatetime(), cruise.getReturnDatetime());
 
         Ship oldShip = cruise.getShip();
         String oldShipDesc = oldShip != null ? "Ship=" + oldShip.getShipName() + " (" + oldShip.getShipId() + ")" : "Ship=UNASSIGNED";
@@ -621,10 +650,10 @@ public class CruiseService {
         cruiseAuditService.recordEvent(
                 cruise,
                 "SHIP_CHANGE",
-                "EVT-CHANGE-SHIP-" + cruise.getCruiseCode() + "-" + newShipId,
+                "EVT-CHANGE-SHIP-" + cruise.getCruiseCode() + "-" + newShipId + "-" + cruise.getRevision(),
                 actorId,
-                "CRM",
-                "CRUISE_CHANGE_SHIP",
+                "CRUISE_MANAGER",
+                "CRUISE_ASSIGN_SHIP",
                 "WHOLE_CRUISE",
                 oldShipDesc,
                 "Ship=" + newShip.getShipName() + " (" + newShipId + ")",
@@ -632,7 +661,9 @@ public class CruiseService {
                 "Decks=" + decks + ", Cabins=" + cabins + ", Capacity=" + newShip.getTotalCapacity()
         );
 
-        return mapToResponse(cruise);
+        var response = mapToResponse(cruise);
+        response.setShipAssignmentSafety(shipSafety);
+        return response;
     }
 
     @Transactional
@@ -642,6 +673,7 @@ public class CruiseService {
 
     @Transactional
     public CruiseResponse unassignShip(UUID cruiseId, UUID actorId) {
+        actorId = shipAssignmentPolicy.requireActor(actorId);
         Cruise cruise = cruiseRepository.findByIdForUpdate(cruiseId)
                 .orElseThrow(() -> new ResourceNotFoundException("Cruise", cruiseId));
 
@@ -649,9 +681,12 @@ public class CruiseService {
             throw new BusinessException("CRUISE_NOT_DRAFT", "Cannot unassign ship unless cruise is in DRAFT status");
         }
 
-        if (bookingRepository.existsByCruiseCruiseId(cruiseId)) {
-            throw new BusinessException("CRUISE_HAS_BOOKINGS", "Cannot unassign ship because bookings already exist");
+        if (cruise.getShip() == null) {
+            var response = mapToResponse(cruise);
+            response.setShipAssignmentSafety(shipAssignmentPolicy.assess(cruiseId, null, "UNASSIGN"));
+            return response;
         }
+        var shipSafety = shipAssignmentPolicy.requireSafeDownstream(cruiseId, null, "UNASSIGN");
 
         Ship oldShip = cruise.getShip();
         String oldShipDesc = oldShip != null ? "Ship=" + oldShip.getShipName() + " (" + oldShip.getShipId() + ")" : "Ship=UNASSIGNED";
@@ -667,8 +702,8 @@ public class CruiseService {
                 "SHIP_UNASSIGNMENT",
                 "EVT-UNASSIGN-" + cruise.getCruiseCode() + "-" + System.currentTimeMillis(),
                 actorId,
-                "CRM",
-                "CRUISE_UNASSIGN_SHIP",
+                "CRUISE_MANAGER",
+                "CRUISE_ASSIGN_SHIP",
                 "WHOLE_CRUISE",
                 oldShipDesc,
                 "Ship=UNASSIGNED",
@@ -676,7 +711,9 @@ public class CruiseService {
                 "Unassigned by " + actorId
         );
 
-        return mapToResponse(cruise);
+        var response = mapToResponse(cruise);
+        response.setShipAssignmentSafety(shipSafety);
+        return response;
     }
 
     @Transactional(readOnly = true)
@@ -698,15 +735,21 @@ public class CruiseService {
             issues.add("Tàu chưa được cấu hình đầy đủ tầng (decks=" + decks + ") hoặc phòng (cabins=" + cabins + ")");
         }
 
-        boolean scheduleAvailable = !cruiseRepository.existsOverlappingCruisesExcluding(shipId, cruiseId, cruise.getDepartureDatetime(), cruise.getReturnDatetime());
-        if (!scheduleAvailable) {
+        boolean scheduleComplete = cruise.getDepartureDatetime() != null && cruise.getReturnDatetime() != null
+                && cruise.getReturnDatetime().isAfter(cruise.getDepartureDatetime());
+        boolean scheduleAvailable = scheduleComplete
+                && !cruiseRepository.existsOverlappingCruisesExcluding(shipId, cruiseId, cruise.getDepartureDatetime(), cruise.getReturnDatetime());
+        if (!scheduleComplete) {
+            issues.add("Chưa có khoảng thời gian chuyến khởi hành hợp lệ để kiểm tra lịch tàu.");
+        } else if (!scheduleAvailable) {
             issues.add("Tàu bị trùng lịch với chuyến khởi hành khác trong khoảng thời gian này");
         }
 
         long bookedPassengers = bookingPassengerRepository.countActivePassengersByCruiseId(cruiseId);
-        boolean capacitySufficient = ship.getTotalCapacity() >= bookedPassengers;
+        boolean capacitySufficient = ship.getTotalCapacity() != null && ship.getTotalCapacity() > 0
+                && ship.getTotalCapacity() >= bookedPassengers;
         if (!capacitySufficient) {
-            issues.add("Sức chứa của tàu (" + ship.getTotalCapacity() + ") không đủ cho số khách đã đặt (" + bookedPassengers + ")");
+            issues.add("Sức chứa tàu chưa hợp lệ hoặc không đáp ứng số hành khách đã đặt chỗ.");
         }
 
         boolean compatible = issues.isEmpty();
@@ -741,16 +784,24 @@ public class CruiseService {
             blockers.add("Tàu mới không ở trạng thái ACTIVE (hiện tại: " + newShip.getStatus() + ")");
         }
 
-        boolean scheduleConflict = cruiseRepository.existsOverlappingCruisesExcluding(newShipId, cruiseId, cruise.getDepartureDatetime(), cruise.getReturnDatetime());
+        boolean scheduleComplete = cruise.getDepartureDatetime() != null && cruise.getReturnDatetime() != null
+                && cruise.getReturnDatetime().isAfter(cruise.getDepartureDatetime());
+        if (!scheduleComplete) blockers.add("Chưa có khoảng thời gian chuyến khởi hành hợp lệ để kiểm tra lịch tàu.");
+        boolean scheduleConflict = scheduleComplete && cruiseRepository.existsOverlappingCruisesExcluding(newShipId, cruiseId, cruise.getDepartureDatetime(), cruise.getReturnDatetime());
         if (scheduleConflict) {
             blockers.add("Tàu mới bị trùng lịch vận hành với chuyến khởi hành khác");
         }
 
         long bookedPassengers = bookingPassengerRepository.countActivePassengersByCruiseId(cruiseId);
-        boolean capacitySufficient = newShip.getTotalCapacity() >= bookedPassengers;
+        boolean capacitySufficient = newShip.getTotalCapacity() != null && newShip.getTotalCapacity() > 0
+                && newShip.getTotalCapacity() >= bookedPassengers;
         if (!capacitySufficient) {
-            blockers.add("Sức chứa của tàu mới (" + newShip.getTotalCapacity() + ") nhỏ hơn số khách đã đặt (" + bookedPassengers + ")");
+            blockers.add("Sức chứa tàu mới chưa hợp lệ hoặc không đáp ứng số hành khách đã đặt chỗ.");
         }
+        var shipSafety = shipAssignmentPolicy.assess(cruiseId, newShipId, "CHANGE");
+        blockers.addAll(shipSafety.blockers());
+        if (cruise.getStatus() != CruiseStatus.DRAFT && cruise.getStatus() != CruiseStatus.PUBLISHED)
+            blockers.add("Trạng thái chuyến khởi hành không cho phép đổi tàu.");
 
         long decks = deckRepository.countByShipShipId(newShipId);
         long cabins = cabinRepository.countByShipShipId(newShipId);
@@ -758,9 +809,9 @@ public class CruiseService {
             blockers.add("Tàu mới chưa được cấu hình đầy đủ tầng hoặc phòng");
         }
 
-        long affectedCabins = bookedPassengers;
+        long affectedCabins = cabinAssignmentRepository.countActiveAssignmentsByCruiseId(cruiseId);
         if (currentShip != null && !currentShip.getShipId().equals(newShipId) && affectedCabins > 0) {
-            warnings.add("Cần phân bổ lại phòng cho " + affectedCabins + " khách đã đặt sau khi đổi tàu");
+            warnings.add("Có " + affectedCabins + " phân bổ cabin cần được đánh giá khi đổi tàu.");
         }
 
         long affectedActivities = 0;
@@ -784,6 +835,7 @@ public class CruiseService {
                 .blockers(blockers)
                 .warnings(warnings)
                 .canProceed(canProceed)
+                .shipAssignmentSafety(shipSafety)
                 .build();
     }
 
@@ -1366,6 +1418,31 @@ public class CruiseService {
         return mapToResponse(cruise);
     }
 
+    private void requireShipConfiguration(UUID shipId) {
+        if (deckRepository.countByShipShipId(shipId) == 0 || cabinRepository.countByShipShipId(shipId) == 0)
+            throw new BusinessException("SHIP_CONFIGURATION_INVALID", "Tàu chưa có đủ cấu hình boong và phòng.");
+    }
+
+    private void requireShipCapacity(Ship ship, UUID cruiseId) {
+        // A new Cruise has no commitments yet; its passenger ceiling belongs to Ship.
+        long passengers = cruiseId == null ? 0 : bookingPassengerRepository.countActivePassengersByCruiseId(cruiseId);
+        if (ship.getTotalCapacity() == null || ship.getTotalCapacity() < 1)
+            throw new BusinessException("SHIP_CONFIGURATION_INVALID", "Chưa có sức chứa tàu hợp lệ.");
+        if (ship.getTotalCapacity() < passengers)
+            throw new BusinessException("INSUFFICIENT_SHIP_CAPACITY", "Sức chứa tàu nhỏ hơn số hành khách đã đặt chỗ.");
+    }
+
+    private void requireShipEligibility(Ship ship, UUID cruiseId, Instant departure, Instant returning) {
+        if (!ShipStatus.isOperational(ship.getStatus()))
+            throw new BusinessException("SHIP_NOT_ACTIVE", "Tàu phải ở trạng thái được phép khai thác.");
+        if (departure == null || returning == null || !returning.isAfter(departure))
+            throw new BusinessException("CRUISE_SCHEDULE_INCOMPLETE", "Chưa có khoảng thời gian chuyến khởi hành hợp lệ.");
+        requireShipConfiguration(ship.getShipId());
+        if (cruiseRepository.existsOverlappingCruisesExcluding(ship.getShipId(), cruiseId, departure, returning))
+            throw new BusinessException("SHIP_SCHEDULE_CONFLICT", "Tàu có lịch trùng với chuyến khởi hành khác.");
+        requireShipCapacity(ship, cruiseId);
+    }
+
     private Cruise getCruiseById(UUID cruiseId) {
         return cruiseRepository.findById(cruiseId)
                 .orElseThrow(() -> new ResourceNotFoundException("Cruise", cruiseId));
@@ -1437,6 +1514,7 @@ public class CruiseService {
 
     @Transactional(readOnly = true)
     public CruiseManifestResponse getManifest(UUID cruiseId) {
+        cruiseStaffAccessPolicy.requireManifestRead(cruiseId);
         Cruise cruise = cruiseRepository.findById(cruiseId)
                 .orElseThrow(() -> new ResourceNotFoundException("Cruise not found with id: " + cruiseId));
 
@@ -1534,6 +1612,8 @@ public class CruiseService {
         long bookedPassengers = bookingPassengerRepository.countConfirmedPassengersByCruiseId(cruiseId);
         long heldPassengers = bookingPassengerRepository.countHeldPassengersByCruiseId(cruiseId);
         long remainingCapacity = Math.max(0, physicalCapacity - bookedPassengers - heldPassengers);
+        boolean fareManaged=farePackages.requiresFareSelection(cruiseId);
+        var fareHeadroom=fareManaged&&shipId!=null?bookingServices.getObject().fareCabinHeadroom(cruiseId,shipId):Map.<CabinType,Long>of();
         long activePackages = cruiseTourPackageRepository.countByCruise_CruiseIdAndActiveTrue(cruiseId);
 
         List<CabinTypeInventoryItem> cabinTypes = new ArrayList<>();
@@ -1543,16 +1623,19 @@ public class CruiseService {
                 long availableCabinsForType = cabinRepository.countByShipShipIdAndCabinTypeAndStatus(shipId, type, CabinStatus.AVAILABLE);
                 long blockedCabinsForType = cabinRepository.countByShipShipIdAndCabinTypeAndStatus(shipId, type, CabinStatus.MAINTENANCE)
                         + cabinRepository.countByShipShipIdAndCabinTypeAndStatus(shipId, type, CabinStatus.OUT_OF_SERVICE);
-                long totalSlotsForType = cabinRepository.sumCapacityByShipIdAndCabinType(shipId, type);
+                long totalSlotsForType = Optional.ofNullable(cabinRepository.sumAvailableCapacityByShipIdAndCabinType(shipId, type)).orElse(0L);
                 long bookedSlotsForType = cabinAssignmentRepository.countConfirmedAssignmentsByCabinTypeAndCruise(type, cruiseId);
                 long heldSlotsForType = cabinAssignmentRepository.countHeldAssignmentsByCabinTypeAndCruise(type, cruiseId);
+                bookedSlotsForType+=bookingPassengerRepository.countCategoryResources(cruiseId,type.name(),com.casms.booking.enums.BookingStatus.Confirmed);
+                heldSlotsForType+=bookingPassengerRepository.countCategoryResources(cruiseId,type.name(),com.casms.booking.enums.BookingStatus.Draft);
                 long occupiedSlotsForType = bookedSlotsForType + heldSlotsForType;
-                long remainingSlotsForType = Math.max(0, totalSlotsForType - occupiedSlotsForType);
-                boolean canSell = remainingSlotsForType > 0 && availableCabinsForType > 0;
+                long remainingSlotsForType = Math.min(remainingCapacity, Math.max(0L, totalSlotsForType - occupiedSlotsForType));
+                if(fareManaged)remainingSlotsForType=Math.min(remainingCapacity,fareHeadroom.getOrDefault(type,0L));
+                boolean canSell = remainingCapacity > 0 && remainingSlotsForType > 0 && availableCabinsForType > 0;
                 long accessibleCount = cabinRepository.countByShipShipIdAndCabinTypeAndIsAccessibleTrue(shipId, type);
                 long familyCount = cabinRepository.countByShipShipIdAndCabinTypeAndIsFamilyCabinTrue(shipId, type);
                 long connectingCount = cabinRepository.countByShipShipIdAndCabinTypeAndHasConnectingDoorTrue(shipId, type);
-                BigDecimal baseFare = getBaseCabinFareForCruise(cruiseId, type);
+                BigDecimal baseFare = fareManaged?null:getBaseCabinFareForCruise(cruiseId, type);
 
                 cabinTypes.add(CabinTypeInventoryItem.builder()
                         .cabinType(type)
@@ -1602,6 +1685,10 @@ public class CruiseService {
 
     @Transactional(readOnly = true, noRollbackFor = Exception.class)
     public CruiseSaleReadinessResponse validateSaleReadiness(UUID cruiseId, String saleScope, Set<UUID> requestedPackageIds) {
+        return validateSaleReadiness(cruiseId,saleScope,requestedPackageIds,null);
+    }
+    @Transactional(readOnly=true)
+    public CruiseSaleReadinessResponse validateSaleReadiness(UUID cruiseId,String saleScope,Set<UUID> requestedPackageIds,Set<UUID> selectedCruisePackageOfferIds) {
         Cruise cruise = getCruiseById(cruiseId);
         List<String> blockers = new ArrayList<>();
         List<String> warnings = new ArrayList<>();
@@ -1609,7 +1696,40 @@ public class CruiseService {
         List<ReadinessIssueDetail> details = new ArrayList<>();
         boolean hasInfrastructureError = false;
         if (!mainflow.isReady(cruiseId)) { blockers.add("READY_CONFIRMATION_REQUIRED"); issues.add("OPS Ready confirmation required"); }
-        blockers.addAll(mainflow.commercialBlockers(cruiseId));
+        boolean packageManaged = mainflow.packageManaged(cruiseId);
+        var commercialBlockers = mainflow.saleCommercialBlockers(cruiseId);
+        blockers.addAll(commercialBlockers);
+        if (packageManaged) {
+            long termsRevision = commercialBlockers.isEmpty() ? 0 : mainflow.saleTermsRevision(cruiseId);
+            for (String code : commercialBlockers) {
+                String requirement = code.equals("SALE_TAX_APPROVAL_REQUIRED") ? "Tax" : "Port Fee";
+                String message = requirement + " requires an explicit approved applicability decision";
+                issues.add(message);
+                details.add(ReadinessIssueDetail.builder().code(code).targetType("CRUISE").targetId(cruiseId)
+                        .scope("WHOLE_CRUISE").severity(ReadinessSeverity.BLOCKER).ownerRole("OPERATIONS_MANAGER")
+                        .message(message).evidence("Current sale terms revision: " + termsRevision)
+                        .allowedAction("Configure, submit and independently approve sale terms")
+                        .requiredPermission("CRUISE_PRICING_APPROVE")
+                        .remediationUrl("/cruise-plans/"+cruiseId+"/commercial-terms/sale").remediationOperation("PUT").build());
+            }
+        }
+        var eligibleCruisePackageOffers=Set.copyOf(farePackages.eligibleOfferIds(cruiseId));
+        if(selectedCruisePackageOfferIds!=null&&(selectedCruisePackageOfferIds.isEmpty()||!eligibleCruisePackageOffers.containsAll(selectedCruisePackageOfferIds))){
+            blockers.add("CRUISE_PACKAGE_SELECTION_INELIGIBLE");issues.add("Phạm vi mở bán phải chọn các Gói du thuyền hiện hành đủ điều kiện; không dùng lựa chọn khác với lần đánh giá fingerprint.");
+            details.add(ReadinessIssueDetail.builder().code("CRUISE_PACKAGE_SELECTION_INELIGIBLE").targetType("CRUISE").targetId(cruiseId).scope("WHOLE_CRUISE")
+                    .severity(ReadinessSeverity.BLOCKER).ownerRole("ACTIVITY_SERVICE_MANAGER").message("Gói du thuyền đã chọn thiếu hoặc không đủ điều kiện bán.").allowedAction("Đối chiếu lựa chọn gói và blocker của từng offer").requiredPermission(Permission.CRUISE_READ.name()).build());
+        }
+        if(eligibleCruisePackageOffers.isEmpty()) {
+            blockers.add("ELIGIBLE_FARE_OFFER_REQUIRED");
+            issues.add("Cần ít nhất một gói vé của chuyến đủ điều kiện: phiên bản mẫu, tương thích hạng phòng, quyền lợi và giá đã duyệt.");
+            details.add(ReadinessIssueDetail.builder().code("ELIGIBLE_FARE_OFFER_REQUIRED")
+                    .targetType("CRUISE").targetId(cruiseId).scope("WHOLE_CRUISE")
+                    .severity(ReadinessSeverity.BLOCKER).ownerRole("ACTIVITY_SERVICE_MANAGER")
+                    .message("Chưa có gói vé Fare Package đủ điều kiện mở bán.")
+                    .allowedAction("Đối chiếu gói vé của chuyến khởi hành")
+                    .requiredPermission("TOUR_PACKAGE_MANAGE")
+                    .remediationUrl("/cruise/"+cruiseId+"/fare-package-offers").remediationOperation("GET").build());
+        }
 
         // 1. Evaluate operational readiness for visibility (BE-08: do NOT copy departure/operational blockers to sale gate)
         CruiseReadinessResponse opReadiness = validateOperationalReadiness(cruiseId);
@@ -1871,7 +1991,10 @@ public class CruiseService {
         String pricingPolicyVersion = null;
         boolean policyConfiguredAndApproved = true;
 
-        if (policyOpt.isEmpty()) {
+        if (packageManaged) {
+            policyConfiguredAndApproved = commercialBlockers.isEmpty();
+            pricingPolicyVersion = mainflow.saleTermsFingerprint(cruiseId);
+        } else if (policyOpt.isEmpty()) {
             policyConfiguredAndApproved = false;
             blockers.add("PRICING_POLICY_MISSING");
             issues.add("Chuyến khởi hành chưa được cấu hình chính sách giá (Pricing Policy)");
@@ -1913,7 +2036,7 @@ public class CruiseService {
                         .build());
             } else {
                 // Verify cabin base fares for all cabin types present on the assigned ship (0 is valid, null is blocker)
-                if (cruise.getShip() != null) {
+                if (!cruisePricingPolicyService.usesCruisePackagePricing(cruise) && cruise.getShip() != null) {
                     UUID shipId = cruise.getShip().getShipId();
                     for (CabinType type : CabinType.values()) {
                         long count = cabinRepository.countByShipShipIdAndCabinType(shipId, type);
@@ -1961,7 +2084,7 @@ public class CruiseService {
                     .message("Không còn chỗ trống khả dụng trên tàu")
                     .evidence("PhysicalCapacity=" + physicalCapacity + ", Booked=" + booked + ", Held=" + held + ", Remaining=" + remaining)
                     .ownerRole("CRUISE_MANAGER")
-                    .allowedAction("Tạm dừng mở bán hoặc tăng tải trọng tàu nếu có thể")
+                    .allowedAction("Đối chiếu sức chứa tàu và tồn chỗ; tạm dừng mở bán khi không còn chỗ")
                     .requiredPermission(Permission.CRUISE_STOP_SALE.name())
                     .remediationUrl("/api/cruise/" + cruiseId + "/stop-sale")
                     .remediationOperation("POST")
@@ -2176,7 +2299,7 @@ public class CruiseService {
                 packageDigest.toString(), pricingConfigured, pricingPolicyVersion != null ? pricingPolicyVersion : "NONE",
                 remaining, supplierDigest.toString(),
                 blockers.size(), warnings.size(), hasInfrastructureError);
-        String fingerprint = generateFingerprint(rawState + ":SCOPE:" + effectiveScope + ":SELECTED:" +
+        String fingerprint = generateFingerprint(rawState + ":CRUISE_PACKAGE_SELECTION:"+(selectedCruisePackageOfferIds==null?"ALL_ELIGIBLE":selectedCruisePackageOfferIds.stream().map(UUID::toString).sorted().toList())+":FARE:" + farePackages.saleStateFingerprint(cruiseId) + ":SCOPE:" + effectiveScope + ":SELECTED:" +
                 (requestedPackageIds == null ? "[]" : requestedPackageIds.stream().map(UUID::toString).sorted().toList()));
 
         return CruiseSaleReadinessResponse.builder()
@@ -2273,6 +2396,12 @@ public class CruiseService {
         }
     }
 
+    private void requireSaleActor(UUID actorId,String permission){
+        var authentication=org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+        if(authentication==null||!(authentication.getPrincipal() instanceof com.casms.security.principal.CasmsPrincipal actor)
+                ||!Objects.equals(actorId,actor.getUserId())||!actor.hasRole(com.casms.identity.enums.Role.OPERATIONS_MANAGER)||!actor.hasAuthority(permission))
+            throw new org.springframework.security.access.AccessDeniedException("Sale actions require authenticated Operations Manager and effective permission");
+    }
     @Transactional
     public CruiseResponse openSale(UUID cruiseId, CruiseOpenSaleRequest request) {
         return openSale(cruiseId, request, null);
@@ -2280,10 +2409,10 @@ public class CruiseService {
 
     @Transactional
     public CruiseResponse openSale(UUID cruiseId, CruiseOpenSaleRequest request, UUID actorId) {
+        requireSaleActor(actorId,"CRUISE_OPEN_SALE");
         Cruise cruise = cruiseRepository.findByIdForUpdate(cruiseId)
                 .orElseThrow(() -> new ResourceNotFoundException("Cruise", cruiseId));
-
-        mainflow.requireReady(cruiseId);
+        if(cruise.getShip()!=null)cabinMappings.lockShip(cruise.getShip().getShipId());
 
         if (request == null) {
             throw new BusinessException(HttpStatus.BAD_REQUEST, "REQUEST_REQUIRED", "Yêu cầu mở bán không được để trống");
@@ -2291,11 +2420,6 @@ public class CruiseService {
 
         if (request.getExpectedRevision() == null) {
             throw new BusinessException(HttpStatus.BAD_REQUEST, "EXPECTED_REVISION_REQUIRED", "expectedRevision là bắt buộc khi mở bán");
-        }
-
-        if (!request.getExpectedRevision().equals(cruise.getRevision())) {
-            throw new BusinessException(HttpStatus.CONFLICT, "STALE_REVISION",
-                    "Revision của Cruise không khớp (expected: " + request.getExpectedRevision() + ", current: " + cruise.getRevision() + ")");
         }
 
         if (request.getSaleScope() == null || request.getSaleScope().isBlank()) {
@@ -2330,15 +2454,31 @@ public class CruiseService {
                 : "EVT-SALE-" + cruise.getCruiseCode() + "-" + System.currentTimeMillis();
 
         if (alreadyOpen && eventIdentity.equals(cruise.getSaleEventIdentity())) {
-            if (scope.equalsIgnoreCase(cruise.getSaleScope())) {
+            Set<UUID> requestedFareIds=request.getFarePackageOfferIds()==null?Set.of():new HashSet<>(request.getFarePackageOfferIds());
+            Set<UUID> activeLegacyIds=cruiseTourPackageRepository.findByCruise_CruiseId(cruiseId).stream()
+                    .filter(CruiseTourPackage::isActive).map(p -> p.getTourPackage().getTourPackageId())
+                    .collect(Collectors.toSet());
+            boolean sameLegacySelection=!"SELECTED_PACKAGES".equals(scope)||requestedPackageIds.equals(activeLegacyIds);
+            if (scope.equalsIgnoreCase(cruise.getSaleScope())&&sameLegacySelection
+                    &&requestedFareIds.equals(farePackages.requestedSaleOfferIds(cruiseId))) {
                 return mapToResponse(cruise); // Idempotent on same payload
             }
             throw new BusinessException(HttpStatus.CONFLICT, "EVENT_IDENTITY_CONFLICT",
                     "Event identity " + eventIdentity + " đã được xử lý với phạm vi mở bán khác (" + cruise.getSaleScope() + ")");
         }
 
+        if (!request.getExpectedRevision().equals(cruise.getRevision())) {
+            throw new BusinessException(HttpStatus.CONFLICT, "STALE_REVISION",
+                    "Revision của Cruise đã thay đổi; cần tải lại trước khi mở bán.");
+        }
+        mainflow.requireReady(cruiseId);
+
         // Validation gate: validateSaleReadiness scope-aware (revalidate in transaction, do NOT trust client)
-        CruiseSaleReadinessResponse saleReadiness = validateSaleReadiness(cruiseId, scope, requestedPackageIds);
+        CruiseSaleReadinessResponse saleReadiness = validateSaleReadiness(cruiseId, scope, requestedPackageIds,request.getFarePackageOfferIds()==null?Set.of():new HashSet<>(request.getFarePackageOfferIds()));
+        if (saleReadiness.getStatus() == ReadinessStatus.INDETERMINATE) {
+            throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "DEPENDENCY_TIMEOUT",
+                    "Chưa thể xác minh điều kiện mở bán; chưa thực hiện thay đổi trạng thái.");
+        }
         if (!saleReadiness.isReady()) {
             throw new BusinessException(HttpStatus.UNPROCESSABLE_ENTITY, "CRUISE_NOT_SALE_READY",
                     "Chuyến khởi hành chưa đủ điều kiện mở bán: " + String.join("; ", saleReadiness.getIssues()));
@@ -2350,6 +2490,7 @@ public class CruiseService {
                     "Dấu vân tay dữ liệu (fingerprint) đã thay đổi kể từ lần đánh giá readiness, vui lòng kiểm tra lại");
         }
 
+        farePackages.activateSaleScope(cruiseId,request.getFarePackageOfferIds());
         List<CruiseTourPackage> allAssigned = cruiseTourPackageRepository.findByCruise_CruiseId(cruiseId);
 
         if ("CABIN_ONLY".equals(scope)) {
@@ -2402,6 +2543,7 @@ public class CruiseService {
             userRepository.findById(actorId).ifPresent(cruise::setOpenedForSaleBy);
         }
         cruise.setSaleEventIdentity(eventIdentity);
+        if (mainflow.packageManaged(cruiseId)) cruise.setSaleApprovalFingerprint(currentSaleApprovalFingerprint(cruiseId));
         cruise = cruiseRepository.save(cruise);
 
         // Update Itinerary status to OPEN_FOR_SALE
@@ -2437,7 +2579,7 @@ public class CruiseService {
         long activePkgs = cruiseTourPackageRepository.countByCruise_CruiseIdAndActiveTrue(cruiseId);
         Set<UUID> pkgIds = (request != null && request.getPackageIds() != null)
                 ? new HashSet<>(request.getPackageIds()) : Collections.emptySet();
-        CruiseSaleReadinessResponse readiness = validateSaleReadiness(cruiseId, res.getSaleScope(), pkgIds);
+        CruiseSaleReadinessResponse readiness = validateSaleReadiness(cruiseId, res.getSaleScope(), pkgIds,request==null||request.getFarePackageOfferIds()==null?Set.of():new HashSet<>(request.getFarePackageOfferIds()));
         return CruiseOpenSaleResponse.builder()
                 .cruiseId(res.getCruiseId())
                 .cruiseCode(res.getCruiseCode())
@@ -2456,8 +2598,11 @@ public class CruiseService {
 
     @Transactional
     public CruiseResponse stopSale(UUID cruiseId, CruiseStopSaleRequest request, UUID actorId) {
+        requireSaleActor(actorId,"CRUISE_STOP_SALE");
         Cruise cruise = cruiseRepository.findByIdForUpdate(cruiseId)
                 .orElseThrow(() -> new ResourceNotFoundException("Cruise", cruiseId));
+
+        validateLegacySaleScope(request == null ? null : request.getScope(), request == null ? null : request.getPackageId());
 
         if (request != null && request.getExpectedRevision() != null && !request.getExpectedRevision().equals(cruise.getRevision())) {
             throw new BusinessException(HttpStatus.CONFLICT, "STALE_REVISION",
@@ -2550,11 +2695,15 @@ public class CruiseService {
 
     @Transactional
     public CruiseResponse resumeSale(UUID cruiseId, CruiseResumeSaleRequest request, UUID actorId) {
+        requireSaleActor(actorId,"CRUISE_RESUME_SALE");
         Cruise cruise = cruiseRepository.findByIdForUpdate(cruiseId)
                 .orElseThrow(() -> new ResourceNotFoundException("Cruise", cruiseId));
 
+        validateLegacySaleScope(request == null ? null : request.getScope(), request == null ? null : request.getPackageId());
+
+        if(cruise.getShip()!=null)cabinMappings.lockShip(cruise.getShip().getShipId());
         mainflow.requireReady(cruiseId);
-        if(!mainflow.commercialBlockers(cruiseId).isEmpty())throw new BusinessException(HttpStatus.CONFLICT,"PRICING_POLICY_APPROVAL_REQUIRED","Current USD pricing revision requires OPS approval");
+        mainflow.requireCommercialPolicies(cruiseId);
         if (request != null && request.getExpectedRevision() != null && !request.getExpectedRevision().equals(cruise.getRevision())) {
             throw new BusinessException(HttpStatus.CONFLICT, "STALE_REVISION",
                     "Revision của Cruise không khớp (expected: " + request.getExpectedRevision() + ", current: " + cruise.getRevision() + ")");
@@ -2572,6 +2721,8 @@ public class CruiseService {
                     .findByCruise_CruiseIdAndTourPackage_TourPackageId(cruiseId, request.getPackageId())
                     .orElseThrow(() -> new ResourceNotFoundException("CruiseTourPackage", request.getPackageId()));
 
+            cruisePackageService.requireResumeScope(cruise, ctp);
+
             // Idempotent: nếu đã active thì không thực hiện lại thao tác phụ
             if (ctp.isActive()) {
                 log.info("Package {} is already active on cruise {}, skipping duplicate resume", request.getPackageId(), cruise.getCruiseCode());
@@ -2585,7 +2736,14 @@ public class CruiseService {
             log.info("Resumed sale for package {} on cruise {}", request.getPackageId(), cruise.getCruiseCode());
         } else {
             // Re-validate sale readiness before resuming whole cruise (BE-14)
-            CruiseSaleReadinessResponse saleReadiness = validateSaleReadiness(cruiseId);
+            Set<UUID> retainedLegacySelection=cruiseTourPackageRepository.findByCruise_CruiseId(cruiseId).stream()
+                    .filter(CruiseTourPackage::isActive).map(p -> p.getTourPackage().getTourPackageId())
+                    .collect(Collectors.toSet());
+            CruiseSaleReadinessResponse saleReadiness = validateSaleReadiness(cruiseId,cruise.getSaleScope(),retainedLegacySelection,farePackages.requestedSaleOfferIds(cruiseId));
+            if (saleReadiness.getStatus() == ReadinessStatus.INDETERMINATE) {
+                throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "DEPENDENCY_TIMEOUT",
+                        "Chưa thể xác minh điều kiện tiếp tục bán; chưa thực hiện thay đổi trạng thái.");
+            }
             if (!saleReadiness.isReady()) {
                 throw new BusinessException(HttpStatus.UNPROCESSABLE_ENTITY, "CRUISE_NOT_SALE_READY",
                         "Không thể mở bán lại do chưa đủ điều kiện: " + String.join("; ", saleReadiness.getIssues()));
@@ -2605,6 +2763,7 @@ public class CruiseService {
                 userRepository.findById(actorId).ifPresent(cruise::setOpenedForSaleBy);
             }
             cruise.setOpenedForSaleAt(Instant.now());
+            if (mainflow.packageManaged(cruiseId)) cruise.setSaleApprovalFingerprint(currentSaleApprovalFingerprint(cruiseId));
             log.info("Resumed sale for entire cruise {}", cruise.getCruiseCode());
         }
 
@@ -2628,11 +2787,43 @@ public class CruiseService {
         return mapToResponse(cruise);
     }
 
+    private void validateLegacySaleScope(String requestedScope, UUID packageId) {
+        if (requestedScope == null || requestedScope.isBlank()) return;
+        String scope = requestedScope.trim().toUpperCase(java.util.Locale.ROOT);
+        boolean valid = packageId == null ? Set.of("CRUISE", "WHOLE_CRUISE").contains(scope) : "PACKAGE".equals(scope);
+        if (!valid) throw new BusinessException(HttpStatus.BAD_REQUEST, "INVALID_SALE_SCOPE",
+                "Phạm vi Stop/Resume không khớp mục tiêu. packageId chỉ nhận TourPackage; chưa có contract Resume riêng cho Departure Offer.");
+    }
+
     /**
      * BE-15: Public Sellability Read Model - Nguồn sự thật duy nhất (Single Source of Truth)
      * Đánh giá trạng thái mở bán authoritative cho Chuyến đi, từng hạng phòng và gói dịch vụ.
      * Hoàn toàn không để lộ dữ liệu nhân sự, manifest hành khách hay nguồn nhạy cảm.
      */
+    @Transactional(readOnly = true)
+    public void requirePubliclyVisible(UUID cruiseId) {
+        Cruise cruise = cruiseRepository.findById(cruiseId)
+                .orElseThrow(() -> new ResourceNotFoundException("Cruise", cruiseId));
+        // Public sellability may describe a stopped/sold-out published departure,
+        // but must not disclose an unpublished or cancelled departure by guessing its ID.
+        if (cruise.getStatus() != CruiseStatus.PUBLISHED)
+            throw new ResourceNotFoundException("Cruise", cruiseId);
+    }
+
+    /** Shared public detail/catalog boundary, distinct from transaction authorization. */
+    @Transactional(readOnly = true)
+    public void requirePublicSaleVisible(UUID cruiseId) {
+        requirePubliclyVisible(cruiseId);
+        if (!getPublicSellability(cruiseId).isPublicDisplayEligible()) {
+            throw new ResourceNotFoundException("Cruise", cruiseId);
+        }
+    }
+
+    private String currentSaleApprovalFingerprint(UUID cruiseId) {
+        String terms = mainflow.saleTermsFingerprint(cruiseId);
+        return terms == null ? null : CruiseMainflowService.hash(terms + ":" + farePackages.saleStateFingerprint(cruiseId));
+    }
+
     @Transactional(readOnly = true)
     public CruiseSellabilityResponse getPublicSellability(UUID cruiseId) {
         Cruise cruise = cruiseRepository.findById(cruiseId)
@@ -2652,13 +2843,39 @@ public class CruiseService {
                 : 0L;
         long booked = bookingPassengerRepository.countConfirmedPassengersByCruiseId(cruiseId);
         long held = bookingPassengerRepository.countHeldPassengersByCruiseId(cruiseId);
-        long sellableInventory = Math.max(0, totalAvailableCabinCapacity - booked - held);
+        // Cabin slots describe accommodation inventory; Ship owns the passenger ceiling.
+        long passengerHeadroom = Math.max(0L, (long) physicalCapacity - booked - held);
+        long sellableInventory = Math.min(passengerHeadroom, Math.max(0L, totalAvailableCabinCapacity - booked - held));
+        boolean fareManaged=farePackages.requiresFareSelection(cruiseId);
+        var fareHeadroom=fareManaged&&shipId!=null?bookingServices.getObject().fareCabinHeadroom(cruiseId,shipId):Map.<CabinType,Long>of();
+        if(fareManaged)sellableInventory=Math.min(passengerHeadroom,fareHeadroom.values().stream().mapToLong(Long::longValue).sum());
         boolean hasInventory = sellableInventory > 0 && totalAvailableCabinCapacity > 0;
 
         Optional<CruisePricingPolicy> policyOpt = cruisePricingPolicyRepository.findByCruise_CruiseId(cruiseId)
                 .filter(p -> p.getStatus() == PricingPolicyStatus.APPROVED);
 
         boolean sellable = isPublished && isItineraryOpen && !isStopped && isDepartureFuture && hasInventory && policyOpt.isPresent() && cruise.getOpenedForSaleAt() != null && mainflow.isReady(cruiseId) && mainflow.isBookingWindowOpen(cruiseId) && mainflow.commercialBlockers(cruiseId).isEmpty();
+        var fareCategories=fareManaged?farePackages.sellableCategories(cruiseId):Set.<CabinType>of();
+        if(fareManaged&&fareCategories.isEmpty())sellable=false;
+
+        boolean packageManaged = mainflow.packageManaged(cruiseId);
+        boolean publicCommercialApproved = packageManaged
+                ? cruise.getSaleApprovalFingerprint() != null
+                    && Objects.equals(cruise.getSaleApprovalFingerprint(),currentSaleApprovalFingerprint(cruiseId))
+                : policyOpt.isPresent() && mainflow.saleCommercialBlockers(cruiseId).isEmpty();
+        boolean publicSaleConditions = isPublished && isItineraryOpen && !isStopped && isDepartureFuture
+                && publicCommercialApproved && cruise.getOpenedForSaleAt() != null && mainflow.isReady(cruiseId)
+                && mainflow.isBookingWindowOpen(cruiseId)
+                && (!fareManaged || !fareCategories.isEmpty());
+        boolean publicDisplayEligible = publicSaleConditions && hasInventory;
+        String publicSaleState;
+        if (cruise.getStatus() == CruiseStatus.DRAFT) publicSaleState = "DRAFT";
+        else if (cruise.getStatus() == CruiseStatus.CANCELLED) publicSaleState = "CANCELLED";
+        else if (!isDepartureFuture) publicSaleState = "DEPARTED";
+        else if (isStopped) publicSaleState = "STOPPED";
+        else if (!publicSaleConditions) publicSaleState = "NOT_YET_OPEN";
+        else if (!hasInventory) publicSaleState = "SOLD_OUT";
+        else publicSaleState = "OPEN_FOR_SALE";
 
         String saleState;
         if (cruise.getStatus() == CruiseStatus.DRAFT) {
@@ -2671,6 +2888,8 @@ public class CruiseService {
             saleState = "STOPPED";
         } else if (!isItineraryOpen || policyOpt.isEmpty() || cruise.getOpenedForSaleAt() == null || !mainflow.isReady(cruiseId) || !mainflow.isBookingWindowOpen(cruiseId) || !mainflow.commercialBlockers(cruiseId).isEmpty()) {
             saleState = "NOT_YET_OPEN";
+        } else if(fareManaged&&fareCategories.isEmpty()) {
+            saleState="NOT_YET_OPEN";
         } else if (!hasInventory || totalAvailableCabinCapacity == 0) {
             saleState = "SOLD_OUT";
         } else {
@@ -2678,10 +2897,10 @@ public class CruiseService {
         }
 
         CruisePricingPolicy policy = policyOpt.orElse(null);
-        String currency = policy != null ? policy.getCurrency() : null;
-        String policyVersion = policy != null ? policy.getPolicyVersion() : null;
+        String currency = packageManaged ? "USD" : policy != null ? policy.getCurrency() : null;
+        String policyVersion = !packageManaged && policy != null ? policy.getPolicyVersion() : null;
 
-        BigDecimal depositPercentage = policy != null ? policy.getDepositPercentage() : null;
+        BigDecimal depositPercentage = !packageManaged && policy != null ? policy.getDepositPercentage() : null;
         if (depositPercentage != null && depositPercentage.compareTo(BigDecimal.ONE) > 0) {
             depositPercentage = depositPercentage.divide(BigDecimal.valueOf(100), 4, RoundingMode.HALF_UP);
         }
@@ -2690,9 +2909,11 @@ public class CruiseService {
         for (CabinType type : CabinType.values()) {
             long totalSlots = (shipId != null) ? Optional.ofNullable(cabinRepository.sumAvailableCapacityByShipIdAndCabinType(shipId, type)).orElse(0L) : 0L;
             long activeAssignments = cabinAssignmentRepository.countActiveAssignmentsByCabinTypeAndCruise(type, cruiseId);
-            long availableSlots = Math.max(0, totalSlots - activeAssignments);
+            long availableSlots = Math.min(passengerHeadroom, Math.max(0L, totalSlots - activeAssignments));
+            if(fareManaged)availableSlots=Math.min(passengerHeadroom,fareHeadroom.getOrDefault(type,0L));
             BigDecimal baseFare = policy != null ? policy.getBaseFareForCabinType(type) : null;
             boolean cabinSellable = sellable && availableSlots > 0 && baseFare != null;
+            if(fareManaged){baseFare=null;cabinSellable=sellable&&availableSlots>0&&fareCategories.contains(type);}
             cabinItems.add(CabinTypeSellabilityItem.builder()
                     .cabinType(type)
                     .baseFare(baseFare)
@@ -2728,8 +2949,12 @@ public class CruiseService {
                 .departureDatetime(cruise.getDepartureDatetime())
                 .returnDatetime(cruise.getReturnDatetime())
                 .sellable(sellable)
+                .publicDisplayEligible(publicDisplayEligible)
+                .publicSaleState(publicSaleState)
+                .openedForSaleAt(cruise.getOpenedForSaleAt())
+                .evaluatedAt(Instant.now())
                 .saleState(saleState)
-                .stopReason(cruise.getStopReason())
+                .stopReason(isStopped ? "Chuyến khởi hành đang tạm dừng nhận đặt chỗ." : null)
                 .stoppedAt(cruise.getStoppedAt())
                 .physicalCapacity(physicalCapacity)
                 .totalCapacity(physicalCapacity)
@@ -2738,7 +2963,7 @@ public class CruiseService {
                 .pricingPolicyVersion(policyVersion)
                 .currency(currency)
                 .depositPercentage(depositPercentage)
-                .finalPaymentCutoffDays(policy != null ? policy.getFullPaymentCutoffDays() : 0)
+                .finalPaymentCutoffDays(!packageManaged && policy != null ? policy.getFullPaymentCutoffDays() : null)
                 .cabinTypes(cabinItems)
                 .availablePackages(packageItems)
                 .build();
@@ -2747,6 +2972,7 @@ public class CruiseService {
     // BE-R05b / C11, C17: Áp dụng thay đổi toàn diện với kiểm tra dữ liệu mới nhất
     @Transactional
     public CruiseApplyChangeResponse applyChange(UUID cruiseId, CruiseChangeImpactRequest request, UUID actorId) {
+        if (request.getNewShipId() != null) actorId = shipAssignmentPolicy.requireActor(actorId);
         Cruise cruise = cruiseRepository.findByIdForUpdate(cruiseId)
                 .orElseThrow(() -> new ResourceNotFoundException("Cruise", cruiseId));
 
@@ -2754,6 +2980,39 @@ public class CruiseService {
             throw new BusinessException(HttpStatus.CONFLICT, "STALE_REVISION",
                     String.format("Cruise revision đã thay đổi (hiện tại: %d, mong đợi: %d). Vui lòng tải lại trang trước khi áp dụng.",
                             cruise.getRevision(), request.getExpectedRevision()));
+        }
+
+        Ship targetShip = null;
+        boolean changingShip = request.getNewShipId() != null
+                && (cruise.getShip() == null || !request.getNewShipId().equals(cruise.getShip().getShipId()));
+        if (!changingShip && cruise.getShip() != null
+                && (request.getNewDepartureDatetime() != null || request.getNewReturnDatetime() != null)) {
+            UUID assignedShipId = cruise.getShip().getShipId();
+            shipRepository.findByIdForUpdate(assignedShipId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Ship", assignedShipId));
+            Instant departure = request.getNewDepartureDatetime() != null ? request.getNewDepartureDatetime() : cruise.getDepartureDatetime();
+            Instant returning = request.getNewReturnDatetime() != null ? request.getNewReturnDatetime() : cruise.getReturnDatetime();
+            if (request.getNewDepartureDatetime() != null && request.getNewReturnDatetime() == null
+                    && cruise.getDepartureDatetime() != null && cruise.getReturnDatetime() != null)
+                returning = departure.plus(Duration.between(cruise.getDepartureDatetime(), cruise.getReturnDatetime()));
+            if (departure == null || returning == null || !returning.isAfter(departure))
+                throw new BusinessException("CRUISE_SCHEDULE_INCOMPLETE", "Chưa có khoảng thời gian chuyến khởi hành hợp lệ.");
+            if (cruiseRepository.existsOverlappingCruisesExcluding(assignedShipId, cruiseId, departure, returning))
+                throw new BusinessException("SHIP_SCHEDULE_CONFLICT", "Tàu có lịch trùng với chuyến khởi hành khác.");
+        }
+        if (changingShip) {
+            if (cruise.getStatus() != CruiseStatus.DRAFT && cruise.getStatus() != CruiseStatus.PUBLISHED)
+                throw new BusinessException("INVALID_CRUISE_STATUS", "Trạng thái chuyến không cho phép đổi tàu.");
+            // Lock the target ship before checking conflicts, just like direct assignment.
+            targetShip = shipRepository.findByIdForUpdate(request.getNewShipId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Ship", request.getNewShipId()));
+            shipAssignmentPolicy.requireSafeDownstream(cruiseId, request.getNewShipId(), "CHANGE");
+            Instant departure = request.getNewDepartureDatetime() != null ? request.getNewDepartureDatetime() : cruise.getDepartureDatetime();
+            Instant returning = request.getNewReturnDatetime() != null ? request.getNewReturnDatetime() : cruise.getReturnDatetime();
+            if (request.getNewDepartureDatetime() != null && request.getNewReturnDatetime() == null
+                    && cruise.getDepartureDatetime() != null && cruise.getReturnDatetime() != null)
+                returning = departure.plus(Duration.between(cruise.getDepartureDatetime(), cruise.getReturnDatetime()));
+            requireShipEligibility(targetShip, cruiseId, departure, returning);
         }
 
         // 1. Kiểm tra lại dữ liệu mới nhất (không tin preview cũ)
@@ -2775,34 +3034,7 @@ public class CruiseService {
         UUID beforeShipId = cruise.getShip() != null ? cruise.getShip().getShipId() : null;
 
         // 2. Thay đổi tàu
-        if (request.getNewShipId() != null && (cruise.getShip() == null || !cruise.getShip().getShipId().equals(request.getNewShipId()))) {
-            Ship newShip = shipRepository.findById(request.getNewShipId())
-                    .orElseThrow(() -> new ResourceNotFoundException("Ship", request.getNewShipId()));
-            cruise.setShip(newShip);
-
-            // Xử lý CabinAssignments có cabin thuộc tàu cũ: đóng assignment để bảo đảm không để cabin/booking trỏ tàu cũ
-            List<CabinAssignment> activeAssignments = cabinAssignmentRepository.findActiveAssignmentsByCruiseId(cruiseId);
-            Instant now = Instant.now();
-            for (CabinAssignment ca : activeAssignments) {
-                if (ca.getCabin() != null && ca.getCabin().getDeck() != null && ca.getCabin().getDeck().getShip() != null
-                        && !newShip.getShipId().equals(ca.getCabin().getDeck().getShip().getShipId())) {
-                    ca.setValidTo(now);
-                    ca.setChangeReason("Đổi tàu chuyến khởi hành sang " + newShip.getShipName() + "; cần tái phân bổ cabin trên tàu mới");
-                    cabinAssignmentRepository.save(ca);
-                }
-            }
-
-            // Xử lý OnboardActivities có deck thuộc tàu cũ
-            List<OnboardActivity> activities = onboardActivityRepository.findByCruise_CruiseId(cruiseId);
-            for (OnboardActivity act : activities) {
-                if (act.getDeck() != null && act.getDeck().getShip() != null
-                        && !act.getDeck().getShip().getShipId().equals(newShip.getShipId())) {
-                    act.setDeck(null);
-                    act.setCabin(null);
-                    onboardActivityRepository.save(act);
-                }
-            }
-        }
+        if (targetShip != null) cruise.setShip(targetShip);
 
         // 3. Thay đổi cảng
         if (request.getNewDeparturePortId() != null) {
@@ -2857,8 +3089,8 @@ public class CruiseService {
                 "CRUISE_APPLY_CHANGE",
                 request.getEventIdentity() != null ? request.getEventIdentity() : "EVT-CHANGE-" + cruise.getCruiseCode() + "-" + System.currentTimeMillis(),
                 actorId,
-                "OPERATIONS_MANAGER",
-                "CRUISE_UPDATE_DRAFT",
+                request.getNewShipId() != null ? "CRUISE_MANAGER" : "OPERATIONS_MANAGER",
+                request.getNewShipId() != null ? "CRUISE_ASSIGN_SHIP" : "CRUISE_UPDATE_DRAFT",
                 "WHOLE_CRUISE",
                 "Departure=" + beforeDeparture + ", Ship=" + beforeShipId,
                 "Departure=" + cruise.getDepartureDatetime() + ", Ship=" + (cruise.getShip() != null ? cruise.getShip().getShipId() : null),
@@ -2881,6 +3113,7 @@ public class CruiseService {
                 .affectedExcursionsCount(impact.getAffectedExcursionsCount())
                 .generatedTasks(generatedTasks)
                 .message("Áp dụng thay đổi hành trình và cập nhật các đối tượng phụ thuộc thành công")
+                .shipAssignmentSafety(impact.getShipAssignmentSafety())
                 .build();
     }
 

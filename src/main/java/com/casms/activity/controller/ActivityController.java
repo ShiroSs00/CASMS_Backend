@@ -26,6 +26,16 @@ import java.util.UUID;
 @Tag(name = "Activity Management", description = "Quản lý hoạt động trên tàu, đăng ký tham gia và điểm danh hành khách")
 public class ActivityController {
     private final ActivityService service;
+    private final com.casms.cruisepackage.service.CruisePackageEntitlementService fareEntitlements;
+
+    @GetMapping("/registrations/{id}/fare-entitlement")
+    @PreAuthorize("hasAnyAuthority('ACTIVITY_REGISTRATION','ACTIVITY_ATTENDANCE','REGISTRATION_MANAGE')")
+    public ApiResponse<com.casms.cruisepackage.service.CruisePackageEntitlementService.OperationEntitlement> fareEntitlement(@PathVariable UUID id,Authentication auth) {
+        var principal=(CasmsPrincipal)auth.getPrincipal();
+        var registration=service.getRegistration(id,principal.getUserId(),principal.isStaff());
+        return ApiResponse.success(new com.casms.cruisepackage.service.CruisePackageEntitlementService.OperationEntitlement(id,
+                fareEntitlements.operationGrant(registration.getFareBenefitSnapshotId(),registration.getBookingPassenger().getBookingPassengerId())));
+    }
 
     @Schema(name = "ActivityRequest", description = "Thông tin tạo hoặc cập nhật hoạt động trên tàu")
     public record ActivityRequest(

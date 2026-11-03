@@ -48,6 +48,20 @@ public class BookingPassengerResponse {
 
     @Schema(description = "Hạng phòng khách đã yêu cầu/chọn", example = "BALCONY")
     private String requestedCabinCategory;
+    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+    private com.casms.booking.enums.CabinSelectionMode cabinSelectionMode;
+    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+    private String cabinGroupKey;
+    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+    private UUID farePackageOfferId;
+    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+    private String fareCabinCategory;
+    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+    private com.casms.cruisepackage.service.CruisePackagePurchaseSnapshotService.PurchasedCruisePackage purchasedFare;
+    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+    private com.casms.cruisepackage.dto.CruisePackagePurchaseSelection selectedFare;
+    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+    private Boolean canSelectFareCabin;
 
     // Cabin Assignment Info (Khách tự chọn phòng)
     @Schema(description = "ID phòng đã được gán", example = "a1b2c3d4-e5f6-7890-abcd-ef1234567890")

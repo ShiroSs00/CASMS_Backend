@@ -193,19 +193,34 @@ public class GlobalExceptionHandler {
                     .body(ApiResponse.error("Dữ liệu trùng lặp trong hệ thống.", "DUPLICATE_RESOURCE"));
         }
         return ResponseEntity.status(HttpStatus.CONFLICT)
-                .body(ApiResponse.error("Xung đột ràng buộc dữ liệu: " + msg, "DATA_INTEGRITY_VIOLATION"));
+                .body(ApiResponse.error("Dữ liệu không đáp ứng ràng buộc của hệ thống.", "DATA_INTEGRITY_VIOLATION"));
+    }
+
+    @ExceptionHandler(org.springframework.dao.QueryTimeoutException.class)
+    public ResponseEntity<ApiResponse<Void>> handleDependencyTimeout(org.springframework.dao.QueryTimeoutException ex) {
+        return dependencyUnknown(ex, "DEPENDENCY_TIMEOUT");
+    }
+
+    @ExceptionHandler(org.springframework.dao.DataAccessResourceFailureException.class)
+    public ResponseEntity<ApiResponse<Void>> handleDependencyUnavailable(org.springframework.dao.DataAccessResourceFailureException ex) {
+        return dependencyUnknown(ex, "DEPENDENCY_UNAVAILABLE");
+    }
+
+    private ResponseEntity<ApiResponse<Void>> dependencyUnknown(Exception ex, String code) {
+        String traceId = UUID.randomUUID().toString();
+        log.error("Dependency check unresolved [traceId: {}]", traceId, ex);
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(ApiResponse.error(
+                "Chưa thể xác minh điều kiện hiện tại. Hãy kiểm tra kết quả thao tác trước khi gửi lại.", code,
+                Map.of("scope", "REQUEST", "freshness", "UNKNOWN", "evaluatedAt", java.time.Instant.now(),
+                        "allowedActions", java.util.List.of("CHECK_OPERATION_RESULT", "REFRESH")), traceId));
     }
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiResponse<Void>> handleGeneral(Exception ex) {
         String traceId = UUID.randomUUID().toString();
         log.error("Unhandled exception [traceId: {}]", traceId, ex);
-        String msg = (ex.getMessage() != null ? ex.getMessage() : ex.getClass().getSimpleName());
-        if (ex.getCause() != null && ex.getCause().getMessage() != null) {
-            msg += " | Cause: " + ex.getCause().getMessage();
-        }
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(ApiResponse.error(msg, "INTERNAL_ERROR", traceId));
+                .body(ApiResponse.error("Không thể hoàn tất yêu cầu. Vui lòng cung cấp mã tra cứu khi liên hệ hỗ trợ.", "INTERNAL_ERROR", traceId));
     }
 
     private String resolveNotFoundCode(String message) {
