@@ -158,7 +158,7 @@ class SepayServiceTest {
         when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(booking));
         when(sepayProperties.getUsdToVndRate()).thenReturn(new BigDecimal("25400"));
         when(sepayProperties.getBankName()).thenReturn("MBBank");
-        when(sepayProperties.getAccountNumber()).thenReturn("0379969696");
+        when(sepayProperties.getAccountNumber()).thenReturn("0901452366");
         when(sepayProperties.getAccountName()).thenReturn("CASMS CRUISE");
         when(sepayProperties.getQrTemplate()).thenReturn("compact");
         when(paymentRepository.findForBooking(bookingId)).thenReturn(List.of());
@@ -184,7 +184,7 @@ class SepayServiceTest {
         assertEquals(new BigDecimal("25400000"), resp.getAmountVnd());
         assertTrue(resp.getTransferContent().contains("CASMS"));
         assertTrue(resp.getQrCodeUrl().contains("qr.sepay.vn"));
-        assertTrue(resp.getQrCodeUrl().contains("0379969696"));
+        assertTrue(resp.getQrCodeUrl().contains("0901452366"));
         verify(paymentRepository).save(any(Payment.class));
     }
 
@@ -194,7 +194,7 @@ class SepayServiceTest {
         when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(booking));
         when(sepayProperties.getUsdToVndRate()).thenReturn(new BigDecimal("25400"));
         when(sepayProperties.getBankName()).thenReturn("MBBank");
-        when(sepayProperties.getAccountNumber()).thenReturn("0379969696");
+        when(sepayProperties.getAccountNumber()).thenReturn("0901452366");
         when(sepayProperties.getAccountName()).thenReturn("CASMS CRUISE");
         when(sepayProperties.getQrTemplate()).thenReturn("compact");
         when(paymentRepository.findForBooking(bookingId)).thenReturn(List.of());
@@ -228,7 +228,7 @@ class SepayServiceTest {
         when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(booking));
         when(sepayProperties.getUsdToVndRate()).thenReturn(new BigDecimal("25400"));
         when(sepayProperties.getBankName()).thenReturn("MBBank");
-        when(sepayProperties.getAccountNumber()).thenReturn("0379969696");
+        when(sepayProperties.getAccountNumber()).thenReturn("0901452366");
         when(sepayProperties.getAccountName()).thenReturn("CASMS CRUISE");
         when(sepayProperties.getQrTemplate()).thenReturn("compact");
         when(paymentRepository.findForBooking(bookingId)).thenReturn(List.of());
@@ -307,7 +307,7 @@ class SepayServiceTest {
         SepayWebhookPayload payload = new SepayWebhookPayload();
         payload.setId(92704L);
         payload.setGateway("MBBank");
-        payload.setAccountNumber("0379969696");
+        payload.setAccountNumber("0901452366");
         payload.setTransferType("in");
         payload.setTransferAmount(new BigDecimal("7620000"));
         payload.setContent("CASMS BK20260001S1");

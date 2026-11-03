@@ -31,7 +31,7 @@ public class SepayProperties {
     /**
      * Số tài khoản ngân hàng nhận tiền.
      */
-    private String accountNumber = "0379969696";
+    private String accountNumber = "0901452366";
 
     /**
      * Tên chủ tài khoản ngân hàng nhận tiền.
