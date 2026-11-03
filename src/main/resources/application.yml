@@ -1,83 +1,83 @@
-﻿  spring:
-    application:
-      name: CASMS
+spring:
+  application:
+    name: CASMS
 
-    servlet:
-      multipart:
-        max-file-size: 2GB
-        max-request-size: 2GB
+  servlet:
+    multipart:
+      max-file-size: 2GB
+      max-request-size: 2GB
 
-    datasource:
-      url: jdbc:postgresql://localhost:5432/casms?stringtype=unspecified
-      username: ${DB_USERNAME:postgres}
-      password: ${DB_PASSWORD:12345}
-      driver-class-name: org.postgresql.Driver
-      hikari:
-        data-source-properties:
-          stringtype: unspecified
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://aws-0-ap-south-1.pooler.supabase.com:5432/postgres?stringtype=unspecified}
+    username: ${DB_USERNAME:postgres.tzzrxbizuypofsciiuzy}
+    password: ${DB_PASSWORD:Baothanh@890}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      data-source-properties:
+        stringtype: unspecified
 
-    jpa:
+  jpa:
+    hibernate:
+      naming:
+        physical-strategy: org.hibernate.boot.model.naming.PhysicalNamingStrategyStandardImpl
+    # Preserve persisted assets and business data; apply versioned migrations before startup.
+    ddl-auto: validate
+    show-sql: false
+    properties:
       hibernate:
-        naming:
-          physical-strategy: org.hibernate.boot.model.naming.PhysicalNamingStrategyStandardImpl
-      # Preserve persisted assets and business data; apply versioned migrations before startup.
-      ddl-auto: validate
-      show-sql: false
-      properties:
-        hibernate:
-          format_sql: true
-          default_schema: public
+        format_sql: true
+        default_schema: public
 
-    flyway:
-      enabled: true
-      baseline-on-migrate: true
-      # Applied migrations are immutable: edits must fail validation. Reviewed historical edits are
-      # reconciled by com.casms.config.flyway.LegacyChecksumRealigner before migrate.
-      validate-on-migrate: true
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    # Applied migrations are immutable: edits must fail validation. Reviewed historical edits are
+    # reconciled by com.casms.config.flyway.LegacyChecksumRealigner before migrate.
+    validate-on-migrate: true
 
-    jackson:
-      default-property-inclusion: non_null
-      serialization:
-        write-dates-as-timestamps: false
+  jackson:
+    default-property-inclusion: non_null
+    serialization:
+      write-dates-as-timestamps: false
 
-  server:
-    port: 8080
-    servlet:
-      context-path: /api
+server:
+  port: 8080
+  servlet:
+    context-path: /api
 
-  jwt:
-    secret: ${JWT_SECRET:1nxHqbJWCAIL9cnuVvhJgoUuS58qJNQBBMBebu0Rihk}
-    expiration-ms: ${JWT_EXPIRATION_MS:86400000}
+jwt:
+  secret: ${JWT_SECRET:1nxHqbJWCAIL9cnuVvhJgoUuS58qJNQBBMBebu0Rihk}
+  expiration-ms: ${JWT_EXPIRATION_MS:86400000}
 
-  logging:
-    level:
-      root: INFO
-      com.casms: DEBUG
-    pattern:
-      console: "%d{yyyy-MM-dd HH:mm:ss} [%X{correlationId}] %-5level %logger{36} - %msg%n"
+logging:
+  level:
+    root: INFO
+    com.casms: DEBUG
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%X{correlationId}] %-5level %logger{36} - %msg%n"
 
-  springdoc:
-    api-docs:
-      path: /v3/api-docs
-      enabled: true
-    swagger-ui:
-      path: /swagger-ui.html
-      enabled: true
-      tags-sorter: alpha
-      operations-sorter: method
-      display-request-duration: true
-      doc-expansion: none
-      filter: true
-      try-it-out-enabled: true
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+    enabled: true
+  swagger-ui:
+    path: /swagger-ui.html
+    enabled: true
+    tags-sorter: alpha
+    operations-sorter: method
+    display-request-duration: true
+    doc-expansion: none
+    filter: true
+    try-it-out-enabled: true
 
-  casms:
-    payment:
-      sepay:
-        enabled: ${SEPAY_ENABLED:true}
-        api-key: ${SEPAY_API_KEY:}
-        bank-name: ${SEPAY_BANK_NAME:MBBank}
-        account-number: ${SEPAY_ACCOUNT_NUMBER:0379969696}
-        account-name: ${SEPAY_ACCOUNT_NAME:CASMS CRUISE}
-        usd-to-vnd-rate: ${SEPAY_USD_TO_VND_RATE:25400}
-        qr-template: ${SEPAY_QR_TEMPLATE:compact}
-        tolerance-percent: ${SEPAY_TOLERANCE_PERCENT:1.0}
+casms:
+  payment:
+    sepay:
+      enabled: ${SEPAY_ENABLED:true}
+      api-key: ${SEPAY_API_KEY:kLcYvncQwZwYH2DCNtIKqdzCCKm10o3sMPr8IXVtVLd}
+      bank-name: ${SEPAY_BANK_NAME:MBBank}
+      account-number: ${SEPAY_ACCOUNT_NUMBER:0901452366}
+      account-name: ${SEPAY_ACCOUNT_NAME:CASMS CRUISE}
+      usd-to-vnd-rate: ${SEPAY_USD_TO_VND_RATE:25400}
+      qr-template: ${SEPAY_QR_TEMPLATE:compact}
+      tolerance-percent: ${SEPAY_TOLERANCE_PERCENT:1.0}
