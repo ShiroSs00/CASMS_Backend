@@ -1,4 +1,3 @@
-
 # Stage 1: Build application
 FROM eclipse-temurin:21-jdk-alpine AS builder
 
@@ -6,10 +5,13 @@ WORKDIR /build
 
 RUN apk add --no-cache maven
 
+# Optimize Maven memory and JIT compilation to avoid OOM on low-spec EC2
+ENV MAVEN_OPTS="-Xms128m -Xmx450m -XX:+TieredCompilation -XX:TieredStopAtLevel=1"
+
 COPY pom.xml .
 COPY src ./src
 
-RUN mvn clean package -DskipTests
+RUN mvn clean package -DskipTests -Dmaven.test.skip=true -Dmaven.javadoc.skip=true -B
 
 # Stage 2: Runtime
 FROM eclipse-temurin:21-jre-alpine
