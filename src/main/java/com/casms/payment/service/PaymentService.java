@@ -295,7 +295,11 @@ public class PaymentService {
             }
             if (payment.getBooking().getBookingStatus() == BookingStatus.Draft
                     && payment.getBooking().getHoldExpiresAt() != null
-                    && Instant.now().isAfter(payment.getBooking().getHoldExpiresAt())) {
+                    && Instant.now()
+                            .isAfter(
+                                    payment.getBooking()
+                                            .getHoldExpiresAt()
+                                            .plus(java.time.Duration.ofMinutes(5)))) {
                 throw new BusinessException(
                         "BOOKING_HOLD_EXPIRED", "Booking hold has expired and cannot be confirmed");
             }
@@ -444,7 +448,14 @@ public class PaymentService {
         }
 
         // Auto-confirm booking if deposit requirement is satisfied and contract is Accepted!
-        bookingService.tryAutoConfirm(booking);
+        boolean autoConfirmed = bookingService.tryAutoConfirm(booking);
+        if (!autoConfirmed
+                && booking.getBookingStatus() == BookingStatus.Draft
+                && booking.getHoldExpiresAt() != null) {
+            // Khách đã thanh toán nhưng chưa ký hợp đồng: gia hạn giữ chỗ 24h để hoàn tất hợp đồng
+            booking.setHoldExpiresAt(Instant.now().plus(java.time.Duration.ofHours(24)));
+            bookingRepository.save(booking);
+        }
     }
 
     @Transactional(readOnly = true)

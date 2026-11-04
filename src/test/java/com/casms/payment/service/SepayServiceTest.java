@@ -604,4 +604,81 @@ class SepayServiceTest {
                                                         == PaymentOperationType.Collect
                                                 && p.getPaymentMethod() == PaymentMethod.Sepay));
     }
+
+    @Test
+    @DisplayName("Waterfall: Khi đơn thanh toán 100% (FULL), toàn bộ các đợt trả góp hiển thị đã thanh toán đủ")
+    void getPaymentOptions_WaterfallAllocation_FullPaid() {
+        Payment fullPayment = new Payment();
+        fullPayment.setPaymentId(UUID.randomUUID());
+        fullPayment.setBooking(booking);
+        fullPayment.setOperationType(PaymentOperationType.Collect);
+        fullPayment.setStatus(PaymentStatus.Confirmed);
+        fullPayment.setConfirmedAmount(new BigDecimal("1000.0000"));
+
+        when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(booking));
+        when(sepayProperties.getUsdToVndRate()).thenReturn(new BigDecimal("25400"));
+        when(paymentRepository.findForBooking(bookingId)).thenReturn(List.of(fullPayment));
+        when(installmentRepository.findByBookingBookingIdOrderBySequenceNoAsc(bookingId))
+                .thenReturn(List.of(inst1, inst2));
+
+        BookingPaymentOptionsResponse resp = sepayService.getPaymentOptions(bookingId, null, true);
+
+        assertNotNull(resp);
+        assertEquals(0, resp.getOutstandingBalance().compareTo(BigDecimal.ZERO));
+        assertEquals(0, resp.getOutstandingBalanceVnd().compareTo(BigDecimal.ZERO));
+
+        // Deposit option đã hoàn tất
+        assertNotNull(resp.getDepositPaymentOption());
+        assertTrue(resp.getDepositPaymentOption().isPaid());
+        assertFalse(resp.getDepositPaymentOption().isAvailable());
+        assertEquals(0, resp.getDepositPaymentOption().getRemainingAmountUsd().compareTo(BigDecimal.ZERO));
+
+        // Cả 2 giai đoạn đều đã thanh toán đủ và không đợt nào là currentDue
+        assertNotNull(resp.getStagePaymentOption());
+        var stages = resp.getStagePaymentOption().getStages();
+        assertEquals(2, stages.size());
+        assertTrue(stages.get(0).isPaid());
+        assertEquals(0, stages.get(0).getRemainingAmountUsd().compareTo(BigDecimal.ZERO));
+        assertFalse(stages.get(0).isCurrentDue());
+
+        assertTrue(stages.get(1).isPaid());
+        assertEquals(0, stages.get(1).getRemainingAmountUsd().compareTo(BigDecimal.ZERO));
+        assertFalse(stages.get(1).isCurrentDue());
+    }
+
+    @Test
+    @DisplayName("Waterfall: Khi khách chuyển khoản nhanh hoặc trực tiếp không gắn installment, tiền tự động bù đủ Đợt 1")
+    void getPaymentOptions_WaterfallAllocation_PartialUntaggedPayment() {
+        Payment partialPayment = new Payment();
+        partialPayment.setPaymentId(UUID.randomUUID());
+        partialPayment.setBooking(booking);
+        partialPayment.setInstallment(null); // Không gắn installment cụ thể
+        partialPayment.setOperationType(PaymentOperationType.Collect);
+        partialPayment.setStatus(PaymentStatus.Confirmed);
+        partialPayment.setConfirmedAmount(new BigDecimal("300.0000"));
+
+        when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(booking));
+        when(sepayProperties.getUsdToVndRate()).thenReturn(new BigDecimal("25400"));
+        when(paymentRepository.findForBooking(bookingId)).thenReturn(List.of(partialPayment));
+        when(installmentRepository.findByBookingBookingIdOrderBySequenceNoAsc(bookingId))
+                .thenReturn(List.of(inst1, inst2));
+
+        BookingPaymentOptionsResponse resp = sepayService.getPaymentOptions(bookingId, null, true);
+
+        assertNotNull(resp);
+        assertEquals(0, resp.getOutstandingBalance().compareTo(new BigDecimal("700.0000")));
+
+        // Đợt 1 (300 USD) được nhận trọn vẹn 300 USD từ khoản thanh toán
+        var stages = resp.getStagePaymentOption().getStages();
+        assertTrue(stages.get(0).isPaid());
+        assertEquals(0, stages.get(0).getPaidAmountUsd().compareTo(new BigDecimal("300.0000")));
+        assertEquals(0, stages.get(0).getRemainingAmountUsd().compareTo(BigDecimal.ZERO));
+        assertFalse(stages.get(0).isCurrentDue());
+
+        // Đợt 2 (700 USD) còn nợ và trở thành currentDue
+        assertFalse(stages.get(1).isPaid());
+        assertEquals(0, stages.get(1).getPaidAmountUsd().compareTo(BigDecimal.ZERO));
+        assertEquals(0, stages.get(1).getRemainingAmountUsd().compareTo(new BigDecimal("700.0000")));
+        assertTrue(stages.get(1).isCurrentDue());
+    }
 }

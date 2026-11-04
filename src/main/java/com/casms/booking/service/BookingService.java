@@ -341,6 +341,21 @@ public class BookingService {
         List<Booking> expired = bookingRepository.findExpiredHoldBookings(now);
         int count = 0;
         for (Booking b : expired) {
+            // Không giải phóng nếu đơn đã có tiền thanh toán thực tế (tránh hủy nhầm khi khách đang đợi ký hợp đồng)
+            boolean hasConfirmedPayments =
+                    paymentRepository.findForBooking(b.getBookingId()).stream()
+                            .anyMatch(
+                                    p ->
+                                            p.getStatus() == PaymentStatus.Confirmed
+                                                    && p.getOperationType()
+                                                            == PaymentOperationType.Collect);
+            if (hasConfirmedPayments) {
+                log.warn(
+                        "Skipping hold cancellation for booking {} because it has confirmed payments",
+                        b.getBookingId());
+                continue;
+            }
+
             b.setBookingStatus(BookingStatus.Cancelled);
             b.setCancelledAt(now);
             b.setCancellationReason("HOLD_EXPIRED");

@@ -121,19 +121,25 @@ public class SepayService {
                                         + ")")
                         .build();
 
+        Map<UUID, BigDecimal> installmentPaidMap =
+                calculateWaterfallInstallmentPaidAmounts(bookingId, installments);
+
         // 2. Tuỳ chọn DEPOSIT: Đặt cọc (Đợt 1)
         BookingPaymentOptionsResponse.DepositPaymentOption depositOption = null;
         if (!installments.isEmpty()) {
             Installment inst1 = installments.get(0);
             BigDecimal paidForInst1 =
-                    getPaidAmountForInstallment(bookingId, inst1.getInstallmentId());
+                    installmentPaidMap.getOrDefault(inst1.getInstallmentId(), BigDecimal.ZERO);
             BigDecimal remInst1 = inst1.getRequiredAmount().subtract(paidForInst1);
-            if (remInst1.compareTo(BigDecimal.ZERO) < 0) {
+            if (remInst1.compareTo(BigDecimal.ZERO) < 0
+                    || outstanding.compareTo(BigDecimal.ZERO) <= 0) {
                 remInst1 = BigDecimal.ZERO;
             }
             boolean isDepositPaid = remInst1.compareTo(BigDecimal.ZERO) <= 0;
             boolean isDepositAvail =
-                    !isDepositPaid && booking.getBookingStatus() != BookingStatus.Cancelled;
+                    !isDepositPaid
+                            && outstanding.compareTo(BigDecimal.ZERO) > 0
+                            && booking.getBookingStatus() != BookingStatus.Cancelled;
 
             depositOption =
                     BookingPaymentOptionsResponse.DepositPaymentOption.builder()
@@ -166,14 +172,15 @@ public class SepayService {
         boolean foundCurrentDue = false;
         for (Installment inst : installments) {
             BigDecimal paidForInst =
-                    getPaidAmountForInstallment(bookingId, inst.getInstallmentId());
+                    installmentPaidMap.getOrDefault(inst.getInstallmentId(), BigDecimal.ZERO);
             BigDecimal remInst = inst.getRequiredAmount().subtract(paidForInst);
-            if (remInst.compareTo(BigDecimal.ZERO) < 0) {
+            if (remInst.compareTo(BigDecimal.ZERO) < 0
+                    || outstanding.compareTo(BigDecimal.ZERO) <= 0) {
                 remInst = BigDecimal.ZERO;
             }
             boolean isPaid = remInst.compareTo(BigDecimal.ZERO) <= 0;
             boolean isCurrentDue = false;
-            if (!isPaid && !foundCurrentDue) {
+            if (!isPaid && !foundCurrentDue && outstanding.compareTo(BigDecimal.ZERO) > 0) {
                 isCurrentDue = true;
                 foundCurrentDue = true;
             }
@@ -1021,29 +1028,63 @@ public class SepayService {
     // HELPER METHODS
     // ==========================================
 
+    /**
+     * Phân bổ số tiền đã thanh toán (Confirmed) theo cơ chế tuần tự Waterfall cho các đợt thanh toán (Installments).
+     * Bất kể khoản thanh toán được gắn nhãn đợt nào hoặc thanh toán gộp 100%, số tiền thu được sẽ ưu tiên
+     * thanh toán đủ cho Đợt 1 (Cọc), sau đó đến các đợt tiếp theo theo thứ tự sequenceNo ASC.
+     */
+    private Map<UUID, BigDecimal> calculateWaterfallInstallmentPaidAmounts(
+            UUID bookingId, List<Installment> installments) {
+        Map<UUID, BigDecimal> allocated = new HashMap<>();
+        if (installments == null || installments.isEmpty()) {
+            return allocated;
+        }
+
+        BigDecimal totalConfirmedPaid =
+                paymentRepository.findForBooking(bookingId).stream()
+                        .filter(
+                                p ->
+                                        p.getStatus() == PaymentStatus.Confirmed
+                                                && p.getOperationType() == PaymentOperationType.Collect
+                                                && p.getConfirmedAmount() != null)
+                        .map(Payment::getConfirmedAmount)
+                        .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        BigDecimal remainingToAllocate = totalConfirmedPaid;
+        for (Installment inst : installments) {
+            BigDecimal required =
+                    inst.getRequiredAmount() != null ? inst.getRequiredAmount() : BigDecimal.ZERO;
+            BigDecimal alloc = remainingToAllocate.min(required);
+            if (alloc.compareTo(BigDecimal.ZERO) < 0) {
+                alloc = BigDecimal.ZERO;
+            }
+            allocated.put(inst.getInstallmentId(), alloc);
+            remainingToAllocate = remainingToAllocate.subtract(alloc);
+            if (remainingToAllocate.compareTo(BigDecimal.ZERO) < 0) {
+                remainingToAllocate = BigDecimal.ZERO;
+            }
+        }
+        return allocated;
+    }
+
     private BigDecimal getPaidAmountForInstallment(UUID bookingId, UUID installmentId) {
-        return paymentRepository.findForBooking(bookingId).stream()
-                .filter(
-                        p ->
-                                p.getStatus() == PaymentStatus.Confirmed
-                                        && p.getOperationType() == PaymentOperationType.Collect
-                                        && p.getInstallment() != null
-                                        && p.getInstallment()
-                                                .getInstallmentId()
-                                                .equals(installmentId)
-                                        && p.getConfirmedAmount() != null)
-                .map(Payment::getConfirmedAmount)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        List<Installment> installments =
+                installmentRepository.findByBookingBookingIdOrderBySequenceNoAsc(bookingId);
+        Map<UUID, BigDecimal> waterfall =
+                calculateWaterfallInstallmentPaidAmounts(bookingId, installments);
+        return waterfall.getOrDefault(installmentId, BigDecimal.ZERO);
     }
 
     private Installment findFirstUnpaidInstallment(UUID bookingId, List<Installment> installments) {
+        Map<UUID, BigDecimal> paidMap =
+                calculateWaterfallInstallmentPaidAmounts(bookingId, installments);
         for (Installment inst : installments) {
-            BigDecimal paid = getPaidAmountForInstallment(bookingId, inst.getInstallmentId());
+            BigDecimal paid = paidMap.getOrDefault(inst.getInstallmentId(), BigDecimal.ZERO);
             if (paid.compareTo(inst.getRequiredAmount()) < 0) {
                 return inst;
             }
         }
-        return installments.isEmpty() ? null : installments.get(installments.size() - 1);
+        return null;
     }
 
     private Payment findMatchingPayment(String memo) {

@@ -40,14 +40,19 @@ public interface BookingPassengerRepository extends JpaRepository<BookingPasseng
             "SELECT COUNT(bp) FROM BookingPassenger bp WHERE bp.booking.cruise.cruiseId = :cruiseId"
                 + " AND bp.participationStatus ="
                 + " com.casms.booking.enums.BookingPassengerParticipationStatus.Active AND"
-                + " bp.booking.bookingStatus != com.casms.booking.enums.BookingStatus.Cancelled")
+                + " (bp.booking.bookingStatus = com.casms.booking.enums.BookingStatus.Confirmed OR"
+                + " (bp.booking.bookingStatus = com.casms.booking.enums.BookingStatus.Draft AND"
+                + " (bp.booking.holdExpiresAt IS NULL OR"
+                + " bp.booking.holdExpiresAt > CURRENT_TIMESTAMP)))")
     long countActivePassengersByCruiseId(@Param("cruiseId") UUID cruiseId);
 
     @Query(
             "SELECT COUNT(bp) FROM BookingPassenger bp WHERE bp.booking.cruise.cruiseId = :cruiseId"
                 + " AND bp.participationStatus ="
                 + " com.casms.booking.enums.BookingPassengerParticipationStatus.Active AND"
-                + " bp.booking.bookingStatus = com.casms.booking.enums.BookingStatus.Draft")
+                + " bp.booking.bookingStatus = com.casms.booking.enums.BookingStatus.Draft AND"
+                + " (bp.booking.holdExpiresAt IS NULL OR"
+                + " bp.booking.holdExpiresAt > CURRENT_TIMESTAMP)")
     long countHeldPassengersByCruiseId(@Param("cruiseId") UUID cruiseId);
 
     @Query(
@@ -61,7 +66,9 @@ public interface BookingPassengerRepository extends JpaRepository<BookingPasseng
             "SELECT bp FROM BookingPassenger bp JOIN FETCH bp.passenger p JOIN FETCH bp.booking b"
                 + " WHERE b.cruise.cruiseId = :cruiseId AND bp.participationStatus ="
                 + " com.casms.booking.enums.BookingPassengerParticipationStatus.Active AND"
-                + " b.bookingStatus != com.casms.booking.enums.BookingStatus.Cancelled")
+                + " (b.bookingStatus = com.casms.booking.enums.BookingStatus.Confirmed OR"
+                + " (b.bookingStatus = com.casms.booking.enums.BookingStatus.Draft AND"
+                + " (b.holdExpiresAt IS NULL OR b.holdExpiresAt > CURRENT_TIMESTAMP)))")
     List<BookingPassenger> findActivePassengersByCruiseId(@Param("cruiseId") UUID cruiseId);
 
     List<BookingPassenger> findByBookingBookingId(UUID bookingId);

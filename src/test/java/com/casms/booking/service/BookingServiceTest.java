@@ -8,6 +8,8 @@ import com.casms.booking.dto.request.BookingCancelRequest;
 import com.casms.booking.dto.request.BookingCreateRequest;
 import com.casms.booking.dto.request.PassengerBookingItemRequest;
 import com.casms.booking.dto.response.BookingDetailResponse;
+import com.casms.booking.dto.response.QuoteLineItem;
+import com.casms.booking.entity.BookingQuote;
 import com.casms.booking.entity.Booking;
 import com.casms.booking.entity.BookingContract;
 import com.casms.booking.entity.BookingPassenger;
@@ -93,6 +95,7 @@ class BookingServiceTest {
     @Mock private com.casms.ship.repository.ItineraryRepository itineraryRepository;
     @Mock private CruisePricingPolicyRepository cruisePricingPolicyRepository;
     @Mock private BookingQuoteRepository bookingQuoteRepository;
+    @Mock private com.casms.ship.service.CruiseMainflowService mainflow;
     @Spy private ObjectMapper objectMapper = new ObjectMapper();
 
     @InjectMocks private BookingService bookingService;
@@ -133,6 +136,7 @@ class BookingServiceTest {
         cruise.setCruiseCode("CR-2026-001");
         cruise.setCruiseName("Halong Discovery");
         cruise.setStatus(CruiseStatus.PUBLISHED);
+        cruise.setOpenedForSaleAt(Instant.now().minus(1, ChronoUnit.DAYS));
         cruise.setDepartureDatetime(Instant.now().plus(30, ChronoUnit.DAYS));
         cruise.setReturnDatetime(Instant.now().plus(33, ChronoUnit.DAYS));
         cruise.setShip(ship);
@@ -165,6 +169,36 @@ class BookingServiceTest {
         p.setPhoneNumber("+84912345678");
         p.setCabinId(cabinId);
         request.setPassengers(List.of(p));
+
+        QuoteLineItem lineItem =
+                QuoteLineItem.builder()
+                        .cabinId(cabinId)
+                        .cabinNumber("C301")
+                        .cabinType(CabinType.BALCONY)
+                        .cabinPrice(new BigDecimal("450.00"))
+                        .itemTotal(new BigDecimal("450.00"))
+                        .build();
+
+        UUID quoteId = UUID.randomUUID();
+        BookingQuote quote = new BookingQuote();
+        quote.setQuoteId(quoteId);
+        quote.setCruise(cruise);
+        quote.setStatus("ACTIVE");
+        quote.setExpiresAt(Instant.now().plusSeconds(3600));
+        quote.setPolicyVersion("PRC-2026.10-V1");
+        quote.setTotalAmount(new BigDecimal("522.50"));
+        quote.setDepositAmount(new BigDecimal("156.75"));
+        quote.setPaymentPlan(PaymentPlan.DEPOSIT);
+        quote.setFinalPaymentDueAt(Instant.now().plus(14, ChronoUnit.DAYS));
+        quote.setCurrency("USD");
+        quote.setGuestToken("guest-token-123");
+        try {
+            quote.setQuotePayloadJson(objectMapper.writeValueAsString(List.of(lineItem)));
+        } catch (Exception ignored) {}
+
+        when(bookingQuoteRepository.findById(quoteId)).thenReturn(Optional.of(quote));
+        request.setQuoteId(quoteId);
+        request.setQuoteGuestToken("guest-token-123");
 
         when(userRepository.findByEmail("nguyenvana@example.com")).thenReturn(Optional.empty());
         when(passwordEncoder.encode(any())).thenReturn("hashed_pass");
