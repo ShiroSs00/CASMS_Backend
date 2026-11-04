@@ -161,4 +161,7 @@ public class Cruise {
     protected void onUpdate() {
         updatedAt = Instant.now();
     }
+    @jakarta.persistence.Column(name = "sale_approval_fingerprint", length = 64)
+    private String saleApprovalFingerprint;
+
 }

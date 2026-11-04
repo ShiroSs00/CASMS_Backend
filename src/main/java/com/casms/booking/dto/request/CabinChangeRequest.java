@@ -29,4 +29,7 @@ public class CabinChangeRequest {
 
     @Schema(description = "Lý do thay đổi phòng", example = "Nâng cấp lên phòng ban công")
     private String changeReason;
+    @Schema(description="Xác nhận phân/chuyển cả nhóm cabin đã yêu cầu; bắt buộc true nếu nhóm Fare có nhiều hành khách")
+    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+    private Boolean assignWholeGroup;
 }

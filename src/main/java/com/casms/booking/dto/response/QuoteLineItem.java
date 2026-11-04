@@ -28,4 +28,10 @@ public class QuoteLineItem {
     private BigDecimal packagePrice;
 
     private BigDecimal itemTotal;
+    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+    private com.casms.booking.enums.CabinSelectionMode cabinSelectionMode;
+    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+    private String cabinGroupKey;
+    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+    private com.casms.cruisepackage.dto.CruisePackagePurchaseSelection fareSelection;
 }

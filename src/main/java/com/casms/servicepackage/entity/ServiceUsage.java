@@ -19,6 +19,9 @@ public class ServiceUsage {
     @GeneratedValue(strategy = GenerationType.UUID)
     @Column(name = "service_usage_id")
     private UUID serviceUsageId;
+    @Column(name="fare_benefit_snapshot_id") private UUID fareBenefitSnapshotId;
+    @Column(name="operation_identity",length=100) private String operationIdentity;
+    @Column(name="unit_code_snapshot",length=30) private String unitCodeSnapshot;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "service_request_id", nullable = false)

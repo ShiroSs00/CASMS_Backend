@@ -64,4 +64,5 @@ public class CruiseApplyChangeResponse {
 
     @Schema(description = "Thông báo kết quả")
     private String message;
+    private ShipAssignmentSafetyResponse shipAssignmentSafety;
 }

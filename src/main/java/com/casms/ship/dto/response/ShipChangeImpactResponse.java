@@ -27,10 +27,10 @@ public class ShipChangeImpactResponse {
     @Schema(description = "ID tàu mới dự kiến gán")
     private UUID newShipId;
 
-    @Schema(description = "Số lượng hành khách đã đặt chỗ hiện tại")
+    @Schema(description = "Số hành khách Active trong các Booking Draft/Confirmed, gồm cả giữ chỗ theo convention hiện có")
     private long bookedPassengersCount;
 
-    @Schema(description = "Sức chứa tàu mới có đủ cho số khách đã đặt hay không")
+    @Schema(description = "Sức chứa hành khách của tàu mới hợp lệ và đủ cho các hành khách đang giữ/đặt chỗ")
     private boolean capacitySufficient;
 
     @Schema(description = "Số lượng cabin đã phân bổ có thể bị ảnh hưởng khi đổi tàu")
@@ -52,4 +52,5 @@ public class ShipChangeImpactResponse {
 
     @Schema(description = "Có thể tiến hành đổi tàu hay không")
     private boolean canProceed;
+    private ShipAssignmentSafetyResponse shipAssignmentSafety;
 }

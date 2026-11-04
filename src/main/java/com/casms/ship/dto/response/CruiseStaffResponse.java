@@ -17,6 +17,11 @@ public class CruiseStaffResponse {
     private String fullName;
     private String roleInCruise;
     private Instant assignedAt;
+    private UUID assignedBy;
+    private String assignedByName;
+    private Instant endedAt;
+    private UUID endedBy;
+    private String endedByName;
     private String status;
     private String notes;
 }

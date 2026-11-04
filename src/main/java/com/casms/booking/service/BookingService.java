@@ -146,6 +146,20 @@ public class BookingService {
         return findAvailableCabins(cruiseId, deckId, cabinType, minCapacity, true);
     }
 
+    @Transactional(readOnly = true)
+    public boolean hasMappedCabinInventory(UUID cruiseId, Set<UUID> cabinIds) {
+        if (cruiseId == null || cabinIds == null || cabinIds.isEmpty()) {
+            return false;
+        }
+        return cabinRepository.findAllById(cabinIds).stream()
+                .anyMatch(
+                        cabin ->
+                                cabin.getCapacity()
+                                        > cabinAssignmentRepository
+                                                .countActiveAssignmentsByCabinAndCruise(
+                                                        cabin.getCabinId(), cruiseId));
+    }
+
     private List<AvailableCabinResponse> findAvailableCabins(
             UUID cruiseId,
             UUID deckId,

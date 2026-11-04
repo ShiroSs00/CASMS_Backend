@@ -3818,6 +3818,17 @@ public class CruiseService {
                 .build();
     }
 
+    @Transactional(readOnly = true)
+    public void requirePublicSaleVisible(UUID cruiseId) {
+        CruiseSellabilityResponse sellability = getPublicSellability(cruiseId);
+        if (!sellability.isSellable() || !"OPEN_FOR_SALE".equals(sellability.getSaleState())) {
+            throw new BusinessException(
+                    HttpStatus.CONFLICT,
+                    "CRUISE_NOT_OPEN_FOR_SALE",
+                    "Chuyến khởi hành chưa sẵn sàng mở bán công khai.");
+        }
+    }
+
     // BE-R05b / C11, C17: Áp dụng thay đổi toàn diện với kiểm tra dữ liệu mới nhất
     @Transactional
     public CruiseApplyChangeResponse applyChange(

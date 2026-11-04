@@ -96,17 +96,14 @@ public class CruisePricingPolicy {
     @Column(name = "tax_rate", precision = 5, scale = 4)
     private BigDecimal taxRate = BigDecimal.ZERO;
 
-    @Builder.Default
     @Column(name = "deposit_percentage", precision = 5, scale = 4)
-    private BigDecimal depositPercentage = BigDecimal.valueOf(0.3000);
+    private BigDecimal depositPercentage;
 
-    @Builder.Default
     @Column(name = "final_payment_due_days", nullable = false)
-    private int finalPaymentDueDays = 14;
+    private int finalPaymentDueDays;
 
-    @Builder.Default
     @Column(name = "full_payment_cutoff_days", nullable = false)
-    private int fullPaymentCutoffDays = 7;
+    private int fullPaymentCutoffDays;
 
     @Column(name = "cancellation_policy", columnDefinition = "TEXT")
     private String cancellationPolicy;

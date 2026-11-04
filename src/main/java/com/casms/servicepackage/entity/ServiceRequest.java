@@ -28,6 +28,19 @@ public class ServiceRequest {
     @GeneratedValue(strategy = GenerationType.UUID)
     @Column(name = "service_request_id")
     private UUID serviceRequestId;
+    @Column(name="fare_benefit_snapshot_id")
+    private UUID fareBenefitSnapshotId;
+    @OneToMany(mappedBy="serviceRequest")
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    private java.util.List<ServiceUsage> usageRecords=new java.util.ArrayList<>();
+
+    @Transient public Integer getFareFulfilledQuantity() {
+        return fareBenefitSnapshotId==null?null:usageRecords.stream().filter(u->fareBenefitSnapshotId.equals(u.getFareBenefitSnapshotId())).mapToInt(ServiceUsage::getQuantity).sum();
+    }
+    @Transient public String getFareFulfillmentUnitCode() {
+        if(fareBenefitSnapshotId==null)return null;
+        return usageRecords.stream().filter(u->fareBenefitSnapshotId.equals(u.getFareBenefitSnapshotId())).map(ServiceUsage::getUnitCodeSnapshot).filter(java.util.Objects::nonNull).findFirst().orElse(service.getUnitCode());
+    }
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "passenger_id", nullable = false)
