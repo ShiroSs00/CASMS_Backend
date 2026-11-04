@@ -43,8 +43,13 @@ public class SecurityConfig {
                 .csrf(
                         csrf ->
                                 csrf.ignoringRequestMatchers(
-                                        new AntPathRequestMatcher("/h2-console/**"),
+                                        new AntPathRequestMatcher("/auth/**"),
+                                        new AntPathRequestMatcher("/booking/**"),
                                         new AntPathRequestMatcher("/payment/sepay/**"),
+                                        new AntPathRequestMatcher("/h2-console/**"),
+                                        new AntPathRequestMatcher("/v3/api-docs/**"),
+                                        new AntPathRequestMatcher("/swagger-ui/**"),
+                                        new AntPathRequestMatcher("/swagger-ui.html"),
                                         bearerTokenRequest))
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(
