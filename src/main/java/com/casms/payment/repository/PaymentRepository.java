@@ -1,6 +1,8 @@
 package com.casms.payment.repository;
 
 import com.casms.payment.entity.Payment;
+import com.casms.payment.enums.PaymentMethod;
+import com.casms.payment.enums.PaymentStatus;
 
 import jakarta.persistence.LockModeType;
 
@@ -36,4 +38,6 @@ public interface PaymentRepository extends JpaRepository<Payment, UUID> {
             String internalReceiptReference, UUID paymentId);
 
     List<Payment> findByBooking_BookingId(UUID bookingId);
+
+    List<Payment> findByStatusAndPaymentMethod(PaymentStatus status, PaymentMethod paymentMethod);
 }

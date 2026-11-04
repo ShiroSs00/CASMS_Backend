@@ -222,7 +222,7 @@ public class SepayService {
                 BookingPaymentOptionsResponse.StagePaymentOption.builder()
                         .isAvailable(
                                 outstanding.compareTo(BigDecimal.ZERO) > 0
-                                        && booking.getBookingStatus() != BookingStatus.Cancelled)
+                                         && booking.getBookingStatus() != BookingStatus.Cancelled)
                         .totalStages(installments.size())
                         .stages(stageDetails)
                         .build();
@@ -256,6 +256,9 @@ public class SepayService {
     /**
      * Tạo yêu cầu thanh toán qua SePay và sinh mã VietQR theo 1 trong 3 hình thức (FULL, DEPOSIT,
      * STAGE).
+     *
+     * <p>Được thiết kế Idempotent và tái sử dụng bản ghi Pending của cùng một đợt thanh toán nhằm
+     * tránh sinh payment rác và tránh lệch trạng thái polling ở Frontend.
      */
     @Transactional
     public SepayCheckoutResponse createCheckout(
@@ -446,38 +449,68 @@ public class SepayService {
                 targetInstallment != null ? "S" + targetInstallment.getSequenceNo() : "F";
         String transferContent = "CASMS " + cleanRef + stageSuffix;
 
+        String defaultIdempotencyKey = "SEPAY-" + cleanRef + "-" + stageSuffix;
         String idempotencyKey =
                 (request.getIdempotencyKey() != null && !request.getIdempotencyKey().isBlank())
                         ? request.getIdempotencyKey().trim()
-                        : "SEPAY-"
-                                + cleanRef
-                                + "-"
-                                + stageSuffix
-                                + "-"
-                                + UUID.randomUUID()
-                                        .toString()
-                                        .substring(0, 8)
-                                        .toUpperCase(Locale.ROOT);
+                        : defaultIdempotencyKey;
 
-        // Kiểm tra nếu lệnh thanh toán tương ứng đã tồn tại và đang Pending
+        // 1. Kiểm tra nếu lệnh thanh toán tương ứng đã tồn tại theo IdempotencyKey
         Optional<Payment> existingPaymentOpt =
                 paymentRepository.findByIdempotencyKey(idempotencyKey);
         Payment payment;
         if (existingPaymentOpt.isPresent()) {
             payment = existingPaymentOpt.get();
-        } else {
-            payment = new Payment();
-            payment.setBooking(booking);
-            payment.setInstallment(targetInstallment);
-            payment.setOperationType(PaymentOperationType.Collect);
-            payment.setPaymentMethod(PaymentMethod.Sepay);
+            if (payment.getStatus() == PaymentStatus.Confirmed) {
+                throw new BusinessException(
+                        HttpStatus.BAD_REQUEST,
+                        "PAYMENT_ALREADY_CONFIRMED",
+                        "Lệnh thanh toán này đã được xác nhận thành công trước đó!");
+            }
             payment.setRequestedAmount(amountUsd);
-            payment.setCurrency(booking.getCurrency());
-            payment.setRequestedAt(Instant.now());
-            payment.setStatus(PaymentStatus.Pending);
-            payment.setIdempotencyKey(idempotencyKey);
             payment.setInternalReceiptReference(transferContent);
+            payment.setRequestedAt(Instant.now());
             payment = paymentRepository.save(payment);
+        } else {
+            // 2. Tái sử dụng payment đang Pending của đợt thanh toán này nếu có, tránh sinh bản ghi
+            // rác
+            final UUID targetInstId =
+                    targetInstallment != null ? targetInstallment.getInstallmentId() : null;
+            List<Payment> pendingList =
+                    paymentRepository.findByBooking_BookingId(booking.getBookingId()).stream()
+                            .filter(
+                                    p ->
+                                            p.getStatus() == PaymentStatus.Pending
+                                                    && p.getPaymentMethod() == PaymentMethod.Sepay
+                                                    && Objects.equals(
+                                                            p.getInstallment() != null
+                                                                    ? p.getInstallment()
+                                                                            .getInstallmentId()
+                                                                    : null,
+                                                            targetInstId))
+                            .toList();
+
+            if (!pendingList.isEmpty()) {
+                payment = pendingList.get(0);
+                payment.setRequestedAmount(amountUsd);
+                payment.setInternalReceiptReference(transferContent);
+                payment.setIdempotencyKey(idempotencyKey);
+                payment.setRequestedAt(Instant.now());
+                payment = paymentRepository.save(payment);
+            } else {
+                payment = new Payment();
+                payment.setBooking(booking);
+                payment.setInstallment(targetInstallment);
+                payment.setOperationType(PaymentOperationType.Collect);
+                payment.setPaymentMethod(PaymentMethod.Sepay);
+                payment.setRequestedAmount(amountUsd);
+                payment.setCurrency(booking.getCurrency());
+                payment.setRequestedAt(Instant.now());
+                payment.setStatus(PaymentStatus.Pending);
+                payment.setIdempotencyKey(idempotencyKey);
+                payment.setInternalReceiptReference(transferContent);
+                payment = paymentRepository.save(payment);
+            }
         }
 
         // Tạo URL VietQR SePay
@@ -555,21 +588,16 @@ public class SepayService {
             transferContent = "CASMS BK2026" + randomNum + "F";
         }
 
-        // Tu dong tim booking neu transferContent chua ma tham chieu cua mot don dat tour co that
+        // Tự động tìm booking nếu transferContent chứa mã tham chiếu của một đơn đặt tour có thật
         if (booking == null && transferContent != null) {
             booking = findMatchingBooking(transferContent);
         }
 
+        String defaultIdempotencyKey = "QUICK-" + transferContent.replaceAll("[^A-Za-z0-9]", "");
         String idempotencyKey =
                 (request.getIdempotencyKey() != null && !request.getIdempotencyKey().isBlank())
                         ? request.getIdempotencyKey().trim()
-                        : "QUICK-"
-                                + transferContent.replaceAll("[^A-Za-z0-9]", "")
-                                + "-"
-                                + UUID.randomUUID()
-                                        .toString()
-                                        .substring(0, 8)
-                                        .toUpperCase(Locale.ROOT);
+                        : defaultIdempotencyKey;
 
         // Kiểm tra nếu đã có Payment tương ứng đang Pending
         Optional<Payment> existingPaymentOpt =
@@ -577,6 +605,15 @@ public class SepayService {
         Payment payment;
         if (existingPaymentOpt.isPresent()) {
             payment = existingPaymentOpt.get();
+            if (payment.getStatus() == PaymentStatus.Confirmed) {
+                throw new BusinessException(
+                        HttpStatus.BAD_REQUEST,
+                        "PAYMENT_ALREADY_CONFIRMED",
+                        "Lệnh thanh toán nhanh này đã được xác nhận trước đó!");
+            }
+            payment.setRequestedAmount(amountUsd);
+            payment.setRequestedAt(Instant.now());
+            payment = paymentRepository.save(payment);
         } else {
             payment = new Payment();
             if (booking != null) {
@@ -749,7 +786,11 @@ public class SepayService {
                                     : "N/A");
 
             BigDecimal exchangeRate = sepayProperties.getUsdToVndRate();
-            BigDecimal expectedVnd = matchedPayment.getRequestedAmount().multiply(exchangeRate);
+            BigDecimal expectedVnd =
+                    matchedPayment
+                            .getRequestedAmount()
+                            .multiply(exchangeRate)
+                            .setScale(0, RoundingMode.HALF_UP);
             BigDecimal receivedVnd =
                     payload.getTransferAmount() != null
                             ? payload.getTransferAmount()
@@ -779,26 +820,52 @@ public class SepayService {
                         .build();
             }
 
-            // Xác nhận thanh toán thành công
+            // Xác nhận thanh toán với cơ chế an toàn: không để exception rollback mất lịch sử giao
+            // dịch SePay
             String processorRef = resolveProcessorReference(payload);
-            PaymentConfirmRequest confirmReq =
-                    new PaymentConfirmRequest(matchedPayment.getRequestedAmount(), processorRef);
-            paymentService.confirmPayment(matchedPayment.getPaymentId(), confirmReq);
+            try {
+                PaymentConfirmRequest confirmReq =
+                        new PaymentConfirmRequest(
+                                matchedPayment.getRequestedAmount(), processorRef);
+                paymentService.confirmPayment(matchedPayment.getPaymentId(), confirmReq);
 
-            tx.setStatus(SepayTransactionStatus.PROCESSED);
-            tx.setMatchedAt(Instant.now());
-            sepayTransactionRepository.save(tx);
+                tx.setStatus(SepayTransactionStatus.PROCESSED);
+                tx.setMatchedAt(Instant.now());
+                sepayTransactionRepository.save(tx);
 
-            log.info(
-                    "Successfully confirmed payment {} for booking {}",
-                    matchedPayment.getPaymentId(),
-                    bookingRef);
-            return SepayWebhookResponse.builder()
-                    .success(true)
-                    .message("Payment confirmed successfully")
-                    .paymentId(matchedPayment.getPaymentId())
-                    .bookingReference(bookingRef)
-                    .build();
+                log.info(
+                        "Successfully confirmed payment {} for booking {}",
+                        matchedPayment.getPaymentId(),
+                        bookingRef);
+                return SepayWebhookResponse.builder()
+                        .success(true)
+                        .message("Payment confirmed successfully")
+                        .paymentId(matchedPayment.getPaymentId())
+                        .bookingReference(bookingRef)
+                        .build();
+            } catch (Exception e) {
+                log.error(
+                        "Error confirming payment {} for booking {}: {}",
+                        matchedPayment.getPaymentId(),
+                        bookingRef,
+                        e.getMessage(),
+                        e);
+                tx.setStatus(SepayTransactionStatus.UNMATCHED);
+                tx.setDescription(
+                        (tx.getDescription() != null ? tx.getDescription() + " | " : "")
+                                + "Confirm error: "
+                                + e.getMessage());
+                sepayTransactionRepository.save(tx);
+
+                return SepayWebhookResponse.builder()
+                        .success(true)
+                        .message(
+                                "SePay transaction recorded, but payment confirmation failed: "
+                                        + e.getMessage())
+                        .paymentId(matchedPayment.getPaymentId())
+                        .bookingReference(bookingRef)
+                        .build();
+            }
         }
 
         // Trường hợp khách chuyển trực tiếp không có pending payment: tự động tạo payment mới cho
@@ -814,6 +881,12 @@ public class SepayService {
         Installment nextUnpaid =
                 findFirstUnpaidInstallment(matchedBooking.getBookingId(), installments);
 
+        String autoIdempotencyKey =
+                "SEPAY-AUTO-"
+                        + (payload.getId() != null
+                                ? payload.getId()
+                                : UUID.randomUUID().toString());
+
         Payment newPayment = new Payment();
         newPayment.setBooking(matchedBooking);
         newPayment.setInstallment(nextUnpaid);
@@ -823,29 +896,55 @@ public class SepayService {
         newPayment.setCurrency(matchedBooking.getCurrency());
         newPayment.setRequestedAt(Instant.now());
         newPayment.setStatus(PaymentStatus.Pending);
-        newPayment.setIdempotencyKey("SEPAY-AUTO-" + payload.getId());
+        newPayment.setIdempotencyKey(autoIdempotencyKey);
         newPayment.setInternalReceiptReference(content);
         newPayment = paymentRepository.save(newPayment);
 
         String processorRef = resolveProcessorReference(payload);
-        paymentService.confirmPayment(
-                newPayment.getPaymentId(), new PaymentConfirmRequest(receivedUsd, processorRef));
+        try {
+            paymentService.confirmPayment(
+                    newPayment.getPaymentId(),
+                    new PaymentConfirmRequest(receivedUsd, processorRef));
 
-        tx.setPayment(newPayment);
-        tx.setStatus(SepayTransactionStatus.PROCESSED);
-        tx.setMatchedAt(Instant.now());
-        sepayTransactionRepository.save(tx);
+            tx.setPayment(newPayment);
+            tx.setStatus(SepayTransactionStatus.PROCESSED);
+            tx.setMatchedAt(Instant.now());
+            sepayTransactionRepository.save(tx);
 
-        log.info(
-                "Created and confirmed automatic payment {} for booking {}",
-                newPayment.getPaymentId(),
-                matchedBooking.getBookingReference());
-        return SepayWebhookResponse.builder()
-                .success(true)
-                .message("Automatic payment created and confirmed")
-                .paymentId(newPayment.getPaymentId())
-                .bookingReference(matchedBooking.getBookingReference())
-                .build();
+            log.info(
+                    "Created and confirmed automatic payment {} for booking {}",
+                    newPayment.getPaymentId(),
+                    matchedBooking.getBookingReference());
+            return SepayWebhookResponse.builder()
+                    .success(true)
+                    .message("Automatic payment created and confirmed")
+                    .paymentId(newPayment.getPaymentId())
+                    .bookingReference(matchedBooking.getBookingReference())
+                    .build();
+        } catch (Exception e) {
+            log.error(
+                    "Error confirming auto payment {} for booking {}: {}",
+                    newPayment.getPaymentId(),
+                    matchedBooking.getBookingReference(),
+                    e.getMessage(),
+                    e);
+            tx.setPayment(newPayment);
+            tx.setStatus(SepayTransactionStatus.UNMATCHED);
+            tx.setDescription(
+                    (tx.getDescription() != null ? tx.getDescription() + " | " : "")
+                            + "Auto-confirm error: "
+                            + e.getMessage());
+            sepayTransactionRepository.save(tx);
+
+            return SepayWebhookResponse.builder()
+                    .success(true)
+                    .message(
+                            "Automatic payment recorded, but confirmation failed: "
+                                    + e.getMessage())
+                    .paymentId(newPayment.getPaymentId())
+                    .bookingReference(matchedBooking.getBookingReference())
+                    .build();
+        }
     }
 
     /** Tra cứu trạng thái thanh toán của một giao dịch theo paymentId. */
@@ -948,53 +1047,108 @@ public class SepayService {
     }
 
     private Payment findMatchingPayment(String memo) {
-        // Tìm kiếm các pending payment với internalReceiptReference có trong nội dung
+        if (memo == null || memo.isBlank()) {
+            return null;
+        }
+
+        // Truy vấn trực tiếp các payment đang Pending của SePay
         List<Payment> pendingPayments =
-                paymentRepository.findAll().stream()
+                paymentRepository.findByStatusAndPaymentMethod(
+                        PaymentStatus.Pending, PaymentMethod.Sepay);
+
+        if (pendingPayments.isEmpty()) {
+            return null;
+        }
+
+        String cleanMemo = memo.replaceAll("[^A-Za-z0-9]", "").toUpperCase(Locale.ROOT);
+
+        // 1. Khớp theo internalReceiptReference (sắp xếp độ dài giảm dần để ưu tiên mã cụ thể hơn)
+        List<Payment> sortedByReceipt =
+                pendingPayments.stream()
                         .filter(
                                 p ->
-                                        p.getStatus() == PaymentStatus.Pending
-                                                && p.getPaymentMethod() == PaymentMethod.Sepay)
+                                        p.getInternalReceiptReference() != null
+                                                && !p.getInternalReceiptReference().isBlank())
+                        .sorted(
+                                Comparator.comparingInt(
+                                                (Payment p) ->
+                                                        p.getInternalReceiptReference().length())
+                                        .reversed())
                         .toList();
 
-        for (Payment p : pendingPayments) {
-            if (p.getInternalReceiptReference() != null
-                    && !p.getInternalReceiptReference().isBlank()) {
-                String cleanReceipt =
-                        p.getInternalReceiptReference()
-                                .replaceAll("[^A-Za-z0-9]", "")
-                                .toUpperCase(Locale.ROOT);
-                String cleanMemo = memo.replaceAll("[^A-Za-z0-9]", "");
-                if (cleanMemo.contains(cleanReceipt)) {
-                    return p;
-                }
-            }
-            if (p.getIdempotencyKey() != null
-                    && memo.contains(p.getIdempotencyKey().toUpperCase(Locale.ROOT))) {
+        for (Payment p : sortedByReceipt) {
+            String cleanReceipt =
+                    p.getInternalReceiptReference()
+                            .replaceAll("[^A-Za-z0-9]", "")
+                            .toUpperCase(Locale.ROOT);
+            if (!cleanReceipt.isBlank() && cleanMemo.contains(cleanReceipt)) {
                 return p;
             }
         }
+
+        // 2. Khớp theo idempotencyKey nếu có trong memo
+        for (Payment p : pendingPayments) {
+            if (p.getIdempotencyKey() != null && !p.getIdempotencyKey().isBlank()) {
+                String cleanKey =
+                        p.getIdempotencyKey()
+                                .replaceAll("[^A-Za-z0-9]", "")
+                                .toUpperCase(Locale.ROOT);
+                if (!cleanKey.isBlank() && cleanMemo.contains(cleanKey)) {
+                    return p;
+                }
+            }
+        }
+
         return null;
     }
 
     private Booking findMatchingBooking(String memo) {
-        // Regex tìm mã đơn đặt tour: BK-YYYY-XXXX hoặc BK...
-        Pattern pattern = Pattern.compile("BK-?[0-9]{4}-?[0-9]{3,6}", Pattern.CASE_INSENSITIVE);
-        Matcher matcher = pattern.matcher(memo);
-        if (matcher.find()) {
-            String candidate = matcher.group();
-            Optional<Booking> directOpt = bookingRepository.findByBookingReference(candidate);
-            if (directOpt.isPresent()) return directOpt.get();
+        if (memo == null || memo.isBlank()) {
+            return null;
+        }
 
-            // Thử chuẩn hóa dạng BK-YYYY-XXXX
+        // Tìm các chuỗi dạng BK + số (ví dụ: BK-0001, BK0001, BK-2026-0001, BK20260001)
+        Pattern pattern =
+                Pattern.compile("BK[-_]?[0-9]{4,10}(?:[-_][0-9]{1,6})?", Pattern.CASE_INSENSITIVE);
+        Matcher matcher = pattern.matcher(memo);
+
+        while (matcher.find()) {
+            String candidate = matcher.group().toUpperCase(Locale.ROOT);
+
+            // 1. Tìm trực tiếp theo nguyên bản
+            Optional<Booking> directOpt = bookingRepository.findByBookingReference(candidate);
+            if (directOpt.isPresent()) {
+                return directOpt.get();
+            }
+
+            // 2. Chuẩn hóa nếu không có dấu gạch ngang (ví dụ: BK0001 -> BK-0001)
             String cleanDigits = candidate.replaceAll("[^0-9]", "");
-            if (cleanDigits.length() >= 8) {
-                String normalized =
-                        "BK-" + cleanDigits.substring(0, 4) + "-" + cleanDigits.substring(4);
-                Optional<Booking> normOpt = bookingRepository.findByBookingReference(normalized);
-                if (normOpt.isPresent()) return normOpt.get();
+            if (!cleanDigits.isBlank()) {
+                // Định dạng chuẩn hiện tại của BusinessCodeGenerator: BK-XXXX (4 số)
+                if (cleanDigits.length() == 4) {
+                    Optional<Booking> stdOpt =
+                            bookingRepository.findByBookingReference("BK-" + cleanDigits);
+                    if (stdOpt.isPresent()) {
+                        return stdOpt.get();
+                    }
+                }
+
+                // Định dạng cũ: BK-YYYY-XXXX (>= 8 số)
+                if (cleanDigits.length() >= 8) {
+                    String legacyNormalized =
+                            "BK-"
+                                    + cleanDigits.substring(0, 4)
+                                    + "-"
+                                    + cleanDigits.substring(4);
+                    Optional<Booking> normOpt =
+                            bookingRepository.findByBookingReference(legacyNormalized);
+                    if (normOpt.isPresent()) {
+                        return normOpt.get();
+                    }
+                }
             }
         }
+
         return null;
     }
 
@@ -1033,11 +1187,13 @@ public class SepayService {
     }
 
     private String resolveProcessorReference(SepayWebhookPayload payload) {
-        if (payload.getReferenceCode() != null && !payload.getReferenceCode().isBlank()) {
-            return payload.getReferenceCode().trim();
-        }
         if (payload.getId() != null) {
             return "SEPAY-" + payload.getId();
+        }
+        if (payload.getReferenceCode() != null
+                && !payload.getReferenceCode().isBlank()
+                && !"0".equals(payload.getReferenceCode().trim())) {
+            return payload.getReferenceCode().trim();
         }
         return "SEPAY-TX-" + UUID.randomUUID().toString().substring(0, 8);
     }

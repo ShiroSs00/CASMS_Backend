@@ -28,6 +28,7 @@ import com.casms.payment.enums.PaymentMethod;
 import com.casms.payment.enums.PaymentOperationType;
 import com.casms.payment.enums.PaymentStatus;
 import com.casms.payment.enums.PaymentType;
+import com.casms.payment.enums.SepayTransactionStatus;
 import com.casms.payment.repository.InstallmentRepository;
 import com.casms.payment.repository.PaymentRepository;
 import com.casms.payment.repository.SepayTransactionRepository;
@@ -36,6 +37,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -160,6 +162,8 @@ class SepayServiceTest {
         when(paymentRepository.findForBooking(bookingId)).thenReturn(List.of());
         when(installmentRepository.findByBookingBookingIdOrderBySequenceNoAsc(bookingId))
                 .thenReturn(List.of(inst1, inst2));
+        when(paymentRepository.findByIdempotencyKey(any())).thenReturn(Optional.empty());
+        when(paymentRepository.findByBooking_BookingId(bookingId)).thenReturn(List.of());
 
         Payment savedPayment = new Payment();
         savedPayment.setPaymentId(UUID.randomUUID());
@@ -185,6 +189,46 @@ class SepayServiceTest {
     }
 
     @Test
+    @DisplayName("Tái sử dụng Payment Pending hiện có khi gọi lại checkout cho cùng booking và đợt")
+    void createCheckout_ReuseExistingPendingPayment_Success() {
+        when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(booking));
+        when(sepayProperties.getUsdToVndRate()).thenReturn(new BigDecimal("25400"));
+        when(sepayProperties.getBankName()).thenReturn("MBBank");
+        when(sepayProperties.getAccountNumber()).thenReturn("0901452366");
+        when(sepayProperties.getAccountName()).thenReturn("CASMS CRUISE");
+        when(sepayProperties.getQrTemplate()).thenReturn("compact");
+        when(paymentRepository.findForBooking(bookingId)).thenReturn(List.of());
+        when(installmentRepository.findByBookingBookingIdOrderBySequenceNoAsc(bookingId))
+                .thenReturn(List.of(inst1, inst2));
+        when(paymentRepository.findByIdempotencyKey(any())).thenReturn(Optional.empty());
+
+        UUID existingPaymentId = UUID.randomUUID();
+        Payment existingPending = new Payment();
+        existingPending.setPaymentId(existingPaymentId);
+        existingPending.setBooking(booking);
+        existingPending.setInstallment(inst1);
+        existingPending.setStatus(PaymentStatus.Pending);
+        existingPending.setPaymentMethod(PaymentMethod.Sepay);
+        existingPending.setRequestedAmount(new BigDecimal("300.0000"));
+        existingPending.setRequestedAt(Instant.now().minusSeconds(30));
+
+        when(paymentRepository.findByBooking_BookingId(bookingId))
+                .thenReturn(List.of(existingPending));
+        when(paymentRepository.save(any(Payment.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        SepayCheckoutRequest req = new SepayCheckoutRequest();
+        req.setBookingId(bookingId);
+        req.setPaymentType(PaymentType.DEPOSIT);
+
+        SepayCheckoutResponse resp = sepayService.createCheckout(req, null, true);
+
+        assertNotNull(resp);
+        assertEquals(existingPaymentId, resp.getPaymentId());
+        assertEquals(PaymentStatus.Pending, resp.getStatus());
+        verify(paymentRepository).save(existingPending);
+    }
+
+    @Test
     @DisplayName("Tạo Checkout SePay thành công với hình thức DEPOSIT (đặt cọc)")
     void createCheckout_Deposit_Success() {
         when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(booking));
@@ -196,6 +240,8 @@ class SepayServiceTest {
         when(paymentRepository.findForBooking(bookingId)).thenReturn(List.of());
         when(installmentRepository.findByBookingBookingIdOrderBySequenceNoAsc(bookingId))
                 .thenReturn(List.of(inst1, inst2));
+        when(paymentRepository.findByIdempotencyKey(any())).thenReturn(Optional.empty());
+        when(paymentRepository.findByBooking_BookingId(bookingId)).thenReturn(List.of());
 
         Payment savedPayment = new Payment();
         savedPayment.setPaymentId(UUID.randomUUID());
@@ -230,6 +276,8 @@ class SepayServiceTest {
         when(paymentRepository.findForBooking(bookingId)).thenReturn(List.of());
         when(installmentRepository.findByBookingBookingIdOrderBySequenceNoAsc(bookingId))
                 .thenReturn(List.of(inst1, inst2));
+        when(paymentRepository.findByIdempotencyKey(any())).thenReturn(Optional.empty());
+        when(paymentRepository.findByBooking_BookingId(bookingId)).thenReturn(List.of());
 
         Payment savedPayment = new Payment();
         savedPayment.setPaymentId(UUID.randomUUID());
@@ -297,7 +345,9 @@ class SepayServiceTest {
         pendingPayment.setRequestedAmount(new BigDecimal("300.0000"));
         pendingPayment.setInternalReceiptReference("CASMS BK20260001S1");
 
-        when(paymentRepository.findAll()).thenReturn(List.of(pendingPayment));
+        when(paymentRepository.findByStatusAndPaymentMethod(
+                        PaymentStatus.Pending, PaymentMethod.Sepay))
+                .thenReturn(List.of(pendingPayment));
 
         SepayTransaction savedTx = new SepayTransaction();
         when(sepayTransactionRepository.save(any(SepayTransaction.class))).thenReturn(savedTx);
@@ -325,9 +375,100 @@ class SepayServiceTest {
         assertTrue(resp.isSuccess());
         assertEquals("Payment confirmed successfully", resp.getMessage());
         assertEquals(pendingPayment.getPaymentId(), resp.getPaymentId());
-        verify(paymentService)
-                .confirmPayment(
-                        eq(pendingPayment.getPaymentId()), any(PaymentConfirmRequest.class));
+
+        ArgumentCaptor<PaymentConfirmRequest> reqCaptor =
+                ArgumentCaptor.forClass(PaymentConfirmRequest.class);
+        verify(paymentService).confirmPayment(eq(pendingPayment.getPaymentId()), reqCaptor.capture());
+        assertEquals("SEPAY-92704", reqCaptor.getValue().getProcessorReference());
+    }
+
+    @Test
+    @DisplayName("Webhook SePay: Khớp thành công mã booking chuẩn BK-0001 từ nội dung BK0001")
+    void processWebhook_StandardCasmsBooking_BK0001_Success() {
+        Booking stdBooking = new Booking();
+        stdBooking.setBookingId(UUID.randomUUID());
+        stdBooking.setBookingReference("BK-0001");
+        stdBooking.setBookingStatus(BookingStatus.Draft);
+        stdBooking.setCurrency("USD");
+
+        when(sepayProperties.isEnabled()).thenReturn(true);
+        when(sepayProperties.getApiKey()).thenReturn(null);
+        when(sepayProperties.getUsdToVndRate()).thenReturn(new BigDecimal("25400"));
+        when(sepayProperties.getTolerancePercent()).thenReturn(1.0);
+        when(sepayTransactionRepository.existsBySepayId(92705L)).thenReturn(false);
+
+        Payment pendingPayment = new Payment();
+        pendingPayment.setPaymentId(UUID.randomUUID());
+        pendingPayment.setBooking(stdBooking);
+        pendingPayment.setStatus(PaymentStatus.Pending);
+        pendingPayment.setPaymentMethod(PaymentMethod.Sepay);
+        pendingPayment.setRequestedAmount(new BigDecimal("300.0000"));
+        pendingPayment.setInternalReceiptReference("CASMS BK0001S1");
+
+        when(paymentRepository.findByStatusAndPaymentMethod(
+                        PaymentStatus.Pending, PaymentMethod.Sepay))
+                .thenReturn(List.of(pendingPayment));
+
+        when(sepayTransactionRepository.save(any(SepayTransaction.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+
+        SepayWebhookPayload payload = new SepayWebhookPayload();
+        payload.setId(92705L);
+        payload.setTransferType("in");
+        payload.setTransferAmount(new BigDecimal("7620000"));
+        payload.setContent("CASMS BK0001S1");
+
+        SepayWebhookResponse resp = sepayService.processWebhook(payload, null);
+
+        assertNotNull(resp);
+        assertTrue(resp.isSuccess());
+        assertEquals(pendingPayment.getPaymentId(), resp.getPaymentId());
+        verify(paymentService).confirmPayment(eq(pendingPayment.getPaymentId()), any());
+    }
+
+    @Test
+    @DisplayName("Webhook SePay: Khi confirmPayment ném BusinessException, giao dịch vẫn lưu UNMATCHED và trả về HTTP 200 để tránh SePay retry vô hạn")
+    void processWebhook_ConfirmException_SavesAuditTrailWithoutRollback() {
+        when(sepayProperties.isEnabled()).thenReturn(true);
+        when(sepayProperties.getApiKey()).thenReturn(null);
+        when(sepayProperties.getUsdToVndRate()).thenReturn(new BigDecimal("25400"));
+        when(sepayProperties.getTolerancePercent()).thenReturn(1.0);
+        when(sepayTransactionRepository.existsBySepayId(92706L)).thenReturn(false);
+
+        Payment pendingPayment = new Payment();
+        pendingPayment.setPaymentId(UUID.randomUUID());
+        pendingPayment.setBooking(booking);
+        pendingPayment.setStatus(PaymentStatus.Pending);
+        pendingPayment.setPaymentMethod(PaymentMethod.Sepay);
+        pendingPayment.setRequestedAmount(new BigDecimal("300.0000"));
+        pendingPayment.setInternalReceiptReference("CASMS BK20260001S1");
+
+        when(paymentRepository.findByStatusAndPaymentMethod(
+                        PaymentStatus.Pending, PaymentMethod.Sepay))
+                .thenReturn(List.of(pendingPayment));
+
+        SepayTransaction txRecord = new SepayTransaction();
+        when(sepayTransactionRepository.save(any(SepayTransaction.class))).thenReturn(txRecord);
+
+        // Giả lập booking hold đã hết hạn khi SePay gọi webhook
+        doThrow(new BusinessException("BOOKING_HOLD_EXPIRED", "Booking hold has expired"))
+                .when(paymentService)
+                .confirmPayment(eq(pendingPayment.getPaymentId()), any(PaymentConfirmRequest.class));
+
+        SepayWebhookPayload payload = new SepayWebhookPayload();
+        payload.setId(92706L);
+        payload.setTransferType("in");
+        payload.setTransferAmount(new BigDecimal("7620000"));
+        payload.setContent("CASMS BK20260001S1");
+
+        SepayWebhookResponse resp = sepayService.processWebhook(payload, null);
+
+        assertNotNull(resp);
+        assertTrue(resp.isSuccess());
+        assertTrue(resp.getMessage().contains("BOOKING_HOLD_EXPIRED") || resp.getMessage().contains("failed"));
+
+        // Giao dịch SePay phải được lưu lại trạng thái UNMATCHED để admin/kế toán tra soát
+        verify(sepayTransactionRepository, atLeastOnce()).save(argThat(tx -> tx.getStatus() == SepayTransactionStatus.UNMATCHED));
     }
 
     @Test
