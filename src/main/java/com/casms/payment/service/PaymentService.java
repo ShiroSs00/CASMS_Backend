@@ -201,17 +201,24 @@ public class PaymentService {
         if (payment.getStatus() != PaymentStatus.Pending) {
             throw new BusinessException("PAYMENT_NOT_PENDING", "Only pending payments can be confirmed");
         }
-        if (payment.getOperationType() != PaymentOperationType.Collect || payment.getBooking() == null) {
-            throw new BusinessException("PAYMENT_NOT_BOOKING_COLLECTION",
-                    "Only booking collection payments can be confirmed through this endpoint");
+        if (payment.getOperationType() != PaymentOperationType.Collect) {
+            throw new BusinessException("PAYMENT_NOT_COLLECTION",
+                    "Only collection payments can be confirmed through this endpoint");
         }
-        if (payment.getBooking().getBookingStatus() == BookingStatus.Cancelled) {
-            throw new BusinessException("BOOKING_CANCELLED", "Cannot confirm payment for a cancelled booking");
-        }
-        if (payment.getBooking().getBookingStatus() == BookingStatus.Draft
-                && payment.getBooking().getHoldExpiresAt() != null
-                && Instant.now().isAfter(payment.getBooking().getHoldExpiresAt())) {
-            throw new BusinessException("BOOKING_HOLD_EXPIRED", "Booking hold has expired and cannot be confirmed");
+        if (payment.getBooking() != null) {
+            if (payment.getBooking().getBookingStatus() == BookingStatus.Cancelled) {
+                throw new BusinessException("BOOKING_CANCELLED", "Cannot confirm payment for a cancelled booking");
+            }
+            if (payment.getBooking().getBookingStatus() == BookingStatus.Draft
+                    && payment.getBooking().getHoldExpiresAt() != null
+                    && Instant.now().isAfter(payment.getBooking().getHoldExpiresAt())) {
+                throw new BusinessException("BOOKING_HOLD_EXPIRED", "Booking hold has expired and cannot be confirmed");
+            }
+            if (payment.getCurrency() == null || payment.getBooking().getCurrency() == null
+                    || !payment.getCurrency().trim().equalsIgnoreCase(payment.getBooking().getCurrency().trim())) {
+                throw new BusinessException("PAYMENT_CURRENCY_MISMATCH",
+                        "Payment currency must match the booking currency");
+            }
         }
         BigDecimal confirmedAmount = request.getConfirmedAmount();
         if (confirmedAmount == null || confirmedAmount.signum() <= 0
@@ -219,11 +226,6 @@ public class PaymentService {
                 || confirmedAmount.compareTo(payment.getRequestedAmount()) > 0) {
             throw new BusinessException("INVALID_CONFIRMED_AMOUNT",
                     "Confirmed amount must be positive and cannot exceed the requested payment amount");
-        }
-        if (payment.getCurrency() == null || payment.getBooking().getCurrency() == null
-                || !payment.getCurrency().trim().equalsIgnoreCase(payment.getBooking().getCurrency().trim())) {
-            throw new BusinessException("PAYMENT_CURRENCY_MISMATCH",
-                    "Payment currency must match the booking currency");
         }
         if (request.getProcessorReference() == null || request.getProcessorReference().isBlank()) {
             throw new BusinessException("PAYMENT_EVIDENCE_REQUIRED",

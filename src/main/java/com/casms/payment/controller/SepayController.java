@@ -3,6 +3,7 @@ package com.casms.payment.controller;
 import com.casms.common.response.ApiResponse;
 import com.casms.identity.enums.Permission;
 import com.casms.payment.dto.request.SepayCheckoutRequest;
+import com.casms.payment.dto.request.SepayQuickCheckoutRequest;
 import com.casms.payment.dto.request.SepayWebhookPayload;
 import com.casms.payment.dto.response.BookingPaymentOptionsResponse;
 import com.casms.payment.dto.response.PaymentStatusCheckResponse;
@@ -50,6 +51,15 @@ public class SepayController {
         UUID userId = principal != null ? principal.getUserId() : null;
         boolean canReadAll = principal != null && principal.hasPermission(Permission.PAYMENT_PROCESS);
         return ApiResponse.success("Tạo yêu cầu thanh toán SePay thành công", sepayService.createCheckout(request, userId, canReadAll));
+    }
+
+    @Operation(summary = "Tạo thanh toán SePay nhanh theo số tiền (Quick Payment)",
+               description = "Tạo mã thanh toán trực tiếp theo số tiền (VNĐ), lưu bản ghi trạng thái Pending vào CSDL và sinh mã VietQR. Tự động xác nhận khi khách quét mã và chuyển khoản.")
+    @PostMapping("/quick-checkout")
+    @ResponseStatus(HttpStatus.CREATED)
+    public ApiResponse<SepayCheckoutResponse> createQuickCheckout(
+            @RequestBody @Valid SepayQuickCheckoutRequest request) {
+        return ApiResponse.success("Tạo yêu cầu thanh toán nhanh thành công", sepayService.createQuickCheckout(request));
     }
 
     @Operation(summary = "Kiểm tra trạng thái thanh toán",

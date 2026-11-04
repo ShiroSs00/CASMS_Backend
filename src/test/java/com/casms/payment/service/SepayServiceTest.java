@@ -8,6 +8,7 @@ import com.casms.common.exception.BusinessException;
 import com.casms.payment.config.SepayProperties;
 import com.casms.payment.dto.request.PaymentConfirmRequest;
 import com.casms.payment.dto.request.SepayCheckoutRequest;
+import com.casms.payment.dto.request.SepayQuickCheckoutRequest;
 import com.casms.payment.dto.request.SepayWebhookPayload;
 import com.casms.payment.dto.response.BookingPaymentOptionsResponse;
 import com.casms.payment.dto.response.PaymentResponse;
@@ -399,5 +400,45 @@ class SepayServiceTest {
         assertEquals(PaymentStatus.Confirmed, resp.getStatus());
         assertEquals(new BigDecimal("300.0000"), resp.getConfirmedAmount());
         assertEquals(new BigDecimal("700.0000"), resp.getRemainingBookingBalance());
+    }
+
+    @Test
+    @DisplayName("Tạo thanh toán SePay nhanh theo số tiền (Quick Checkout) thành công với trạng thái Pending")
+    void createQuickCheckout_Success() {
+        when(sepayProperties.getUsdToVndRate()).thenReturn(new BigDecimal("25400"));
+        when(sepayProperties.getAccountNumber()).thenReturn("0901452366");
+        when(sepayProperties.getBankName()).thenReturn("MBBank");
+        when(sepayProperties.getAccountName()).thenReturn("CONG TY DU THUYEN CASMS");
+        when(sepayProperties.getQrTemplate()).thenReturn("compact");
+
+        when(paymentRepository.findByIdempotencyKey(any())).thenReturn(Optional.empty());
+        when(paymentRepository.save(any(Payment.class))).thenAnswer(inv -> {
+            Payment p = inv.getArgument(0);
+            p.setPaymentId(UUID.randomUUID());
+            return p;
+        });
+
+        SepayQuickCheckoutRequest req = SepayQuickCheckoutRequest.builder()
+                .amountVnd(new BigDecimal("100000"))
+                .transferContent("CASMS BK20264512F")
+                .description("Thanh toán theo số tiền")
+                .build();
+
+        SepayCheckoutResponse resp = sepayService.createQuickCheckout(req);
+
+        assertNotNull(resp);
+        assertNotNull(resp.getPaymentId());
+        assertEquals(PaymentStatus.Pending, resp.getStatus());
+        assertEquals("CASMS BK20264512F", resp.getTransferContent());
+        assertEquals("0901452366", resp.getAccountNumber());
+        assertEquals("MBBank", resp.getBankName());
+        assertTrue(resp.getQrCodeUrl().contains("CASMS+BK20264512F") || resp.getQrCodeUrl().contains("CASMS%20BK20264512F"));
+
+        verify(paymentRepository).save(argThat(p ->
+                p.getStatus() == PaymentStatus.Pending
+                && "CASMS BK20264512F".equals(p.getInternalReceiptReference())
+                && p.getOperationType() == PaymentOperationType.Collect
+                && p.getPaymentMethod() == PaymentMethod.Sepay
+        ));
     }
 }

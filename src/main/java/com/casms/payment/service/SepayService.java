@@ -10,6 +10,7 @@ import com.casms.common.exception.ResourceNotFoundException;
 import com.casms.payment.config.SepayProperties;
 import com.casms.payment.dto.request.PaymentConfirmRequest;
 import com.casms.payment.dto.request.SepayCheckoutRequest;
+import com.casms.payment.dto.request.SepayQuickCheckoutRequest;
 import com.casms.payment.dto.request.SepayWebhookPayload;
 import com.casms.payment.dto.response.BookingPaymentOptionsResponse;
 import com.casms.payment.dto.response.PaymentStatusCheckResponse;
@@ -375,6 +376,96 @@ public class SepayService {
     }
 
     /**
+     * Tạo yêu cầu thanh toán nhanh theo số tiền (Quick Checkout).
+     * Lưu bản ghi Payment với trạng thái Pending vào CSDL và sinh mã VietQR.
+     */
+    @Transactional
+    public SepayCheckoutResponse createQuickCheckout(SepayQuickCheckoutRequest request) {
+        log.info("Creating SePay quick checkout for amount {} VND", request.getAmountVnd());
+
+        BigDecimal amountVnd = request.getAmountVnd();
+        if (amountVnd == null || amountVnd.compareTo(BigDecimal.valueOf(2000)) < 0) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "INVALID_AMOUNT", "Số tiền thanh toán tối thiểu là 2.000 VNĐ");
+        }
+
+        BigDecimal exchangeRate = sepayProperties.getUsdToVndRate();
+        BigDecimal amountUsd = amountVnd.divide(exchangeRate, 2, RoundingMode.HALF_UP);
+
+        Booking booking = null;
+        if (request.getBookingId() != null) {
+            booking = bookingRepository.findById(request.getBookingId()).orElse(null);
+        }
+
+        // Tạo hoặc chuẩn hóa nội dung chuyển khoản
+        String transferContent;
+        if (request.getTransferContent() != null && !request.getTransferContent().isBlank()) {
+            transferContent = request.getTransferContent().trim().toUpperCase(Locale.ROOT);
+        } else if (booking != null) {
+            String cleanRef = booking.getBookingReference().replaceAll("[^A-Za-z0-9]", "");
+            transferContent = "CASMS " + cleanRef + "F";
+        } else {
+            int randomNum = 1000 + (int) (Math.random() * 9000);
+            transferContent = "CASMS BK2026" + randomNum + "F";
+        }
+
+        String idempotencyKey = (request.getIdempotencyKey() != null && !request.getIdempotencyKey().isBlank())
+                ? request.getIdempotencyKey().trim()
+                : "QUICK-" + transferContent.replaceAll("[^A-Za-z0-9]", "") + "-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase(Locale.ROOT);
+
+        // Kiểm tra nếu đã có Payment tương ứng đang Pending
+        Optional<Payment> existingPaymentOpt = paymentRepository.findByIdempotencyKey(idempotencyKey);
+        Payment payment;
+        if (existingPaymentOpt.isPresent()) {
+            payment = existingPaymentOpt.get();
+        } else {
+            payment = new Payment();
+            if (booking != null) {
+                payment.setBooking(booking);
+            }
+            payment.setOperationType(PaymentOperationType.Collect);
+            payment.setPaymentMethod(PaymentMethod.Sepay);
+            payment.setRequestedAmount(amountUsd);
+            payment.setCurrency(booking != null && booking.getCurrency() != null ? booking.getCurrency() : "USD");
+            payment.setRequestedAt(Instant.now());
+            payment.setStatus(PaymentStatus.Pending);
+            payment.setIdempotencyKey(idempotencyKey);
+            payment.setInternalReceiptReference(transferContent);
+            payment = paymentRepository.save(payment);
+        }
+
+        // Tạo URL VietQR SePay
+        String encodedContent = URLEncoder.encode(transferContent, StandardCharsets.UTF_8);
+        String qrUrl = String.format(
+                "https://qr.sepay.vn/img?acc=%s&bank=%s&amount=%s&des=%s&template=%s",
+                sepayProperties.getAccountNumber(),
+                sepayProperties.getBankName(),
+                amountVnd.toPlainString(),
+                encodedContent,
+                sepayProperties.getQrTemplate()
+        );
+
+        return SepayCheckoutResponse.builder()
+                .paymentId(payment.getPaymentId())
+                .bookingId(booking != null ? booking.getBookingId() : null)
+                .bookingReference(booking != null ? booking.getBookingReference() : transferContent)
+                .paymentType(PaymentType.FULL)
+                .stageDescription("Thanh toán nhanh theo số tiền")
+                .amountUsd(amountUsd)
+                .amountVnd(amountVnd)
+                .exchangeRate(exchangeRate)
+                .bankName(sepayProperties.getBankName())
+                .accountNumber(sepayProperties.getAccountNumber())
+                .accountHolderName(sepayProperties.getAccountName())
+                .transferContent(transferContent)
+                .qrCodeUrl(qrUrl)
+                .status(payment.getStatus())
+                .createdAt(payment.getRequestedAt())
+                .instructions("Mở ứng dụng ngân hàng quét mã QR hoặc chuyển khoản chính xác " + amountVnd
+                        + " VNĐ với nội dung '" + transferContent + "'. Hệ thống sẽ tự động xác nhận trong vòng vài giây.")
+                .build();
+    }
+
+    /**
      * Tiếp nhận và xử lý Webhook biến động số dư từ SePay (Idempotent).
      */
     @Transactional
@@ -455,15 +546,21 @@ public class SepayService {
                     .build();
         }
 
-        if (matchedBooking == null) {
+        if (matchedBooking == null && matchedPayment != null) {
             matchedBooking = matchedPayment.getBooking();
         }
 
-        tx.setBooking(matchedBooking);
+        if (matchedBooking != null) {
+            tx.setBooking(matchedBooking);
+        }
 
         // Trường hợp tìm được payment đang pending
         if (matchedPayment != null) {
             tx.setPayment(matchedPayment);
+
+            String bookingRef = matchedBooking != null
+                    ? matchedBooking.getBookingReference()
+                    : (matchedPayment.getInternalReceiptReference() != null ? matchedPayment.getInternalReceiptReference() : "N/A");
 
             BigDecimal exchangeRate = sepayProperties.getUsdToVndRate();
             BigDecimal expectedVnd = matchedPayment.getRequestedAmount().multiply(exchangeRate);
@@ -481,7 +578,7 @@ public class SepayService {
                         .success(false)
                         .message("Transfer amount is insufficient. Received: " + receivedVnd + ", expected: " + expectedVnd)
                         .paymentId(matchedPayment.getPaymentId())
-                        .bookingReference(matchedBooking.getBookingReference())
+                        .bookingReference(bookingRef)
                         .build();
             }
 
@@ -494,12 +591,12 @@ public class SepayService {
             tx.setMatchedAt(Instant.now());
             sepayTransactionRepository.save(tx);
 
-            log.info("Successfully confirmed payment {} for booking {}", matchedPayment.getPaymentId(), matchedBooking.getBookingReference());
+            log.info("Successfully confirmed payment {} for booking {}", matchedPayment.getPaymentId(), bookingRef);
             return SepayWebhookResponse.builder()
                     .success(true)
                     .message("Payment confirmed successfully")
                     .paymentId(matchedPayment.getPaymentId())
-                    .bookingReference(matchedBooking.getBookingReference())
+                    .bookingReference(bookingRef)
                     .build();
         }
 
@@ -569,12 +666,13 @@ public class SepayService {
         BigDecimal remaining = agreedFare.subtract(totalPaid);
         if (remaining.compareTo(BigDecimal.ZERO) < 0) remaining = BigDecimal.ZERO;
 
-        boolean isConfirmed = payment.getBooking() != null && payment.getBooking().getBookingStatus() == BookingStatus.Confirmed;
+        boolean isConfirmed = (payment.getBooking() != null && payment.getBooking().getBookingStatus() == BookingStatus.Confirmed)
+                || payment.getStatus() == PaymentStatus.Confirmed;
 
         return PaymentStatusCheckResponse.builder()
                 .paymentId(payment.getPaymentId())
                 .bookingId(payment.getBooking() != null ? payment.getBooking().getBookingId() : null)
-                .bookingReference(payment.getBooking() != null ? payment.getBooking().getBookingReference() : null)
+                .bookingReference(payment.getBooking() != null ? payment.getBooking().getBookingReference() : payment.getInternalReceiptReference())
                 .status(payment.getStatus())
                 .paymentMethod(payment.getPaymentMethod())
                 .requestedAmount(payment.getRequestedAmount())
