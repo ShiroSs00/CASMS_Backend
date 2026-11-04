@@ -3,7 +3,9 @@ package com.casms.trip.dto.response;
 import com.casms.ship.enums.CruiseStopArrivalMethod;
 import com.casms.ship.enums.CruiseStopCallType;
 import com.fasterxml.jackson.annotation.JsonFormat;
+
 import io.swagger.v3.oas.annotations.media.Schema;
+
 import lombok.Data;
 
 import java.time.LocalTime;
@@ -22,8 +24,12 @@ public class TripPlanStopResponse {
     private String portCode;
     private String portName;
     private String countryCode;
-    @Schema(description = "Miền địa lý nội địa (BAC_BO, TRUNG_BO, NAM_BO) đối với cảng Việt Nam", example = "BAC_BO")
+
+    @Schema(
+            description = "Miền địa lý nội địa (BAC_BO, TRUNG_BO, NAM_BO) đối với cảng Việt Nam",
+            example = "BAC_BO")
     private String domesticRegion;
+
     private String timeZoneId;
     private UUID destinationId;
     private String destinationName;
@@ -31,13 +37,19 @@ public class TripPlanStopResponse {
     private Integer arrivalDayNumber;
 
     @JsonFormat(pattern = "HH:mm:ss", shape = JsonFormat.Shape.STRING)
-    @Schema(type = "string", pattern = "^(0[0-9]|1[0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]$", example = "08:00:00")
+    @Schema(
+            type = "string",
+            pattern = "^(0[0-9]|1[0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]$",
+            example = "08:00:00")
     private LocalTime plannedArrivalTime;
 
     private Integer departureDayNumber;
 
     @JsonFormat(pattern = "HH:mm:ss", shape = JsonFormat.Shape.STRING)
-    @Schema(type = "string", pattern = "^(0[0-9]|1[0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]$", example = "18:00:00")
+    @Schema(
+            type = "string",
+            pattern = "^(0[0-9]|1[0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]$",
+            example = "18:00:00")
     private LocalTime plannedDepartureTime;
 
     private CruiseStopCallType callType;
@@ -45,7 +57,10 @@ public class TripPlanStopResponse {
     private Integer allAboardDayNumber;
 
     @JsonFormat(pattern = "HH:mm:ss", shape = JsonFormat.Shape.STRING)
-    @Schema(type = "string", pattern = "^(0[0-9]|1[0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]$", example = "17:30:00")
+    @Schema(
+            type = "string",
+            pattern = "^(0[0-9]|1[0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]$",
+            example = "17:30:00")
     private LocalTime allAboardTime;
 
     private Boolean isEmbarkation;

@@ -1,6 +1,7 @@
 package com.casms.ship.dto.response;
 
 import io.swagger.v3.oas.annotations.media.Schema;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -16,7 +17,10 @@ import java.util.UUID;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@Schema(description = "Mô hình trạng thái mở bán công khai authoritative (Public Sellability Read Model - BE-15)")
+@Schema(
+        description =
+                "Mô hình trạng thái mở bán công khai authoritative (Public Sellability Read Model -"
+                    + " BE-15)")
 public class CruiseSellabilityResponse {
 
     @Schema(description = "ID chuyến khởi hành")
@@ -34,10 +38,17 @@ public class CruiseSellabilityResponse {
     @Schema(description = "Thời gian kết thúc")
     private Instant returnDatetime;
 
-    @Schema(description = "Có thể mở bán/nhận booking ngay lúc này hay không (AND Cruise status, Itinerary OPEN_FOR_SALE, not stopped, departure in future, inventory > 0)")
+    @Schema(
+            description =
+                    "Có thể mở bán/nhận booking ngay lúc này hay không (AND Cruise status,"
+                        + " Itinerary OPEN_FOR_SALE, not stopped, departure in future, inventory >"
+                        + " 0)")
     private boolean sellable;
 
-    @Schema(description = "Trạng thái mở bán thống nhất duy nhất (OPEN_FOR_SALE, STOPPED, NOT_YET_OPEN, DEPARTED, SOLD_OUT, DRAFT, CANCELLED)")
+    @Schema(
+            description =
+                    "Trạng thái mở bán thống nhất duy nhất (OPEN_FOR_SALE, STOPPED, NOT_YET_OPEN,"
+                        + " DEPARTED, SOLD_OUT, DRAFT, CANCELLED)")
     private String saleState;
 
     @Schema(description = "Lý do tạm dừng mở bán (nếu có)")
@@ -52,7 +63,9 @@ public class CruiseSellabilityResponse {
     @Schema(description = "Tổng sức chứa của tàu (tương đương physicalCapacity)")
     private int totalCapacity;
 
-    @Schema(description = "Tổng tải trọng phòng khả dụng thương mại (AVAILABLE cabins trừ booked/held)")
+    @Schema(
+            description =
+                    "Tổng tải trọng phòng khả dụng thương mại (AVAILABLE cabins trừ booked/held)")
     private long sellableInventory;
 
     @Schema(description = "Số lượng chỗ còn trống (tương đương sellableInventory)")

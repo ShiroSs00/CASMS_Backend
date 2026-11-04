@@ -1,7 +1,9 @@
 package com.casms.ship.dto.response;
 
 import io.swagger.v3.oas.annotations.media.Schema;
+
 import lombok.Data;
+
 import java.util.UUID;
 
 @Data
@@ -23,6 +25,8 @@ public class DeckCapacityResponse {
     @Schema(description = "Số phòng đang còn trống", example = "35")
     private Long availableCabins;
 
-    @Schema(description = "Tổng sức chứa hành khách của toàn bộ tầng (tổng capacity của các cabin)", example = "120")
+    @Schema(
+            description = "Tổng sức chứa hành khách của toàn bộ tầng (tổng capacity của các cabin)",
+            example = "120")
     private Long totalPassengerCapacity;
 }

@@ -7,15 +7,17 @@ import com.casms.common.exception.ResourceNotFoundException;
 import com.casms.ship.dto.request.*;
 import com.casms.ship.dto.response.*;
 import com.casms.ship.entity.Cabin;
-import com.casms.ship.enums.CabinStatus;
 import com.casms.ship.entity.Deck;
 import com.casms.ship.entity.Ship;
+import com.casms.ship.enums.CabinStatus;
 import com.casms.ship.repository.CabinRepository;
 import com.casms.ship.repository.DeckRepository;
-import com.casms.ship.repository.ShipRepository;
 import com.casms.ship.repository.ShipModelObjectRepository;
+import com.casms.ship.repository.ShipRepository;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -38,36 +40,51 @@ public class CabinService {
 
     @Transactional
     public CabinSummaryResponse create(CabinCreateRequest request) {
-        Deck deck = deckRepository.findById(request.getDeckId())
-                .orElseThrow(() -> new ResourceNotFoundException("Deck", request.getDeckId()));
+        Deck deck =
+                deckRepository
+                        .findById(request.getDeckId())
+                        .orElseThrow(
+                                () -> new ResourceNotFoundException("Deck", request.getDeckId()));
         if (deck.isServiceLevel()) {
-            throw new BusinessException("CABIN_PASSENGER_DECK_REQUIRED", "Cabins require a positive passenger deck");
+            throw new BusinessException(
+                    "CABIN_PASSENGER_DECK_REQUIRED", "Cabins require a positive passenger deck");
         }
 
         Ship ship;
         if (request.getShipId() != null) {
-            ship = shipRepository.findById(request.getShipId())
-                    .orElseThrow(() -> new ResourceNotFoundException("Ship", request.getShipId()));
+            ship =
+                    shipRepository
+                            .findById(request.getShipId())
+                            .orElseThrow(
+                                    () ->
+                                            new ResourceNotFoundException(
+                                                    "Ship", request.getShipId()));
             if (!deck.getShip().getShipId().equals(ship.getShipId())) {
-                throw new BusinessException("DECK_SHIP_MISMATCH", "The deck does not belong to the specified ship");
+                throw new BusinessException(
+                        "DECK_SHIP_MISMATCH", "The deck does not belong to the specified ship");
             }
         } else {
             ship = deck.getShip();
         }
 
-        if (cabinRepository.existsByShipShipIdAndCabinNumber(ship.getShipId(), request.getCabinNumber())) {
-            throw new BusinessException("DUPLICATE_CABIN", "Cabin number already exists on this ship");
+        if (cabinRepository.existsByShipShipIdAndCabinNumber(
+                ship.getShipId(), request.getCabinNumber())) {
+            throw new BusinessException(
+                    "DUPLICATE_CABIN", "Cabin number already exists on this ship");
         }
 
         if (request.getCapacity() == null || request.getCapacity() < 1) {
-            throw new BusinessException("INVALID_CABIN_CAPACITY", "Cabin capacity must be greater than zero");
+            throw new BusinessException(
+                    "INVALID_CABIN_CAPACITY", "Cabin capacity must be greater than zero");
         }
         if (request.getCabinNumber() == null || request.getCabinNumber().trim().isEmpty()) {
             throw new BusinessException("INVALID_CABIN_NUMBER", "Cabin number is required");
         }
 
-        CabinStatus status = request.getStatus() == null ? CabinStatus.AVAILABLE : request.getStatus();
-        Boolean isAccessible = request.getIsAccessible() == null ? Boolean.FALSE : request.getIsAccessible();
+        CabinStatus status =
+                request.getStatus() == null ? CabinStatus.AVAILABLE : request.getStatus();
+        Boolean isAccessible =
+                request.getIsAccessible() == null ? Boolean.FALSE : request.getIsAccessible();
 
         Cabin cabin = new Cabin();
         cabin.setShip(ship);
@@ -77,9 +94,17 @@ public class CabinService {
         cabin.setCapacity(request.getCapacity());
         cabin.setStatus(status);
         cabin.setIsAccessible(isAccessible);
-        applyModelTransform(cabin, request.getModelPositionX(), request.getModelPositionY(), request.getModelPositionZ(),
-                request.getModelRotationX(), request.getModelRotationY(), request.getModelRotationZ(),
-                request.getModelWidth(), request.getModelHeight(), request.getModelDepth());
+        applyModelTransform(
+                cabin,
+                request.getModelPositionX(),
+                request.getModelPositionY(),
+                request.getModelPositionZ(),
+                request.getModelRotationX(),
+                request.getModelRotationY(),
+                request.getModelRotationZ(),
+                request.getModelWidth(),
+                request.getModelHeight(),
+                request.getModelDepth());
 
         cabin = cabinRepository.save(cabin);
         return mapToResponse(cabin);
@@ -112,12 +137,15 @@ public class CabinService {
         Cabin cabin = getCabinById(cabinId);
 
         if (hasModelFixedFields(request)) {
-            throw new BusinessException("CABIN_MODEL_FIELDS_IMMUTABLE",
-                    "Cabin type, position, rotation and dimensions are controlled by the ship model import");
+            throw new BusinessException(
+                    "CABIN_MODEL_FIELDS_IMMUTABLE",
+                    "Cabin type, position, rotation and dimensions are controlled by the ship model"
+                        + " import");
         }
         if (request.getCapacity() != null) {
             if (request.getCapacity() < 1) {
-                throw new BusinessException("INVALID_CABIN_CAPACITY", "Cabin capacity must be greater than zero");
+                throw new BusinessException(
+                        "INVALID_CABIN_CAPACITY", "Cabin capacity must be greater than zero");
             }
             cabin.setCapacity(request.getCapacity());
         }
@@ -127,10 +155,16 @@ public class CabinService {
     }
 
     private static boolean hasModelFixedFields(CabinUpdateRequest request) {
-        return request.getCabinType() != null || request.getModelPositionX() != null || request.getModelPositionY() != null ||
-                request.getModelPositionZ() != null || request.getModelRotationX() != null || request.getModelRotationY() != null ||
-                request.getModelRotationZ() != null || request.getModelWidth() != null || request.getModelHeight() != null ||
-                request.getModelDepth() != null;
+        return request.getCabinType() != null
+                || request.getModelPositionX() != null
+                || request.getModelPositionY() != null
+                || request.getModelPositionZ() != null
+                || request.getModelRotationX() != null
+                || request.getModelRotationY() != null
+                || request.getModelRotationZ() != null
+                || request.getModelWidth() != null
+                || request.getModelHeight() != null
+                || request.getModelDepth() != null;
     }
 
     @Transactional
@@ -138,10 +172,12 @@ public class CabinService {
         Cabin cabin = getCabinById(cabinId);
 
         if (cabinAssignmentRepository.existsByCabinCabinId(cabinId)) {
-            throw new BusinessException("CABIN_IN_USE", "Cannot delete cabin because it has been assigned to bookings");
+            throw new BusinessException(
+                    "CABIN_IN_USE", "Cannot delete cabin because it has been assigned to bookings");
         }
         if (shipModelObjectRepository.existsByCabinCabinId(cabinId)) {
-            throw new BusinessException("CABIN_IN_USE", "Cannot delete cabin while a 3D model mapping references it");
+            throw new BusinessException(
+                    "CABIN_IN_USE", "Cannot delete cabin while a 3D model mapping references it");
         }
 
         cabinRepository.delete(cabin);
@@ -150,13 +186,16 @@ public class CabinService {
 
     @Transactional(readOnly = true)
     public List<CabinSummaryResponse> searchAvailable(CabinSearchRequest request) {
-        return cabinRepository.searchAvailable(
-                request.getShipId(),
-                request.getDeckId(),
-                request.getCabinType(),
-                request.getMinCapacity(),
-                request.getIsAccessible()
-        ).stream().map(this::mapToResponse).collect(Collectors.toList());
+        return cabinRepository
+                .searchAvailable(
+                        request.getShipId(),
+                        request.getDeckId(),
+                        request.getCabinType(),
+                        request.getMinCapacity(),
+                        request.getIsAccessible())
+                .stream()
+                .map(this::mapToResponse)
+                .collect(Collectors.toList());
     }
 
     @Transactional(readOnly = true)
@@ -182,15 +221,20 @@ public class CabinService {
             throw new BusinessException("INVALID_CABIN_STATUS", "Cabin status is required");
         }
         if (newStatus == CabinStatus.OCCUPIED && cabin.getStatus() != CabinStatus.OCCUPIED) {
-            throw new BusinessException("CABIN_OCCUPANCY_REQUIRES_ASSIGNMENT",
-                    "A cabin can only become OCCUPIED through the passenger assignment/booking workflow");
+            throw new BusinessException(
+                    "CABIN_OCCUPANCY_REQUIRES_ASSIGNMENT",
+                    "A cabin can only become OCCUPIED through the passenger assignment/booking"
+                        + " workflow");
         }
         if (cabin.getStatus() == CabinStatus.OCCUPIED && newStatus != CabinStatus.OCCUPIED) {
-            boolean hasActiveAssignment = cabinAssignmentRepository
-                    .findByCabinCabinIdOrderByValidFromDesc(cabinId).stream()
-                    .anyMatch(assignment -> assignment.getValidTo() == null);
+            boolean hasActiveAssignment =
+                    cabinAssignmentRepository
+                            .findByCabinCabinIdOrderByValidFromDesc(cabinId)
+                            .stream()
+                            .anyMatch(assignment -> assignment.getValidTo() == null);
             if (hasActiveAssignment) {
-                throw new BusinessException("CABIN_HAS_ACTIVE_ASSIGNMENT",
+                throw new BusinessException(
+                        "CABIN_HAS_ACTIVE_ASSIGNMENT",
                         "Cannot change status while an active passenger assignment exists");
             }
         }
@@ -211,7 +255,9 @@ public class CabinService {
     public void validateCabin(UUID cabinId) {
         Cabin cabin = getCabinById(cabinId);
         if (!cabin.getDeck().getShip().getShipId().equals(cabin.getShip().getShipId())) {
-            throw new BusinessException("DATA_INTEGRITY_ERROR", "Cabin's deck does not belong to the cabin's assigned ship");
+            throw new BusinessException(
+                    "DATA_INTEGRITY_ERROR",
+                    "Cabin's deck does not belong to the cabin's assigned ship");
         }
     }
 
@@ -224,11 +270,14 @@ public class CabinService {
     @Transactional
     public CabinSummaryResponse blockCabin(UUID cabinId, CabinStatus reasonStatus) {
         if (reasonStatus != CabinStatus.MAINTENANCE && reasonStatus != CabinStatus.OUT_OF_SERVICE) {
-            throw new BusinessException("INVALID_BLOCK_REASON", "Cabin can only be blocked as MAINTENANCE or OUT_OF_SERVICE");
+            throw new BusinessException(
+                    "INVALID_BLOCK_REASON",
+                    "Cabin can only be blocked as MAINTENANCE or OUT_OF_SERVICE");
         }
         Cabin cabin = getCabinById(cabinId);
         if (cabin.getStatus() != CabinStatus.AVAILABLE) {
-            throw new BusinessException("CABIN_NOT_AVAILABLE", "Cabin is not available to be blocked");
+            throw new BusinessException(
+                    "CABIN_NOT_AVAILABLE", "Cabin is not available to be blocked");
         }
         cabin.setStatus(reasonStatus);
         return mapToResponse(cabinRepository.save(cabin));
@@ -241,23 +290,29 @@ public class CabinService {
             return mapToResponse(cabin);
         }
         if (cabin.getStatus() == CabinStatus.OCCUPIED) {
-            boolean hasActiveAssignment = cabinAssignmentRepository
-                    .findByCabinCabinIdOrderByValidFromDesc(cabinId).stream()
-                    .anyMatch(assignment -> assignment.getValidTo() == null);
+            boolean hasActiveAssignment =
+                    cabinAssignmentRepository
+                            .findByCabinCabinIdOrderByValidFromDesc(cabinId)
+                            .stream()
+                            .anyMatch(assignment -> assignment.getValidTo() == null);
             if (hasActiveAssignment) {
-                throw new BusinessException("CABIN_HAS_ACTIVE_ASSIGNMENT",
-                        "Cannot release an occupied cabin while an active passenger assignment exists");
+                throw new BusinessException(
+                        "CABIN_HAS_ACTIVE_ASSIGNMENT",
+                        "Cannot release an occupied cabin while an active passenger assignment"
+                            + " exists");
             }
         } else if (cabin.getStatus() != CabinStatus.MAINTENANCE
                 && cabin.getStatus() != CabinStatus.OUT_OF_SERVICE) {
-            throw new BusinessException("INVALID_CABIN_RELEASE", "Cabin cannot be released from its current status");
+            throw new BusinessException(
+                    "INVALID_CABIN_RELEASE", "Cabin cannot be released from its current status");
         }
         cabin.setStatus(CabinStatus.AVAILABLE);
         return mapToResponse(cabinRepository.save(cabin));
     }
 
     private Cabin getCabinById(UUID cabinId) {
-        return cabinRepository.findById(cabinId)
+        return cabinRepository
+                .findById(cabinId)
                 .orElseThrow(() -> new ResourceNotFoundException("Cabin", cabinId));
     }
 
@@ -283,8 +338,17 @@ public class CabinService {
         return res;
     }
 
-    private void applyModelTransform(Cabin cabin, Double x, Double y, Double z, Double rx, Double ry, Double rz,
-                                     Double width, Double height, Double depth) {
+    private void applyModelTransform(
+            Cabin cabin,
+            Double x,
+            Double y,
+            Double z,
+            Double rx,
+            Double ry,
+            Double rz,
+            Double width,
+            Double height,
+            Double depth) {
         Double px = x == null ? cabin.getModelPositionX() : x;
         Double py = y == null ? cabin.getModelPositionY() : y;
         Double pz = z == null ? cabin.getModelPositionZ() : z;
@@ -306,20 +370,26 @@ public class CabinService {
 
     private void validateTriplet(Double x, Double y, Double z, String name) {
         if ((x == null || y == null || z == null) && (x != null || y != null || z != null)) {
-            throw new BusinessException("INCOMPLETE_MODEL_TRANSFORM", "Model " + name + " requires x, y and z values together");
+            throw new BusinessException(
+                    "INCOMPLETE_MODEL_TRANSFORM",
+                    "Model " + name + " requires x, y and z values together");
         }
     }
 
     private Double coordinate(Double value) {
         if (!Double.isFinite(value) || Math.abs(value) > 1000) {
-            throw new BusinessException("INVALID_MODEL_TRANSFORM", "Model coordinates and rotations must be finite and within ±1000 model units");
+            throw new BusinessException(
+                    "INVALID_MODEL_TRANSFORM",
+                    "Model coordinates and rotations must be finite and within ±1000 model units");
         }
         return value;
     }
 
     private Double dimension(Double value) {
         if (!Double.isFinite(value) || value <= 0 || value > 1000) {
-            throw new BusinessException("INVALID_MODEL_DIMENSION", "Model dimensions must be greater than 0 and at most 1000 model units");
+            throw new BusinessException(
+                    "INVALID_MODEL_DIMENSION",
+                    "Model dimensions must be greater than 0 and at most 1000 model units");
         }
         return value;
     }

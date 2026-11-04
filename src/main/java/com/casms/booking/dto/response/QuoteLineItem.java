@@ -1,6 +1,7 @@
 package com.casms.booking.dto.response;
 
 import com.casms.ship.enums.CabinType;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;

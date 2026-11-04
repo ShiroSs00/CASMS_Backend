@@ -3,17 +3,20 @@ package com.casms.servicepackage.controller;
 import com.casms.common.exception.ResourceNotFoundException;
 import com.casms.common.response.ApiResponse;
 import com.casms.security.principal.CasmsPrincipal;
-import com.casms.servicepackage.entity.Service;
 import com.casms.servicepackage.entity.*;
+import com.casms.servicepackage.entity.Service;
 import com.casms.servicepackage.enums.*;
 import com.casms.servicepackage.repository.ServiceCategoryRepository;
-import com.casms.servicepackage.service.ServicepackageService;
-import com.casms.servicepackage.service.ServiceRequestService;
 import com.casms.servicepackage.service.ServiceCatalogReadService;
+import com.casms.servicepackage.service.ServiceRequestService;
 import com.casms.servicepackage.service.ServiceScheduleManagementService;
+import com.casms.servicepackage.service.ServicepackageService;
+
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.*;
+
 import lombok.RequiredArgsConstructor;
+
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
@@ -49,16 +52,14 @@ public class ServicepackageController {
             @Size(min = 3, max = 3) String currencyCode,
             @Positive Integer capacity,
             Boolean requiresSchedule,
-            UUID categoryId
-    ) {}
+            UUID categoryId) {}
 
     public record ProductDto(
             @NotBlank @Size(max = 200) String productName,
             @Size(max = 1000) String description,
             @NotBlank @Size(max = 50) String productType,
             @NotNull @DecimalMin("0.0") BigDecimal unitPrice,
-            @NotBlank @Size(min = 3, max = 3) String currencyCode
-    ) {}
+            @NotBlank @Size(min = 3, max = 3) String currencyCode) {}
 
     public record PackageDto(
             @NotBlank @Size(max = 200) String packageName,
@@ -67,8 +68,7 @@ public class ServicepackageController {
             @NotNull @DecimalMin("0.0") BigDecimal price,
             @NotBlank @Size(min = 3, max = 3) String currencyCode,
             LocalDate startDate,
-            LocalDate endDate
-    ) {}
+            LocalDate endDate) {}
 
     public record ServiceRequestDto(
             @NotNull UUID serviceId,
@@ -76,13 +76,10 @@ public class ServicepackageController {
             UUID serviceScheduleId,
             @Positive Integer quantity,
             @Size(max = 500) String note,
-            @Size(max = 100) String idempotencyKey
-    ) {}
+            @Size(max = 100) String idempotencyKey) {}
 
     public record ServiceRequestUpdateDto(
-            @NotNull @Positive Integer quantity,
-            @Size(max = 500) String note
-    ) {}
+            @NotNull @Positive Integer quantity, @Size(max = 500) String note) {}
 
     public record ServiceScheduleCreateDto(
             @NotNull UUID serviceId,
@@ -92,8 +89,7 @@ public class ServicepackageController {
             @NotNull Instant startsAt,
             @NotNull Instant endsAt,
             @NotBlank @Size(max = 250) String location,
-            @NotNull @Positive Integer capacity
-    ) {}
+            @NotNull @Positive Integer capacity) {}
 
     public record ServiceRequestView(
             UUID id,
@@ -109,16 +105,19 @@ public class ServicepackageController {
             String status,
             UUID assignedUserId,
             Instant requestTime,
-            Instant completedAt
-    ) {
+            Instant completedAt) {
         static ServiceRequestView of(ServiceRequest r) {
             return new ServiceRequestView(
                     r.getServiceRequestId(),
                     r.getPassenger().getPassengerId(),
                     r.getService().getServiceId(),
-                    r.getServiceSchedule() == null ? null : r.getServiceSchedule().getServiceScheduleId(),
+                    r.getServiceSchedule() == null
+                            ? null
+                            : r.getServiceSchedule().getServiceScheduleId(),
                     r.getBooking() == null ? null : r.getBooking().getBookingId(),
-                    r.getBookingPassenger() == null ? null : r.getBookingPassenger().getBookingPassengerId(),
+                    r.getBookingPassenger() == null
+                            ? null
+                            : r.getBookingPassenger().getBookingPassengerId(),
                     r.getQuantity(),
                     r.getUnitPriceSnapshot(),
                     r.getCurrencySnapshot(),
@@ -126,76 +125,54 @@ public class ServicepackageController {
                     r.getStatus().name(),
                     r.getAssignedUser() == null ? null : r.getAssignedUser().getUserId(),
                     r.getRequestTime(),
-                    r.getCompletedAt()
-            );
+                    r.getCompletedAt());
         }
     }
 
-    public record PackageAssignmentDto(
-            @NotNull UUID tourPackageId
-    ) {}
+    public record PackageAssignmentDto(@NotNull UUID tourPackageId) {}
 
-    public record BenefitDto(
-            @NotNull BenefitType benefitType
-    ) {}
+    public record BenefitDto(@NotNull BenefitType benefitType) {}
 
     public record AssignmentView(
             UUID bookingPassengerId,
             UUID packageId,
             BigDecimal agreedPrice,
             String currency,
-            Instant assignedAt
-    ) {
+            Instant assignedAt) {
         static AssignmentView of(BookingPassengerPackage a) {
             return new AssignmentView(
                     a.getBookingPassengerId(),
                     a.getTourPackage().getTourPackageId(),
                     a.getAgreedPrice(),
                     a.getCurrency(),
-                    a.getAssignedAt()
-            );
+                    a.getAssignedAt());
         }
     }
 
-    public record PackageServiceView(
-            UUID packageId,
-            UUID serviceId,
-            BenefitType benefitType
-    ) {
+    public record PackageServiceView(UUID packageId, UUID serviceId, BenefitType benefitType) {
         static PackageServiceView of(TourPackageService x) {
             return new PackageServiceView(
                     x.getTourPackage().getTourPackageId(),
                     x.getService().getServiceId(),
-                    x.getBenefitType()
-            );
+                    x.getBenefitType());
         }
     }
 
-    public record PackageActivityView(
-            UUID packageId,
-            UUID activityId,
-            BenefitType benefitType
-    ) {
+    public record PackageActivityView(UUID packageId, UUID activityId, BenefitType benefitType) {
         static PackageActivityView of(TourPackageActivity x) {
             return new PackageActivityView(
                     x.getTourPackage().getTourPackageId(),
                     x.getOnboardActivity().getOnboardActivityId(),
-                    x.getBenefitType()
-            );
+                    x.getBenefitType());
         }
     }
 
-    public record PackageExcursionView(
-            UUID packageId,
-            UUID excursionId,
-            BenefitType benefitType
-    ) {
+    public record PackageExcursionView(UUID packageId, UUID excursionId, BenefitType benefitType) {
         static PackageExcursionView of(TourPackageExcursion x) {
             return new PackageExcursionView(
                     x.getTourPackage().getTourPackageId(),
                     x.getShoreExcursion().getShoreExcursionId(),
-                    x.getBenefitType()
-            );
+                    x.getBenefitType());
         }
     }
 
@@ -213,8 +190,7 @@ public class ServicepackageController {
             UUID categoryId,
             String categoryName,
             String unitCode,
-            String applicabilityScope
-    ) {
+            String applicabilityScope) {
         static ServiceView of(Service s) {
             return new ServiceView(
                     s.getServiceId(),
@@ -230,8 +206,7 @@ public class ServicepackageController {
                     s.getCategory() == null ? null : s.getCategory().getServiceCategoryId(),
                     s.getCategory() == null ? null : s.getCategory().getCategoryName(),
                     s.getUnitCode(),
-                    s.getApplicabilityScope()
-            );
+                    s.getApplicabilityScope());
         }
     }
 
@@ -243,8 +218,7 @@ public class ServicepackageController {
             String type,
             BigDecimal price,
             String currency,
-            String status
-    ) {
+            String status) {
         static ProductView of(Product p) {
             return new ProductView(
                     p.getProductId(),
@@ -254,8 +228,7 @@ public class ServicepackageController {
                     p.getProductType(),
                     p.getUnitPrice(),
                     p.getCurrencyCode(),
-                    p.getStatus().name()
-            );
+                    p.getStatus().name());
         }
     }
 
@@ -269,8 +242,7 @@ public class ServicepackageController {
             String currency,
             String status,
             LocalDate startDate,
-            LocalDate endDate
-    ) {
+            LocalDate endDate) {
         static PackageView of(TourPackage p) {
             return new PackageView(
                     p.getTourPackageId(),
@@ -282,30 +254,22 @@ public class ServicepackageController {
                     p.getCurrencyCode(),
                     p.getStatus().name(),
                     p.getStartDate(),
-                    p.getEndDate()
-            );
+                    p.getEndDate());
         }
     }
 
     public record ServiceAvailabilityView(
-            UUID serviceId,
-            Integer requestedQuantity,
-            boolean available
-    ) {}
+            UUID serviceId, Integer requestedQuantity, boolean available) {}
 
-    public record ServiceCategoryView(
-            UUID id,
-            String code,
-            String name,
-            UUID parentCategoryId
-    ) {
+    public record ServiceCategoryView(UUID id, String code, String name, UUID parentCategoryId) {
         static ServiceCategoryView of(ServiceCategory c) {
             return new ServiceCategoryView(
                     c.getServiceCategoryId(),
                     c.getCategoryCode(),
                     c.getCategoryName(),
-                    c.getParentCategory() == null ? null : c.getParentCategory().getServiceCategoryId()
-            );
+                    c.getParentCategory() == null
+                            ? null
+                            : c.getParentCategory().getServiceCategoryId());
         }
     }
 
@@ -319,8 +283,7 @@ public class ServicepackageController {
             Integer capacity,
             Integer remainingCapacity,
             String status,
-            UUID cruiseId
-    ) {
+            UUID cruiseId) {
         static ServiceScheduleView of(ServiceSchedule s, int remaining) {
             return new ServiceScheduleView(
                     s.getServiceScheduleId(),
@@ -332,8 +295,7 @@ public class ServicepackageController {
                     s.getCapacity(),
                     remaining,
                     s.getStatus(),
-                    s.getCruise() == null ? null : s.getCruise().getCruiseId()
-            );
+                    s.getCruise() == null ? null : s.getCruise().getCruiseId());
         }
     }
 
@@ -345,8 +307,7 @@ public class ServicepackageController {
             Integer quantityLimit,
             String unitCode,
             BigDecimal discountPercent,
-            String ownerScope
-    ) {
+            String ownerScope) {
         static PackageEntitlementView of(PackageEntitlement e) {
             return new PackageEntitlementView(
                     e.getPackageEntitlementId(),
@@ -356,8 +317,7 @@ public class ServicepackageController {
                     e.getQuantityLimit(),
                     e.getUnitCode(),
                     e.getDiscountPercent(),
-                    e.getOwnerScope()
-            );
+                    e.getOwnerScope());
         }
     }
 
@@ -366,8 +326,7 @@ public class ServicepackageController {
             List<PackageServiceView> services,
             List<PackageActivityView> activities,
             List<PackageExcursionView> excursions,
-            List<PackageEntitlementView> entitlements
-    ) {}
+            List<PackageEntitlementView> entitlements) {}
 
     // ==========================================
     // SERVICES ENDPOINTS
@@ -388,42 +347,42 @@ public class ServicepackageController {
     @PreAuthorize("hasAuthority('SERVICE_READ')")
     @GetMapping("/services/{id}/availability")
     public ApiResponse<ServiceAvailabilityView> serviceAvailability(
-            @PathVariable UUID id,
-            @RequestParam(defaultValue = "1") Integer quantity
-    ) {
-        return ApiResponse.success(new ServiceAvailabilityView(id, quantity, service.serviceAvailable(id, quantity)));
+            @PathVariable UUID id, @RequestParam(defaultValue = "1") Integer quantity) {
+        return ApiResponse.success(
+                new ServiceAvailabilityView(id, quantity, service.serviceAvailable(id, quantity)));
     }
 
     @PreAuthorize("hasAuthority('SERVICE_READ')")
     @GetMapping("/service-categories")
     public ApiResponse<List<ServiceCategoryView>> serviceCategories() {
-        return ApiResponse.success(catalogReads.categories().stream().map(ServiceCategoryView::of).toList());
+        return ApiResponse.success(
+                catalogReads.categories().stream().map(ServiceCategoryView::of).toList());
     }
 
     @PreAuthorize("hasAuthority('SERVICE_READ')")
     @GetMapping("/services/{id}/schedules")
     public ApiResponse<List<ServiceScheduleView>> serviceSchedules(@PathVariable UUID id) {
-        return ApiResponse.success(catalogReads.openSchedules(id).stream()
-                .map(s -> ServiceScheduleView.of(s, catalogReads.remainingCapacity(s)))
-                .toList());
+        return ApiResponse.success(
+                catalogReads.openSchedules(id).stream()
+                        .map(s -> ServiceScheduleView.of(s, catalogReads.remainingCapacity(s)))
+                        .toList());
     }
 
     @PreAuthorize("hasRole('CRUISE_MANAGER') and hasAuthority('CRUISE_UPDATE_DRAFT')")
     @PostMapping("/schedules")
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<ServiceScheduleView> createServiceSchedule(
-            @Valid @RequestBody ServiceScheduleCreateDto r
-    ) {
-        var s = scheduleManagement.create(
-                r.serviceId(),
-                r.cruiseId(),
-                r.cruiseStopId(),
-                r.supplierId(),
-                r.startsAt(),
-                r.endsAt(),
-                r.location(),
-                r.capacity()
-        );
+            @Valid @RequestBody ServiceScheduleCreateDto r) {
+        var s =
+                scheduleManagement.create(
+                        r.serviceId(),
+                        r.cruiseId(),
+                        r.cruiseStopId(),
+                        r.supplierId(),
+                        r.startsAt(),
+                        r.endsAt(),
+                        r.location(),
+                        r.capacity());
         return ApiResponse.success(ServiceScheduleView.of(s, s.getCapacity()));
     }
 
@@ -439,9 +398,7 @@ public class ServicepackageController {
     @PreAuthorize("hasAuthority('SERVICE_UPDATE')")
     @PutMapping("/services/{id}")
     public ApiResponse<ServiceView> updateService(
-            @PathVariable UUID id,
-            @Valid @RequestBody ServiceCatalogDto r
-    ) {
+            @PathVariable UUID id, @Valid @RequestBody ServiceCatalogDto r) {
         var s = service.service(id);
         apply(s, r);
         return ApiResponse.success(ServiceView.of(service.saveService(s)));
@@ -450,9 +407,7 @@ public class ServicepackageController {
     @PreAuthorize("hasAnyAuthority('SERVICE_ACTIVATE', 'SERVICE_SUSPEND')")
     @PostMapping("/services/{id}/{action}")
     public ApiResponse<ServiceView> serviceStatus(
-            @PathVariable UUID id,
-            @PathVariable String action
-    ) {
+            @PathVariable UUID id, @PathVariable String action) {
         return ApiResponse.success(ServiceView.of(service.serviceStatus(id, action)));
     }
 
@@ -491,9 +446,7 @@ public class ServicepackageController {
     @PreAuthorize("hasAuthority('PRODUCT_MANAGE')")
     @PutMapping("/products/{id}")
     public ApiResponse<ProductView> updateProduct(
-            @PathVariable UUID id,
-            @Valid @RequestBody ProductDto r
-    ) {
+            @PathVariable UUID id, @Valid @RequestBody ProductDto r) {
         var p = service.product(id);
         apply(p, r);
         return ApiResponse.success(ProductView.of(service.saveProduct(p)));
@@ -502,9 +455,7 @@ public class ServicepackageController {
     @PreAuthorize("hasAuthority('PRODUCT_MANAGE')")
     @PostMapping("/products/{id}/status/{action}")
     public ApiResponse<ProductView> productStatus(
-            @PathVariable UUID id,
-            @PathVariable String action
-    ) {
+            @PathVariable UUID id, @PathVariable String action) {
         return ApiResponse.success(ProductView.of(service.productStatus(id, action)));
     }
 
@@ -513,7 +464,10 @@ public class ServicepackageController {
     public ResponseEntity<ApiResponse<Void>> recordSale(@PathVariable UUID id) {
         service.product(id);
         return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED)
-                .body(ApiResponse.error("Product sales are not represented by a product sale/POS workflow in the current schema."));
+                .body(
+                        ApiResponse.error(
+                                "Product sales are not represented by a product sale/POS workflow"
+                                    + " in the current schema."));
     }
 
     @PreAuthorize("hasAuthority('PRODUCT_MANAGE')")
@@ -530,13 +484,20 @@ public class ServicepackageController {
     @PreAuthorize("permitAll()")
     @GetMapping("/packages")
     public ApiResponse<List<PackageView>> packages(Authentication auth) {
-        boolean isStaff = auth != null && auth.getAuthorities().stream().anyMatch(
-                a -> a.getAuthority().equals("TOUR_PACKAGE_MANAGE") || a.getAuthority().equals("TOUR_PACKAGE_ASSIGN"));
+        boolean isStaff =
+                auth != null
+                        && auth.getAuthorities().stream()
+                                .anyMatch(
+                                        a ->
+                                                a.getAuthority().equals("TOUR_PACKAGE_MANAGE")
+                                                        || a.getAuthority()
+                                                                .equals("TOUR_PACKAGE_ASSIGN"));
         if (!isStaff) {
-            return ApiResponse.success(service.packages().stream()
-                    .filter(p -> p.getStatus() == TourPackageStatus.ACTIVE)
-                    .map(PackageView::of)
-                    .toList());
+            return ApiResponse.success(
+                    service.packages().stream()
+                            .filter(p -> p.getStatus() == TourPackageStatus.ACTIVE)
+                            .map(PackageView::of)
+                            .toList());
         }
         return ApiResponse.success(service.packages().stream().map(PackageView::of).toList());
     }
@@ -545,8 +506,14 @@ public class ServicepackageController {
     @GetMapping("/packages/{id}")
     public ApiResponse<PackageView> tourPackage(@PathVariable UUID id, Authentication auth) {
         var p = service.tourPackage(id);
-        boolean isStaff = auth != null && auth.getAuthorities().stream().anyMatch(
-                a -> a.getAuthority().equals("TOUR_PACKAGE_MANAGE") || a.getAuthority().equals("TOUR_PACKAGE_ASSIGN"));
+        boolean isStaff =
+                auth != null
+                        && auth.getAuthorities().stream()
+                                .anyMatch(
+                                        a ->
+                                                a.getAuthority().equals("TOUR_PACKAGE_MANAGE")
+                                                        || a.getAuthority()
+                                                                .equals("TOUR_PACKAGE_ASSIGN"));
         if (!isStaff && p.getStatus() != TourPackageStatus.ACTIVE) {
             throw new AccessDeniedException("Package is not active");
         }
@@ -565,9 +532,7 @@ public class ServicepackageController {
     @PreAuthorize("hasAuthority('TOUR_PACKAGE_MANAGE')")
     @PutMapping("/packages/{id}")
     public ApiResponse<PackageView> updatePackage(
-            @PathVariable UUID id,
-            @Valid @RequestBody PackageDto r
-    ) {
+            @PathVariable UUID id, @Valid @RequestBody PackageDto r) {
         var p = service.tourPackage(id);
         if (p.getStatus() != TourPackageStatus.DRAFT) {
             throw new IllegalStateException("Only draft packages can be edited");
@@ -578,28 +543,39 @@ public class ServicepackageController {
 
     @PreAuthorize("permitAll()")
     @GetMapping("/packages/{id}/benefits")
-    public ApiResponse<PackageBenefitsView> packageBenefits(@PathVariable UUID id, Authentication auth) {
+    public ApiResponse<PackageBenefitsView> packageBenefits(
+            @PathVariable UUID id, Authentication auth) {
         var p = service.tourPackage(id);
-        boolean staff = auth != null && auth.getAuthorities().stream().anyMatch(
-                a -> a.getAuthority().equals("TOUR_PACKAGE_MANAGE") || a.getAuthority().equals("TOUR_PACKAGE_ASSIGN"));
+        boolean staff =
+                auth != null
+                        && auth.getAuthorities().stream()
+                                .anyMatch(
+                                        a ->
+                                                a.getAuthority().equals("TOUR_PACKAGE_MANAGE")
+                                                        || a.getAuthority()
+                                                                .equals("TOUR_PACKAGE_ASSIGN"));
         if (!staff && p.getStatus() != TourPackageStatus.ACTIVE) {
             throw new AccessDeniedException("Package is not active");
         }
-        return ApiResponse.success(new PackageBenefitsView(
-                PackageView.of(p),
-                service.packageServices(id).stream().map(PackageServiceView::of).toList(),
-                service.packageActivities(id).stream().map(PackageActivityView::of).toList(),
-                service.packageExcursions(id).stream().map(PackageExcursionView::of).toList(),
-                catalogReads.entitlements(id).stream().map(PackageEntitlementView::of).toList()
-        ));
+        return ApiResponse.success(
+                new PackageBenefitsView(
+                        PackageView.of(p),
+                        service.packageServices(id).stream().map(PackageServiceView::of).toList(),
+                        service.packageActivities(id).stream()
+                                .map(PackageActivityView::of)
+                                .toList(),
+                        service.packageExcursions(id).stream()
+                                .map(PackageExcursionView::of)
+                                .toList(),
+                        catalogReads.entitlements(id).stream()
+                                .map(PackageEntitlementView::of)
+                                .toList()));
     }
 
     @PreAuthorize("hasAuthority('TOUR_PACKAGE_MANAGE')")
     @PostMapping("/packages/{id}/{action}")
     public ApiResponse<PackageView> packageStatus(
-            @PathVariable UUID id,
-            @PathVariable String action
-    ) {
+            @PathVariable UUID id, @PathVariable String action) {
         return ApiResponse.success(PackageView.of(service.packageStatus(id, action)));
     }
 
@@ -618,35 +594,37 @@ public class ServicepackageController {
     @GetMapping("/requests")
     public ApiResponse<List<ServiceRequestView>> requests(Authentication auth) {
         var principal = (CasmsPrincipal) auth.getPrincipal();
-        return ApiResponse.success(serviceRequests.list(principal.getUserId(), principal.isStaff()).stream()
-                .map(ServiceRequestView::of)
-                .toList());
+        return ApiResponse.success(
+                serviceRequests.list(principal.getUserId(), principal.isStaff()).stream()
+                        .map(ServiceRequestView::of)
+                        .toList());
     }
 
     @PreAuthorize("hasAnyAuthority('SERVICE_REQUEST_READ', 'SERVICE_REQUEST_CREATE')")
     @GetMapping("/requests/{id}")
     public ApiResponse<ServiceRequestView> request(@PathVariable UUID id, Authentication auth) {
         var principal = (CasmsPrincipal) auth.getPrincipal();
-        return ApiResponse.success(ServiceRequestView.of(serviceRequests.get(id, principal.getUserId(), principal.isStaff())));
+        return ApiResponse.success(
+                ServiceRequestView.of(
+                        serviceRequests.get(id, principal.getUserId(), principal.isStaff())));
     }
 
     @PreAuthorize("hasAuthority('SERVICE_REQUEST_CREATE')")
     @PostMapping("/requests")
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<ServiceRequestView> createRequest(
-            @Valid @RequestBody ServiceRequestDto r,
-            Authentication auth
-    ) {
+            @Valid @RequestBody ServiceRequestDto r, Authentication auth) {
         var p = (CasmsPrincipal) auth.getPrincipal();
-        return ApiResponse.success(ServiceRequestView.of(serviceRequests.create(
-                p.getUserId(),
-                r.serviceId(),
-                r.bookingPassengerId(),
-                r.serviceScheduleId(),
-                r.quantity(),
-                r.note(),
-                r.idempotencyKey()
-        )));
+        return ApiResponse.success(
+                ServiceRequestView.of(
+                        serviceRequests.create(
+                                p.getUserId(),
+                                r.serviceId(),
+                                r.bookingPassengerId(),
+                                r.serviceScheduleId(),
+                                r.quantity(),
+                                r.note(),
+                                r.idempotencyKey())));
     }
 
     @PreAuthorize("hasAnyAuthority('SERVICE_REQUEST_CREATE', 'SERVICE_REQUEST_EXECUTE')")
@@ -654,35 +632,31 @@ public class ServicepackageController {
     public ApiResponse<ServiceRequestView> updateRequest(
             @PathVariable UUID id,
             @Valid @RequestBody ServiceRequestUpdateDto r,
-            Authentication auth
-    ) {
+            Authentication auth) {
         var p = (CasmsPrincipal) auth.getPrincipal();
-        return ApiResponse.success(ServiceRequestView.of(serviceRequests.updatePending(
-                id,
-                p.getUserId(),
-                p.isStaff(),
-                r.quantity(),
-                r.note()
-        )));
+        return ApiResponse.success(
+                ServiceRequestView.of(
+                        serviceRequests.updatePending(
+                                id, p.getUserId(), p.isStaff(), r.quantity(), r.note())));
     }
 
     @PreAuthorize("hasAnyAuthority('SERVICE_REQUEST_ASSIGN', 'SERVICE_REQUEST_EXECUTE')")
     @PostMapping("/requests/{id}/actions/{action}")
     public ApiResponse<ServiceRequestView> serviceRequestAction(
-            @PathVariable UUID id,
-            @PathVariable String action,
-            Authentication auth
-    ) {
+            @PathVariable UUID id, @PathVariable String action, Authentication auth) {
         var p = (CasmsPrincipal) auth.getPrincipal();
-        return ApiResponse.success(ServiceRequestView.of(serviceRequests.transition(id, p.getUserId(), action)));
+        return ApiResponse.success(
+                ServiceRequestView.of(serviceRequests.transition(id, p.getUserId(), action)));
     }
 
     @PreAuthorize("hasAuthority('SERVICE_REQUEST_CREATE')")
     @PostMapping("/requests/{id}/cancel")
-    public ApiResponse<ServiceRequestView> cancelRequest(@PathVariable UUID id, Authentication auth) {
+    public ApiResponse<ServiceRequestView> cancelRequest(
+            @PathVariable UUID id, Authentication auth) {
         var p = (CasmsPrincipal) auth.getPrincipal();
         var r = serviceRequests.get(id, p.getUserId(), p.isStaff());
-        return ApiResponse.success(ServiceRequestView.of(serviceRequests.transition(id, p.getUserId(), "cancel")));
+        return ApiResponse.success(
+                ServiceRequestView.of(serviceRequests.transition(id, p.getUserId(), "cancel")));
     }
 
     // ==========================================
@@ -692,23 +666,22 @@ public class ServicepackageController {
     @PreAuthorize("hasAnyAuthority('TOUR_PACKAGE_ASSIGN', 'TOUR_PACKAGE_MANAGE', 'BOOKING_READ')")
     @GetMapping("/package-assignments")
     public ApiResponse<List<AssignmentView>> packageAssignments(
-            @RequestParam(required = false) UUID bookingId,
-            Authentication auth
-    ) {
+            @RequestParam(required = false) UUID bookingId, Authentication auth) {
         var p = (CasmsPrincipal) auth.getPrincipal();
-        return ApiResponse.success(service.packageAssignments(bookingId, p.getUserId(), p.isStaff()).stream()
-                .map(AssignmentView::of)
-                .toList());
+        return ApiResponse.success(
+                service.packageAssignments(bookingId, p.getUserId(), p.isStaff()).stream()
+                        .map(AssignmentView::of)
+                        .toList());
     }
 
     @PreAuthorize("hasAnyAuthority('TOUR_PACKAGE_ASSIGN', 'TOUR_PACKAGE_MANAGE', 'BOOKING_READ')")
     @GetMapping("/package-assignments/{bookingPassengerId}")
     public ApiResponse<AssignmentView> packageAssignment(
-            @PathVariable UUID bookingPassengerId,
-            Authentication auth
-    ) {
+            @PathVariable UUID bookingPassengerId, Authentication auth) {
         var p = (CasmsPrincipal) auth.getPrincipal();
-        return ApiResponse.success(AssignmentView.of(service.packageAssignment(bookingPassengerId, p.getUserId(), p.isStaff())));
+        return ApiResponse.success(
+                AssignmentView.of(
+                        service.packageAssignment(bookingPassengerId, p.getUserId(), p.isStaff())));
     }
 
     @PreAuthorize("hasAuthority('TOUR_PACKAGE_ASSIGN')")
@@ -717,15 +690,15 @@ public class ServicepackageController {
     public ApiResponse<AssignmentView> assignPackage(
             @PathVariable UUID bookingPassengerId,
             @Valid @RequestBody PackageAssignmentDto r,
-            Authentication auth
-    ) {
+            Authentication auth) {
         var p = (CasmsPrincipal) auth.getPrincipal();
-        return ApiResponse.success(AssignmentView.of(service.assignPackage(
-                bookingPassengerId,
-                r.tourPackageId(),
-                p.getUserId(),
-                p.isStaff()
-        )));
+        return ApiResponse.success(
+                AssignmentView.of(
+                        service.assignPackage(
+                                bookingPassengerId,
+                                r.tourPackageId(),
+                                p.getUserId(),
+                                p.isStaff())));
     }
 
     @PreAuthorize("hasAuthority('TOUR_PACKAGE_ASSIGN')")
@@ -733,24 +706,21 @@ public class ServicepackageController {
     public ApiResponse<AssignmentView> changePackage(
             @PathVariable UUID bookingPassengerId,
             @Valid @RequestBody PackageAssignmentDto r,
-            Authentication auth
-    ) {
+            Authentication auth) {
         var p = (CasmsPrincipal) auth.getPrincipal();
-        return ApiResponse.success(AssignmentView.of(service.changePackage(
-                bookingPassengerId,
-                r.tourPackageId(),
-                p.getUserId(),
-                p.isStaff()
-        )));
+        return ApiResponse.success(
+                AssignmentView.of(
+                        service.changePackage(
+                                bookingPassengerId,
+                                r.tourPackageId(),
+                                p.getUserId(),
+                                p.isStaff())));
     }
 
     @PreAuthorize("hasAuthority('TOUR_PACKAGE_ASSIGN')")
     @DeleteMapping("/package-assignments/{bookingPassengerId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void removePackage(
-            @PathVariable UUID bookingPassengerId,
-            Authentication auth
-    ) {
+    public void removePackage(@PathVariable UUID bookingPassengerId, Authentication auth) {
         var p = (CasmsPrincipal) auth.getPrincipal();
         service.removePackageAssignment(bookingPassengerId, p.getUserId(), p.isStaff());
     }
@@ -762,36 +732,31 @@ public class ServicepackageController {
     @PreAuthorize("hasAnyAuthority('TOUR_PACKAGE_MANAGE', 'PACKAGE_COMPONENT_MANAGE')")
     @GetMapping("/packages/{id}/services")
     public ApiResponse<List<PackageServiceView>> packageServices(@PathVariable UUID id) {
-        return ApiResponse.success(service.packageServices(id).stream().map(PackageServiceView::of).toList());
+        return ApiResponse.success(
+                service.packageServices(id).stream().map(PackageServiceView::of).toList());
     }
 
     @PreAuthorize("hasAuthority('PACKAGE_COMPONENT_MANAGE')")
     @PostMapping("/packages/{id}/services/{serviceId}")
     public ApiResponse<PackageServiceView> addPackageService(
-            @PathVariable UUID id,
-            @PathVariable UUID serviceId,
-            @Valid @RequestBody BenefitDto r
-    ) {
-        return ApiResponse.success(PackageServiceView.of(service.addPackageService(id, serviceId, r.benefitType())));
+            @PathVariable UUID id, @PathVariable UUID serviceId, @Valid @RequestBody BenefitDto r) {
+        return ApiResponse.success(
+                PackageServiceView.of(service.addPackageService(id, serviceId, r.benefitType())));
     }
 
     @PreAuthorize("hasAuthority('PACKAGE_COMPONENT_MANAGE')")
     @PutMapping("/packages/{id}/services/{serviceId}")
     public ApiResponse<PackageServiceView> updatePackageService(
-            @PathVariable UUID id,
-            @PathVariable UUID serviceId,
-            @Valid @RequestBody BenefitDto r
-    ) {
-        return ApiResponse.success(PackageServiceView.of(service.updatePackageService(id, serviceId, r.benefitType())));
+            @PathVariable UUID id, @PathVariable UUID serviceId, @Valid @RequestBody BenefitDto r) {
+        return ApiResponse.success(
+                PackageServiceView.of(
+                        service.updatePackageService(id, serviceId, r.benefitType())));
     }
 
     @PreAuthorize("hasAuthority('PACKAGE_COMPONENT_MANAGE')")
     @DeleteMapping("/packages/{id}/services/{serviceId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void removePackageService(
-            @PathVariable UUID id,
-            @PathVariable UUID serviceId
-    ) {
+    public void removePackageService(@PathVariable UUID id, @PathVariable UUID serviceId) {
         service.removePackageService(id, serviceId);
     }
 
@@ -802,7 +767,8 @@ public class ServicepackageController {
     @PreAuthorize("hasAnyAuthority('TOUR_PACKAGE_MANAGE', 'PACKAGE_COMPONENT_MANAGE')")
     @GetMapping("/packages/{id}/activities")
     public ApiResponse<List<PackageActivityView>> packageActivities(@PathVariable UUID id) {
-        return ApiResponse.success(service.packageActivities(id).stream().map(PackageActivityView::of).toList());
+        return ApiResponse.success(
+                service.packageActivities(id).stream().map(PackageActivityView::of).toList());
     }
 
     @PreAuthorize("hasAuthority('PACKAGE_COMPONENT_MANAGE')")
@@ -810,9 +776,10 @@ public class ServicepackageController {
     public ApiResponse<PackageActivityView> addPackageActivity(
             @PathVariable UUID id,
             @PathVariable UUID activityId,
-            @Valid @RequestBody BenefitDto r
-    ) {
-        return ApiResponse.success(PackageActivityView.of(service.addPackageActivity(id, activityId, r.benefitType())));
+            @Valid @RequestBody BenefitDto r) {
+        return ApiResponse.success(
+                PackageActivityView.of(
+                        service.addPackageActivity(id, activityId, r.benefitType())));
     }
 
     @PreAuthorize("hasAuthority('PACKAGE_COMPONENT_MANAGE')")
@@ -820,18 +787,16 @@ public class ServicepackageController {
     public ApiResponse<PackageActivityView> updatePackageActivity(
             @PathVariable UUID id,
             @PathVariable UUID activityId,
-            @Valid @RequestBody BenefitDto r
-    ) {
-        return ApiResponse.success(PackageActivityView.of(service.updatePackageActivity(id, activityId, r.benefitType())));
+            @Valid @RequestBody BenefitDto r) {
+        return ApiResponse.success(
+                PackageActivityView.of(
+                        service.updatePackageActivity(id, activityId, r.benefitType())));
     }
 
     @PreAuthorize("hasAuthority('PACKAGE_COMPONENT_MANAGE')")
     @DeleteMapping("/packages/{id}/activities/{activityId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void removePackageActivity(
-            @PathVariable UUID id,
-            @PathVariable UUID activityId
-    ) {
+    public void removePackageActivity(@PathVariable UUID id, @PathVariable UUID activityId) {
         service.removePackageActivity(id, activityId);
     }
 
@@ -842,7 +807,8 @@ public class ServicepackageController {
     @PreAuthorize("hasAnyAuthority('TOUR_PACKAGE_MANAGE', 'PACKAGE_COMPONENT_MANAGE')")
     @GetMapping("/packages/{id}/excursions")
     public ApiResponse<List<PackageExcursionView>> packageExcursions(@PathVariable UUID id) {
-        return ApiResponse.success(service.packageExcursions(id).stream().map(PackageExcursionView::of).toList());
+        return ApiResponse.success(
+                service.packageExcursions(id).stream().map(PackageExcursionView::of).toList());
     }
 
     @PreAuthorize("hasAuthority('PACKAGE_COMPONENT_MANAGE')")
@@ -850,9 +816,10 @@ public class ServicepackageController {
     public ApiResponse<PackageExcursionView> addPackageExcursion(
             @PathVariable UUID id,
             @PathVariable UUID excursionId,
-            @Valid @RequestBody BenefitDto r
-    ) {
-        return ApiResponse.success(PackageExcursionView.of(service.addPackageExcursion(id, excursionId, r.benefitType())));
+            @Valid @RequestBody BenefitDto r) {
+        return ApiResponse.success(
+                PackageExcursionView.of(
+                        service.addPackageExcursion(id, excursionId, r.benefitType())));
     }
 
     @PreAuthorize("hasAuthority('PACKAGE_COMPONENT_MANAGE')")
@@ -860,18 +827,16 @@ public class ServicepackageController {
     public ApiResponse<PackageExcursionView> updatePackageExcursion(
             @PathVariable UUID id,
             @PathVariable UUID excursionId,
-            @Valid @RequestBody BenefitDto r
-    ) {
-        return ApiResponse.success(PackageExcursionView.of(service.updatePackageExcursion(id, excursionId, r.benefitType())));
+            @Valid @RequestBody BenefitDto r) {
+        return ApiResponse.success(
+                PackageExcursionView.of(
+                        service.updatePackageExcursion(id, excursionId, r.benefitType())));
     }
 
     @PreAuthorize("hasAuthority('PACKAGE_COMPONENT_MANAGE')")
     @DeleteMapping("/packages/{id}/excursions/{excursionId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void removePackageExcursion(
-            @PathVariable UUID id,
-            @PathVariable UUID excursionId
-    ) {
+    public void removePackageExcursion(@PathVariable UUID id, @PathVariable UUID excursionId) {
         service.removePackageExcursion(id, excursionId);
     }
 
@@ -890,8 +855,14 @@ public class ServicepackageController {
             s.setRequiresSchedule(r.requiresSchedule());
         }
         if (r.categoryId() != null) {
-            var cat = categoryRepository.findById(r.categoryId())
-                    .orElseThrow(() -> new ResourceNotFoundException("ServiceCategory not found: " + r.categoryId()));
+            var cat =
+                    categoryRepository
+                            .findById(r.categoryId())
+                            .orElseThrow(
+                                    () ->
+                                            new ResourceNotFoundException(
+                                                    "ServiceCategory not found: "
+                                                            + r.categoryId()));
             s.setCategory(cat);
         }
     }

@@ -3,7 +3,9 @@ package com.casms.ship.entity;
 import com.casms.identity.entity.User;
 import com.casms.ship.enums.CabinType;
 import com.casms.ship.enums.PricingPolicyStatus;
+
 import jakarta.persistence.*;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -32,17 +34,34 @@ public class CruisePricingPolicy {
     @JoinColumn(name = "cruise_id")
     private Cruise cruise;
 
-    @Column(name="policy_number",nullable=false)
-    @Builder.Default private int policyNumber=1;
-    @Column(name="revision",nullable=false)
-    @Builder.Default private long revision=0;
-    @Column(name="submitted_by") private UUID submittedBy;
-    @Column(name="submitted_at") private Instant submittedAt;
-    @Column(name="reviewed_by") private UUID reviewedBy;
-    @Column(name="reviewed_at") private Instant reviewedAt;
-    @Column(name="decision_reason") private String decisionReason;
-    @Column(name="submitted_snapshot") private String submittedSnapshot;
-    @Column(name="snapshot_hash") private String snapshotHash;
+    @Column(name = "policy_number", nullable = false)
+    @Builder.Default
+    private int policyNumber = 1;
+
+    @Column(name = "revision", nullable = false)
+    @Builder.Default
+    private long revision = 0;
+
+    @Column(name = "submitted_by")
+    private UUID submittedBy;
+
+    @Column(name = "submitted_at")
+    private Instant submittedAt;
+
+    @Column(name = "reviewed_by")
+    private UUID reviewedBy;
+
+    @Column(name = "reviewed_at")
+    private Instant reviewedAt;
+
+    @Column(name = "decision_reason")
+    private String decisionReason;
+
+    @Column(name = "submitted_snapshot")
+    private String submittedSnapshot;
+
+    @Column(name = "snapshot_hash")
+    private String snapshotHash;
 
     @Builder.Default
     @Column(name = "policy_version", nullable = false, length = 50)
@@ -120,8 +139,8 @@ public class CruisePricingPolicy {
     }
 
     /**
-     * Authoritative base fare lookup. Returns exact base fare configured.
-     * Returns null if unpriced (strictly distinguishes 0 from NULL).
+     * Authoritative base fare lookup. Returns exact base fare configured. Returns null if unpriced
+     * (strictly distinguishes 0 from NULL).
      */
     public BigDecimal getBaseFareForCabinType(CabinType type) {
         if (type == null) return null;

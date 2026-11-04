@@ -3,17 +3,22 @@ package com.casms.servicepackage.entity;
 import com.casms.activity.entity.Supplier;
 import com.casms.ship.entity.Cruise;
 import com.casms.ship.entity.CruiseStop;
+
 import jakarta.persistence.*;
+
 import lombok.Getter;
 import lombok.Setter;
+
 import java.time.Instant;
 import java.util.UUID;
 
-@Getter @Setter
+@Getter
+@Setter
 @Entity
 @Table(name = "\"ServiceSchedule\"")
 public class ServiceSchedule {
-    @Id @GeneratedValue(strategy = GenerationType.UUID)
+    @Id
+    @GeneratedValue(strategy = GenerationType.UUID)
     @Column(name = "service_schedule_id")
     private UUID serviceScheduleId;
 

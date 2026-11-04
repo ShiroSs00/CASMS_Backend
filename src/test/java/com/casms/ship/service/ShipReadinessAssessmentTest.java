@@ -1,9 +1,13 @@
 package com.casms.ship.service;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.mockito.Mockito.when;
+
 import com.casms.common.service.BusinessCodeGenerator;
 import com.casms.ship.entity.Ship;
 import com.casms.ship.enums.ShipStatus;
 import com.casms.ship.repository.*;
+
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -12,9 +16,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.Optional;
 import java.util.UUID;
-
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class ShipReadinessAssessmentTest {
@@ -40,7 +41,8 @@ class ShipReadinessAssessmentTest {
         assertEquals("READY", result.readiness());
         assertEquals(3, result.deckCount());
         assertEquals(40, result.cabinCount());
-        org.junit.jupiter.api.Assertions.assertTrue(result.scope().contains("cabin vacancy are not assessed"));
+        org.junit.jupiter.api.Assertions.assertTrue(
+                result.scope().contains("cabin vacancy are not assessed"));
     }
 
     @Test

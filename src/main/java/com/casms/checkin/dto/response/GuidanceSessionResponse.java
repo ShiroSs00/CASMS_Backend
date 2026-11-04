@@ -1,6 +1,7 @@
 package com.casms.checkin.dto.response;
 
 import com.casms.checkin.enums.GuidanceSessionStatus;
+
 import lombok.Builder;
 import lombok.Getter;
 

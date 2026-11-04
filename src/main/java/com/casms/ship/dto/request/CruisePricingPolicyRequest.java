@@ -1,10 +1,12 @@
 package com.casms.ship.dto.request;
 
 import io.swagger.v3.oas.annotations.media.Schema;
+
 import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Pattern;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -19,16 +21,25 @@ import java.math.BigDecimal;
 @Schema(description = "Yêu cầu cấu hình chính sách giá thương mại cho chuyến khởi hành (BE-H01)")
 public class CruisePricingPolicyRequest {
 
-    @Schema(description = "Phiên bản chính sách giá (ví dụ: PRC-2026.10-V1). Tự động tạo nếu để trống", example = "PRC-2026.10-V1")
+    @Schema(
+            description =
+                    "Phiên bản chính sách giá (ví dụ: PRC-2026.10-V1). Tự động tạo nếu để trống",
+            example = "PRC-2026.10-V1")
     private String policyVersion;
 
     @Builder.Default
-    @Pattern(regexp = "^[A-Z]{3}$", message = "Mã tiền tệ phải gồm 3 chữ cái viết hoa (ví dụ: USD, VND)")
+    @Pattern(
+            regexp = "^[A-Z]{3}$",
+            message = "Mã tiền tệ phải gồm 3 chữ cái viết hoa (ví dụ: USD, VND)")
     @Schema(description = "Mã tiền tệ", example = "USD")
     private String currency = "USD";
 
     @DecimalMin(value = "0.0", message = "Giá vé phòng Interior không được âm")
-    @Schema(description = "Giá cơ sở phòng Interior (USD). 0 hợp lệ (miễn phí/bao gồm), null nghĩa là chưa định giá", example = "300.00")
+    @Schema(
+            description =
+                    "Giá cơ sở phòng Interior (USD). 0 hợp lệ (miễn phí/bao gồm), null nghĩa là"
+                        + " chưa định giá",
+            example = "300.00")
     private BigDecimal interiorBaseFare;
 
     @DecimalMin(value = "0.0", message = "Giá vé phòng Ocean View không được âm")
@@ -62,16 +73,23 @@ public class CruisePricingPolicyRequest {
 
     @Builder.Default
     @Min(value = 0, message = "Số ngày hạn tất toán cuối cùng không được âm")
-    @Schema(description = "Số ngày trước khởi hành cần thanh toán toàn bộ tiền vé còn lại", example = "14")
+    @Schema(
+            description = "Số ngày trước khởi hành cần thanh toán toàn bộ tiền vé còn lại",
+            example = "14")
     private int finalPaymentDueDays = 14;
 
     @Builder.Default
     @Min(value = 0, message = "Số ngày cutoff thanh toán đủ 100% không được âm")
-    @Schema(description = "Khoảng ngày cận khởi hành bắt buộc thanh toán 100% không cho đặt cọc", example = "7")
+    @Schema(
+            description = "Khoảng ngày cận khởi hành bắt buộc thanh toán 100% không cho đặt cọc",
+            example = "7")
     private int fullPaymentCutoffDays = 7;
 
-    @Schema(description = "Điều khoản và chính sách hủy vé / hoàn tiền chi tiết",
-            example = "Hủy trước 30 ngày hoàn 100%; hủy 14-29 ngày hoàn 50%; dưới 14 ngày không hoàn tiền.")
+    @Schema(
+            description = "Điều khoản và chính sách hủy vé / hoàn tiền chi tiết",
+            example =
+                    "Hủy trước 30 ngày hoàn 100%; hủy 14-29 ngày hoàn 50%; dưới 14 ngày không hoàn"
+                        + " tiền.")
     private String cancellationPolicy;
 
     @Min(0)
@@ -80,6 +98,7 @@ public class CruisePricingPolicyRequest {
     /** Retired input is rejected instead of silently enabling approval. */
     @com.fasterxml.jackson.annotation.JsonProperty("autoApprove")
     public void rejectAutoApprove(Boolean ignored) {
-        if(Boolean.TRUE.equals(ignored))throw new IllegalArgumentException("AUTO_APPROVAL_RETIRED");
+        if (Boolean.TRUE.equals(ignored))
+            throw new IllegalArgumentException("AUTO_APPROVAL_RETIRED");
     }
 }

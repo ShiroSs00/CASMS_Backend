@@ -2,7 +2,9 @@ package com.casms.ship.dto.response;
 
 import com.casms.ship.enums.CruiseCruiseType;
 import com.casms.ship.enums.CruiseStatus;
+
 import io.swagger.v3.oas.annotations.media.Schema;
+
 import lombok.Data;
 
 import java.time.Instant;
@@ -12,7 +14,9 @@ import java.util.UUID;
 @Schema(description = "Thông tin chi tiết chuyến khởi hành du thuyền (Cruise)")
 public class CruiseResponse {
 
-    @Schema(description = "ID chuyến khởi hành (UUID)", example = "3fa85f64-5717-4562-b3fc-2c963f66afa6")
+    @Schema(
+            description = "ID chuyến khởi hành (UUID)",
+            example = "3fa85f64-5717-4562-b3fc-2c963f66afa6")
     private UUID cruiseId;
 
     @Schema(description = "Mã chuyến khởi hành do hệ thống cấp", example = "CR-0001")
@@ -51,7 +55,11 @@ public class CruiseResponse {
     @Schema(description = "Tên cảng trở về", example = "Cảng Quốc tế Tuần Châu")
     private String returnPortName;
 
-    @Schema(description = "Trạng thái chuyến khởi hành (DRAFT, PUBLISHED, IN_PROGRESS, COMPLETED, CANCELLED)", example = "DRAFT")
+    @Schema(
+            description =
+                    "Trạng thái chuyến khởi hành (DRAFT, PUBLISHED, IN_PROGRESS, COMPLETED,"
+                        + " CANCELLED)",
+            example = "DRAFT")
     private CruiseStatus status;
 
     @Schema(description = "ID Chuyến đi nguồn (D01)")
@@ -66,7 +74,9 @@ public class CruiseResponse {
     @Schema(description = "Số phiên bản nguồn", example = "2")
     private Integer sourceVersionNumber;
 
-    @Schema(description = "Số revision của Cruise phục vụ optimistic concurrency control", example = "1")
+    @Schema(
+            description = "Số revision của Cruise phục vụ optimistic concurrency control",
+            example = "1")
     private Long revision;
 
     @Schema(description = "Revision của phiên bản nguồn tại thời điểm materialize", example = "1")
@@ -125,6 +135,7 @@ public class CruiseResponse {
 
     @Schema(description = "Thời điểm cập nhật gần nhất")
     private Instant updatedAt;
+
     private String itineraryMode;
     private String plannedScope;
 }

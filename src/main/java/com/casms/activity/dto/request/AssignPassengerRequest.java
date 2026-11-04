@@ -4,7 +4,4 @@ import jakarta.validation.constraints.NotNull;
 
 import java.util.UUID;
 
-public record AssignPassengerRequest(
-        @NotNull UUID passengerId
-) {
-}
+public record AssignPassengerRequest(@NotNull UUID passengerId) {}

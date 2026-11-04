@@ -1,11 +1,12 @@
-
 package com.casms.ship.entity;
 
 import com.casms.identity.entity.User;
 import com.casms.ship.enums.OperationalIssueSeverity;
 import com.casms.ship.enums.OperationalIssueStatus;
 import com.casms.ship.enums.OperationalIssueType;
+
 import jakarta.persistence.*;
+
 import lombok.Getter;
 import lombok.Setter;
 
@@ -39,7 +40,10 @@ public class OperationalIssue {
     private Cabin cabin;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "issue_type", nullable = false, columnDefinition = "\"OperationalIssue_issue_type\"")
+    @Column(
+            name = "issue_type",
+            nullable = false,
+            columnDefinition = "\"OperationalIssue_issue_type\"")
     private OperationalIssueType issueType;
 
     @Enumerated(EnumType.STRING)

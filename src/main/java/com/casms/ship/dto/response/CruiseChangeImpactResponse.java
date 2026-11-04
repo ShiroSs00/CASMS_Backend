@@ -1,6 +1,7 @@
 package com.casms.ship.dto.response;
 
 import io.swagger.v3.oas.annotations.media.Schema;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -14,7 +15,10 @@ import java.util.UUID;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@Schema(description = "Kết quả đánh giá tác động thay đổi chuyến khởi hành (Change Impact Assessment / C11, C17)")
+@Schema(
+        description =
+                "Kết quả đánh giá tác động thay đổi chuyến khởi hành (Change Impact Assessment /"
+                    + " C11, C17)")
 public class CruiseChangeImpactResponse {
 
     @Schema(description = "ID chuyến khởi hành")
@@ -38,7 +42,9 @@ public class CruiseChangeImpactResponse {
     @Schema(description = "Số lượng booking bị tác động cần xử lý")
     private long affectedBookingsCount;
 
-    @Schema(description = "Số lượng hoạt động trên tàu bị tác động cần dời lịch hoặc kiểm tra vị trí")
+    @Schema(
+            description =
+                    "Số lượng hoạt động trên tàu bị tác động cần dời lịch hoặc kiểm tra vị trí")
     private long affectedActivitiesCount;
 
     @Schema(description = "Số lượng tour tham quan bị tác động cần dời lịch")

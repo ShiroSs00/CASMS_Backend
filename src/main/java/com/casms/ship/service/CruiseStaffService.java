@@ -12,8 +12,10 @@ import com.casms.ship.entity.Cruise;
 import com.casms.ship.entity.CruiseStaff;
 import com.casms.ship.repository.CruiseRepository;
 import com.casms.ship.repository.CruiseStaffRepository;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -28,18 +30,23 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class CruiseStaffService {
 
-    private static final Set<String> ALLOWED_ASSIGNMENT_ROLES = Set.of(
-            "CAPTAIN", "DECK_OFFICER", "ONBOARD_STAFF",
-            "ACTIVITY_SERVICE_MANAGER", "TOUR_GUIDE", "PORT_COORDINATOR",
-            "BOOKING_AGENT", "FINANCE_OFFICER"
-    );
-    private static final Set<Role> STAFF_ROLES = Set.of(
-            Role.OPERATIONS_MANAGER,
-            Role.BOOKING_AGENT,
-            Role.ONBOARD_STAFF,
-            Role.FINANCE_OFFICER,
-            Role.ACTIVITY_SERVICE_MANAGER
-    );
+    private static final Set<String> ALLOWED_ASSIGNMENT_ROLES =
+            Set.of(
+                    "CAPTAIN",
+                    "DECK_OFFICER",
+                    "ONBOARD_STAFF",
+                    "ACTIVITY_SERVICE_MANAGER",
+                    "TOUR_GUIDE",
+                    "PORT_COORDINATOR",
+                    "BOOKING_AGENT",
+                    "FINANCE_OFFICER");
+    private static final Set<Role> STAFF_ROLES =
+            Set.of(
+                    Role.OPERATIONS_MANAGER,
+                    Role.BOOKING_AGENT,
+                    Role.ONBOARD_STAFF,
+                    Role.FINANCE_OFFICER,
+                    Role.ACTIVITY_SERVICE_MANAGER);
 
     private final CruiseStaffRepository cruiseStaffRepository;
     private final CruiseRepository cruiseRepository;
@@ -47,50 +54,83 @@ public class CruiseStaffService {
     private final CruisePreparationService cruisePreparationService;
 
     @Transactional
-    public CruiseStaffResponse assignStaff(UUID cruiseId, CruiseStaffRequest request, UUID actorId) {
-        log.info("Assigning staff user {} to cruise {} with role {}", request.getUserId(), cruiseId, request.getRoleInCruise());
+    public CruiseStaffResponse assignStaff(
+            UUID cruiseId, CruiseStaffRequest request, UUID actorId) {
+        log.info(
+                "Assigning staff user {} to cruise {} with role {}",
+                request.getUserId(),
+                cruiseId,
+                request.getRoleInCruise());
 
-        Cruise cruise = cruiseRepository.findById(cruiseId)
-                .orElseThrow(() -> new ResourceNotFoundException("Cruise not found with id: " + cruiseId));
+        Cruise cruise =
+                cruiseRepository
+                        .findById(cruiseId)
+                        .orElseThrow(
+                                () ->
+                                        new ResourceNotFoundException(
+                                                "Cruise not found with id: " + cruiseId));
 
-        User user = userRepository.findById(request.getUserId())
-                .orElseThrow(() -> new ResourceNotFoundException("User not found with id: " + request.getUserId()));
+        User user =
+                userRepository
+                        .findById(request.getUserId())
+                        .orElseThrow(
+                                () ->
+                                        new ResourceNotFoundException(
+                                                "User not found with id: " + request.getUserId()));
 
         if (user.getStatus() != UserStatus.ACTIVE) {
-            throw new BusinessException("INACTIVE_USER", "Cannot assign inactive user as cruise staff");
+            throw new BusinessException(
+                    "INACTIVE_USER", "Cannot assign inactive user as cruise staff");
         }
 
-        if (cruiseStaffRepository.existsByCruise_CruiseIdAndUser_UserIdAndStatus(cruiseId, user.getUserId(), "ACTIVE")) {
-            throw new BusinessException("DUPLICATE_STAFF_ASSIGNMENT", "Staff member is already assigned to this cruise");
+        if (cruiseStaffRepository.existsByCruise_CruiseIdAndUser_UserIdAndStatus(
+                cruiseId, user.getUserId(), "ACTIVE")) {
+            throw new BusinessException(
+                    "DUPLICATE_STAFF_ASSIGNMENT",
+                    "Staff member is already assigned to this cruise");
         }
 
         String assignmentRole = request.getRoleInCruise().trim().toUpperCase(Locale.ROOT);
         if (!ALLOWED_ASSIGNMENT_ROLES.contains(assignmentRole)) {
-            throw new BusinessException("INVALID_CRUISE_STAFF_ROLE", "Unsupported operational role in cruise assignment");
+            throw new BusinessException(
+                    "INVALID_CRUISE_STAFF_ROLE",
+                    "Unsupported operational role in cruise assignment");
         }
-        if (!user.isStaff() || user.getRoles() == null || user.getRoles().stream().noneMatch(STAFF_ROLES::contains)) {
-            throw new BusinessException("INVALID_CRUISE_STAFF_ROLE",
-                    "Only an existing staff account can receive a cruise assignment; assignment does not grant system roles");
+        if (!user.isStaff()
+                || user.getRoles() == null
+                || user.getRoles().stream().noneMatch(STAFF_ROLES::contains)) {
+            throw new BusinessException(
+                    "INVALID_CRUISE_STAFF_ROLE",
+                    "Only an existing staff account can receive a cruise assignment; assignment"
+                        + " does not grant system roles");
         }
 
-        if ("ONBOARD_STAFF".equals(assignmentRole) && !user.hasRole(com.casms.identity.enums.Role.ONBOARD_STAFF)) {
-            throw new BusinessException("INVALID_CRUISE_STAFF_ROLE", "Onboard assignment requires an Onboard Staff account");
+        if ("ONBOARD_STAFF".equals(assignmentRole)
+                && !user.hasRole(com.casms.identity.enums.Role.ONBOARD_STAFF)) {
+            throw new BusinessException(
+                    "INVALID_CRUISE_STAFF_ROLE",
+                    "Onboard assignment requires an Onboard Staff account");
         }
 
         // Validate schedule conflict across other active cruises
-        List<CruiseStaff> conflicts = cruiseStaffRepository.findConflictingAssignments(
-                user.getUserId(),
-                cruise.getDepartureDatetime(),
-                cruise.getReturnDatetime(),
-                cruiseId
-        );
+        List<CruiseStaff> conflicts =
+                cruiseStaffRepository.findConflictingAssignments(
+                        user.getUserId(),
+                        cruise.getDepartureDatetime(),
+                        cruise.getReturnDatetime(),
+                        cruiseId);
 
         if (!conflicts.isEmpty()) {
             Cruise conflictCruise = conflicts.get(0).getCruise();
-            throw new BusinessException("SHIP_STAFF_SCHEDULE_CONFLICT",
-                    String.format("Staff member %s is already assigned to conflicting cruise %s (%s to %s)",
-                            user.getUsername(), conflictCruise.getCruiseCode(),
-                            conflictCruise.getDepartureDatetime(), conflictCruise.getReturnDatetime()));
+            throw new BusinessException(
+                    "SHIP_STAFF_SCHEDULE_CONFLICT",
+                    String.format(
+                            "Staff member %s is already assigned to conflicting cruise %s (%s to"
+                                + " %s)",
+                            user.getUsername(),
+                            conflictCruise.getCruiseCode(),
+                            conflictCruise.getDepartureDatetime(),
+                            conflictCruise.getReturnDatetime()));
         }
 
         CruiseStaff staff = new CruiseStaff();
@@ -100,11 +140,16 @@ public class CruiseStaffService {
         staff.setAssignedAt(Instant.now());
         staff.setStatus("ACTIVE");
         staff.setNotes(request.getNotes());
-        staff.setAssignedBy(userRepository.findById(actorId)
-                .orElseThrow(() -> new ResourceNotFoundException("Assigning user not found")));
+        staff.setAssignedBy(
+                userRepository
+                        .findById(actorId)
+                        .orElseThrow(
+                                () -> new ResourceNotFoundException("Assigning user not found")));
 
         CruiseStaff saved = cruiseStaffRepository.save(staff);
-        cruisePreparationService.invalidateSignoffs(cruiseId, "Phân công nhân sự mới: " + user.getUsername() + " (" + assignmentRole + ")");
+        cruisePreparationService.invalidateSignoffs(
+                cruiseId,
+                "Phân công nhân sự mới: " + user.getUsername() + " (" + assignmentRole + ")");
         return toResponse(saved);
     }
 
@@ -120,16 +165,27 @@ public class CruiseStaffService {
 
     @Transactional
     public void removeStaff(UUID cruiseId, UUID userId, UUID actorId) {
-        CruiseStaff staff = cruiseStaffRepository
-                .findFirstByCruise_CruiseIdAndUser_UserIdAndStatusOrderByAssignedAtDesc(cruiseId, userId, "ACTIVE")
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        String.format("Staff assignment not found for user %s on cruise %s", userId, cruiseId)));
+        CruiseStaff staff =
+                cruiseStaffRepository
+                        .findFirstByCruise_CruiseIdAndUser_UserIdAndStatusOrderByAssignedAtDesc(
+                                cruiseId, userId, "ACTIVE")
+                        .orElseThrow(
+                                () ->
+                                        new ResourceNotFoundException(
+                                                String.format(
+                                                        "Staff assignment not found for user %s on"
+                                                            + " cruise %s",
+                                                        userId, cruiseId)));
         staff.setStatus("CANCELLED");
         staff.setEndedAt(Instant.now());
-        staff.setEndedBy(userRepository.findById(actorId)
-                .orElseThrow(() -> new ResourceNotFoundException("Removing user not found")));
+        staff.setEndedBy(
+                userRepository
+                        .findById(actorId)
+                        .orElseThrow(
+                                () -> new ResourceNotFoundException("Removing user not found")));
         cruiseStaffRepository.save(staff);
-        cruisePreparationService.invalidateSignoffs(cruiseId, "Gỡ bỏ phân công nhân sự: " + staff.getUser().getUsername());
+        cruisePreparationService.invalidateSignoffs(
+                cruiseId, "Gỡ bỏ phân công nhân sự: " + staff.getUser().getUsername());
         log.info("Relieved staff user {} from cruise {}", userId, cruiseId);
     }
 

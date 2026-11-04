@@ -3,9 +3,11 @@ package com.casms.ship.dto.request;
 import com.casms.ship.enums.RegulationScope;
 import com.casms.ship.enums.RegulationType;
 import com.casms.ship.enums.RegulationUnit;
+
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
+
 import lombok.Getter;
 import lombok.Setter;
 

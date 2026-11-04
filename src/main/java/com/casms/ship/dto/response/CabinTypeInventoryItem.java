@@ -1,7 +1,9 @@
 package com.casms.ship.dto.response;
 
 import com.casms.ship.enums.CabinType;
+
 import io.swagger.v3.oas.annotations.media.Schema;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -43,7 +45,10 @@ public class CabinTypeInventoryItem {
     @Schema(description = "Số chỗ còn lại có thể bán")
     private long remainingSlots;
 
-    @Schema(description = "Hạng phòng này còn được phép bán hay không (remainingSlots > 0 && operationalCabins > 0)")
+    @Schema(
+            description =
+                    "Hạng phòng này còn được phép bán hay không (remainingSlots > 0 &&"
+                        + " operationalCabins > 0)")
     private boolean canSell;
 
     @Schema(description = "Số phòng hỗ trợ người khuyết tật (Accessible)")

@@ -23,12 +23,8 @@ public record TourGroupResponse(
         Instant actualDepartureTime,
         Instant actualReturnTime,
         TourGroupStatus status,
-        String notes
-) {
-    public static TourGroupResponse from(
-            TourGroup group,
-            long assignedPassengers
-    ) {
+        String notes) {
+    public static TourGroupResponse from(TourGroup group, long assignedPassengers) {
         return new TourGroupResponse(
                 group.getTourGroupId(),
                 group.getShoreExcursion().getShoreExcursionId(),
@@ -46,7 +42,6 @@ public record TourGroupResponse(
                 group.getActualDepartureTime(),
                 group.getActualReturnTime(),
                 group.getStatus(),
-                group.getNotes()
-        );
+                group.getNotes());
     }
 }

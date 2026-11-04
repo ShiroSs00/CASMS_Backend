@@ -2,7 +2,9 @@ package com.casms.checkin.entity;
 
 import com.casms.booking.entity.BookingPassenger;
 import com.casms.checkin.enums.GuidanceSessionParticipantAttendanceStatus;
+
 import jakarta.persistence.*;
+
 import lombok.Getter;
 import lombok.Setter;
 
@@ -12,8 +14,10 @@ import java.util.UUID;
 @Getter
 @Setter
 @Entity
-@Table(name = "\"GuidanceSessionParticipant\"",
-       uniqueConstraints = @UniqueConstraint(columnNames = {"guidance_session_id", "booking_passenger_id"}))
+@Table(
+        name = "\"GuidanceSessionParticipant\"",
+        uniqueConstraints =
+                @UniqueConstraint(columnNames = {"guidance_session_id", "booking_passenger_id"}))
 public class GuidanceSessionParticipant {
 
     @Id

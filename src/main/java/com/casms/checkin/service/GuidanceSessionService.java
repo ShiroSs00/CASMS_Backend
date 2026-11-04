@@ -19,8 +19,10 @@ import com.casms.identity.enums.UserStatus;
 import com.casms.identity.repository.UserRepository;
 import com.casms.ship.entity.Cruise;
 import com.casms.ship.repository.CruiseRepository;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -41,20 +43,39 @@ public class GuidanceSessionService {
 
     @Transactional
     public GuidanceSessionResponse createSession(GuidanceSessionCreateRequest request) {
-        log.info("Creating guidance session '{}' for cruise {}", request.getSessionName(), request.getCruiseId());
+        log.info(
+                "Creating guidance session '{}' for cruise {}",
+                request.getSessionName(),
+                request.getCruiseId());
 
-        if (request.getStartAt() == null || request.getEndAt() == null || !request.getEndAt().isAfter(request.getStartAt())) {
-            throw new BusinessException("INVALID_TIME_RANGE", "Session end time must be strictly after start time");
+        if (request.getStartAt() == null
+                || request.getEndAt() == null
+                || !request.getEndAt().isAfter(request.getStartAt())) {
+            throw new BusinessException(
+                    "INVALID_TIME_RANGE", "Session end time must be strictly after start time");
         }
 
-        Cruise cruise = cruiseRepository.findById(request.getCruiseId())
-                .orElseThrow(() -> new ResourceNotFoundException("Cruise not found with id: " + request.getCruiseId()));
+        Cruise cruise =
+                cruiseRepository
+                        .findById(request.getCruiseId())
+                        .orElseThrow(
+                                () ->
+                                        new ResourceNotFoundException(
+                                                "Cruise not found with id: "
+                                                        + request.getCruiseId()));
 
-        User instructor = userRepository.findById(request.getInstructorUserId())
-                .orElseThrow(() -> new ResourceNotFoundException("Instructor user not found with id: " + request.getInstructorUserId()));
+        User instructor =
+                userRepository
+                        .findById(request.getInstructorUserId())
+                        .orElseThrow(
+                                () ->
+                                        new ResourceNotFoundException(
+                                                "Instructor user not found with id: "
+                                                        + request.getInstructorUserId()));
 
         if (instructor.getStatus() != UserStatus.ACTIVE) {
-            throw new BusinessException("INACTIVE_USER", "Cannot assign inactive user as instructor");
+            throw new BusinessException(
+                    "INACTIVE_USER", "Cannot assign inactive user as instructor");
         }
 
         GuidanceSession session = new GuidanceSession();
@@ -82,39 +103,66 @@ public class GuidanceSessionService {
 
     @Transactional(readOnly = true)
     public GuidanceSessionResponse getDetail(UUID sessionId) {
-        GuidanceSession session = sessionRepository.findById(sessionId)
-                .orElseThrow(() -> new ResourceNotFoundException("Guidance session not found with id: " + sessionId));
+        GuidanceSession session =
+                sessionRepository
+                        .findById(sessionId)
+                        .orElseThrow(
+                                () ->
+                                        new ResourceNotFoundException(
+                                                "Guidance session not found with id: "
+                                                        + sessionId));
         return toResponse(session);
     }
 
     @Transactional
     public GuidanceSessionResponse updateStatus(UUID sessionId, GuidanceSessionStatus status) {
-        GuidanceSession session = sessionRepository.findById(sessionId)
-                .orElseThrow(() -> new ResourceNotFoundException("Guidance session not found with id: " + sessionId));
-        if(status!=GuidanceSessionStatus.Completed&&status!=GuidanceSessionStatus.Cancelled
-                ||session.getStatus()==GuidanceSessionStatus.Completed||session.getStatus()==GuidanceSessionStatus.Cancelled
-                ||status==GuidanceSessionStatus.Completed&&session.getStatus()!=GuidanceSessionStatus.Published)
-            throw new BusinessException(org.springframework.http.HttpStatus.CONFLICT,"INVALID_GUIDANCE_TRANSITION","Publish through the scoped API before completing; terminal sessions are immutable");
+        GuidanceSession session =
+                sessionRepository
+                        .findById(sessionId)
+                        .orElseThrow(
+                                () ->
+                                        new ResourceNotFoundException(
+                                                "Guidance session not found with id: "
+                                                        + sessionId));
+        if (status != GuidanceSessionStatus.Completed && status != GuidanceSessionStatus.Cancelled
+                || session.getStatus() == GuidanceSessionStatus.Completed
+                || session.getStatus() == GuidanceSessionStatus.Cancelled
+                || status == GuidanceSessionStatus.Completed
+                        && session.getStatus() != GuidanceSessionStatus.Published)
+            throw new BusinessException(
+                    org.springframework.http.HttpStatus.CONFLICT,
+                    "INVALID_GUIDANCE_TRANSITION",
+                    "Publish through the scoped API before completing; terminal sessions are"
+                        + " immutable");
         session.setStatus(status);
         return toResponse(sessionRepository.save(session));
     }
 
     @Transactional
     public int autoPopulateParticipants(UUID sessionId) {
-        GuidanceSession session = sessionRepository.findById(sessionId)
-                .orElseThrow(() -> new ResourceNotFoundException("Guidance session not found with id: " + sessionId));
+        GuidanceSession session =
+                sessionRepository
+                        .findById(sessionId)
+                        .orElseThrow(
+                                () ->
+                                        new ResourceNotFoundException(
+                                                "Guidance session not found with id: "
+                                                        + sessionId));
 
         UUID cruiseId = session.getCruise().getCruiseId();
-        List<BookingPassenger> passengers = bookingPassengerRepository.findActivePassengersByCruiseId(cruiseId);
+        List<BookingPassenger> passengers =
+                bookingPassengerRepository.findActivePassengersByCruiseId(cruiseId);
         int addedCount = 0;
 
         for (BookingPassenger bp : passengers) {
-            if (!participantRepository.existsByGuidanceSession_GuidanceSessionIdAndBookingPassenger_BookingPassengerId(
-                    sessionId, bp.getBookingPassengerId())) {
+            if (!participantRepository
+                    .existsByGuidanceSession_GuidanceSessionIdAndBookingPassenger_BookingPassengerId(
+                            sessionId, bp.getBookingPassengerId())) {
                 GuidanceSessionParticipant participant = new GuidanceSessionParticipant();
                 participant.setGuidanceSession(session);
                 participant.setBookingPassenger(bp);
-                participant.setAttendanceStatus(GuidanceSessionParticipantAttendanceStatus.Registered);
+                participant.setAttendanceStatus(
+                        GuidanceSessionParticipantAttendanceStatus.Registered);
                 participantRepository.save(participant);
                 addedCount++;
             }
@@ -125,16 +173,29 @@ public class GuidanceSessionService {
     }
 
     @Transactional
-    public GuidanceParticipantResponse recordAttendance(UUID sessionId, GuidanceAttendanceRequest request) {
-        GuidanceSession session = sessionRepository.findById(sessionId)
-                .orElseThrow(() -> new ResourceNotFoundException("Guidance session not found with id: " + sessionId));
+    public GuidanceParticipantResponse recordAttendance(
+            UUID sessionId, GuidanceAttendanceRequest request) {
+        GuidanceSession session =
+                sessionRepository
+                        .findById(sessionId)
+                        .orElseThrow(
+                                () ->
+                                        new ResourceNotFoundException(
+                                                "Guidance session not found with id: "
+                                                        + sessionId));
 
-        GuidanceSessionParticipant participant = participantRepository
-                .findByGuidanceSession_GuidanceSessionIdAndBookingPassenger_BookingPassengerId(
-                        sessionId, request.getBookingPassengerId())
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        String.format("Participant not found with passenger id %s in session %s",
-                                request.getBookingPassengerId(), sessionId)));
+        GuidanceSessionParticipant participant =
+                participantRepository
+                        .findByGuidanceSession_GuidanceSessionIdAndBookingPassenger_BookingPassengerId(
+                                sessionId, request.getBookingPassengerId())
+                        .orElseThrow(
+                                () ->
+                                        new ResourceNotFoundException(
+                                                String.format(
+                                                        "Participant not found with passenger id %s"
+                                                            + " in session %s",
+                                                        request.getBookingPassengerId(),
+                                                        sessionId)));
 
         participant.setAttendanceStatus(request.getAttendanceStatus());
         if (request.getAttendanceStatus() == GuidanceSessionParticipantAttendanceStatus.Attended) {
@@ -156,9 +217,13 @@ public class GuidanceSessionService {
     }
 
     private GuidanceSessionResponse toResponse(GuidanceSession s) {
-        long total = participantRepository.countByGuidanceSession_GuidanceSessionId(s.getGuidanceSessionId());
-        long attended = participantRepository.countByGuidanceSession_GuidanceSessionIdAndAttendanceStatus(
-                s.getGuidanceSessionId(), GuidanceSessionParticipantAttendanceStatus.Attended);
+        long total =
+                participantRepository.countByGuidanceSession_GuidanceSessionId(
+                        s.getGuidanceSessionId());
+        long attended =
+                participantRepository.countByGuidanceSession_GuidanceSessionIdAndAttendanceStatus(
+                        s.getGuidanceSessionId(),
+                        GuidanceSessionParticipantAttendanceStatus.Attended);
 
         return GuidanceSessionResponse.builder()
                 .guidanceSessionId(s.getGuidanceSessionId())
@@ -177,7 +242,8 @@ public class GuidanceSessionService {
     }
 
     private GuidanceParticipantResponse toParticipantResponse(GuidanceSessionParticipant p) {
-        var passenger = p.getBookingPassenger() != null ? p.getBookingPassenger().getPassenger() : null;
+        var passenger =
+                p.getBookingPassenger() != null ? p.getBookingPassenger().getPassenger() : null;
         String name = passenger != null ? passenger.getFullName() : "N/A";
         String idNum = passenger != null ? passenger.getDocumentNumberProtected() : "N/A";
 

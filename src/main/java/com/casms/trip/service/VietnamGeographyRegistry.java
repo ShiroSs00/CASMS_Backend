@@ -1,15 +1,14 @@
 package com.casms.trip.service;
 
 import com.casms.ship.entity.Port;
+
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 
-/**
- * Bảng ánh xạ chuẩn hóa địa lý cảng biển và điểm đến Việt Nam (Bắc Bộ - Trung Bộ - Nam Bộ)
- */
+/** Bảng ánh xạ chuẩn hóa địa lý cảng biển và điểm đến Việt Nam (Bắc Bộ - Trung Bộ - Nam Bộ) */
 @Slf4j
 public final class VietnamGeographyRegistry {
 
@@ -117,9 +116,7 @@ public final class VietnamGeographyRegistry {
         DESTINATION_KEYWORD_TO_REGION = Collections.unmodifiableMap(kw);
     }
 
-    /**
-     * Xác định miền chuẩn hóa cho một cảng biển
-     */
+    /** Xác định miền chuẩn hóa cho một cảng biển */
     public static String resolveDomesticRegion(Port port) {
         if (port == null) return null;
 
@@ -129,7 +126,8 @@ public final class VietnamGeographyRegistry {
         }
 
         // 2. Kiểm tra trực tiếp trên Destination nếu đã gán domesticRegion
-        if (port.getDestination() != null && port.getDestination().getDomesticRegion() != null
+        if (port.getDestination() != null
+                && port.getDestination().getDomesticRegion() != null
                 && !port.getDestination().getDomesticRegion().isBlank()) {
             return port.getDestination().getDomesticRegion().trim().toUpperCase();
         }
@@ -151,8 +149,12 @@ public final class VietnamGeographyRegistry {
         }
 
         // 5. Tra cứu từ khóa theo tên hoặc mô tả cảng
-        String portLower = (port.getPortName() != null ? port.getPortName().toLowerCase() : "") + " "
-                + (port.getDescription() != null ? port.getDescription().toLowerCase() : "");
+        String portLower =
+                (port.getPortName() != null ? port.getPortName().toLowerCase() : "")
+                        + " "
+                        + (port.getDescription() != null
+                                ? port.getDescription().toLowerCase()
+                                : "");
         for (Map.Entry<String, String> entry : DESTINATION_KEYWORD_TO_REGION.entrySet()) {
             if (portLower.contains(entry.getKey())) {
                 return entry.getValue();

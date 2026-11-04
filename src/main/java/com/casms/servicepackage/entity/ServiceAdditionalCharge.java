@@ -1,21 +1,27 @@
 package com.casms.servicepackage.entity;
 
-import org.hibernate.annotations.JdbcTypeCode;
-import org.hibernate.type.SqlTypes;
 import com.casms.booking.entity.BookingPassenger;
 import com.casms.payment.entity.Charge;
+
 import jakarta.persistence.*;
+
 import lombok.Getter;
 import lombok.Setter;
+
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
+
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.UUID;
 
-@Getter @Setter
+@Getter
+@Setter
 @Entity
 @Table(name = "\"ServiceAdditionalCharge\"")
 public class ServiceAdditionalCharge {
-    @Id @GeneratedValue(strategy = GenerationType.UUID)
+    @Id
+    @GeneratedValue(strategy = GenerationType.UUID)
     @Column(name = "service_additional_charge_id")
     private UUID serviceAdditionalChargeId;
 

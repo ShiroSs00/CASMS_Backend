@@ -1,6 +1,7 @@
 package com.casms.trip.dto.response;
 
 import io.swagger.v3.oas.annotations.media.Schema;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -24,12 +25,15 @@ public class PlanningSourcePortResponse {
 
     @Schema(description = "Tên cảng biển", example = "Saigon Hiep Phuoc Cruise Port")
     private String portName;
+
     private String localityName;
 
     @Schema(description = "Mã quốc gia ISO", example = "VN")
     private String countryCode;
 
-    @Schema(description = "Miền địa lý nội địa (BAC_BO, TRUNG_BO, NAM_BO) đối với cảng Việt Nam", example = "BAC_BO")
+    @Schema(
+            description = "Miền địa lý nội địa (BAC_BO, TRUNG_BO, NAM_BO) đối với cảng Việt Nam",
+            example = "BAC_BO")
     private String domesticRegion;
 
     @Schema(description = "Múi giờ cảng", example = "Asia/Ho_Chi_Minh")

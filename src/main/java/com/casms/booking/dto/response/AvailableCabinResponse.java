@@ -2,7 +2,9 @@ package com.casms.booking.dto.response;
 
 import com.casms.ship.dto.response.Ship3dConfigurationResponse.Vector3;
 import com.casms.ship.enums.CabinType;
+
 import io.swagger.v3.oas.annotations.media.Schema;
+
 import lombok.Getter;
 import lombok.Setter;
 
@@ -43,7 +45,10 @@ public class AvailableCabinResponse {
     @Schema(description = "Hệ số giá tầng boong (mặc định 1.00)", example = "1.15")
     private BigDecimal priceMultiplier;
 
-    @Schema(description = "Giá tham chiếu ước tính cho 1 khách đối với phòng này (đã nhân hệ số tầng)", example = "747.50")
+    @Schema(
+            description =
+                    "Giá tham chiếu ước tính cho 1 khách đối với phòng này (đã nhân hệ số tầng)",
+            example = "747.50")
     private BigDecimal estimatedPrice;
 
     @Schema(description = "ID phiên bản model 3D READY đang ánh xạ cabin")

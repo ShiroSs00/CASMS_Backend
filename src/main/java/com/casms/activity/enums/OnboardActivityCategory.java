@@ -4,17 +4,28 @@ import io.swagger.v3.oas.annotations.media.Schema;
 
 @Schema(description = "Phân loại chi tiết các hoạt động trên tàu (Onboard Activity Categories)")
 public enum OnboardActivityCategory {
-
-    @Schema(description = "Giải trí & Nghệ thuật (Đại nhạc hội, biểu diễn ảo thuật, ban nhạc Jazz, tiệc DJ)")
+    @Schema(
+            description =
+                    "Giải trí & Nghệ thuật (Đại nhạc hội, biểu diễn ảo thuật, ban nhạc Jazz, tiệc"
+                        + " DJ)")
     ENTERTAINMENT("Giải trí & Nghệ thuật", "🎭"),
 
-    @Schema(description = "Thể thao & Sức khỏe (Yoga bình minh, Lotus Spa, Gym & Fitness, thể thao boong)")
+    @Schema(
+            description =
+                    "Thể thao & Sức khỏe (Yoga bình minh, Lotus Spa, Gym & Fitness, thể thao"
+                        + " boong)")
     SPORTS_WELLNESS("Thể thao & Sức khỏe", "🧘"),
 
-    @Schema(description = "Gia đình & Trẻ em (Kids Club, Đấu trường VR công nghệ, tìm kho báu, rạp phim 3D)")
+    @Schema(
+            description =
+                    "Gia đình & Trẻ em (Kids Club, Đấu trường VR công nghệ, tìm kho báu, rạp phim"
+                        + " 3D)")
     FAMILY_KIDS("Gia đình & Trẻ em", "👨‍👩‍👧"),
 
-    @Schema(description = "Sự kiện đặc biệt & Lễ hội (Gala Thuyền trưởng, White Night Party, Countdown, Dạ vũ)")
+    @Schema(
+            description =
+                    "Sự kiện đặc biệt & Lễ hội (Gala Thuyền trưởng, White Night Party, Countdown,"
+                        + " Dạ vũ)")
     SPECIAL_EVENTS("Sự kiện đặc biệt", "🥂");
 
     private final String displayName;

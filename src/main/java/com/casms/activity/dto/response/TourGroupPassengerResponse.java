@@ -15,6 +15,4 @@ public record TourGroupPassengerResponse(
         Instant assignedAt,
         Instant checkedInAt,
         Instant returnedAt,
-        Instant createdAt
-) {
-}
+        Instant createdAt) {}

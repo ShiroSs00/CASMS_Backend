@@ -1,7 +1,10 @@
 package com.casms.ship.service;
 
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.*;
+
 import com.casms.common.exception.BusinessException;
-import com.casms.common.exception.ResourceNotFoundException;
 import com.casms.ship.dto.response.CruiseSchedulePreviewResponse;
 import com.casms.ship.entity.*;
 import com.casms.ship.enums.*;
@@ -10,12 +13,13 @@ import com.casms.trip.entity.*;
 import com.casms.trip.enums.TripScheduleVersionStatus;
 import com.casms.trip.enums.TripStatus;
 import com.casms.trip.repository.TripScheduleVersionRepository;
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
-import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -24,10 +28,6 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.*;
-
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class ScheduleMaterializationServiceTest {
@@ -39,12 +39,15 @@ class ScheduleMaterializationServiceTest {
     @Mock private CruiseRepository cruiseRepository;
     @Mock private PortRepository portRepository;
     @Mock private PortWindowEvaluator portWindowEvaluator;
-    @Mock private com.casms.ship.service.OperationalProgramMappingService operationalProgramMappingService;
+
+    @Mock
+    private com.casms.ship.service.OperationalProgramMappingService
+            operationalProgramMappingService;
+
     @Mock private com.casms.activity.repository.OnboardActivityRepository onboardActivityRepository;
     @Mock private com.casms.activity.repository.ShoreExcursionRepository shoreExcursionRepository;
 
-    @InjectMocks
-    private ScheduleMaterializationService materializationService;
+    @InjectMocks private ScheduleMaterializationService materializationService;
 
     private Trip testTrip;
     private TripScheduleVersion testVersion;
@@ -131,9 +134,36 @@ class ScheduleMaterializationServiceTest {
         testVersion.setStops(stops);
         testVersion.setEntries(new ArrayList<>());
 
-        lenient().when(portRepository.lockDirectory(any())).thenAnswer(i->Optional.of(i.getArgument(0).equals(portHph.getPortId())?portHph:portDan));
-        lenient().when(portWindowEvaluator.evaluate(any(),any(),any(),any())).thenReturn(List.of(new com.casms.ship.dto.PortWindowContract.Check(portHph.getPortId(),"ARRIVAL","PASS","MATCHED","Matched",null,"Asia/Ho_Chi_Minh",UUID.randomUUID(),1L,"Authority",null,null,Instant.now(),List.of())));
-        lenient().when(portWindowEvaluator.departureMovement(any(),any(),any())).thenReturn(List.of());
+        lenient()
+                .when(portRepository.lockDirectory(any()))
+                .thenAnswer(
+                        i ->
+                                Optional.of(
+                                        i.getArgument(0).equals(portHph.getPortId())
+                                                ? portHph
+                                                : portDan));
+        lenient()
+                .when(portWindowEvaluator.evaluate(any(), any(), any(), any()))
+                .thenReturn(
+                        List.of(
+                                new com.casms.ship.dto.PortWindowContract.Check(
+                                        portHph.getPortId(),
+                                        "ARRIVAL",
+                                        "PASS",
+                                        "MATCHED",
+                                        "Matched",
+                                        null,
+                                        "Asia/Ho_Chi_Minh",
+                                        UUID.randomUUID(),
+                                        1L,
+                                        "Authority",
+                                        null,
+                                        null,
+                                        Instant.now(),
+                                        List.of())));
+        lenient()
+                .when(portWindowEvaluator.departureMovement(any(), any(), any()))
+                .thenReturn(List.of());
         departureTime = Instant.parse("2026-11-01T01:00:00Z"); // 08:00 UTC+7
     }
 
@@ -143,7 +173,8 @@ class ScheduleMaterializationServiceTest {
         when(tripScheduleVersionRepository.findById(testVersion.getVersionId()))
                 .thenReturn(Optional.of(testVersion));
 
-        CruiseSchedulePreviewResponse res = materializationService.previewSchedule(testVersion.getVersionId(), departureTime);
+        CruiseSchedulePreviewResponse res =
+                materializationService.previewSchedule(testVersion.getVersionId(), departureTime);
 
         assertNotNull(res);
         assertEquals(testTrip.getTripId(), res.getSourceTripId());
@@ -182,8 +213,12 @@ class ScheduleMaterializationServiceTest {
         when(tripScheduleVersionRepository.findById(testVersion.getVersionId()))
                 .thenReturn(Optional.of(testVersion));
 
-        BusinessException ex = assertThrows(BusinessException.class,
-                () -> materializationService.previewSchedule(testVersion.getVersionId(), departureTime));
+        BusinessException ex =
+                assertThrows(
+                        BusinessException.class,
+                        () ->
+                                materializationService.previewSchedule(
+                                        testVersion.getVersionId(), departureTime));
         assertEquals("VERSION_NOT_PUBLISHED", ex.getCode());
     }
 
@@ -194,8 +229,12 @@ class ScheduleMaterializationServiceTest {
         when(tripScheduleVersionRepository.findById(testVersion.getVersionId()))
                 .thenReturn(Optional.of(testVersion));
 
-        BusinessException ex = assertThrows(BusinessException.class,
-                () -> materializationService.previewSchedule(testVersion.getVersionId(), departureTime));
+        BusinessException ex =
+                assertThrows(
+                        BusinessException.class,
+                        () ->
+                                materializationService.previewSchedule(
+                                        testVersion.getVersionId(), departureTime));
         assertEquals("TRIP_ARCHIVED", ex.getCode());
     }
 
@@ -214,24 +253,35 @@ class ScheduleMaterializationServiceTest {
         cruise.setSourceVersion(testVersion);
         cruise.setSourceVersionRevision(testVersion.getRevision());
 
-        when(itineraryRepository.findByCruiseCruiseId(cruise.getCruiseId())).thenReturn(Optional.empty());
-        when(itineraryRepository.save(any(Itinerary.class))).thenAnswer(inv -> {
-            Itinerary it = inv.getArgument(0);
-            it.setItineraryId(UUID.randomUUID());
-            return it;
-        });
-        when(itineraryDayRepository.save(any(ItineraryDay.class))).thenAnswer(inv -> {
-            ItineraryDay day = inv.getArgument(0);
-            day.setItineraryDayId(UUID.randomUUID());
-            return day;
-        });
-        when(cruiseStopRepository.save(any(CruiseStop.class))).thenAnswer(inv -> {
-            CruiseStop stop = inv.getArgument(0);
-            stop.setCruiseStopId(UUID.randomUUID());
-            return stop;
-        });
+        when(itineraryRepository.findByCruiseCruiseId(cruise.getCruiseId()))
+                .thenReturn(Optional.empty());
+        when(itineraryRepository.save(any(Itinerary.class)))
+                .thenAnswer(
+                        inv -> {
+                            Itinerary it = inv.getArgument(0);
+                            it.setItineraryId(UUID.randomUUID());
+                            return it;
+                        });
+        when(itineraryDayRepository.save(any(ItineraryDay.class)))
+                .thenAnswer(
+                        inv -> {
+                            ItineraryDay day = inv.getArgument(0);
+                            day.setItineraryDayId(UUID.randomUUID());
+                            return day;
+                        });
+        when(cruiseStopRepository.save(any(CruiseStop.class)))
+                .thenAnswer(
+                        inv -> {
+                            CruiseStop stop = inv.getArgument(0);
+                            stop.setCruiseStopId(UUID.randomUUID());
+                            return stop;
+                        });
 
-        when(operationalProgramMappingService.mapOperationalPrograms(cruise,testVersion)).thenReturn(com.casms.ship.dto.response.OperationalProgramSyncResponse.builder().items(List.of()).build());
+        when(operationalProgramMappingService.mapOperationalPrograms(cruise, testVersion))
+                .thenReturn(
+                        com.casms.ship.dto.response.OperationalProgramSyncResponse.builder()
+                                .items(List.of())
+                                .build());
         Itinerary result = materializationService.materializeSchedule(cruise, testVersion);
 
         assertNotNull(result);
@@ -283,15 +333,22 @@ class ScheduleMaterializationServiceTest {
         stop1.setNotes("sourceStopId:" + testVersion.getStops().get(0).getStopId());
 
         when(cruiseRepository.findById(cruise.getCruiseId())).thenReturn(Optional.of(cruise));
-        when(itineraryRepository.findByCruiseCruiseId(cruise.getCruiseId())).thenReturn(Optional.of(itinerary));
-        when(itineraryDayRepository.findByItineraryItineraryIdOrderByDayNumberAsc(itinerary.getItineraryId()))
+        when(itineraryRepository.findByCruiseCruiseId(cruise.getCruiseId()))
+                .thenReturn(Optional.of(itinerary));
+        when(itineraryDayRepository.findByItineraryItineraryIdOrderByDayNumberAsc(
+                        itinerary.getItineraryId()))
                 .thenReturn(List.of(day1));
-        when(cruiseStopRepository.findByItineraryItineraryIdOrderByStopOrderAsc(itinerary.getItineraryId()))
+        when(cruiseStopRepository.findByItineraryItineraryIdOrderByStopOrderAsc(
+                        itinerary.getItineraryId()))
                 .thenReturn(List.of(stop1));
-        when(onboardActivityRepository.findByCruise_CruiseId(cruise.getCruiseId())).thenReturn(Collections.emptyList());
-        when(shoreExcursionRepository.findByCruiseStop_Itinerary_Cruise_CruiseId(cruise.getCruiseId())).thenReturn(Collections.emptyList());
+        when(onboardActivityRepository.findByCruise_CruiseId(cruise.getCruiseId()))
+                .thenReturn(Collections.emptyList());
+        when(shoreExcursionRepository.findByCruiseStop_Itinerary_Cruise_CruiseId(
+                        cruise.getCruiseId()))
+                .thenReturn(Collections.emptyList());
 
-        CruiseSchedulePreviewResponse res = materializationService.getCruiseSchedule(cruise.getCruiseId());
+        CruiseSchedulePreviewResponse res =
+                materializationService.getCruiseSchedule(cruise.getCruiseId());
 
         assertNotNull(res);
         assertTrue(res.getMaterialized());
@@ -300,25 +357,47 @@ class ScheduleMaterializationServiceTest {
         assertEquals(1, res.getDays().size());
         assertEquals(1, res.getDays().get(0).getStops().size());
         assertEquals("VN-HPH", res.getDays().get(0).getStops().get(0).getPortCode());
-        assertEquals(stop1.getCruiseStopId(), res.getDays().get(0).getStops().get(0).getCruiseStopId());
-        assertEquals(testVersion.getStops().get(0).getStopId(), res.getDays().get(0).getStops().get(0).getSourceStopId());
+        assertEquals(
+                stop1.getCruiseStopId(), res.getDays().get(0).getStops().get(0).getCruiseStopId());
+        assertEquals(
+                testVersion.getStops().get(0).getStopId(),
+                res.getDays().get(0).getStops().get(0).getSourceStopId());
     }
+
     @ParameterizedTest
-    @ValueSource(strings = {"missing-group", "missing-days", "wrong-group", "missing-nights", "wrong-count", "duplicate-day"})
+    @ValueSource(
+            strings = {
+                "missing-group",
+                "missing-days",
+                "wrong-group",
+                "missing-nights",
+                "wrong-count",
+                "duplicate-day"
+            })
     void invalidSourceDurationNeverFallsBackToDayCount(String invalid) {
         switch (invalid) {
             case "missing-group" -> testTrip.setDurationGroup(null);
             case "missing-days" -> testTrip.setDurationDays(null);
-            case "wrong-group" -> testTrip.setDurationGroup(com.casms.trip.enums.TripDurationGroup.SHORT);
+            case "wrong-group" ->
+                    testTrip.setDurationGroup(com.casms.trip.enums.TripDurationGroup.SHORT);
             case "missing-nights" -> testTrip.setDurationNights(null);
             case "wrong-count" -> testVersion.getDays().removeLast();
             case "duplicate-day" -> testVersion.getDays().getLast().setDayNumber(1);
         }
-        when(tripScheduleVersionRepository.findById(testVersion.getVersionId())).thenReturn(Optional.of(testVersion));
-        var error = assertThrows(BusinessException.class,
-                () -> materializationService.previewSchedule(testVersion.getVersionId(), departureTime));
+        when(tripScheduleVersionRepository.findById(testVersion.getVersionId()))
+                .thenReturn(Optional.of(testVersion));
+        var error =
+                assertThrows(
+                        BusinessException.class,
+                        () ->
+                                materializationService.previewSchedule(
+                                        testVersion.getVersionId(), departureTime));
         assertEquals("SOURCE_DURATION_INVALID", error.getCode());
-        verifyNoInteractions(cruiseRepository, itineraryRepository, itineraryDayRepository, cruiseStopRepository);
+        verifyNoInteractions(
+                cruiseRepository,
+                itineraryRepository,
+                itineraryDayRepository,
+                cruiseStopRepository);
     }
 
     @Test
@@ -326,8 +405,10 @@ class ScheduleMaterializationServiceTest {
         testVersion.getDays().get(0).setDayType(ItineraryDayType.SEA_DAY);
         testVersion.getStops().removeFirst();
         testVersion.getStops().getFirst().setIsDisembarkation(true);
-        when(tripScheduleVersionRepository.findById(testVersion.getVersionId())).thenReturn(Optional.of(testVersion));
-        var response = materializationService.previewSchedule(testVersion.getVersionId(), departureTime);
+        when(tripScheduleVersionRepository.findById(testVersion.getVersionId()))
+                .thenReturn(Optional.of(testVersion));
+        var response =
+                materializationService.previewSchedule(testVersion.getVersionId(), departureTime);
         assertEquals(ItineraryDayRole.DEPARTURE, response.getDays().getFirst().getDayRole());
         assertEquals(ItineraryDayType.SEA_DAY, response.getDays().getFirst().getDayType());
         assertTrue(response.getDays().getFirst().getStops().isEmpty());
@@ -342,11 +423,12 @@ class ScheduleMaterializationServiceTest {
         testVersion.getDays().getFirst().setDeparturePort(portHph);
         testVersion.getDays().getFirst().setPlannedDepartureTime(LocalTime.of(8, 15));
         testVersion.getStops().removeFirst();
-        when(tripScheduleVersionRepository.findById(testVersion.getVersionId())).thenReturn(Optional.of(testVersion));
-        var response = materializationService.previewSchedule(testVersion.getVersionId(), departureTime);
+        when(tripScheduleVersionRepository.findById(testVersion.getVersionId()))
+                .thenReturn(Optional.of(testVersion));
+        var response =
+                materializationService.previewSchedule(testVersion.getVersionId(), departureTime);
         assertEquals(portHph.getPortId(), response.getDeparturePortId());
         assertTrue(response.getDays().getFirst().getStops().isEmpty());
         assertEquals(ItineraryDayType.SEA_DAY, response.getDays().getFirst().getDayType());
     }
-
 }

@@ -2,7 +2,9 @@ package com.casms.booking.repository;
 
 import com.casms.booking.entity.Booking;
 import com.casms.booking.enums.BookingStatus;
+
 import jakarta.persistence.criteria.Predicate;
+
 import org.springframework.data.jpa.domain.Specification;
 
 import java.util.ArrayList;
@@ -11,8 +13,7 @@ import java.util.UUID;
 
 public final class BookingSpecification {
 
-    private BookingSpecification() {
-    }
+    private BookingSpecification() {}
 
     public static Specification<Booking> filter(UUID cruiseId, BookingStatus status, UUID userId) {
         return (root, query, cb) -> {

@@ -1,8 +1,10 @@
 package com.casms.identity.service;
 
 import com.casms.identity.enums.Permission;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
@@ -17,7 +19,10 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
-/** Keeps the persisted permission allowlist aligned with Permission before RBAC rows are initialized. */
+/**
+ * Keeps the persisted permission allowlist aligned with Permission before RBAC rows are
+ * initialized.
+ */
 @Slf4j
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE)
@@ -33,35 +38,58 @@ public class PermissionConstraintInitializer implements CommandLineRunner {
     @Override
     @Transactional
     public void run(String... args) {
-        Set<String> expected = Arrays.stream(Permission.values())
-                .map(Enum::name)
-                .collect(Collectors.toUnmodifiableSet());
+        Set<String> expected =
+                Arrays.stream(Permission.values())
+                        .map(Enum::name)
+                        .collect(Collectors.toUnmodifiableSet());
 
-        String currentDefinition = jdbcTemplate.query(
-                "SELECT pg_get_constraintdef(oid) FROM pg_constraint " +
-                        "WHERE conrelid = to_regclass('" + TABLE + "') AND conname = ?",
-                rs -> rs.next() ? rs.getString(1) : null,
-                CONSTRAINT);
+        String currentDefinition =
+                jdbcTemplate.query(
+                        "SELECT pg_get_constraintdef(oid) FROM pg_constraint "
+                                + "WHERE conrelid = to_regclass('"
+                                + TABLE
+                                + "') AND conname = ?",
+                        rs -> rs.next() ? rs.getString(1) : null,
+                        CONSTRAINT);
 
         if (currentDefinition != null && permissionValues(currentDefinition).equals(expected)) {
-            log.debug("Permission check constraint already covers all {} permissions", expected.size());
+            log.debug(
+                    "Permission check constraint already covers all {} permissions",
+                    expected.size());
             return;
         }
 
-        Set<String> existing = new HashSet<>(jdbcTemplate.queryForList(
-                "SELECT DISTINCT permission FROM " + TABLE + " WHERE permission IS NOT NULL", String.class));
+        Set<String> existing =
+                new HashSet<>(
+                        jdbcTemplate.queryForList(
+                                "SELECT DISTINCT permission FROM "
+                                        + TABLE
+                                        + " WHERE permission IS NOT NULL",
+                                String.class));
         existing.removeAll(expected);
         if (!existing.isEmpty()) {
-            throw new IllegalStateException("Cannot update permission check constraint; existing values are " +
-                    "not defined in Permission enum: " + existing);
+            throw new IllegalStateException(
+                    "Cannot update permission check constraint; existing values are "
+                            + "not defined in Permission enum: "
+                            + existing);
         }
 
-        String allowed = expected.stream().sorted()
-                .map(value -> "'" + value + "'")
-                .collect(Collectors.joining(", "));
-        jdbcTemplate.execute("ALTER TABLE " + TABLE + " DROP CONSTRAINT IF EXISTS \"" + CONSTRAINT + "\"");
-        jdbcTemplate.execute("ALTER TABLE " + TABLE + " ADD CONSTRAINT \"" + CONSTRAINT + "\" " +
-                "CHECK ((permission)::text = ANY (ARRAY[" + allowed + "]::text[]))");
+        String allowed =
+                expected.stream()
+                        .sorted()
+                        .map(value -> "'" + value + "'")
+                        .collect(Collectors.joining(", "));
+        jdbcTemplate.execute(
+                "ALTER TABLE " + TABLE + " DROP CONSTRAINT IF EXISTS \"" + CONSTRAINT + "\"");
+        jdbcTemplate.execute(
+                "ALTER TABLE "
+                        + TABLE
+                        + " ADD CONSTRAINT \""
+                        + CONSTRAINT
+                        + "\" "
+                        + "CHECK ((permission)::text = ANY (ARRAY["
+                        + allowed
+                        + "]::text[]))");
         log.info("Updated {} to accept all {} Permission enum values", CONSTRAINT, expected.size());
     }
 

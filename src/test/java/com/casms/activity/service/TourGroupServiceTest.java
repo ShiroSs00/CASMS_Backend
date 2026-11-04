@@ -1,5 +1,8 @@
 package com.casms.activity.service;
 
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
+
 import com.casms.activity.entity.ShoreExcursion;
 import com.casms.activity.entity.TourGroup;
 import com.casms.activity.enums.TourGroupStatus;
@@ -8,7 +11,9 @@ import com.casms.activity.repository.ShoreExcursionRepository;
 import com.casms.activity.repository.TourGroupPassengerRepository;
 import com.casms.activity.repository.TourGroupRepository;
 import com.casms.identity.repository.PassengerRepository;
+
 import jakarta.persistence.EntityNotFoundException;
+
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -19,32 +24,22 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.*;
-
 @ExtendWith(MockitoExtension.class)
 class TourGroupServiceTest {
 
-    @Mock
-    private TourGroupRepository tourGroupRepository;
+    @Mock private TourGroupRepository tourGroupRepository;
 
-    @Mock
-    private TourGroupPassengerRepository passengerAssignmentRepository;
+    @Mock private TourGroupPassengerRepository passengerAssignmentRepository;
 
-    @Mock
-    private ShoreExcursionRepository shoreExcursionRepository;
+    @Mock private ShoreExcursionRepository shoreExcursionRepository;
 
-    @Mock
-    private RegistrationRepository registrationRepository;
+    @Mock private RegistrationRepository registrationRepository;
 
-    @Mock
-    private PassengerRepository passengerRepository;
+    @Mock private PassengerRepository passengerRepository;
 
-    @Mock
-    private com.casms.identity.repository.UserRepository userRepository;
+    @Mock private com.casms.identity.repository.UserRepository userRepository;
 
-    @InjectMocks
-    private TourGroupService service;
+    @InjectMocks private TourGroupService service;
 
     @Test
     void list_withoutFilters_returnsGroups() {
@@ -69,13 +64,9 @@ class TourGroupServiceTest {
     void detail_missingGroup_throwsException() {
         UUID id = UUID.randomUUID();
 
-        when(tourGroupRepository.findById(id))
-                .thenReturn(Optional.empty());
+        when(tourGroupRepository.findById(id)).thenReturn(Optional.empty());
 
-        assertThrows(
-                EntityNotFoundException.class,
-                () -> service.detail(id)
-        );
+        assertThrows(EntityNotFoundException.class, () -> service.detail(id));
     }
 
     @Test
@@ -85,13 +76,9 @@ class TourGroupServiceTest {
         TourGroup group = new TourGroup();
         group.setStatus(TourGroupStatus.ASSEMBLING);
 
-        when(tourGroupRepository.findById(id))
-                .thenReturn(Optional.of(group));
+        when(tourGroupRepository.findById(id)).thenReturn(Optional.of(group));
 
-        assertThrows(
-                IllegalStateException.class,
-                () -> service.update(id, null)
-        );
+        assertThrows(IllegalStateException.class, () -> service.update(id, null));
 
         verify(tourGroupRepository, never()).save(any());
     }
@@ -103,13 +90,9 @@ class TourGroupServiceTest {
         TourGroup group = new TourGroup();
         group.setStatus(TourGroupStatus.PLANNED);
 
-        when(tourGroupRepository.findById(id))
-                .thenReturn(Optional.of(group));
+        when(tourGroupRepository.findById(id)).thenReturn(Optional.of(group));
 
-        assertThrows(
-                IllegalArgumentException.class,
-                () -> service.assignGuide(id, null)
-        );
+        assertThrows(IllegalArgumentException.class, () -> service.assignGuide(id, null));
     }
 
     @Test
@@ -119,13 +102,9 @@ class TourGroupServiceTest {
         TourGroup group = new TourGroup();
         group.setStatus(TourGroupStatus.CANCELLED);
 
-        when(tourGroupRepository.findById(id))
-                .thenReturn(Optional.of(group));
+        when(tourGroupRepository.findById(id)).thenReturn(Optional.of(group));
 
-        assertThrows(
-                IllegalStateException.class,
-                () -> service.confirm(id)
-        );
+        assertThrows(IllegalStateException.class, () -> service.confirm(id));
     }
 
     @Test
@@ -135,12 +114,8 @@ class TourGroupServiceTest {
         TourGroup group = new TourGroup();
         group.setStatus(TourGroupStatus.PLANNED);
 
-        when(tourGroupRepository.findById(id))
-                .thenReturn(Optional.of(group));
+        when(tourGroupRepository.findById(id)).thenReturn(Optional.of(group));
 
-        assertThrows(
-                IllegalArgumentException.class,
-                () -> service.cancel(id, " ")
-        );
+        assertThrows(IllegalArgumentException.class, () -> service.cancel(id, " "));
     }
 }

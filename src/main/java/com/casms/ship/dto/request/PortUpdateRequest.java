@@ -1,15 +1,21 @@
 package com.casms.ship.dto.request;
 
 import com.casms.ship.enums.PortLocationType;
+
 import io.swagger.v3.oas.annotations.media.Schema;
+
 import jakarta.validation.constraints.Size;
+
 import lombok.Data;
 
 import java.math.BigDecimal;
 import java.util.UUID;
 
 @Data
-@Schema(description = "Yêu cầu cập nhật thông tin cảng. Lưu ý: portCode và countryCode là bất biến; trạng thái cảng được quản lý qua endpoint activate/deactivate.")
+@Schema(
+        description =
+                "Yêu cầu cập nhật thông tin cảng. Lưu ý: portCode và countryCode là bất biến; trạng"
+                    + " thái cảng được quản lý qua endpoint activate/deactivate.")
 public class PortUpdateRequest {
 
     @Schema(description = "Tên cảng", example = "Cảng Yokohama Quốc tế")
@@ -28,10 +34,12 @@ public class PortUpdateRequest {
     @jakarta.validation.constraints.DecimalMax("90")
     private BigDecimal latitude;
 
-    @Schema(description = "Chỉ gửi cùng đủ latitude/longitude khi chọn mới kết quả Geocoding. Bỏ trường này ở PATCH thông tin khác để giữ nguyên nguồn, kể cả legacy null.")
+    @Schema(
+            description =
+                    "Chỉ gửi cùng đủ latitude/longitude khi chọn mới kết quả Geocoding. Bỏ trường"
+                        + " này ở PATCH thông tin khác để giữ nguyên nguồn, kể cả legacy null.")
     @jakarta.validation.Valid
     private com.casms.ship.dto.PortCoordinateSource coordinateSource;
-
 
     @Schema(description = "Kinh độ", example = "139.6486")
     @jakarta.validation.constraints.DecimalMin("-180")

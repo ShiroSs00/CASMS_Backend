@@ -6,9 +6,11 @@ import com.casms.ship.dto.response.CruiseResponse;
 import com.casms.trip.dto.response.TripDetailResponse;
 import com.casms.trip.entity.IdempotencyRecord;
 import com.fasterxml.jackson.databind.ObjectMapper;
+
 import lombok.RequiredArgsConstructor;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
+
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
@@ -27,28 +29,53 @@ public class IdempotencyService {
     private final IdempotencyReservationService reservationService;
     private final ObjectMapper objectMapper;
 
-    @Setter
-    private Function<UUID, Object> entityRecoveryFunction;
+    @Setter private Function<UUID, Object> entityRecoveryFunction;
 
-    public <T> T execute(String idempotencyKey, UUID actorId, String operation, Object payload, Supplier<T> action) {
+    public <T> T execute(
+            String idempotencyKey,
+            UUID actorId,
+            String operation,
+            Object payload,
+            Supplier<T> action) {
         return execute(idempotencyKey, actorId, operation, payload, null, action);
     }
 
-    public <T> T execute(String idempotencyKey, UUID actorId, String operation, Object payload, Class<T> responseType, Supplier<T> action) {
-        return executeInternal(idempotencyKey, actorId, operation, payload, responseType, action, false);
+    public <T> T execute(
+            String idempotencyKey,
+            UUID actorId,
+            String operation,
+            Object payload,
+            Class<T> responseType,
+            Supplier<T> action) {
+        return executeInternal(
+                idempotencyKey, actorId, operation, payload, responseType, action, false);
     }
 
-    /** Cruise + itinerary + completed replay record commit or roll back together. Other operations keep their existing contract. */
+    /**
+     * Cruise + itinerary + completed replay record commit or roll back together. Other operations
+     * keep their existing contract.
+     */
     @org.springframework.transaction.annotation.Transactional(rollbackFor = Exception.class)
-    public CruiseResponse executeCruiseCreate(String key, UUID actorId, Object payload, Supplier<CruiseResponse> action) {
+    public CruiseResponse executeCruiseCreate(
+            String key, UUID actorId, Object payload, Supplier<CruiseResponse> action) {
         if (actorId == null || key == null || key.isBlank()) {
-            throw new BusinessException(HttpStatus.BAD_REQUEST, "INVALID_INPUT", "Tạo chuyến cần actor và Idempotency-Key hợp lệ.");
+            throw new BusinessException(
+                    HttpStatus.BAD_REQUEST,
+                    "INVALID_INPUT",
+                    "Tạo chuyến cần actor và Idempotency-Key hợp lệ.");
         }
-        return executeInternal(key, actorId, "CREATE_CRUISE", payload, CruiseResponse.class, action, true);
+        return executeInternal(
+                key, actorId, "CREATE_CRUISE", payload, CruiseResponse.class, action, true);
     }
 
-    private <T> T executeInternal(String idempotencyKey, UUID actorId, String operation, Object payload,
-                                  Class<T> responseType, Supplier<T> action, boolean atomicCruise) {
+    private <T> T executeInternal(
+            String idempotencyKey,
+            UUID actorId,
+            String operation,
+            Object payload,
+            Class<T> responseType,
+            Supplier<T> action,
+            boolean atomicCruise) {
         if (idempotencyKey == null || idempotencyKey.isBlank()) {
             return action.get();
         }
@@ -57,66 +84,105 @@ public class IdempotencyService {
         String requestHash = computeHash(canonicalJson(payload));
 
         IdempotencyReservationService.ReservationResult reservation =
-                atomicCruise ? reservationService.reserveCruiseKey(actorId, trimmedKey, requestHash)
-                        : reservationService.reserveKey(actorId, operation, trimmedKey, requestHash);
+                atomicCruise
+                        ? reservationService.reserveCruiseKey(actorId, trimmedKey, requestHash)
+                        : reservationService.reserveKey(
+                                actorId, operation, trimmedKey, requestHash);
 
         // Preserve replay of older records whose DTO had a stable textual representation.
         // New records always use canonical JSON; never weaken the payload-conflict check.
-        if(reservation.getStatus()==IdempotencyReservationService.ReservationStatus.CONFLICT){
-            String legacyHash=computeHash(payload!=null?payload.toString():"");
-            if(!legacyHash.equals(requestHash)){
-                var legacy=atomicCruise?reservationService.reserveCruiseKey(actorId,trimmedKey,legacyHash):reservationService.reserveKey(actorId,operation,trimmedKey,legacyHash);
-                if(legacy.getStatus()!=IdempotencyReservationService.ReservationStatus.CONFLICT){reservation=legacy;requestHash=legacyHash;}
+        if (reservation.getStatus() == IdempotencyReservationService.ReservationStatus.CONFLICT) {
+            String legacyHash = computeHash(payload != null ? payload.toString() : "");
+            if (!legacyHash.equals(requestHash)) {
+                var legacy =
+                        atomicCruise
+                                ? reservationService.reserveCruiseKey(
+                                        actorId, trimmedKey, legacyHash)
+                                : reservationService.reserveKey(
+                                        actorId, operation, trimmedKey, legacyHash);
+                if (legacy.getStatus()
+                        != IdempotencyReservationService.ReservationStatus.CONFLICT) {
+                    reservation = legacy;
+                    requestHash = legacyHash;
+                }
             }
         }
 
         if (reservation.getStatus() == IdempotencyReservationService.ReservationStatus.CONFLICT) {
-            throw new BusinessException(HttpStatus.CONFLICT, "IDEMPOTENCY_CONFLICT",
-                    "Idempotency key '" + trimmedKey + "' đã được sử dụng với nội dung payload khác.");
+            throw new BusinessException(
+                    HttpStatus.CONFLICT,
+                    "IDEMPOTENCY_CONFLICT",
+                    "Idempotency key '"
+                            + trimmedKey
+                            + "' đã được sử dụng với nội dung payload khác.");
         }
 
         if (reservation.getStatus() == IdempotencyReservationService.ReservationStatus.CACHED) {
-            log.info("Idempotent replay detected for key: {} in operation: {}. Returning cached response without re-executing.",
-                    trimmedKey, operation);
+            log.info(
+                    "Idempotent replay detected for key: {} in operation: {}. Returning cached"
+                        + " response without re-executing.",
+                    trimmedKey,
+                    operation);
             return deserializeCached(reservation.getRecord(), responseType, operation, trimmedKey);
         }
 
         // Concurrent in-progress request: poll for completed cached response
-        if (reservation.getStatus() == IdempotencyReservationService.ReservationStatus.IN_PROGRESS) {
-            log.info("Concurrent request detected for idempotency key: {}. Awaiting completion of active operation.", trimmedKey);
+        if (reservation.getStatus()
+                == IdempotencyReservationService.ReservationStatus.IN_PROGRESS) {
+            log.info(
+                    "Concurrent request detected for idempotency key: {}. Awaiting completion of"
+                        + " active operation.",
+                    trimmedKey);
             int maxAttempts = 15; // 15 * 200ms = 3000ms
             for (int i = 0; i < maxAttempts; i++) {
                 try {
                     Thread.sleep(200);
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
-                    throw new BusinessException(HttpStatus.CONFLICT, "IDEMPOTENCY_CONFLICT",
+                    throw new BusinessException(
+                            HttpStatus.CONFLICT,
+                            "IDEMPOTENCY_CONFLICT",
                             "Quá trình chờ xử lý đồng thời cho Idempotency-Key bị gián đoạn.");
                 }
 
                 IdempotencyReservationService.ReservationResult polled =
                         reservationService.checkStatus(actorId, operation, trimmedKey, requestHash);
 
-                if (polled.getStatus() == IdempotencyReservationService.ReservationStatus.CONFLICT) {
-                    throw new BusinessException(HttpStatus.CONFLICT, "IDEMPOTENCY_CONFLICT",
-                            "Idempotency key '" + trimmedKey + "' đã được sử dụng với nội dung payload khác.");
+                if (polled.getStatus()
+                        == IdempotencyReservationService.ReservationStatus.CONFLICT) {
+                    throw new BusinessException(
+                            HttpStatus.CONFLICT,
+                            "IDEMPOTENCY_CONFLICT",
+                            "Idempotency key '"
+                                    + trimmedKey
+                                    + "' đã được sử dụng với nội dung payload khác.");
                 }
                 if (polled.getStatus() == IdempotencyReservationService.ReservationStatus.CACHED) {
-                    log.info("Concurrent request completed. Returning cached result for key: {}", trimmedKey);
-                    return deserializeCached(polled.getRecord(), responseType, operation, trimmedKey);
+                    log.info(
+                            "Concurrent request completed. Returning cached result for key: {}",
+                            trimmedKey);
+                    return deserializeCached(
+                            polled.getRecord(), responseType, operation, trimmedKey);
                 }
             }
-            throw new BusinessException(HttpStatus.CONFLICT, "IDEMPOTENCY_CONFLICT",
+            throw new BusinessException(
+                    HttpStatus.CONFLICT,
+                    "IDEMPOTENCY_CONFLICT",
                     "Yêu cầu đồng thời với cùng Idempotency-Key đang được xử lý bởi hệ thống.");
         }
 
         // We reserved the key! Execute the business action.
-        UUID reservationId = reservation.getRecord() != null ? reservation.getRecord().getIdempotencyId() : null;
+        UUID reservationId =
+                reservation.getRecord() != null ? reservation.getRecord().getIdempotencyId() : null;
         T result;
         try {
             result = action.get();
         } catch (Exception e) {
-            log.warn("Action execution failed for idempotency key {}: {}. Releasing reservation key.", trimmedKey, e.getMessage());
+            log.warn(
+                    "Action execution failed for idempotency key {}: {}. Releasing reservation"
+                        + " key.",
+                    trimmedKey,
+                    e.getMessage());
             reservationService.releaseKey(reservationId);
             throw e;
         }
@@ -132,49 +198,78 @@ public class IdempotencyService {
             } else if (result instanceof BookingDetailResponse bookingRes) {
                 resultingId = bookingRes.getBookingId();
             }
-            if (atomicCruise) reservationService.completeKeyInCurrentTransaction(reservationId, json, resultingId);
+            if (atomicCruise)
+                reservationService.completeKeyInCurrentTransaction(
+                        reservationId, json, resultingId);
             else reservationService.completeKey(reservationId, json, resultingId);
         } catch (Exception e) {
             if (atomicCruise) {
-                throw new BusinessException(HttpStatus.INTERNAL_SERVER_ERROR, "IDEMPOTENCY_COMPLETION_FAILED",
-                        "Không thể lưu kết quả yêu cầu; giao dịch tạo chuyến chưa được xác nhận và phải được hủy.");
+                throw new BusinessException(
+                        HttpStatus.INTERNAL_SERVER_ERROR,
+                        "IDEMPOTENCY_COMPLETION_FAILED",
+                        "Không thể lưu kết quả yêu cầu; giao dịch tạo chuyến chưa được xác nhận và"
+                            + " phải được hủy.");
             }
-            log.warn("Failed to serialize or complete idempotency record for key {}: {}", trimmedKey, e.getMessage());
+            log.warn(
+                    "Failed to serialize or complete idempotency record for key {}: {}",
+                    trimmedKey,
+                    e.getMessage());
         }
 
         return result;
     }
 
     @SuppressWarnings("unchecked")
-    private <T> T deserializeCached(IdempotencyRecord record, Class<T> responseType, String operation, String key) {
+    private <T> T deserializeCached(
+            IdempotencyRecord record, Class<T> responseType, String operation, String key) {
         String payload = record != null ? record.getResponsePayload() : null;
         if (payload == null || payload.isBlank()) {
             // Attempt recovery using resultingId and entityRecoveryFunction
-            if (record != null && record.getResultingId() != null && entityRecoveryFunction != null) {
+            if (record != null
+                    && record.getResultingId() != null
+                    && entityRecoveryFunction != null) {
                 try {
                     Object recovered = entityRecoveryFunction.apply(record.getResultingId());
                     if (recovered != null) {
-                        log.info("Successfully recovered idempotency result for key {} from database resultingId: {}", key, record.getResultingId());
+                        log.info(
+                                "Successfully recovered idempotency result for key {} from database"
+                                    + " resultingId: {}",
+                                key,
+                                record.getResultingId());
                         return (T) recovered;
                     }
                 } catch (Exception ex) {
-                    log.warn("Failed to recover entity via entityRecoveryFunction for resultingId {}: {}", record.getResultingId(), ex.getMessage());
+                    log.warn(
+                            "Failed to recover entity via entityRecoveryFunction for resultingId"
+                                + " {}: {}",
+                            record.getResultingId(),
+                            ex.getMessage());
                 }
             }
-            throw new BusinessException(HttpStatus.CONFLICT, "IDEMPOTENCY_CONFLICT",
+            throw new BusinessException(
+                    HttpStatus.CONFLICT,
+                    "IDEMPOTENCY_CONFLICT",
                     "Dữ liệu phản hồi cached không tồn tại cho Idempotency-Key: " + key);
         }
         try {
-            Class<T> targetClass = responseType != null ? responseType : inferResponseType(operation);
+            Class<T> targetClass =
+                    responseType != null ? responseType : inferResponseType(operation);
             if (targetClass != null) {
                 return objectMapper.readValue(payload, targetClass);
             }
         } catch (Exception e) {
-            log.error("Failed to deserialize cached idempotency payload for key {}: {}", key, e.getMessage());
-            throw new BusinessException(HttpStatus.CONFLICT, "IDEMPOTENCY_CONFLICT",
+            log.error(
+                    "Failed to deserialize cached idempotency payload for key {}: {}",
+                    key,
+                    e.getMessage());
+            throw new BusinessException(
+                    HttpStatus.CONFLICT,
+                    "IDEMPOTENCY_CONFLICT",
                     "Không thể giải mã dữ liệu cached cho Idempotency-Key: " + key);
         }
-        throw new BusinessException(HttpStatus.CONFLICT, "IDEMPOTENCY_CONFLICT",
+        throw new BusinessException(
+                HttpStatus.CONFLICT,
+                "IDEMPOTENCY_CONFLICT",
                 "Không xác định được kiểu dữ liệu phản hồi cho Idempotency-Key: " + key);
     }
 
@@ -191,17 +286,33 @@ public class IdempotencyService {
     }
 
     private String canonicalJson(Object payload) {
-        try{return objectMapper.writeValueAsString(sortedJson(objectMapper.valueToTree(payload)));}
-        catch(Exception ex){throw new BusinessException(HttpStatus.BAD_REQUEST,"IDEMPOTENCY_PAYLOAD_INVALID","Request cannot be fingerprinted");}
-    }
-    private com.fasterxml.jackson.databind.JsonNode sortedJson(com.fasterxml.jackson.databind.JsonNode node){
-        if(node.isObject()){
-            var result=objectMapper.createObjectNode();var fields=new java.util.TreeSet<String>();node.fieldNames().forEachRemaining(fields::add);
-            fields.forEach(key->result.set(key,sortedJson(node.get(key))));return result;
+        try {
+            return objectMapper.writeValueAsString(sortedJson(objectMapper.valueToTree(payload)));
+        } catch (Exception ex) {
+            throw new BusinessException(
+                    HttpStatus.BAD_REQUEST,
+                    "IDEMPOTENCY_PAYLOAD_INVALID",
+                    "Request cannot be fingerprinted");
         }
-        if(node.isArray()){var result=objectMapper.createArrayNode();node.forEach(value->result.add(sortedJson(value)));return result;}
+    }
+
+    private com.fasterxml.jackson.databind.JsonNode sortedJson(
+            com.fasterxml.jackson.databind.JsonNode node) {
+        if (node.isObject()) {
+            var result = objectMapper.createObjectNode();
+            var fields = new java.util.TreeSet<String>();
+            node.fieldNames().forEachRemaining(fields::add);
+            fields.forEach(key -> result.set(key, sortedJson(node.get(key))));
+            return result;
+        }
+        if (node.isArray()) {
+            var result = objectMapper.createArrayNode();
+            node.forEach(value -> result.add(sortedJson(value)));
+            return result;
+        }
         return node;
     }
+
     private String computeHash(String input) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");

@@ -1,6 +1,7 @@
 package com.casms.ship.dto.response;
 
 import io.swagger.v3.oas.annotations.media.Schema;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -49,7 +50,10 @@ public class CruiseInventorySummaryResponse {
     @Schema(description = "Sức chứa còn lại của toàn bộ chuyến khởi hành")
     private long remainingCapacity;
 
-    @Schema(description = "Chuyến khởi hành còn có thể bán tiếp hay không (remainingCapacity > 0 && ít nhất 1 hạng phòng canSell)")
+    @Schema(
+            description =
+                    "Chuyến khởi hành còn có thể bán tiếp hay không (remainingCapacity > 0 && ít"
+                        + " nhất 1 hạng phòng canSell)")
     private boolean canSell;
 
     @Schema(description = "Số gói dịch vụ đang kích hoạt mở bán")

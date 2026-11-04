@@ -2,7 +2,9 @@ package com.casms.ship.repository;
 
 import com.casms.ship.entity.ItineraryChangeHistory;
 import com.casms.ship.enums.ItineraryChangeType;
+
 import jakarta.persistence.criteria.Predicate;
+
 import org.springframework.data.jpa.domain.Specification;
 
 import java.util.ArrayList;
@@ -11,15 +13,13 @@ import java.util.UUID;
 
 public final class ItineraryChangeHistorySpecification {
 
-    private ItineraryChangeHistorySpecification() {
-    }
+    private ItineraryChangeHistorySpecification() {}
 
     public static Specification<ItineraryChangeHistory> filter(
             UUID itineraryId,
             UUID cruiseStopId,
             ItineraryChangeType changeType,
-            UUID changedByUserId
-    ) {
+            UUID changedByUserId) {
         return (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
 

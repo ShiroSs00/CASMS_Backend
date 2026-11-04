@@ -3,7 +3,9 @@ package com.casms.servicepackage.entity;
 import com.casms.activity.entity.Registration;
 import com.casms.booking.entity.BookingPassenger;
 import com.casms.identity.entity.Passenger;
+
 import jakarta.persistence.*;
+
 import lombok.Getter;
 import lombok.Setter;
 

@@ -1,6 +1,7 @@
 package com.casms.common.exception;
 
 import lombok.Getter;
+
 import org.springframework.http.HttpStatus;
 
 import java.util.Map;
@@ -33,7 +34,8 @@ public class BusinessException extends RuntimeException {
         this.details = null;
     }
 
-    public BusinessException(HttpStatus status, String code, String message, Map<String, Object> details) {
+    public BusinessException(
+            HttpStatus status, String code, String message, Map<String, Object> details) {
         super(message);
         this.status = status;
         this.code = code;

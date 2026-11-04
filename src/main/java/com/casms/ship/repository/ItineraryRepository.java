@@ -2,7 +2,9 @@ package com.casms.ship.repository;
 
 import com.casms.ship.entity.Itinerary;
 import com.casms.ship.enums.ItineraryStatus;
+
 import jakarta.persistence.LockModeType;
+
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
@@ -20,6 +22,7 @@ import java.util.UUID;
 @Repository
 public interface ItineraryRepository extends JpaRepository<Itinerary, UUID> {
     Optional<Itinerary> findByCruiseCruiseId(UUID cruiseId);
+
     boolean existsByCruiseCruiseId(UUID cruiseId);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
@@ -28,10 +31,7 @@ public interface ItineraryRepository extends JpaRepository<Itinerary, UUID> {
 
     @EntityGraph(attributePaths = "cruise")
     List<Itinerary> findByCruiseCruiseIdInAndStatusIn(
-            Collection<UUID> cruiseIds,
-            Collection<ItineraryStatus> statuses);
+            Collection<UUID> cruiseIds, Collection<ItineraryStatus> statuses);
 
-    Page<Itinerary> findByStatusIn(
-            Collection<ItineraryStatus> statuses,
-            Pageable pageable);
+    Page<Itinerary> findByStatusIn(Collection<ItineraryStatus> statuses, Pageable pageable);
 }

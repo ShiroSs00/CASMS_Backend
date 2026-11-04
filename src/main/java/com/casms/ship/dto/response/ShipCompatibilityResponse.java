@@ -1,6 +1,7 @@
 package com.casms.ship.dto.response;
 
 import io.swagger.v3.oas.annotations.media.Schema;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -14,7 +15,9 @@ import java.util.UUID;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@Schema(description = "Kết quả kiểm tra tính tương thích và khả dụng của tàu đối với chuyến khởi hành")
+@Schema(
+        description =
+                "Kết quả kiểm tra tính tương thích và khả dụng của tàu đối với chuyến khởi hành")
 public class ShipCompatibilityResponse {
 
     @Schema(description = "ID chuyến khởi hành")
@@ -29,7 +32,9 @@ public class ShipCompatibilityResponse {
     @Schema(description = "Tàu có đang ở trạng thái ACTIVE hay không")
     private boolean shipActive;
 
-    @Schema(description = "Lịch trình tàu có trống trong khoảng thời gian chuyến khởi hành hay không")
+    @Schema(
+            description =
+                    "Lịch trình tàu có trống trong khoảng thời gian chuyến khởi hành hay không")
     private boolean scheduleAvailable;
 
     @Schema(description = "Sức chứa của tàu có đủ đáp ứng lượng khách đã đặt hay không")

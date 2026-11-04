@@ -1,17 +1,22 @@
 package com.casms.servicepackage.entity;
 
 import com.casms.identity.entity.User;
+
 import jakarta.persistence.*;
+
 import lombok.Getter;
 import lombok.Setter;
+
 import java.time.Instant;
 import java.util.UUID;
 
-@Getter @Setter
+@Getter
+@Setter
 @Entity
 @Table(name = "\"ServiceUsage\"")
 public class ServiceUsage {
-    @Id @GeneratedValue(strategy = GenerationType.UUID)
+    @Id
+    @GeneratedValue(strategy = GenerationType.UUID)
     @Column(name = "service_usage_id")
     private UUID serviceUsageId;
 

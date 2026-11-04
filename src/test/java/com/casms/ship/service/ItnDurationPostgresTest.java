@@ -1,5 +1,7 @@
 package com.casms.ship.service;
 
+import static org.junit.jupiter.api.Assertions.*;
+
 import com.casms.common.exception.BusinessException;
 import com.casms.ship.dto.request.CruiseCreateRequest;
 import com.casms.ship.dto.request.CruiseUpdateDraftRequest;
@@ -16,7 +18,9 @@ import com.casms.trip.enums.TripScheduleVersionStatus;
 import com.casms.trip.repository.TripRepository;
 import com.casms.trip.repository.TripScheduleVersionRepository;
 import com.casms.trip.service.TripService;
+
 import jakarta.persistence.EntityManager;
+
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
@@ -32,8 +36,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
-import static org.junit.jupiter.api.Assertions.*;
-
 /** Explicit opt-in; refuses every datasource except an isolated ITN-01 test database. */
 @SpringBootTest
 @Transactional
@@ -42,11 +44,14 @@ class ItnDurationPostgresTest {
     @DynamicPropertySource
     static void database(DynamicPropertyRegistry properties) {
         String url = System.getProperty("itn.duration.jdbcUrl", "");
-        if (!url.matches("jdbc:postgresql://(?:localhost|127\\.0\\.0\\.1):5432/casms_itn01_[0-9_]+")) {
-            throw new IllegalStateException("ITN-01 integration requires an isolated casms_itn01_* database");
+        if (!url.matches(
+                "jdbc:postgresql://(?:localhost|127\\.0\\.0\\.1):5432/casms_itn01_[0-9_]+")) {
+            throw new IllegalStateException(
+                    "ITN-01 integration requires an isolated casms_itn01_* database");
         }
         String password = System.getenv("DB_PASSWORD");
-        if (password == null) throw new IllegalStateException("Test database credentials are required");
+        if (password == null)
+            throw new IllegalStateException("Test database credentials are required");
         properties.add("spring.datasource.url", () -> url);
         properties.add("spring.datasource.username", () -> "postgres");
         properties.add("spring.datasource.password", () -> password);
@@ -73,7 +78,8 @@ class ItnDurationPostgresTest {
         var trip = trips.createTrip(tripInput, null);
         em.flush();
         em.clear();
-        var version = versions.findByTrip_TripIdOrderByVersionNumberAsc(trip.getTripId()).getFirst();
+        var version =
+                versions.findByTrip_TripIdOrderByVersionNumberAsc(trip.getTripId()).getFirst();
         Port port = new Port();
         port.setPortCode("VN-ITN-" + UUID.randomUUID().toString().substring(0, 8));
         port.setPortName("ITN duration test port");
@@ -83,8 +89,10 @@ class ItnDurationPostgresTest {
         port.setStatus(PortStatus.ACTIVE);
         port = ports.save(port);
         for (var day : version.getDays()) {
-            day.setDayType(day.getDayNumber() == 1 || day.getDayNumber() == days
-                    ? ItineraryDayType.PORT_DAY : ItineraryDayType.SEA_DAY);
+            day.setDayType(
+                    day.getDayNumber() == 1 || day.getDayNumber() == days
+                            ? ItineraryDayType.PORT_DAY
+                            : ItineraryDayType.SEA_DAY);
         }
         var first = new TripPlanStop();
         first.setVersion(version);
@@ -113,7 +121,9 @@ class ItnDurationPostgresTest {
             stops.add(last);
         }
         version.getStops().addAll(stops);
-        version.setStatus(TripScheduleVersionStatus.PUBLISHED); // controlled source fixture, not review testing
+        version.setStatus(
+                TripScheduleVersionStatus
+                        .PUBLISHED); // controlled source fixture, not review testing
         versions.saveAndFlush(version);
         var expectedType = days == 1 ? CruiseCruiseType.ONE_DAY : CruiseCruiseType.MULTI_DAYS;
         var wrongType = days == 1 ? CruiseCruiseType.MULTI_DAYS : CruiseCruiseType.ONE_DAY;
@@ -133,12 +143,19 @@ class ItnDurationPostgresTest {
         assertEquals(days, schedule.getDurationDays());
         assertEquals(days - 1, schedule.getDurationNights());
         assertEquals(days, schedule.getDays().size());
-        assertEquals(days, tripRepository.findById(trip.getTripId()).orElseThrow().getDurationDays());
-        if (days == 2) assertTrue(created.getReturnDatetime().isBefore(departure.plusSeconds(86400)),
-                "Two calendar days inherit MULTI_DAYS even with fewer than 24 elapsed hours");
+        assertEquals(
+                days, tripRepository.findById(trip.getTripId()).orElseThrow().getDurationDays());
+        if (days == 2)
+            assertTrue(
+                    created.getReturnDatetime().isBefore(departure.plusSeconds(86400)),
+                    "Two calendar days inherit MULTI_DAYS even with fewer than 24 elapsed hours");
         var edit = new CruiseUpdateDraftRequest();
         edit.setCruiseType(wrongType);
-        assertEquals("SOURCE_CONFIGURATION_LOCKED",
-                assertThrows(BusinessException.class, () -> cruises.updateDraft(created.getCruiseId(), edit)).getCode());
+        assertEquals(
+                "SOURCE_CONFIGURATION_LOCKED",
+                assertThrows(
+                                BusinessException.class,
+                                () -> cruises.updateDraft(created.getCruiseId(), edit))
+                        .getCode());
     }
 }

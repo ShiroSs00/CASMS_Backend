@@ -1,7 +1,10 @@
 package com.casms.trip.service;
 
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.*;
+
 import com.casms.activity.entity.OnboardActivity;
-import com.casms.activity.entity.ShoreExcursion;
 import com.casms.activity.repository.OnboardActivityRepository;
 import com.casms.activity.repository.ShoreExcursionRepository;
 import com.casms.common.exception.BusinessException;
@@ -13,10 +16,8 @@ import com.casms.servicepackage.entity.Service;
 import com.casms.servicepackage.repository.ServiceRepository;
 import com.casms.ship.entity.Cabin;
 import com.casms.ship.entity.Deck;
-import com.casms.ship.entity.Destination;
 import com.casms.ship.entity.Port;
 import com.casms.ship.entity.Ship;
-import java.math.BigDecimal;
 import com.casms.ship.enums.ItineraryDayType;
 import com.casms.ship.enums.ItineraryType;
 import com.casms.ship.repository.CabinRepository;
@@ -31,76 +32,55 @@ import com.casms.trip.entity.*;
 import com.casms.trip.enums.*;
 import com.casms.trip.repository.*;
 import com.fasterxml.jackson.databind.ObjectMapper;
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.http.HttpStatus;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalTime;
 import java.util.*;
 
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.*;
-
 @ExtendWith(MockitoExtension.class)
 public class TripPlanningEnhancementTest {
 
-    @Mock
-    private TripRepository tripRepository;
+    @Mock private TripRepository tripRepository;
 
-    @Mock
-    private TripScheduleVersionRepository versionRepository;
+    @Mock private TripScheduleVersionRepository versionRepository;
 
-    @Mock
-    private TripPlanDayRepository dayRepository;
+    @Mock private TripPlanDayRepository dayRepository;
 
-    @Mock
-    private TripPlanStopRepository stopRepository;
+    @Mock private TripPlanStopRepository stopRepository;
 
-    @Mock
-    private TripPlanEntryRepository entryRepository;
+    @Mock private TripPlanEntryRepository entryRepository;
 
-    @Mock
-    private UserRepository userRepository;
+    @Mock private UserRepository userRepository;
 
-    @Mock
-    private BusinessCodeGenerator businessCodeGenerator;
+    @Mock private BusinessCodeGenerator businessCodeGenerator;
 
-    @Mock
-    private com.casms.audit.AuditService auditService;
+    @Mock private com.casms.audit.AuditService auditService;
 
-    @Mock
-    private DestinationRepository destinationRepository;
+    @Mock private DestinationRepository destinationRepository;
 
-    @Mock
-    private OnboardActivityRepository onboardActivityRepository;
+    @Mock private OnboardActivityRepository onboardActivityRepository;
 
-    @Mock
-    private ShoreExcursionRepository shoreExcursionRepository;
+    @Mock private ShoreExcursionRepository shoreExcursionRepository;
 
-    @Mock
-    private ServiceRepository serviceRepository;
+    @Mock private ServiceRepository serviceRepository;
 
-    @Mock
-    private IdempotencyRecordRepository idempotencyRepository;
+    @Mock private IdempotencyRecordRepository idempotencyRepository;
 
-    @Mock
-    private com.casms.audit.AuditRepository auditRepository;
+    @Mock private com.casms.audit.AuditRepository auditRepository;
 
-    @Mock
-    private DeckRepository deckRepository;
+    @Mock private DeckRepository deckRepository;
 
-    @Mock
-    private CabinRepository cabinRepository;
+    @Mock private CabinRepository cabinRepository;
 
-    @Mock
-    private PortRepository portRepository;
+    @Mock private PortRepository portRepository;
 
     private TripService tripService;
     private TripScheduleVersionService versionService;
@@ -112,19 +92,42 @@ public class TripPlanningEnhancementTest {
 
     @BeforeEach
     void setUp() {
-        tripService = new TripService(tripRepository, versionRepository, dayRepository,
-                userRepository, businessCodeGenerator, auditService, auditRepository);
+        tripService =
+                new TripService(
+                        tripRepository,
+                        versionRepository,
+                        dayRepository,
+                        userRepository,
+                        businessCodeGenerator,
+                        auditService,
+                        auditRepository);
 
-        versionService = new TripScheduleVersionService(tripRepository, versionRepository,
-                dayRepository, stopRepository, entryRepository, mock(com.casms.ship.repository.PortRepository.class),
-                destinationRepository, userRepository, auditRepository, auditService);
+        versionService =
+                new TripScheduleVersionService(
+                        tripRepository,
+                        versionRepository,
+                        dayRepository,
+                        stopRepository,
+                        entryRepository,
+                        mock(com.casms.ship.repository.PortRepository.class),
+                        destinationRepository,
+                        userRepository,
+                        auditRepository,
+                        auditService);
         versionService.setOnboardActivityRepository(onboardActivityRepository);
         versionService.setShoreExcursionRepository(shoreExcursionRepository);
 
-        idempotencyService = new IdempotencyService(new IdempotencyReservationService(idempotencyRepository), new ObjectMapper());
+        idempotencyService =
+                new IdempotencyService(
+                        new IdempotencyReservationService(idempotencyRepository),
+                        new ObjectMapper());
 
-        catalogController = new TripCatalogController(destinationRepository,
-                onboardActivityRepository, shoreExcursionRepository, serviceRepository);
+        catalogController =
+                new TripCatalogController(
+                        destinationRepository,
+                        onboardActivityRepository,
+                        shoreExcursionRepository,
+                        serviceRepository);
         catalogController.setDeckRepository(deckRepository);
         catalogController.setCabinRepository(cabinRepository);
         catalogController.setPortRepository(portRepository);
@@ -153,7 +156,8 @@ public class TripPlanningEnhancementTest {
 
         when(businessCodeGenerator.next("TR")).thenReturn("TR-2001");
         when(tripRepository.save(any(Trip.class))).thenAnswer(inv -> inv.getArgument(0));
-        when(versionRepository.save(any(TripScheduleVersion.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(versionRepository.save(any(TripScheduleVersion.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
 
         TripDetailResponse res = tripService.createTrip(req, actorId);
 
@@ -176,7 +180,8 @@ public class TripPlanningEnhancementTest {
 
         when(businessCodeGenerator.next("TR")).thenReturn("TR-2002");
         when(tripRepository.save(any(Trip.class))).thenAnswer(inv -> inv.getArgument(0));
-        when(versionRepository.save(any(TripScheduleVersion.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(versionRepository.save(any(TripScheduleVersion.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
 
         TripDetailResponse res = tripService.createTrip(req, actorId);
 
@@ -196,7 +201,9 @@ public class TripPlanningEnhancementTest {
         reqShort.setDurationGroup(TripDurationGroup.SHORT);
         reqShort.setDurationDays(3); // SHORT chỉ cho phép 1..2 ngày
 
-        BusinessException ex1 = assertThrows(BusinessException.class, () -> tripService.createTrip(reqShort, actorId));
+        BusinessException ex1 =
+                assertThrows(
+                        BusinessException.class, () -> tripService.createTrip(reqShort, actorId));
         assertEquals("INVALID_DURATION", ex1.getCode());
 
         TripCreateRequest reqLong = new TripCreateRequest();
@@ -204,7 +211,9 @@ public class TripPlanningEnhancementTest {
         reqLong.setDurationGroup(TripDurationGroup.LONG);
         reqLong.setDurationDays(6); // LONG chỉ cho phép 3..5 ngày
 
-        BusinessException ex2 = assertThrows(BusinessException.class, () -> tripService.createTrip(reqLong, actorId));
+        BusinessException ex2 =
+                assertThrows(
+                        BusinessException.class, () -> tripService.createTrip(reqLong, actorId));
         assertEquals("INVALID_DURATION", ex2.getCode());
     }
 
@@ -243,17 +252,22 @@ public class TripPlanningEnhancementTest {
 
         when(tripRepository.findById(tripId)).thenReturn(Optional.of(trip));
         when(versionRepository.findById(versionId)).thenReturn(Optional.of(version));
-        when(versionRepository.findByTrip_TripIdOrderByVersionNumberAsc(tripId)).thenReturn(List.of(version));
-        when(tripRepository.save(any(Trip.class))).thenAnswer(inv -> {
-            Trip t = inv.getArgument(0);
-            t.setRevision((t.getRevision() != null ? t.getRevision() : 0L) + 1);
-            return t;
-        });
-        when(versionRepository.save(any(TripScheduleVersion.class))).thenAnswer(inv -> {
-            TripScheduleVersion v = inv.getArgument(0);
-            v.setRevision((v.getRevision() != null ? v.getRevision() : 0L) + 1);
-            return v;
-        });
+        when(versionRepository.findByTrip_TripIdOrderByVersionNumberAsc(tripId))
+                .thenReturn(List.of(version));
+        when(tripRepository.save(any(Trip.class)))
+                .thenAnswer(
+                        inv -> {
+                            Trip t = inv.getArgument(0);
+                            t.setRevision((t.getRevision() != null ? t.getRevision() : 0L) + 1);
+                            return t;
+                        });
+        when(versionRepository.save(any(TripScheduleVersion.class)))
+                .thenAnswer(
+                        inv -> {
+                            TripScheduleVersion v = inv.getArgument(0);
+                            v.setRevision((v.getRevision() != null ? v.getRevision() : 0L) + 1);
+                            return v;
+                        });
 
         TripDayManageRequest req = new TripDayManageRequest();
         req.setAction(TripDayManageAction.ADD);
@@ -271,7 +285,8 @@ public class TripPlanningEnhancementTest {
     }
 
     @Test
-    @DisplayName("BE-03: Thêm ngày vượt quá giới hạn nhóm thời lượng ném lỗi DURATION_LIMIT_EXCEEDED")
+    @DisplayName(
+            "BE-03: Thêm ngày vượt quá giới hạn nhóm thời lượng ném lỗi DURATION_LIMIT_EXCEEDED")
     void testManageDaysAddExceedLimit() {
         UUID tripId = UUID.randomUUID();
         UUID versionId = UUID.randomUUID();
@@ -296,8 +311,10 @@ public class TripPlanningEnhancementTest {
         req.setExpectedTripRevision(1L);
         req.setExpectedVersionRevision(1L);
 
-        BusinessException ex = assertThrows(BusinessException.class,
-                () -> tripService.manageDays(tripId, versionId, req, actorId));
+        BusinessException ex =
+                assertThrows(
+                        BusinessException.class,
+                        () -> tripService.manageDays(tripId, versionId, req, actorId));
         assertEquals("DURATION_LIMIT_EXCEEDED", ex.getCode());
     }
 
@@ -328,7 +345,8 @@ public class TripPlanningEnhancementTest {
 
         when(tripRepository.findById(tripId)).thenReturn(Optional.of(trip));
         when(versionRepository.findById(versionId)).thenReturn(Optional.of(version));
-        when(versionRepository.findByTrip_TripIdOrderByVersionNumberAsc(tripId)).thenReturn(List.of(version));
+        when(versionRepository.findByTrip_TripIdOrderByVersionNumberAsc(tripId))
+                .thenReturn(List.of(version));
 
         TripDayManageRequest req = new TripDayManageRequest();
         req.setAction(TripDayManageAction.REMOVE);
@@ -336,8 +354,10 @@ public class TripPlanningEnhancementTest {
         req.setExpectedTripRevision(1L);
         req.setExpectedVersionRevision(1L);
 
-        BusinessException ex = assertThrows(BusinessException.class,
-                () -> tripService.manageDays(tripId, versionId, req, actorId));
+        BusinessException ex =
+                assertThrows(
+                        BusinessException.class,
+                        () -> tripService.manageDays(tripId, versionId, req, actorId));
         assertEquals("DAY_CONTENT_CONFLICT", ex.getCode());
     }
 
@@ -365,8 +385,10 @@ public class TripPlanningEnhancementTest {
         req.setExpectedTripRevision(1L); // stale
         req.setExpectedVersionRevision(1L);
 
-        BusinessException ex = assertThrows(BusinessException.class,
-                () -> tripService.manageDays(tripId, versionId, req, actorId));
+        BusinessException ex =
+                assertThrows(
+                        BusinessException.class,
+                        () -> tripService.manageDays(tripId, versionId, req, actorId));
         assertEquals("STALE_REVISION", ex.getCode());
     }
 
@@ -387,8 +409,10 @@ public class TripPlanningEnhancementTest {
         req.setExpectedTripRevision(1L);
         req.setExpectedVersionRevision(1L);
 
-        BusinessException ex = assertThrows(BusinessException.class,
-                () -> tripService.manageDays(tripId, versionId, req, actorId));
+        BusinessException ex =
+                assertThrows(
+                        BusinessException.class,
+                        () -> tripService.manageDays(tripId, versionId, req, actorId));
         assertEquals("TRIP_DURATION_LOCKED", ex.getCode());
     }
 
@@ -397,7 +421,9 @@ public class TripPlanningEnhancementTest {
     // =========================================================================
 
     @Test
-    @DisplayName("BE-04: Planner có quyền đọc nguồn qua TripCatalogController mà không cần ACTIVITY_READ")
+    @DisplayName(
+            "BE-04: Planner có quyền đọc nguồn qua TripCatalogController mà không cần"
+                + " ACTIVITY_READ")
     void testGetSourceCatalogs() {
         OnboardActivity act = new OnboardActivity();
         act.setOnboardActivityId(UUID.randomUUID());
@@ -407,7 +433,8 @@ public class TripPlanningEnhancementTest {
 
         when(onboardActivityRepository.findAll()).thenReturn(List.of(act));
 
-        ApiResponse<List<PlanningSourceActivityResponse>> actRes = catalogController.getSourceActivities();
+        ApiResponse<List<PlanningSourceActivityResponse>> actRes =
+                catalogController.getSourceActivities();
         assertNotNull(actRes);
         assertEquals(1, actRes.getData().size());
         assertEquals("ACT-GALA", actRes.getData().get(0).getActivityCode());
@@ -421,7 +448,8 @@ public class TripPlanningEnhancementTest {
 
         when(serviceRepository.findAll()).thenReturn(List.of(svc));
 
-        ApiResponse<List<PlanningSourceServiceResponse>> svcRes = catalogController.getSourceServices();
+        ApiResponse<List<PlanningSourceServiceResponse>> svcRes =
+                catalogController.getSourceServices();
         assertNotNull(svcRes);
         assertEquals(1, svcRes.getData().size());
         assertEquals("SVC-BUFFET", svcRes.getData().get(0).getServiceCode());
@@ -432,7 +460,9 @@ public class TripPlanningEnhancementTest {
     // =========================================================================
 
     @Test
-    @DisplayName("BE-05: Điểm dừng có tour tham quan trên bờ nhưng thiếu allAboardTime vi phạm ALL_ABOARD_REQUIRED_FOR_EXCURSION")
+    @DisplayName(
+            "BE-05: Điểm dừng có tour tham quan trên bờ nhưng thiếu allAboardTime vi phạm"
+                + " ALL_ABOARD_REQUIRED_FOR_EXCURSION")
     void testValidationAllAboardRequiredForExcursion() {
         Trip trip = new Trip();
         trip.setDurationDays(3);
@@ -471,9 +501,12 @@ public class TripPlanningEnhancementTest {
 
         List<PlanViolation> violations = versionService.validateVersionInternal(ver);
 
-        boolean hasExcursionViolation = violations.stream()
-                .anyMatch(v -> "ALL_ABOARD_REQUIRED_FOR_EXCURSION".equals(v.getCode()));
-        assertTrue(hasExcursionViolation, "Phải phát hiện lỗi thiếu allAboardTime khi có shore excursion");
+        boolean hasExcursionViolation =
+                violations.stream()
+                        .anyMatch(v -> "ALL_ABOARD_REQUIRED_FOR_EXCURSION".equals(v.getCode()));
+        assertTrue(
+                hasExcursionViolation,
+                "Phải phát hiện lỗi thiếu allAboardTime khi có shore excursion");
     }
 
     @Test
@@ -498,9 +531,10 @@ public class TripPlanningEnhancementTest {
 
         List<PlanViolation> violations = versionService.validateVersionInternal(ver);
 
-        boolean hasViolation = violations.stream()
-                .anyMatch(v -> "INVALID_ALL_ABOARD_TIME".equals(v.getCode()));
-        assertTrue(hasViolation, "Giờ lên tàu sau giờ rời cảng phải vi phạm INVALID_ALL_ABOARD_TIME");
+        boolean hasViolation =
+                violations.stream().anyMatch(v -> "INVALID_ALL_ABOARD_TIME".equals(v.getCode()));
+        assertTrue(
+                hasViolation, "Giờ lên tàu sau giờ rời cảng phải vi phạm INVALID_ALL_ABOARD_TIME");
     }
 
     // =========================================================================
@@ -508,7 +542,9 @@ public class TripPlanningEnhancementTest {
     // =========================================================================
 
     @Test
-    @DisplayName("BE-07: Replay cùng Idempotency-Key và cùng payload trả lại kết quả cũ, không chạy lại action")
+    @DisplayName(
+            "BE-07: Replay cùng Idempotency-Key và cùng payload trả lại kết quả cũ, không chạy lại"
+                + " action")
     void testIdempotencyReplaySamePayload() {
         String key = "idemp-key-1001";
         String payload = "{\"name\":\"Trip 1\"}";
@@ -525,16 +561,20 @@ public class TripPlanningEnhancementTest {
                 sb.append(String.format("%02x", b));
             }
             record.setRequestHash(sb.toString());
-        } catch (Exception ignored) {}
+        } catch (Exception ignored) {
+        }
         record.setResponsePayload("{\"tripCode\":\"TR-CACHED\"}");
         record.setCreatedAt(Instant.now());
 
-        when(idempotencyRepository.findByActorIdAndOperationAndIdempotencyKey(actorId, "CREATE_TRIP", key))
+        when(idempotencyRepository.findByActorIdAndOperationAndIdempotencyKey(
+                        actorId, "CREATE_TRIP", key))
                 .thenReturn(Optional.of(record));
 
-        java.util.function.Supplier<TripDetailResponse> mockSupplier = mock(java.util.function.Supplier.class);
+        java.util.function.Supplier<TripDetailResponse> mockSupplier =
+                mock(java.util.function.Supplier.class);
 
-        TripDetailResponse res = idempotencyService.execute(key, actorId, "CREATE_TRIP", payload, mockSupplier);
+        TripDetailResponse res =
+                idempotencyService.execute(key, actorId, "CREATE_TRIP", payload, mockSupplier);
 
         assertNotNull(res);
         assertEquals("TR-CACHED", res.getTripCode());
@@ -553,11 +593,16 @@ public class TripPlanningEnhancementTest {
         record.setActorId(actorId);
         record.setRequestHash("old_different_hash_value");
 
-        when(idempotencyRepository.findByActorIdAndOperationAndIdempotencyKey(actorId, "CREATE_TRIP", key))
+        when(idempotencyRepository.findByActorIdAndOperationAndIdempotencyKey(
+                        actorId, "CREATE_TRIP", key))
                 .thenReturn(Optional.of(record));
 
-        BusinessException ex = assertThrows(BusinessException.class,
-                () -> idempotencyService.execute(key, actorId, "CREATE_TRIP", newPayload, () -> null));
+        BusinessException ex =
+                assertThrows(
+                        BusinessException.class,
+                        () ->
+                                idempotencyService.execute(
+                                        key, actorId, "CREATE_TRIP", newPayload, () -> null));
         assertEquals("IDEMPOTENCY_CONFLICT", ex.getCode());
     }
 
@@ -575,12 +620,15 @@ public class TripPlanningEnhancementTest {
 
         when(tripRepository.findById(tripId)).thenReturn(Optional.of(trip));
 
-        BusinessException ex = assertThrows(BusinessException.class,
-                () -> tripService.archiveTrip(tripId, actorId));
+        BusinessException ex =
+                assertThrows(
+                        BusinessException.class, () -> tripService.archiveTrip(tripId, actorId));
         assertEquals("TRIP_ARCHIVED", ex.getCode());
 
-        BusinessException exVer = assertThrows(BusinessException.class,
-                () -> tripService.createScheduleVersion(tripId, null, actorId));
+        BusinessException exVer =
+                assertThrows(
+                        BusinessException.class,
+                        () -> tripService.createScheduleVersion(tripId, null, actorId));
         assertEquals("TRIP_ARCHIVED", exVer.getCode());
     }
 
@@ -589,7 +637,8 @@ public class TripPlanningEnhancementTest {
     // =========================================================================
 
     @Test
-    @DisplayName("P1: Quan hệ nhóm lặp lưu và trả lại seriesClientKey cho khung phục vụ / hoạt động")
+    @DisplayName(
+            "P1: Quan hệ nhóm lặp lưu và trả lại seriesClientKey cho khung phục vụ / hoạt động")
     void testServingWindowSeriesClientKeyRelation() {
         TripPlanEntry entry = new TripPlanEntry();
         entry.setClientKey("entry-breakfast-d1");
@@ -639,13 +688,19 @@ public class TripPlanningEnhancementTest {
             assertNotNull(v.getCode(), "Mỗi vi phạm phải có code");
             assertNotNull(v.getSeverity(), "Mỗi vi phạm phải có severity");
             assertNotNull(v.getEntityType(), "Mỗi vi phạm phải có entityType");
-            assertNotNull(v.getFieldPath(), "Mỗi vi phạm phải có fieldPath để FE highlight: " + v.getCode());
-            assertNotNull(v.getActionHint(), "Mỗi vi phạm phải có actionHint để FE điều hướng: " + v.getCode());
+            assertNotNull(
+                    v.getFieldPath(),
+                    "Mỗi vi phạm phải có fieldPath để FE highlight: " + v.getCode());
+            assertNotNull(
+                    v.getActionHint(),
+                    "Mỗi vi phạm phải có actionHint để FE điều hướng: " + v.getCode());
         }
     }
 
     @Test
-    @DisplayName("P0: Cho phép chưa xác định tripType tại form tạo và tự động xác nhận khi có cảng đón/trả")
+    @DisplayName(
+            "P0: Cho phép chưa xác định tripType tại form tạo và tự động xác nhận khi có cảng"
+                + " đón/trả")
     void testTripTypeAutoConfirmationFromStops() {
         Trip trip = new Trip();
         trip.setDurationDays(2);
@@ -681,20 +736,27 @@ public class TripPlanningEnhancementTest {
 
         versionService.syncTripTypeFromStops(ver);
 
-        assertEquals(ItineraryType.ROUND_TRIP, trip.getTripType(),
-                "Khi cảng đón và cảng trả trùng nhau, tripType phải tự động xác nhận là ROUND_TRIP");
+        assertEquals(
+                ItineraryType.ROUND_TRIP,
+                trip.getTripType(),
+                "Khi cảng đón và cảng trả trùng nhau, tripType phải tự động xác nhận là"
+                    + " ROUND_TRIP");
 
         // Đổi s2 sang cảng B khác cảng A -> ONE_WAY
         trip.setTripType(null);
         s2.setPort(portB);
         versionService.syncTripTypeFromStops(ver);
 
-        assertEquals(ItineraryType.ONE_WAY, trip.getTripType(),
+        assertEquals(
+                ItineraryType.ONE_WAY,
+                trip.getTripType(),
                 "Khi cảng đón và cảng trả khác nhau, tripType phải tự động xác nhận là ONE_WAY");
     }
 
     @Test
-    @DisplayName("P0: Báo lỗi vi phạm TRIP_TYPE_MISMATCH nếu kiểu tuyến chọn trước xung đột với cảng thực tế")
+    @DisplayName(
+            "P0: Báo lỗi vi phạm TRIP_TYPE_MISMATCH nếu kiểu tuyến chọn trước xung đột với cảng"
+                + " thực tế")
     void testTripTypeMismatchViolation() {
         Trip trip = new Trip();
         trip.setDurationDays(2);
@@ -730,10 +792,11 @@ public class TripPlanningEnhancementTest {
 
         List<PlanViolation> violations = versionService.validateVersionInternal(ver);
 
-        PlanViolation mismatch = violations.stream()
-                .filter(v -> "TRIP_TYPE_MISMATCH".equals(v.getCode()))
-                .findFirst()
-                .orElse(null);
+        PlanViolation mismatch =
+                violations.stream()
+                        .filter(v -> "TRIP_TYPE_MISMATCH".equals(v.getCode()))
+                        .findFirst()
+                        .orElse(null);
 
         assertNotNull(mismatch, "Phải phát hiện vi phạm TRIP_TYPE_MISMATCH");
         assertEquals("trip.tripType", mismatch.getFieldPath());
@@ -809,9 +872,11 @@ public class TripPlanningEnhancementTest {
 
         List<PlanViolation> violations = versionService.validateVersionInternal(ver);
 
-        boolean hasTimingViolation = violations.stream()
-                .anyMatch(v -> "INVALID_EXCURSION_TIME".equals(v.getCode()));
-        assertTrue(hasTimingViolation, "Phải phát hiện vi phạm INVALID_EXCURSION_TIME khi end <= start");
+        boolean hasTimingViolation =
+                violations.stream().anyMatch(v -> "INVALID_EXCURSION_TIME".equals(v.getCode()));
+        assertTrue(
+                hasTimingViolation,
+                "Phải phát hiện vi phạm INVALID_EXCURSION_TIME khi end <= start");
     }
 
     @Test
@@ -838,10 +903,11 @@ public class TripPlanningEnhancementTest {
 
         List<PlanViolation> violations = versionService.validateVersionInternal(ver);
 
-        PlanViolation meetingPointViolation = violations.stream()
-                .filter(v -> "MEETING_POINT_REQUIRED".equals(v.getCode()))
-                .findFirst()
-                .orElse(null);
+        PlanViolation meetingPointViolation =
+                violations.stream()
+                        .filter(v -> "MEETING_POINT_REQUIRED".equals(v.getCode()))
+                        .findFirst()
+                        .orElse(null);
 
         assertNotNull(meetingPointViolation, "Phải có vi phạm MEETING_POINT_REQUIRED");
         assertEquals("ERROR", meetingPointViolation.getSeverity());
@@ -865,9 +931,11 @@ public class TripPlanningEnhancementTest {
         ver.setRevision(1L);
 
         when(versionRepository.findById(vId)).thenReturn(Optional.of(ver));
-        when(versionRepository.save(any(TripScheduleVersion.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(versionRepository.save(any(TripScheduleVersion.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
 
-        com.casms.trip.dto.request.VersionCancelRequest req = new com.casms.trip.dto.request.VersionCancelRequest();
+        com.casms.trip.dto.request.VersionCancelRequest req =
+                new com.casms.trip.dto.request.VersionCancelRequest();
         req.setExpectedRevision(1L);
         req.setReason("Hủy phương án này để làm lại từ đầu");
 
@@ -875,7 +943,14 @@ public class TripPlanningEnhancementTest {
 
         assertEquals(TripScheduleVersionStatus.CANCELLED, res.getStatus());
         assertEquals("Hủy phương án này để làm lại từ đầu", res.getRejectionReason());
-        verify(auditService).record(eq(actorId), eq("CANCEL_DRAFT"), eq("TripScheduleVersion"), eq(vId), eq("SUCCESS"), anyString());
+        verify(auditService)
+                .record(
+                        eq(actorId),
+                        eq("CANCEL_DRAFT"),
+                        eq("TripScheduleVersion"),
+                        eq(vId),
+                        eq("SUCCESS"),
+                        anyString());
     }
 
     @Test
@@ -892,13 +967,20 @@ public class TripPlanningEnhancementTest {
 
         when(versionRepository.findById(vId)).thenReturn(Optional.of(ver));
 
-        BusinessException ex = assertThrows(BusinessException.class,
-                () -> versionService.cancelDraftById(vId, new com.casms.trip.dto.request.VersionCancelRequest(), actorId));
+        BusinessException ex =
+                assertThrows(
+                        BusinessException.class,
+                        () ->
+                                versionService.cancelDraftById(
+                                        vId,
+                                        new com.casms.trip.dto.request.VersionCancelRequest(),
+                                        actorId));
         assertEquals("INVALID_STATUS", ex.getCode());
     }
 
     @Test
-    @DisplayName("BE-06B: Chuyến nội địa (DOMESTIC) ghé cảng quốc tế vi phạm PORT_OUTSIDE_PLANNED_SCOPE")
+    @DisplayName(
+            "BE-06B: Chuyến nội địa (DOMESTIC) ghé cảng quốc tế vi phạm PORT_OUTSIDE_PLANNED_SCOPE")
     void testBE06B_DomesticTripRejectsForeignPort() {
         Trip trip = new Trip();
         trip.setDurationDays(2);
@@ -922,18 +1004,23 @@ public class TripPlanningEnhancementTest {
 
         List<PlanViolation> violations = versionService.validateVersionInternal(ver);
 
-        PlanViolation scopeViolation = violations.stream()
-                .filter(v -> "PORT_OUTSIDE_PLANNED_SCOPE".equals(v.getCode()))
-                .findFirst()
-                .orElse(null);
+        PlanViolation scopeViolation =
+                violations.stream()
+                        .filter(v -> "PORT_OUTSIDE_PLANNED_SCOPE".equals(v.getCode()))
+                        .findFirst()
+                        .orElse(null);
 
-        assertNotNull(scopeViolation, "Phải có vi phạm PORT_OUTSIDE_PLANNED_SCOPE khi chuyến nội địa ghé cảng nước ngoài");
+        assertNotNull(
+                scopeViolation,
+                "Phải có vi phạm PORT_OUTSIDE_PLANNED_SCOPE khi chuyến nội địa ghé cảng nước"
+                    + " ngoài");
         assertEquals("ERROR", scopeViolation.getSeverity());
         assertEquals("REMOVE_OR_CHANGE_PORT", scopeViolation.getActionHint());
     }
 
     @Test
-    @DisplayName("BE-07: Tham chiếu hoạt động nguồn không tồn tại vi phạm SOURCE_ACTIVITY_NOT_FOUND")
+    @DisplayName(
+            "BE-07: Tham chiếu hoạt động nguồn không tồn tại vi phạm SOURCE_ACTIVITY_NOT_FOUND")
     void testBE07_SourceActivityNotFoundViolation() {
         Trip trip = new Trip();
         trip.setDurationDays(2);
@@ -960,10 +1047,11 @@ public class TripPlanningEnhancementTest {
 
         List<PlanViolation> violations = versionService.validateVersionInternal(ver);
 
-        PlanViolation srcViolation = violations.stream()
-                .filter(v -> "SOURCE_ACTIVITY_NOT_FOUND".equals(v.getCode()))
-                .findFirst()
-                .orElse(null);
+        PlanViolation srcViolation =
+                violations.stream()
+                        .filter(v -> "SOURCE_ACTIVITY_NOT_FOUND".equals(v.getCode()))
+                        .findFirst()
+                        .orElse(null);
 
         assertNotNull(srcViolation, "Phải báo lỗi khi sourceActivityId không tồn tại");
         assertEquals("ERROR", srcViolation.getSeverity());
@@ -994,19 +1082,34 @@ public class TripPlanningEnhancementTest {
         ver.setEntries(new ArrayList<>());
 
         when(versionRepository.findById(versionId)).thenReturn(Optional.of(ver));
-        when(versionRepository.save(any(TripScheduleVersion.class))).thenAnswer(i -> i.getArgument(0));
+        when(versionRepository.save(any(TripScheduleVersion.class)))
+                .thenAnswer(i -> i.getArgument(0));
 
-        com.casms.trip.dto.request.VersionWithdrawRequest req = new com.casms.trip.dto.request.VersionWithdrawRequest();
+        com.casms.trip.dto.request.VersionWithdrawRequest req =
+                new com.casms.trip.dto.request.VersionWithdrawRequest();
         req.setExpectedRevision(3L);
         req.setReason("Cần chỉnh sửa lại giờ tham quan");
 
-        TripScheduleVersionDetailResponse res = versionService.withdrawById(versionId, req, actorId);
+        TripScheduleVersionDetailResponse res =
+                versionService.withdrawById(versionId, req, actorId);
 
         assertNotNull(res);
         assertEquals(TripScheduleVersionStatus.DRAFT, res.getStatus());
         assertEquals(ver.getVersionId(), res.getVersionId());
-        verify(versionRepository).save(argThat(v -> v.getStatus() == TripScheduleVersionStatus.DRAFT && v.getSubmittedRevision() == null));
-        verify(auditService).record(eq(actorId), eq("WITHDRAW"), eq("TripScheduleVersion"), eq(versionId), eq("SUCCESS"), contains("Cần chỉnh sửa lại giờ tham quan"));
+        verify(versionRepository)
+                .save(
+                        argThat(
+                                v ->
+                                        v.getStatus() == TripScheduleVersionStatus.DRAFT
+                                                && v.getSubmittedRevision() == null));
+        verify(auditService)
+                .record(
+                        eq(actorId),
+                        eq("WITHDRAW"),
+                        eq("TripScheduleVersion"),
+                        eq(versionId),
+                        eq("SUCCESS"),
+                        contains("Cần chỉnh sửa lại giờ tham quan"));
     }
 
     @Test
@@ -1020,14 +1123,18 @@ public class TripPlanningEnhancementTest {
 
         when(versionRepository.findById(versionId)).thenReturn(Optional.of(ver));
 
-        BusinessException ex = assertThrows(BusinessException.class, () ->
-                versionService.withdrawById(versionId, null, actorId));
+        BusinessException ex =
+                assertThrows(
+                        BusinessException.class,
+                        () -> versionService.withdrawById(versionId, null, actorId));
 
         assertEquals("INVALID_STATUS", ex.getCode());
     }
 
     @Test
-    @DisplayName("BE-12/16: Tra cứu lịch sử Trip có thông tin người thực hiện mà không cần quyền USER_READ")
+    @DisplayName(
+            "BE-12/16: Tra cứu lịch sử Trip có thông tin người thực hiện mà không cần quyền"
+                + " USER_READ")
     void testBE12_TripHistoryQuery() {
         UUID tripId = UUID.randomUUID();
         Trip trip = new Trip();
@@ -1046,7 +1153,8 @@ public class TripPlanningEnhancementTest {
         logEntry.setDetail("Patched Trip TR-AUDIT-1");
         logEntry.setOccurredAt(Instant.now());
 
-        when(auditRepository.findByEntityIdOrderByOccurredAtDesc(tripId)).thenReturn(List.of(logEntry));
+        when(auditRepository.findByEntityIdOrderByOccurredAtDesc(tripId))
+                .thenReturn(List.of(logEntry));
         when(userRepository.findById(actorId)).thenReturn(Optional.of(actor));
 
         List<TripAuditResponse> history = tripService.getTripHistory(tripId);
@@ -1063,7 +1171,8 @@ public class TripPlanningEnhancementTest {
     // =========================================================================
 
     @Test
-    @DisplayName("BE-13: Khung phục vụ (SERVING_WINDOW) KHÔNG bắt buộc có điểm tập trung (meetingPoint)")
+    @DisplayName(
+            "BE-13: Khung phục vụ (SERVING_WINDOW) KHÔNG bắt buộc có điểm tập trung (meetingPoint)")
     void testBE13_ServingWindowDoesNotRequireMeetingPoint() {
         Trip trip = new Trip();
         trip.setDurationDays(2);
@@ -1087,13 +1196,16 @@ public class TripPlanningEnhancementTest {
 
         List<PlanViolation> violations = versionService.validateVersionInternal(ver);
 
-        boolean hasMeetingPointViolation = violations.stream()
-                .anyMatch(v -> "MEETING_POINT_REQUIRED".equals(v.getCode()));
-        assertFalse(hasMeetingPointViolation, "Khung phục vụ không được báo lỗi MEETING_POINT_REQUIRED");
+        boolean hasMeetingPointViolation =
+                violations.stream().anyMatch(v -> "MEETING_POINT_REQUIRED".equals(v.getCode()));
+        assertFalse(
+                hasMeetingPointViolation,
+                "Khung phục vụ không được báo lỗi MEETING_POINT_REQUIRED");
     }
 
     @Test
-    @DisplayName("BE-07: Tour tham quan nguồn không khớp cảng ghé báo lỗi SHORE_EXCURSION_PORT_MISMATCH")
+    @DisplayName(
+            "BE-07: Tour tham quan nguồn không khớp cảng ghé báo lỗi SHORE_EXCURSION_PORT_MISMATCH")
     void testBE07_ShoreExcursionPortMismatchViolation() {
         Trip trip = new Trip();
         trip.setDurationDays(2);
@@ -1115,13 +1227,15 @@ public class TripPlanningEnhancementTest {
         stop.setDepartureDayNumber(1);
 
         UUID sourceExcursionId = UUID.randomUUID();
-        com.casms.activity.entity.ShoreExcursion masterTour = new com.casms.activity.entity.ShoreExcursion();
+        com.casms.activity.entity.ShoreExcursion masterTour =
+                new com.casms.activity.entity.ShoreExcursion();
         masterTour.setShoreExcursionId(sourceExcursionId);
         masterTour.setExcursionName("Tour Bà Nà Hills");
         masterTour.setPort(portB); // Cảng Đà Nẵng != Cảng Sài Gòn
         masterTour.setStatus(com.casms.activity.enums.ShoreExcursionStatus.OPEN);
 
-        when(shoreExcursionRepository.findById(sourceExcursionId)).thenReturn(Optional.of(masterTour));
+        when(shoreExcursionRepository.findById(sourceExcursionId))
+                .thenReturn(Optional.of(masterTour));
 
         TripPlanEntry entry = new TripPlanEntry();
         entry.setClientKey("entry-tour-mismatch");
@@ -1143,10 +1257,14 @@ public class TripPlanningEnhancementTest {
 
         List<PlanViolation> violations = versionService.validateVersionInternal(ver);
 
-        PlanViolation mismatch = violations.stream()
-                .filter(v -> "SHORE_EXCURSION_PORT_MISMATCH".equals(v.getCode()))
-                .findFirst().orElse(null);
-        assertNotNull(mismatch, "Phải báo lỗi SHORE_EXCURSION_PORT_MISMATCH khi tour nguồn thuộc cảng khác");
+        PlanViolation mismatch =
+                violations.stream()
+                        .filter(v -> "SHORE_EXCURSION_PORT_MISMATCH".equals(v.getCode()))
+                        .findFirst()
+                        .orElse(null);
+        assertNotNull(
+                mismatch,
+                "Phải báo lỗi SHORE_EXCURSION_PORT_MISMATCH khi tour nguồn thuộc cảng khác");
         assertEquals("ERROR", mismatch.getSeverity());
     }
 
@@ -1167,13 +1285,15 @@ public class TripPlanningEnhancementTest {
         stop.setDepartureDayNumber(1);
 
         UUID sourceExcursionId = UUID.randomUUID();
-        com.casms.activity.entity.ShoreExcursion cancelledTour = new com.casms.activity.entity.ShoreExcursion();
+        com.casms.activity.entity.ShoreExcursion cancelledTour =
+                new com.casms.activity.entity.ShoreExcursion();
         cancelledTour.setShoreExcursionId(sourceExcursionId);
         cancelledTour.setExcursionName("Tour Củ Chi ngừng phục vụ");
         cancelledTour.setPort(portA);
         cancelledTour.setStatus(com.casms.activity.enums.ShoreExcursionStatus.CANCELLED);
 
-        when(shoreExcursionRepository.findById(sourceExcursionId)).thenReturn(Optional.of(cancelledTour));
+        when(shoreExcursionRepository.findById(sourceExcursionId))
+                .thenReturn(Optional.of(cancelledTour));
 
         TripPlanEntry entry = new TripPlanEntry();
         entry.setClientKey("entry-tour-cancelled");
@@ -1195,14 +1315,19 @@ public class TripPlanningEnhancementTest {
 
         List<PlanViolation> violations = versionService.validateVersionInternal(ver);
 
-        PlanViolation inactive = violations.stream()
-                .filter(v -> "SOURCE_EXCURSION_INACTIVE".equals(v.getCode()))
-                .findFirst().orElse(null);
-        assertNotNull(inactive, "Phải báo lỗi SOURCE_EXCURSION_INACTIVE khi tour nguồn bị CANCELLED");
+        PlanViolation inactive =
+                violations.stream()
+                        .filter(v -> "SOURCE_EXCURSION_INACTIVE".equals(v.getCode()))
+                        .findFirst()
+                        .orElse(null);
+        assertNotNull(
+                inactive, "Phải báo lỗi SOURCE_EXCURSION_INACTIVE khi tour nguồn bị CANCELLED");
     }
 
     @Test
-    @DisplayName("BE-06B: Kiểm tra vi phạm miền địa lý (PORT_OUTSIDE_DOMESTIC_REGION) và quốc gia (PORT_OUTSIDE_COUNTRY_SCOPE)")
+    @DisplayName(
+            "BE-06B: Kiểm tra vi phạm miền địa lý (PORT_OUTSIDE_DOMESTIC_REGION) và quốc gia"
+                + " (PORT_OUTSIDE_COUNTRY_SCOPE)")
     void testBE06B_DomesticRegionAndCountryScopeViolations() {
         // Case 1: Chuyến nội địa Miền Bắc nhưng cảng thuộc Miền Nam (VNSGN)
         Trip tripDomestic = new Trip();
@@ -1228,9 +1353,12 @@ public class TripPlanningEnhancementTest {
         verDom.setEntries(new ArrayList<>());
 
         List<PlanViolation> violationsDom = versionService.validateVersionInternal(verDom);
-        boolean hasRegionViolation = violationsDom.stream()
-                .anyMatch(v -> "PORT_OUTSIDE_DOMESTIC_REGION".equals(v.getCode()));
-        assertTrue(hasRegionViolation, "Phải báo lỗi PORT_OUTSIDE_DOMESTIC_REGION khi cảng Sài Gòn không thuộc miền Bắc");
+        boolean hasRegionViolation =
+                violationsDom.stream()
+                        .anyMatch(v -> "PORT_OUTSIDE_DOMESTIC_REGION".equals(v.getCode()));
+        assertTrue(
+                hasRegionViolation,
+                "Phải báo lỗi PORT_OUTSIDE_DOMESTIC_REGION khi cảng Sài Gòn không thuộc miền Bắc");
 
         // Case 2: Chuyến quốc tế giới hạn VN, TH nhưng ghé cảng Nhật Bản (JP)
         Trip tripIntl = new Trip();
@@ -1256,9 +1384,13 @@ public class TripPlanningEnhancementTest {
         verIntl.setEntries(new ArrayList<>());
 
         List<PlanViolation> violationsIntl = versionService.validateVersionInternal(verIntl);
-        boolean hasCountryViolation = violationsIntl.stream()
-                .anyMatch(v -> "PORT_OUTSIDE_COUNTRY_SCOPE".equals(v.getCode()));
-        assertTrue(hasCountryViolation, "Phải báo lỗi PORT_OUTSIDE_COUNTRY_SCOPE khi cảng Tokyo không nằm trong phạm vi quốc gia đã đăng ký");
+        boolean hasCountryViolation =
+                violationsIntl.stream()
+                        .anyMatch(v -> "PORT_OUTSIDE_COUNTRY_SCOPE".equals(v.getCode()));
+        assertTrue(
+                hasCountryViolation,
+                "Phải báo lỗi PORT_OUTSIDE_COUNTRY_SCOPE khi cảng Tokyo không nằm trong phạm vi"
+                    + " quốc gia đã đăng ký");
     }
 
     @Test
@@ -1280,13 +1412,17 @@ public class TripPlanningEnhancementTest {
         when(tripRepository.findById(tripId)).thenReturn(Optional.of(trip));
         when(versionRepository.findById(versionId)).thenReturn(Optional.of(cancelledVer));
 
-        BusinessException ex = assertThrows(BusinessException.class, () ->
-                tripService.cloneTrip(tripId, versionId, actorId));
+        BusinessException ex =
+                assertThrows(
+                        BusinessException.class,
+                        () -> tripService.cloneTrip(tripId, versionId, actorId));
         assertEquals("CANNOT_CLONE_CANCELLED_VERSION", ex.getCode());
     }
 
     @Test
-    @DisplayName("BE-12/14: createNextDraftVersion tính maxVersionNumber + 1 ngay cả khi có phiên bản bị CANCELLED")
+    @DisplayName(
+            "BE-12/14: createNextDraftVersion tính maxVersionNumber + 1 ngay cả khi có phiên bản bị"
+                + " CANCELLED")
     void testCreateNextVersion_HandlesCancelledVersionsWithoutUniqueCollision() {
         UUID tripId = UUID.randomUUID();
         Trip trip = new Trip();
@@ -1316,16 +1452,20 @@ public class TripPlanningEnhancementTest {
         when(versionRepository.findByTrip_TripIdOrderByVersionNumberAsc(tripId))
                 .thenReturn(List.of(v1Published, v2Cancelled));
         when(userRepository.findById(actorId)).thenReturn(Optional.of(actor));
-        when(versionRepository.save(any(TripScheduleVersion.class))).thenAnswer(i -> {
-            TripScheduleVersion v = i.getArgument(0);
-            v.setVersionId(UUID.randomUUID());
-            return v;
-        });
+        when(versionRepository.save(any(TripScheduleVersion.class)))
+                .thenAnswer(
+                        i -> {
+                            TripScheduleVersion v = i.getArgument(0);
+                            v.setVersionId(UUID.randomUUID());
+                            return v;
+                        });
 
-        TripScheduleVersionDetailResponse nextVerRes = versionService.createNextDraftVersion(tripId, actorId);
+        TripScheduleVersionDetailResponse nextVerRes =
+                versionService.createNextDraftVersion(tripId, actorId);
 
         assertNotNull(nextVerRes);
-        // Phiên bản tiếp theo phải là 3 (max(1, 2) + 1), không được là 2 (tránh uq_trip_version trùng lặp)
+        // Phiên bản tiếp theo phải là 3 (max(1, 2) + 1), không được là 2 (tránh uq_trip_version
+        // trùng lặp)
         assertEquals(3, nextVerRes.getVersionNumber());
         assertEquals(TripScheduleVersionStatus.DRAFT, nextVerRes.getStatus());
     }
@@ -1368,7 +1508,8 @@ public class TripPlanningEnhancementTest {
         portSGN.setLatitude(java.math.BigDecimal.valueOf(10.6333));
         portSGN.setLongitude(java.math.BigDecimal.valueOf(106.7500));
 
-        when(deckRepository.findAll(any(org.springframework.data.domain.Sort.class))).thenReturn(List.of(deck2));
+        when(deckRepository.findAll(any(org.springframework.data.domain.Sort.class)))
+                .thenReturn(List.of(deck2));
         when(cabinRepository.findAll()).thenReturn(List.of(cabin202));
         when(portRepository.findAll()).thenReturn(List.of(portSGN));
 
@@ -1381,12 +1522,15 @@ public class TripPlanningEnhancementTest {
         assertEquals("OceVie Paradise of the Seas", deckRes.getData().get(0).getShipName());
 
         // 2. Test getSourceCabins
-        ApiResponse<List<PlanningSourceCabinResponse>> cabinRes = catalogController.getSourceCabins();
+        ApiResponse<List<PlanningSourceCabinResponse>> cabinRes =
+                catalogController.getSourceCabins();
         assertNotNull(cabinRes);
         assertEquals(1, cabinRes.getData().size());
         assertEquals("202", cabinRes.getData().get(0).getCabinNumber());
         assertEquals("Phòng Massage Đá Nóng VIP", cabinRes.getData().get(0).getRoomName());
-        assertEquals("Phòng 202 - Phòng Massage Đá Nóng VIP", cabinRes.getData().get(0).getDisplayName());
+        assertEquals(
+                "Phòng 202 - Phòng Massage Đá Nóng VIP",
+                cabinRes.getData().get(0).getDisplayName());
         assertEquals(2, cabinRes.getData().get(0).getDeckNumber());
         assertEquals("MIDSHIP-PORT", cabinRes.getData().get(0).getLocationCode());
 
@@ -1398,17 +1542,44 @@ public class TripPlanningEnhancementTest {
         assertEquals("Saigon Hiep Phuoc Cruise Port", portRes.getData().get(0).getPortName());
 
         // 4. Test getActivityCategories catalog
-        ApiResponse<List<ActivityCategoryResponse>> catRes = catalogController.getActivityCategories();
+        ApiResponse<List<ActivityCategoryResponse>> catRes =
+                catalogController.getActivityCategories();
         assertNotNull(catRes);
         assertEquals(4, catRes.getData().size());
-        assertTrue(catRes.getData().stream().anyMatch(c -> c.getCode() == com.casms.activity.enums.OnboardActivityCategory.ENTERTAINMENT));
-        assertTrue(catRes.getData().stream().anyMatch(c -> c.getCode() == com.casms.activity.enums.OnboardActivityCategory.SPORTS_WELLNESS));
-        assertTrue(catRes.getData().stream().anyMatch(c -> c.getCode() == com.casms.activity.enums.OnboardActivityCategory.FAMILY_KIDS));
-        assertTrue(catRes.getData().stream().anyMatch(c -> c.getCode() == com.casms.activity.enums.OnboardActivityCategory.SPECIAL_EVENTS));
+        assertTrue(
+                catRes.getData().stream()
+                        .anyMatch(
+                                c ->
+                                        c.getCode()
+                                                == com.casms.activity.enums.OnboardActivityCategory
+                                                        .ENTERTAINMENT));
+        assertTrue(
+                catRes.getData().stream()
+                        .anyMatch(
+                                c ->
+                                        c.getCode()
+                                                == com.casms.activity.enums.OnboardActivityCategory
+                                                        .SPORTS_WELLNESS));
+        assertTrue(
+                catRes.getData().stream()
+                        .anyMatch(
+                                c ->
+                                        c.getCode()
+                                                == com.casms.activity.enums.OnboardActivityCategory
+                                                        .FAMILY_KIDS));
+        assertTrue(
+                catRes.getData().stream()
+                        .anyMatch(
+                                c ->
+                                        c.getCode()
+                                                == com.casms.activity.enums.OnboardActivityCategory
+                                                        .SPECIAL_EVENTS));
     }
 
     @Test
-    @DisplayName("Lưu nháp lịch trình: Lưu thành công Deck/Cabin/Category và định dạng phân tách không gian FUNCTIONAL_ROOM")
+    @DisplayName(
+            "Lưu nháp lịch trình: Lưu thành công Deck/Cabin/Category và định dạng phân tách không"
+                + " gian FUNCTIONAL_ROOM")
     void testSaveDraft_SavesDeckAndCabinAndSupportsCopyOnSelect() {
         UUID tripId = UUID.randomUUID();
         Trip trip = new Trip();
@@ -1446,13 +1617,16 @@ public class TripPlanningEnhancementTest {
         cabin.setRoomName("Phòng Massage Đá Nóng VIP");
         cabin.setDeck(deck);
 
-        when(versionRepository.findByTrip_TripIdAndVersionNumber(tripId, 1)).thenReturn(Optional.of(ver));
-        when(versionRepository.save(any(TripScheduleVersion.class))).thenAnswer(i -> i.getArgument(0));
+        when(versionRepository.findByTrip_TripIdAndVersionNumber(tripId, 1))
+                .thenReturn(Optional.of(ver));
+        when(versionRepository.save(any(TripScheduleVersion.class)))
+                .thenAnswer(i -> i.getArgument(0));
         when(deckRepository.findById(deckId)).thenReturn(Optional.of(deck));
         when(cabinRepository.findById(cabinId)).thenReturn(Optional.of(cabin));
 
         // Tạo entry DTO có deckId, cabinId và category rõ ràng
-        com.casms.trip.dto.request.TripPlanEntryDraftDto entryDto = new com.casms.trip.dto.request.TripPlanEntryDraftDto();
+        com.casms.trip.dto.request.TripPlanEntryDraftDto entryDto =
+                new com.casms.trip.dto.request.TripPlanEntryDraftDto();
         entryDto.setClientKey("entry-spa-202");
         entryDto.setDayNumber(1);
         entryDto.setKind(TripPlanEntryKind.ONBOARD_ACTIVITY);
@@ -1469,14 +1643,16 @@ public class TripPlanningEnhancementTest {
                 new com.casms.trip.dto.request.ScheduleDraftSaveRequest();
         saveReq.setExpectedRevision(1L);
 
-        com.casms.trip.dto.request.TripPlanDayDraftDto dayDto = new com.casms.trip.dto.request.TripPlanDayDraftDto();
+        com.casms.trip.dto.request.TripPlanDayDraftDto dayDto =
+                new com.casms.trip.dto.request.TripPlanDayDraftDto();
         dayDto.setDayNumber(1);
         dayDto.setDayType(ItineraryDayType.PORT_DAY); // One-day trip also ends here.
         saveReq.setDays(List.of(dayDto));
         saveReq.setStops(new ArrayList<>());
         saveReq.setEntries(List.of(entryDto));
 
-        TripScheduleVersionDetailResponse res = versionService.saveDraft(tripId, 1, saveReq, actorId);
+        TripScheduleVersionDetailResponse res =
+                versionService.saveDraft(tripId, 1, saveReq, actorId);
 
         assertNotNull(res);
         assertEquals(1, res.getEntries().size());
@@ -1488,13 +1664,17 @@ public class TripPlanningEnhancementTest {
         assertEquals("202", savedEntry.getCabinNumber());
         assertEquals("Phòng Massage Đá Nóng VIP", savedEntry.getRoomName());
         assertEquals("FUNCTIONAL_ROOM", savedEntry.getLocationType());
-        assertEquals(com.casms.activity.enums.OnboardActivityCategory.SPORTS_WELLNESS, savedEntry.getCategory());
+        assertEquals(
+                com.casms.activity.enums.OnboardActivityCategory.SPORTS_WELLNESS,
+                savedEntry.getCategory());
         assertEquals("Thể thao & Sức khỏe", savedEntry.getCategoryName());
         assertTrue(savedEntry.getDisplayLocation().contains("Phòng 202"));
     }
 
     @Test
-    @DisplayName("Kế thừa tự động: Tự động copy category và location từ OnboardActivity nguồn khi lập lịch")
+    @DisplayName(
+            "Kế thừa tự động: Tự động copy category và location từ OnboardActivity nguồn khi lập"
+                + " lịch")
     void testCopyOnSelect_InheritsCategoryAndLocationFromSource() {
         UUID tripId = UUID.randomUUID();
         Trip trip = new Trip();
@@ -1531,12 +1711,15 @@ public class TripPlanningEnhancementTest {
         srcAct.setDeck(deck10);
         srcAct.setLocation("Boong ngắm cảnh phía mũi");
 
-        when(versionRepository.findByTrip_TripIdAndVersionNumber(tripId, 1)).thenReturn(Optional.of(ver));
-        when(versionRepository.save(any(TripScheduleVersion.class))).thenAnswer(i -> i.getArgument(0));
+        when(versionRepository.findByTrip_TripIdAndVersionNumber(tripId, 1))
+                .thenReturn(Optional.of(ver));
+        when(versionRepository.save(any(TripScheduleVersion.class)))
+                .thenAnswer(i -> i.getArgument(0));
         when(onboardActivityRepository.findById(srcActId)).thenReturn(Optional.of(srcAct));
 
         // DTO không truyền deckId, cabinId hay category
-        com.casms.trip.dto.request.TripPlanEntryDraftDto entryDto = new com.casms.trip.dto.request.TripPlanEntryDraftDto();
+        com.casms.trip.dto.request.TripPlanEntryDraftDto entryDto =
+                new com.casms.trip.dto.request.TripPlanEntryDraftDto();
         entryDto.setClientKey("entry-yoga-inherited");
         entryDto.setDayNumber(1);
         entryDto.setKind(TripPlanEntryKind.ONBOARD_ACTIVITY);
@@ -1551,27 +1734,33 @@ public class TripPlanningEnhancementTest {
                 new com.casms.trip.dto.request.ScheduleDraftSaveRequest();
         saveReq.setExpectedRevision(1L);
 
-        com.casms.trip.dto.request.TripPlanDayDraftDto dayDto = new com.casms.trip.dto.request.TripPlanDayDraftDto();
+        com.casms.trip.dto.request.TripPlanDayDraftDto dayDto =
+                new com.casms.trip.dto.request.TripPlanDayDraftDto();
         dayDto.setDayNumber(1);
         dayDto.setDayType(ItineraryDayType.PORT_DAY); // One-day trip also ends here.
         saveReq.setDays(List.of(dayDto));
         saveReq.setStops(new ArrayList<>());
         saveReq.setEntries(List.of(entryDto));
 
-        TripScheduleVersionDetailResponse res = versionService.saveDraft(tripId, 1, saveReq, actorId);
+        TripScheduleVersionDetailResponse res =
+                versionService.saveDraft(tripId, 1, saveReq, actorId);
 
         assertNotNull(res);
         TripPlanEntryResponse savedEntry = res.getEntries().get(0);
         assertEquals(deck10.getDeckId(), savedEntry.getDeckId());
         assertEquals(10, savedEntry.getDeckNumber());
         assertEquals("VENUE_OPEN_AREA", savedEntry.getLocationType());
-        assertEquals(com.casms.activity.enums.OnboardActivityCategory.SPORTS_WELLNESS, savedEntry.getCategory());
+        assertEquals(
+                com.casms.activity.enums.OnboardActivityCategory.SPORTS_WELLNESS,
+                savedEntry.getCategory());
         assertEquals("Thể thao & Sức khỏe", savedEntry.getCategoryName());
         assertEquals("🧘", savedEntry.getCategoryIcon());
     }
 
     @Test
-    @DisplayName("Fix Audit 3: ActivityView mapping an toàn tuyệt đối khi OnboardActivity không gắn Cruise (cruise == null)")
+    @DisplayName(
+            "Fix Audit 3: ActivityView mapping an toàn tuyệt đối khi OnboardActivity không gắn"
+                + " Cruise (cruise == null)")
     void testLegacyActivityViewNullCruiseSafety() {
         OnboardActivity act = new OnboardActivity();
         act.setOnboardActivityId(UUID.randomUUID());
@@ -1590,11 +1779,14 @@ public class TripPlanningEnhancementTest {
         assertNotNull(view);
         assertEquals(act.getOnboardActivityId(), view.id());
         assertEquals("ACT-CATALOG-MASTER", view.code());
-        assertNull(view.cruiseId(), "cruiseId phải là null an toàn khi OnboardActivity không gắn Cruise");
+        assertNull(
+                view.cruiseId(),
+                "cruiseId phải là null an toàn khi OnboardActivity không gắn Cruise");
     }
 
     @Test
-    @DisplayName("Fix Audit 4: checkStatus phân loại CACHED khi có resultingId dù responsePayload rỗng")
+    @DisplayName(
+            "Fix Audit 4: checkStatus phân loại CACHED khi có resultingId dù responsePayload rỗng")
     void testIdempotencyResultingIdRecovery() {
         UUID actorId = UUID.randomUUID();
         String op = "CREATE_TRIP";
@@ -1617,16 +1809,21 @@ public class TripPlanningEnhancementTest {
                 .thenReturn(Optional.of(rec));
 
         IdempotencyReservationService resService = new IdempotencyReservationService(mockRepo);
-        IdempotencyReservationService.ReservationResult result = resService.checkStatus(actorId, op, key, hash);
+        IdempotencyReservationService.ReservationResult result =
+                resService.checkStatus(actorId, op, key, hash);
 
         assertNotNull(result);
-        assertEquals(IdempotencyReservationService.ReservationStatus.CACHED, result.getStatus(),
-                "Bản ghi có resultingId phải được phân loại CACHED để IdempotencyService kích hoạt entityRecoveryFunction");
+        assertEquals(
+                IdempotencyReservationService.ReservationStatus.CACHED,
+                result.getStatus(),
+                "Bản ghi có resultingId phải được phân loại CACHED để IdempotencyService kích hoạt"
+                    + " entityRecoveryFunction");
         assertEquals(resultingTripId, result.getRecord().getResultingId());
     }
 
     @Test
-    @DisplayName("Fix Audit 4: checkStatus thu hồi và giải phóng bản ghi treo quá 60s không có kết quả")
+    @DisplayName(
+            "Fix Audit 4: checkStatus thu hồi và giải phóng bản ghi treo quá 60s không có kết quả")
     void testIdempotencyStaleKeyEviction() {
         UUID actorId = UUID.randomUUID();
         String op = "CREATE_TRIP";
@@ -1649,17 +1846,23 @@ public class TripPlanningEnhancementTest {
                 .thenReturn(Optional.of(staleRec));
 
         IdempotencyReservationService resService = new IdempotencyReservationService(mockRepo);
-        IdempotencyReservationService.ReservationResult result = resService.checkStatus(actorId, op, key, hash);
+        IdempotencyReservationService.ReservationResult result =
+                resService.checkStatus(actorId, op, key, hash);
 
         assertNotNull(result);
-        assertEquals(IdempotencyReservationService.ReservationStatus.RESERVED, result.getStatus(),
-                "Bản ghi treo quá 60s phải được giải phóng và cho phép client đặt lại khóa (RESERVED)");
+        assertEquals(
+                IdempotencyReservationService.ReservationStatus.RESERVED,
+                result.getStatus(),
+                "Bản ghi treo quá 60s phải được giải phóng và cho phép client đặt lại khóa"
+                    + " (RESERVED)");
         verify(mockRepo, times(1)).delete(staleRec);
         verify(mockRepo, times(1)).flush();
     }
 
     @Test
-    @DisplayName("Fix Audit 1: VietnamGeographyRegistry chuẩn hóa đầy đủ UN/LOCODE, từ khóa và tọa độ cho cả 3 miền")
+    @DisplayName(
+            "Fix Audit 1: VietnamGeographyRegistry chuẩn hóa đầy đủ UN/LOCODE, từ khóa và tọa độ"
+                + " cho cả 3 miền")
     void testVietnamGeographyRegistryCanonicalMappings() {
         // 1. UN/LOCODE mapping tests
         Port halong = new Port();
@@ -1740,7 +1943,9 @@ public class TripPlanningEnhancementTest {
     }
 
     @Test
-    @DisplayName("Fix Audit 2: mapToEntryResponse và mapToStopResponse trả về thông tin tàu tham chiếu và miền địa lý")
+    @DisplayName(
+            "Fix Audit 2: mapToEntryResponse và mapToStopResponse trả về thông tin tàu tham chiếu"
+                + " và miền địa lý")
     void testReferenceShipAndStopDomesticRegionMapping() {
         Ship ship = new Ship();
         ship.setShipId(UUID.randomUUID());
@@ -1773,8 +1978,14 @@ public class TripPlanningEnhancementTest {
 
         TripPlanEntryResponse entryRes = versionService.mapToEntryResponse(entry);
         assertNotNull(entryRes);
-        assertEquals(ship.getShipId(), entryRes.getReferenceShipId(), "Phải trả về referenceShipId từ tàu tham chiếu");
-        assertEquals("Paradise Elegance", entryRes.getReferenceShipName(), "Phải trả về referenceShipName từ tàu tham chiếu");
+        assertEquals(
+                ship.getShipId(),
+                entryRes.getReferenceShipId(),
+                "Phải trả về referenceShipId từ tàu tham chiếu");
+        assertEquals(
+                "Paradise Elegance",
+                entryRes.getReferenceShipName(),
+                "Phải trả về referenceShipName từ tàu tham chiếu");
         assertEquals("FUNCTIONAL_ROOM", entryRes.getLocationType());
 
         // Test Stop domesticRegion mapping
@@ -1796,7 +2007,9 @@ public class TripPlanningEnhancementTest {
 
         TripPlanStopResponse stopRes = versionService.mapToStopResponse(stop);
         assertNotNull(stopRes);
-        assertEquals("BAC_BO", stopRes.getDomesticRegion(), "mapToStopResponse phải trả về domesticRegion chuẩn hóa");
+        assertEquals(
+                "BAC_BO",
+                stopRes.getDomesticRegion(),
+                "mapToStopResponse phải trả về domesticRegion chuẩn hóa");
     }
 }
-

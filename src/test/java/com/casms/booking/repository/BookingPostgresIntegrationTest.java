@@ -1,5 +1,10 @@
 package com.casms.booking.repository;
 
+import static org.hamcrest.Matchers.*;
+import static org.junit.jupiter.api.Assertions.*;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+
 import com.casms.booking.entity.Booking;
 import com.casms.booking.enums.BookingStatus;
 import com.casms.identity.entity.User;
@@ -14,6 +19,7 @@ import com.casms.ship.enums.CruiseStatus;
 import com.casms.ship.enums.PortStatus;
 import com.casms.ship.repository.CruiseRepository;
 import com.casms.ship.repository.PortRepository;
+
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -34,32 +40,21 @@ import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
-import static org.hamcrest.Matchers.*;
-import static org.junit.jupiter.api.Assertions.*;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
-
 @SpringBootTest
 @AutoConfigureMockMvc
 class BookingPostgresIntegrationTest {
 
-    @Autowired
-    private BookingRepository bookingRepository;
+    @Autowired private BookingRepository bookingRepository;
 
-    @Autowired
-    private CruiseRepository cruiseRepository;
+    @Autowired private CruiseRepository cruiseRepository;
 
-    @Autowired
-    private PortRepository portRepository;
+    @Autowired private PortRepository portRepository;
 
-    @Autowired
-    private UserRepository userRepository;
+    @Autowired private UserRepository userRepository;
 
-    @Autowired
-    private JwtService jwtService;
+    @Autowired private JwtService jwtService;
 
-    @Autowired
-    private MockMvc mockMvc;
+    @Autowired private MockMvc mockMvc;
 
     private Port port;
     private Cruise cruise1;
@@ -108,7 +103,8 @@ class BookingPostgresIntegrationTest {
 
         // Ensure test users
         staffUser = new User();
-        staffUser.setUsername("test-booking-reader-" + UUID.randomUUID().toString().substring(0, 8));
+        staffUser.setUsername(
+                "test-booking-reader-" + UUID.randomUUID().toString().substring(0, 8));
         staffUser.setPasswordHash("$2a$10$abcdefghijklmnopqrstuv");
         staffUser.setStatus(UserStatus.ACTIVE);
         staffUser.setRoles(Set.of(Role.BOOKING_AGENT));
@@ -129,7 +125,8 @@ class BookingPostgresIntegrationTest {
         passengerUser2 = userRepository.save(passengerUser2);
 
         adminToken = jwtService.generateToken(staffUser.getUsername(), staffUser.getUserId());
-        passengerToken = jwtService.generateToken(passengerUser1.getUsername(), passengerUser1.getUserId());
+        passengerToken =
+                jwtService.generateToken(passengerUser1.getUsername(), passengerUser1.getUserId());
     }
 
     @AfterEach
@@ -163,7 +160,8 @@ class BookingPostgresIntegrationTest {
         booking.setCruise(cruise);
         booking.setBookedByUser(user);
         booking.setBookingStatus(status);
-        booking.setBookingReference("BK-" + UUID.randomUUID().toString().substring(0, 10).toUpperCase());
+        booking.setBookingReference(
+                "BK-" + UUID.randomUUID().toString().substring(0, 10).toUpperCase());
         booking.setAgreedFareAmount(BigDecimal.valueOf(1500.00));
         booking.setCurrency("USD");
         booking.setRequiredDepositAmount(BigDecimal.valueOf(300.00));
@@ -173,13 +171,16 @@ class BookingPostgresIntegrationTest {
     }
 
     @Test
-    @DisplayName("searchBookings - Không có filter (all nulls) chạy trên PostgreSQL thật thành công không lỗi 42P18")
+    @DisplayName(
+            "searchBookings - Không có filter (all nulls) chạy trên PostgreSQL thật thành công"
+                + " không lỗi 42P18")
     void testSearchBookings_NoFilter_ReturnsAllBookings() {
         Booking b1 = createBooking(cruise1, passengerUser1, BookingStatus.Draft);
         Booking b2 = createBooking(cruise1, passengerUser2, BookingStatus.Confirmed);
         Booking b3 = createBooking(cruise2, passengerUser1, BookingStatus.Cancelled);
 
-        Page<Booking> result = bookingRepository.searchBookings(null, null, null, PageRequest.of(0, 10));
+        Page<Booking> result =
+                bookingRepository.searchBookings(null, null, null, PageRequest.of(0, 10));
 
         assertNotNull(result);
         assertTrue(result.getTotalElements() >= 3);
@@ -197,21 +198,27 @@ class BookingPostgresIntegrationTest {
         Booking b3 = createBooking(cruise2, passengerUser1, BookingStatus.Cancelled);
 
         // Filter by cruiseId only
-        Page<Booking> byCruise = bookingRepository.searchBookings(cruise1.getCruiseId(), null, null, Pageable.unpaged());
+        Page<Booking> byCruise =
+                bookingRepository.searchBookings(
+                        cruise1.getCruiseId(), null, null, Pageable.unpaged());
         List<UUID> byCruiseIds = byCruise.getContent().stream().map(Booking::getBookingId).toList();
         assertTrue(byCruiseIds.contains(b1.getBookingId()));
         assertTrue(byCruiseIds.contains(b2.getBookingId()));
         assertFalse(byCruiseIds.contains(b3.getBookingId()));
 
         // Filter by status only
-        Page<Booking> byStatus = bookingRepository.searchBookings(null, BookingStatus.Confirmed, null, Pageable.unpaged());
+        Page<Booking> byStatus =
+                bookingRepository.searchBookings(
+                        null, BookingStatus.Confirmed, null, Pageable.unpaged());
         List<UUID> byStatusIds = byStatus.getContent().stream().map(Booking::getBookingId).toList();
         assertTrue(byStatusIds.contains(b2.getBookingId()));
         assertFalse(byStatusIds.contains(b1.getBookingId()));
         assertFalse(byStatusIds.contains(b3.getBookingId()));
 
         // Filter by userId only
-        Page<Booking> byUser = bookingRepository.searchBookings(null, null, passengerUser2.getUserId(), Pageable.unpaged());
+        Page<Booking> byUser =
+                bookingRepository.searchBookings(
+                        null, null, passengerUser2.getUserId(), Pageable.unpaged());
         List<UUID> byUserIds = byUser.getContent().stream().map(Booking::getBookingId).toList();
         assertTrue(byUserIds.contains(b2.getBookingId()));
         assertFalse(byUserIds.contains(b1.getBookingId()));
@@ -219,39 +226,58 @@ class BookingPostgresIntegrationTest {
     }
 
     @Test
-    @DisplayName("searchBookings - Kết hợp nhiều filters (cruiseId + status, cruiseId + userId, all 3)")
+    @DisplayName(
+            "searchBookings - Kết hợp nhiều filters (cruiseId + status, cruiseId + userId, all 3)")
     void testSearchBookings_CombinedFilters() {
         Booking b1 = createBooking(cruise1, passengerUser1, BookingStatus.Draft);
         Booking b2 = createBooking(cruise1, passengerUser2, BookingStatus.Confirmed);
         Booking b3 = createBooking(cruise2, passengerUser1, BookingStatus.Confirmed);
 
         // cruiseId + status
-        Page<Booking> cruiseAndStatus = bookingRepository.searchBookings(cruise1.getCruiseId(), BookingStatus.Confirmed, null, Pageable.unpaged());
+        Page<Booking> cruiseAndStatus =
+                bookingRepository.searchBookings(
+                        cruise1.getCruiseId(), BookingStatus.Confirmed, null, Pageable.unpaged());
         List<UUID> r1 = cruiseAndStatus.getContent().stream().map(Booking::getBookingId).toList();
         assertEquals(List.of(b2.getBookingId()), r1);
 
         // cruiseId + userId
-        Page<Booking> cruiseAndUser = bookingRepository.searchBookings(cruise2.getCruiseId(), null, passengerUser1.getUserId(), Pageable.unpaged());
+        Page<Booking> cruiseAndUser =
+                bookingRepository.searchBookings(
+                        cruise2.getCruiseId(),
+                        null,
+                        passengerUser1.getUserId(),
+                        Pageable.unpaged());
         List<UUID> r2 = cruiseAndUser.getContent().stream().map(Booking::getBookingId).toList();
         assertEquals(List.of(b3.getBookingId()), r2);
 
         // cruiseId + status + userId (all 3 matching)
-        Page<Booking> allThree = bookingRepository.searchBookings(cruise1.getCruiseId(), BookingStatus.Draft, passengerUser1.getUserId(), Pageable.unpaged());
+        Page<Booking> allThree =
+                bookingRepository.searchBookings(
+                        cruise1.getCruiseId(),
+                        BookingStatus.Draft,
+                        passengerUser1.getUserId(),
+                        Pageable.unpaged());
         List<UUID> r3 = allThree.getContent().stream().map(Booking::getBookingId).toList();
         assertEquals(List.of(b1.getBookingId()), r3);
 
         // Non-matching combination
-        Page<Booking> noMatch = bookingRepository.searchBookings(cruise2.getCruiseId(), BookingStatus.Draft, passengerUser2.getUserId(), Pageable.unpaged());
+        Page<Booking> noMatch =
+                bookingRepository.searchBookings(
+                        cruise2.getCruiseId(),
+                        BookingStatus.Draft,
+                        passengerUser2.getUserId(),
+                        Pageable.unpaged());
         assertTrue(noMatch.getContent().isEmpty());
     }
 
     @Test
-    @DisplayName("Endpoint GET /booking - Không có filter trả về HTTP 200 (xác minh fix lỗi HTTP 500 SQLState 42P18 parameter $3)")
+    @DisplayName(
+            "Endpoint GET /booking - Không có filter trả về HTTP 200 (xác minh fix lỗi HTTP 500"
+                + " SQLState 42P18 parameter $3)")
     void testGetBookingEndpoint_NoFilter_ReturnsHttp200() throws Exception {
         createBooking(cruise1, passengerUser1, BookingStatus.Confirmed);
 
-        mockMvc.perform(get("/booking")
-                        .header("Authorization", "Bearer " + adminToken))
+        mockMvc.perform(get("/booking").header("Authorization", "Bearer " + adminToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.content").isArray())
@@ -259,28 +285,47 @@ class BookingPostgresIntegrationTest {
     }
 
     @Test
-    @DisplayName("Endpoint GET /booking - Từng filter và kết hợp filters trả về HTTP 200 và dữ liệu hợp lệ")
+    @DisplayName(
+            "Endpoint GET /booking - Từng filter và kết hợp filters trả về HTTP 200 và dữ liệu hợp"
+                + " lệ")
     void testGetBookingEndpoint_WithFilters_ReturnsHttp200() throws Exception {
         Booking b1 = createBooking(cruise1, passengerUser1, BookingStatus.Draft);
         Booking b2 = createBooking(cruise1, passengerUser2, BookingStatus.Confirmed);
 
         // Filter status=Confirmed
-        mockMvc.perform(get("/booking")
-                        .param("status", "Confirmed")
-                        .header("Authorization", "Bearer " + adminToken))
+        mockMvc.perform(
+                        get("/booking")
+                                .param("status", "Confirmed")
+                                .header("Authorization", "Bearer " + adminToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.data.content[?(@.bookingReference == '" + b2.getBookingReference() + "')]").exists())
-                .andExpect(jsonPath("$.data.content[?(@.bookingReference == '" + b1.getBookingReference() + "')]").doesNotExist());
+                .andExpect(
+                        jsonPath(
+                                        "$.data.content[?(@.bookingReference == '"
+                                                + b2.getBookingReference()
+                                                + "')]")
+                                .exists())
+                .andExpect(
+                        jsonPath(
+                                        "$.data.content[?(@.bookingReference == '"
+                                                + b1.getBookingReference()
+                                                + "')]")
+                                .doesNotExist());
 
         // Combined cruiseId + status
-        mockMvc.perform(get("/booking")
-                        .param("cruiseId", cruise1.getCruiseId().toString())
-                        .param("status", "Draft")
-                        .header("Authorization", "Bearer " + adminToken))
+        mockMvc.perform(
+                        get("/booking")
+                                .param("cruiseId", cruise1.getCruiseId().toString())
+                                .param("status", "Draft")
+                                .header("Authorization", "Bearer " + adminToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.data.content[?(@.bookingReference == '" + b1.getBookingReference() + "')]").exists());
+                .andExpect(
+                        jsonPath(
+                                        "$.data.content[?(@.bookingReference == '"
+                                                + b1.getBookingReference()
+                                                + "')]")
+                                .exists());
     }
 
     @Test
@@ -289,11 +334,20 @@ class BookingPostgresIntegrationTest {
         Booking b1 = createBooking(cruise1, passengerUser1, BookingStatus.Confirmed);
         Booking b2 = createBooking(cruise1, passengerUser2, BookingStatus.Confirmed);
 
-        mockMvc.perform(get("/booking")
-                        .header("Authorization", "Bearer " + passengerToken))
+        mockMvc.perform(get("/booking").header("Authorization", "Bearer " + passengerToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.data.content[?(@.bookingReference == '" + b1.getBookingReference() + "')]").exists())
-                .andExpect(jsonPath("$.data.content[?(@.bookingReference == '" + b2.getBookingReference() + "')]").doesNotExist());
+                .andExpect(
+                        jsonPath(
+                                        "$.data.content[?(@.bookingReference == '"
+                                                + b1.getBookingReference()
+                                                + "')]")
+                                .exists())
+                .andExpect(
+                        jsonPath(
+                                        "$.data.content[?(@.bookingReference == '"
+                                                + b2.getBookingReference()
+                                                + "')]")
+                                .doesNotExist());
     }
 }

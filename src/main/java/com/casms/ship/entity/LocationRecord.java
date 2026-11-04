@@ -1,6 +1,7 @@
 package com.casms.ship.entity;
 
 import jakarta.persistence.*;
+
 import lombok.Getter;
 import lombok.Setter;
 
@@ -11,10 +12,14 @@ import java.util.UUID;
 @Getter
 @Setter
 @Entity
-@Table(name = "\"LocationRecord\"", indexes = {
-        @Index(name = "idx_location_record_device_time", columnList = "location_device_id,recorded_at"),
-        @Index(name = "idx_location_record_ship_time", columnList = "ship_id,recorded_at")
-})
+@Table(
+        name = "\"LocationRecord\"",
+        indexes = {
+            @Index(
+                    name = "idx_location_record_device_time",
+                    columnList = "location_device_id,recorded_at"),
+            @Index(name = "idx_location_record_ship_time", columnList = "ship_id,recorded_at")
+        })
 public class LocationRecord {
 
     @Id
@@ -31,11 +36,19 @@ public class LocationRecord {
     private Ship ship;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "deck_id", referencedColumnName = "deck_id", insertable = false, updatable = false)
+    @JoinColumn(
+            name = "deck_id",
+            referencedColumnName = "deck_id",
+            insertable = false,
+            updatable = false)
     private Deck deck;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "cabin_id", referencedColumnName = "cabin_id", insertable = false, updatable = false)
+    @JoinColumn(
+            name = "cabin_id",
+            referencedColumnName = "cabin_id",
+            insertable = false,
+            updatable = false)
     private Cabin cabin;
 
     @Column(name = "recorded_at", nullable = false)

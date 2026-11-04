@@ -1,19 +1,22 @@
 package com.casms.booking.service;
 
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.*;
+
 import com.casms.booking.dto.request.BookingCancelRequest;
 import com.casms.booking.dto.request.BookingCreateRequest;
-import com.casms.booking.dto.request.CabinChangeRequest;
 import com.casms.booking.dto.request.PassengerBookingItemRequest;
 import com.casms.booking.dto.response.BookingDetailResponse;
 import com.casms.booking.entity.Booking;
 import com.casms.booking.entity.BookingContract;
 import com.casms.booking.entity.BookingPassenger;
-import com.casms.booking.entity.CabinAssignment;
-import com.casms.booking.enums.BookingStatus;
 import com.casms.booking.enums.BookingContractStatus;
+import com.casms.booking.enums.BookingStatus;
 import com.casms.booking.enums.PaymentPlan;
 import com.casms.booking.repository.BookingContractRepository;
 import com.casms.booking.repository.BookingPassengerRepository;
+import com.casms.booking.repository.BookingQuoteRepository;
 import com.casms.booking.repository.BookingRepository;
 import com.casms.booking.repository.CabinAssignmentRepository;
 import com.casms.common.exception.BusinessException;
@@ -21,22 +24,22 @@ import com.casms.common.service.BusinessCodeGenerator;
 import com.casms.identity.entity.Passenger;
 import com.casms.identity.entity.User;
 import com.casms.identity.enums.PassengerDocumentType;
-import com.casms.identity.enums.Role;
 import com.casms.identity.repository.PassengerRepository;
 import com.casms.identity.repository.UserRepository;
 import com.casms.notification.repository.NotificationRepository;
-import com.casms.payment.repository.InstallmentRepository;
-import com.casms.payment.repository.PaymentRepository;
-import com.casms.payment.repository.RefundRepository;
 import com.casms.payment.entity.Payment;
 import com.casms.payment.enums.PaymentMethod;
 import com.casms.payment.enums.PaymentOperationType;
 import com.casms.payment.enums.PaymentStatus;
+import com.casms.payment.repository.InstallmentRepository;
+import com.casms.payment.repository.PaymentRepository;
+import com.casms.payment.repository.RefundRepository;
 import com.casms.security.principal.CasmsPrincipal;
 import com.casms.servicepackage.repository.BookingPassengerPackageRepository;
 import com.casms.servicepackage.repository.TourPackageRepository;
 import com.casms.ship.entity.Cabin;
 import com.casms.ship.entity.Cruise;
+import com.casms.ship.entity.CruisePricingPolicy;
 import com.casms.ship.entity.Deck;
 import com.casms.ship.entity.Itinerary;
 import com.casms.ship.entity.Ship;
@@ -44,14 +47,19 @@ import com.casms.ship.enums.CabinStatus;
 import com.casms.ship.enums.CabinType;
 import com.casms.ship.enums.CruiseStatus;
 import com.casms.ship.enums.ItineraryStatus;
+import com.casms.ship.enums.PricingPolicyStatus;
 import com.casms.ship.repository.CabinRepository;
+import com.casms.ship.repository.CruisePricingPolicyRepository;
 import com.casms.ship.repository.CruiseRepository;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -61,17 +69,6 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
-
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.*;
-
-import org.mockito.Spy;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.casms.ship.repository.CruisePricingPolicyRepository;
-import com.casms.booking.repository.BookingQuoteRepository;
-import com.casms.ship.entity.CruisePricingPolicy;
-import com.casms.ship.enums.PricingPolicyStatus;
 
 @ExtendWith(MockitoExtension.class)
 class BookingServiceTest {
@@ -98,8 +95,7 @@ class BookingServiceTest {
     @Mock private BookingQuoteRepository bookingQuoteRepository;
     @Spy private ObjectMapper objectMapper = new ObjectMapper();
 
-    @InjectMocks
-    private BookingService bookingService;
+    @InjectMocks private BookingService bookingService;
 
     private Ship ship;
     private Cruise cruise;
@@ -145,8 +141,10 @@ class BookingServiceTest {
     @Test
     @DisplayName("Tra cứu booking công khai bắt buộc có email hoặc số điện thoại")
     void lookupBooking_requiresContactCredential() {
-        BusinessException ex = assertThrows(BusinessException.class,
-                () -> bookingService.lookupBooking("BK-PRIVATE", " ", null));
+        BusinessException ex =
+                assertThrows(
+                        BusinessException.class,
+                        () -> bookingService.lookupBooking("BK-PRIVATE", " ", null));
 
         assertEquals("LOOKUP_CREDENTIAL_REQUIRED", ex.getCode());
         verify(bookingRepository, never()).findByBookingReference(any());
@@ -183,7 +181,8 @@ class BookingServiceTest {
         when(bookingPassengerRepository.countActivePassengersByCruiseId(cruiseId)).thenReturn(10L);
         when(cabinRepository.findByIdForUpdate(cabinId)).thenReturn(Optional.of(cabin));
         when(cabinRepository.sumCapacityByShipIdAndCabinType(any(), any())).thenReturn(50L);
-        when(cabinAssignmentRepository.countActiveAssignmentsByCabinAndCruise(cabinId, cruiseId)).thenReturn(0L);
+        when(cabinAssignmentRepository.countActiveAssignmentsByCabinAndCruise(cabinId, cruiseId))
+                .thenReturn(0L);
 
         CruisePricingPolicy policy = new CruisePricingPolicy();
         policy.setPricingPolicyId(UUID.randomUUID());
@@ -198,13 +197,16 @@ class BookingServiceTest {
         policy.setPortFeePerPassenger(new BigDecimal("25.00"));
         policy.setDepositPercentage(new BigDecimal("0.3000"));
         policy.setFinalPaymentDueDays(14);
-        when(cruisePricingPolicyRepository.findByCruise_CruiseId(cruiseId)).thenReturn(Optional.of(policy));
+        when(cruisePricingPolicyRepository.findByCruise_CruiseId(cruiseId))
+                .thenReturn(Optional.of(policy));
 
-        when(bookingRepository.save(any(Booking.class))).thenAnswer(i -> {
-            Booking b = i.getArgument(0);
-            b.setBookingId(UUID.randomUUID());
-            return b;
-        });
+        when(bookingRepository.save(any(Booking.class)))
+                .thenAnswer(
+                        i -> {
+                            Booking b = i.getArgument(0);
+                            b.setBookingId(UUID.randomUUID());
+                            return b;
+                        });
 
         Passenger passenger = new Passenger();
         passenger.setPassengerId(UUID.randomUUID());
@@ -236,7 +238,9 @@ class BookingServiceTest {
         p.setCabinId(cabinId);
         request.setPassengers(List.of(p));
 
-        BusinessException ex = assertThrows(BusinessException.class, () -> bookingService.createBooking(request, null));
+        BusinessException ex =
+                assertThrows(
+                        BusinessException.class, () -> bookingService.createBooking(request, null));
         assertEquals("PRIMARY_EMAIL_REQUIRED", ex.getCode());
     }
 
@@ -262,7 +266,9 @@ class BookingServiceTest {
 
         request.setPassengers(List.of(p1, p2));
 
-        BusinessException ex = assertThrows(BusinessException.class, () -> bookingService.createBooking(request, null));
+        BusinessException ex =
+                assertThrows(
+                        BusinessException.class, () -> bookingService.createBooking(request, null));
         assertEquals("DUPLICATE_PASSENGER_DOCUMENT", ex.getCode());
     }
 
@@ -296,14 +302,19 @@ class BookingServiceTest {
         when(itineraryRepository.findByCruiseCruiseId(cruiseId)).thenReturn(Optional.of(itinerary));
         when(bookingPassengerRepository.countActivePassengersByCruiseId(cruiseId)).thenReturn(0L);
         when(cabinRepository.findByIdForUpdate(cabinId)).thenReturn(Optional.of(cabin));
-        when(cabinAssignmentRepository.countActiveAssignmentsByCabinAndCruise(cabinId, cruiseId)).thenReturn(0L);
+        when(cabinAssignmentRepository.countActiveAssignmentsByCabinAndCruise(cabinId, cruiseId))
+                .thenReturn(0L);
 
-        BusinessException ex = assertThrows(BusinessException.class, () -> bookingService.createBooking(request, null));
+        BusinessException ex =
+                assertThrows(
+                        BusinessException.class, () -> bookingService.createBooking(request, null));
         assertEquals("CABIN_OVERCAPACITY", ex.getCode());
     }
 
     @Test
-    @DisplayName("Chặn đặt tour khi chuyến đi chưa mở bán thương mại (Itinerary APPROVED nhưng chưa OPEN_FOR_SALE)")
+    @DisplayName(
+            "Chặn đặt tour khi chuyến đi chưa mở bán thương mại (Itinerary APPROVED nhưng chưa"
+                + " OPEN_FOR_SALE)")
     void createBooking_cruiseNotOpenForSale_throwsException() {
         BookingCreateRequest request = new BookingCreateRequest();
         request.setCruiseId(cruiseId);
@@ -319,7 +330,9 @@ class BookingServiceTest {
         itinerary.setStatus(ItineraryStatus.APPROVED);
         when(itineraryRepository.findByCruiseCruiseId(cruiseId)).thenReturn(Optional.of(itinerary));
 
-        BusinessException ex = assertThrows(BusinessException.class, () -> bookingService.createBooking(request, null));
+        BusinessException ex =
+                assertThrows(
+                        BusinessException.class, () -> bookingService.createBooking(request, null));
         assertEquals("CRUISE_NOT_OPEN_FOR_SALE", ex.getCode());
     }
 
@@ -340,7 +353,9 @@ class BookingServiceTest {
         itinerary.setStatus(ItineraryStatus.SUSPENDED);
         when(itineraryRepository.findByCruiseCruiseId(cruiseId)).thenReturn(Optional.of(itinerary));
 
-        BusinessException ex = assertThrows(BusinessException.class, () -> bookingService.createBooking(request, null));
+        BusinessException ex =
+                assertThrows(
+                        BusinessException.class, () -> bookingService.createBooking(request, null));
         assertEquals("SALE_SUSPENDED", ex.getCode());
     }
 
@@ -350,7 +365,9 @@ class BookingServiceTest {
         UUID bookingId = UUID.randomUUID();
         CasmsPrincipal principal = mock(CasmsPrincipal.class);
         when(principal.getUserId()).thenReturn(UUID.randomUUID());
-        doReturn(List.of(new SimpleGrantedAuthority("BOOKING_CONFIRM"))).when(principal).getAuthorities();
+        doReturn(List.of(new SimpleGrantedAuthority("BOOKING_CONFIRM")))
+                .when(principal)
+                .getAuthorities();
 
         Booking booking = new Booking();
         booking.setBookingId(bookingId);
@@ -363,14 +380,18 @@ class BookingServiceTest {
         contract.setStatus(BookingContractStatus.Accepted);
 
         when(bookingRepository.findByIdForUpdate(bookingId)).thenReturn(Optional.of(booking));
-        when(bookingContractRepository.findByBookingBookingId(bookingId)).thenReturn(Optional.of(contract));
+        when(bookingContractRepository.findByBookingBookingId(bookingId))
+                .thenReturn(Optional.of(contract));
 
         Cruise cancelledCruise = new Cruise();
         cancelledCruise.setCruiseId(cruiseId);
         cancelledCruise.setStatus(CruiseStatus.CANCELLED);
         when(cruiseRepository.findByIdForUpdate(cruiseId)).thenReturn(Optional.of(cancelledCruise));
 
-        BusinessException ex = assertThrows(BusinessException.class, () -> bookingService.confirm(bookingId, principal));
+        BusinessException ex =
+                assertThrows(
+                        BusinessException.class,
+                        () -> bookingService.confirm(bookingId, principal));
         assertEquals("CRUISE_CANCELLED", ex.getCode());
     }
 
@@ -412,10 +433,14 @@ class BookingServiceTest {
         UUID bookingId = UUID.randomUUID();
         CasmsPrincipal principal = mock(CasmsPrincipal.class);
         when(principal.getUserId()).thenReturn(UUID.randomUUID());
-        doReturn(List.of(new SimpleGrantedAuthority("BOOKING_CREATE"))).when(principal).getAuthorities();
+        doReturn(List.of(new SimpleGrantedAuthority("BOOKING_CREATE")))
+                .when(principal)
+                .getAuthorities();
 
-        BusinessException ex = assertThrows(BusinessException.class,
-                () -> bookingService.confirm(bookingId, principal));
+        BusinessException ex =
+                assertThrows(
+                        BusinessException.class,
+                        () -> bookingService.confirm(bookingId, principal));
 
         assertEquals("BOOKING_CONFIRM_FORBIDDEN", ex.getCode());
         verify(bookingRepository, never()).findByIdForUpdate(any());
@@ -436,10 +461,14 @@ class BookingServiceTest {
 
         CasmsPrincipal principal = mock(CasmsPrincipal.class);
         when(principal.getUserId()).thenReturn(UUID.randomUUID());
-        doReturn(List.of(new SimpleGrantedAuthority("BOOKING_CONFIRM"))).when(principal).getAuthorities();
+        doReturn(List.of(new SimpleGrantedAuthority("BOOKING_CONFIRM")))
+                .when(principal)
+                .getAuthorities();
         when(bookingRepository.findByIdForUpdate(bookingId)).thenReturn(Optional.of(booking));
-        when(bookingContractRepository.findByBookingBookingId(bookingId)).thenReturn(Optional.of(contract));
-        when(cruiseRepository.findByIdForUpdate(cruise.getCruiseId())).thenReturn(Optional.of(cruise));
+        when(bookingContractRepository.findByBookingBookingId(bookingId))
+                .thenReturn(Optional.of(contract));
+        when(cruiseRepository.findByIdForUpdate(cruise.getCruiseId()))
+                .thenReturn(Optional.of(cruise));
         Payment failedPayment = new Payment();
         failedPayment.setStatus(PaymentStatus.Failed);
         failedPayment.setOperationType(PaymentOperationType.Collect);
@@ -450,8 +479,10 @@ class BookingServiceTest {
         failedPayment.setInternalReceiptReference("receipt-failed");
         when(paymentRepository.findForBooking(bookingId)).thenReturn(List.of(failedPayment));
 
-        BusinessException ex = assertThrows(BusinessException.class,
-                () -> bookingService.confirm(bookingId, principal));
+        BusinessException ex =
+                assertThrows(
+                        BusinessException.class,
+                        () -> bookingService.confirm(bookingId, principal));
 
         assertEquals("BOOKING_DEPOSIT_NOT_PAID", ex.getCode());
         assertEquals(BookingStatus.Draft, booking.getBookingStatus());
@@ -478,10 +509,14 @@ class BookingServiceTest {
 
         CasmsPrincipal principal = mock(CasmsPrincipal.class);
         when(principal.getUserId()).thenReturn(UUID.randomUUID());
-        doReturn(List.of(new SimpleGrantedAuthority("BOOKING_CONFIRM"))).when(principal).getAuthorities();
+        doReturn(List.of(new SimpleGrantedAuthority("BOOKING_CONFIRM")))
+                .when(principal)
+                .getAuthorities();
         when(bookingRepository.findByIdForUpdate(bookingId)).thenReturn(Optional.of(booking));
-        when(bookingContractRepository.findByBookingBookingId(bookingId)).thenReturn(Optional.of(contract));
-        when(cruiseRepository.findByIdForUpdate(cruise.getCruiseId())).thenReturn(Optional.of(cruise));
+        when(bookingContractRepository.findByBookingBookingId(bookingId))
+                .thenReturn(Optional.of(contract));
+        when(cruiseRepository.findByIdForUpdate(cruise.getCruiseId()))
+                .thenReturn(Optional.of(cruise));
         Payment payment = new Payment();
         payment.setBooking(booking);
         payment.setOperationType(PaymentOperationType.Collect);
@@ -493,7 +528,8 @@ class BookingServiceTest {
         payment.setCurrency("USD");
         when(paymentRepository.findForBooking(bookingId)).thenReturn(List.of(payment));
         when(refundRepository.findForBooking(bookingId)).thenReturn(List.of());
-        when(bookingRepository.save(any(Booking.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(bookingRepository.save(any(Booking.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
 
         BookingDetailResponse response = bookingService.confirm(bookingId, principal);
 
@@ -505,7 +541,7 @@ class BookingServiceTest {
     @DisplayName("Lịch đặt sát ngày chỉ được chấp nhận khi các hạn thanh toán còn theo thứ tự")
     void paymentSchedule_nearDepartureIsValidated() {
         Instant createdAt = Instant.parse("2026-10-22T00:00:00Z");
-        for (int days : new int[]{1, 3, 7, 14, 30, 60}) {
+        for (int days : new int[] {1, 3, 7, 14, 30, 60}) {
             Instant departure = createdAt.plus(days, ChronoUnit.DAYS);
             Instant finalDue = departure.minus(7, ChronoUnit.DAYS);
             if (finalDue.isBefore(createdAt)) finalDue = createdAt;
@@ -513,25 +549,65 @@ class BookingServiceTest {
             boolean supported = days >= 14;
 
             if (supported) {
-                assertDoesNotThrow(() -> bookingService.validatePaymentSchedule(
-                        PaymentPlan.DEPOSIT, createdAt, validatedFinalDue, departure), "DEPOSIT at " + days + " days");
-                assertDoesNotThrow(() -> bookingService.validatePaymentSchedule(
-                        PaymentPlan.STAGES, createdAt, validatedFinalDue, departure), "STAGES at " + days + " days");
+                assertDoesNotThrow(
+                        () ->
+                                bookingService.validatePaymentSchedule(
+                                        PaymentPlan.DEPOSIT,
+                                        createdAt,
+                                        validatedFinalDue,
+                                        departure),
+                        "DEPOSIT at " + days + " days");
+                assertDoesNotThrow(
+                        () ->
+                                bookingService.validatePaymentSchedule(
+                                        PaymentPlan.STAGES,
+                                        createdAt,
+                                        validatedFinalDue,
+                                        departure),
+                        "STAGES at " + days + " days");
             } else {
-                assertThrows(BusinessException.class, () -> bookingService.validatePaymentSchedule(
-                        PaymentPlan.DEPOSIT, createdAt, validatedFinalDue, departure), "DEPOSIT at " + days + " days");
-                assertThrows(BusinessException.class, () -> bookingService.validatePaymentSchedule(
-                        PaymentPlan.STAGES, createdAt, validatedFinalDue, departure), "STAGES at " + days + " days");
+                assertThrows(
+                        BusinessException.class,
+                        () ->
+                                bookingService.validatePaymentSchedule(
+                                        PaymentPlan.DEPOSIT,
+                                        createdAt,
+                                        validatedFinalDue,
+                                        departure),
+                        "DEPOSIT at " + days + " days");
+                assertThrows(
+                        BusinessException.class,
+                        () ->
+                                bookingService.validatePaymentSchedule(
+                                        PaymentPlan.STAGES,
+                                        createdAt,
+                                        validatedFinalDue,
+                                        departure),
+                        "STAGES at " + days + " days");
             }
         }
 
         Instant exactlyTwoDays = createdAt.plus(2, ChronoUnit.DAYS);
-        assertThrows(BusinessException.class, () -> bookingService.validatePaymentSchedule(
-                PaymentPlan.FULL, createdAt, createdAt, exactlyTwoDays));
-        assertThrows(BusinessException.class, () -> bookingService.validatePaymentSchedule(
-                PaymentPlan.FULL, createdAt, createdAt, createdAt.minus(1, ChronoUnit.DAYS)));
+        assertThrows(
+                BusinessException.class,
+                () ->
+                        bookingService.validatePaymentSchedule(
+                                PaymentPlan.FULL, createdAt, createdAt, exactlyTwoDays));
+        assertThrows(
+                BusinessException.class,
+                () ->
+                        bookingService.validatePaymentSchedule(
+                                PaymentPlan.FULL,
+                                createdAt,
+                                createdAt,
+                                createdAt.minus(1, ChronoUnit.DAYS)));
         Instant nineDays = createdAt.plus(9, ChronoUnit.DAYS);
-        assertDoesNotThrow(() -> bookingService.validatePaymentSchedule(
-                PaymentPlan.DEPOSIT, createdAt, nineDays.minus(7, ChronoUnit.DAYS), nineDays));
+        assertDoesNotThrow(
+                () ->
+                        bookingService.validatePaymentSchedule(
+                                PaymentPlan.DEPOSIT,
+                                createdAt,
+                                nineDays.minus(7, ChronoUnit.DAYS),
+                                nineDays));
     }
 }

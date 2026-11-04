@@ -1,6 +1,7 @@
 package com.casms.common.response;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -25,15 +26,10 @@ public class ApiResponse<T> {
     private String code;
     private Map<String, Object> details;
     private String traceId;
-    @Builder.Default
-    private Instant timestamp = Instant.now();
+    @Builder.Default private Instant timestamp = Instant.now();
 
     public static <T> ApiResponse<T> success(T data) {
-        return ApiResponse.<T>builder()
-                .success(true)
-                .data(data)
-                .timestamp(Instant.now())
-                .build();
+        return ApiResponse.<T>builder().success(true).data(data).timestamp(Instant.now()).build();
     }
 
     public static <T> ApiResponse<T> success(String message, T data) {
@@ -72,7 +68,8 @@ public class ApiResponse<T> {
                 .build();
     }
 
-    public static <T> ApiResponse<T> error(String error, String code, Map<String, Object> details, String traceId) {
+    public static <T> ApiResponse<T> error(
+            String error, String code, Map<String, Object> details, String traceId) {
         return ApiResponse.<T>builder()
                 .success(false)
                 .error(error)

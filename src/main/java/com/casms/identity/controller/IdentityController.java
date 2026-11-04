@@ -4,9 +4,12 @@ import com.casms.common.response.ApiResponse;
 import com.casms.identity.dto.UserLookupResponse;
 import com.casms.identity.enums.UserStatus;
 import com.casms.identity.service.IdentityService;
+
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+
 import lombok.RequiredArgsConstructor;
+
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -24,8 +27,15 @@ public class IdentityController {
 
     private final IdentityService service;
 
-    @Operation(summary = "Danh sách người dùng cho gán việc", description = "Mặc định chỉ lấy nhân viên. assignableFor=POS lấy tài khoản máy để liên kết POS; ONBOARD_STAFF lấy nhân viên phục vụ dịch vụ và hoạt động, OPERATIONAL_ISSUE lấy người xử lý sự cố.")
-    @PreAuthorize("hasAnyAuthority('USER_READ', 'OPERATIONAL_ISSUE_ASSIGN', 'OPERATIONAL_ISSUE_CREATE', 'OPERATIONAL_ISSUE_UPDATE')")
+    @Operation(
+            summary = "Danh sách người dùng cho gán việc",
+            description =
+                    "Mặc định chỉ lấy nhân viên. assignableFor=POS lấy tài khoản máy để liên kết"
+                        + " POS; ONBOARD_STAFF lấy nhân viên phục vụ dịch vụ và hoạt động,"
+                        + " OPERATIONAL_ISSUE lấy người xử lý sự cố.")
+    @PreAuthorize(
+            "hasAnyAuthority('USER_READ', 'OPERATIONAL_ISSUE_ASSIGN', 'OPERATIONAL_ISSUE_CREATE',"
+                + " 'OPERATIONAL_ISSUE_UPDATE')")
     @GetMapping("/users")
     public ResponseEntity<ApiResponse<List<UserLookupResponse>>> listUsers(
             @RequestParam(required = false, defaultValue = "ACTIVE") UserStatus status,

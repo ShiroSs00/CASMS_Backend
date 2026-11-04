@@ -10,7 +10,10 @@ import org.springframework.stereotype.Component;
 
 import javax.sql.DataSource;
 
-/** Loads the version-controlled, idempotent sample catalogue only in explicitly selected demo profiles. */
+/**
+ * Loads the version-controlled, idempotent sample catalogue only in explicitly selected demo
+ * profiles.
+ */
 @Component
 @Profile({"dev", "demo"})
 public class DemoCatalogSeeder implements ApplicationRunner {
@@ -22,8 +25,9 @@ public class DemoCatalogSeeder implements ApplicationRunner {
 
     @Override
     public void run(ApplicationArguments args) {
-        ResourceDatabasePopulator populator = new ResourceDatabasePopulator(
-                new ClassPathResource("db/demo/casms-85-catalog.sql"));
+        ResourceDatabasePopulator populator =
+                new ResourceDatabasePopulator(
+                        new ClassPathResource("db/demo/casms-85-catalog.sql"));
         populator.setContinueOnError(false);
         populator.setIgnoreFailedDrops(false);
         DatabasePopulatorUtils.execute(populator, dataSource);

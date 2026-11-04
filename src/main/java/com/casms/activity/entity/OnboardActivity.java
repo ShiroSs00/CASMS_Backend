@@ -1,15 +1,18 @@
 package com.casms.activity.entity;
 
-import org.hibernate.annotations.JdbcTypeCode;
-import org.hibernate.type.SqlTypes;
 import com.casms.activity.enums.OnboardActivityCategory;
 import com.casms.activity.enums.OnboardActivityStatus;
 import com.casms.ship.entity.Cabin;
 import com.casms.ship.entity.Cruise;
 import com.casms.ship.entity.Deck;
+
 import jakarta.persistence.*;
+
 import lombok.Getter;
 import lombok.Setter;
+
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.math.BigDecimal;
 import java.time.Instant;

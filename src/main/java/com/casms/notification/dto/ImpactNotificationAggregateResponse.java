@@ -1,6 +1,7 @@
 package com.casms.notification.dto;
 
 import io.swagger.v3.oas.annotations.media.Schema;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -13,7 +14,10 @@ import java.util.UUID;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@Schema(description = "Báo cáo tổng hợp an toàn về tiến độ phát thông báo tác động (BE-19 Safe Aggregate, không lộ PII)")
+@Schema(
+        description =
+                "Báo cáo tổng hợp an toàn về tiến độ phát thông báo tác động (BE-19 Safe Aggregate,"
+                    + " không lộ PII)")
 public class ImpactNotificationAggregateResponse {
 
     @Schema(description = "ID chuyến khởi hành")

@@ -19,4 +19,3 @@ public class SepayWebhookResponse {
     private UUID paymentId;
     private String bookingReference;
 }
-

@@ -3,7 +3,9 @@ package com.casms.ship.entity;
 import com.casms.ship.enums.CruiseStopArrivalMethod;
 import com.casms.ship.enums.CruiseStopCallType;
 import com.casms.ship.enums.CruiseStopStatus;
+
 import jakarta.persistence.*;
+
 import lombok.Getter;
 import lombok.Setter;
 
@@ -13,22 +15,30 @@ import java.util.UUID;
 @Getter
 @Setter
 @Entity
-@Table(name = "\"CruiseStop\"",
-       uniqueConstraints = @UniqueConstraint(columnNames = {"itinerary_id", "stop_order"}))
+@Table(
+        name = "\"CruiseStop\"",
+        uniqueConstraints = @UniqueConstraint(columnNames = {"itinerary_id", "stop_order"}))
 public class CruiseStop {
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     @Column(name = "cruise_stop_id")
     private UUID cruiseStopId;
-    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.JSON) @Column(name="port_facts",columnDefinition="jsonb")
-    private com.casms.ship.dto.PortFacts portFacts;
-    @Column(name="source_stop_id") private UUID sourceStopId;
-    @OneToMany(mappedBy="stop",cascade=CascadeType.ALL,orphanRemoval=true) @OrderBy("sequence ASC")
-    private java.util.List<CruiseDestinationVisit> visits=new java.util.ArrayList<>();
-    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.JSON) @Column(name="port_window_evidence",columnDefinition="jsonb")
-    private java.util.List<com.casms.ship.dto.PortWindowContract.Check> portWindowEvidence;
 
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.JSON)
+    @Column(name = "port_facts", columnDefinition = "jsonb")
+    private com.casms.ship.dto.PortFacts portFacts;
+
+    @Column(name = "source_stop_id")
+    private UUID sourceStopId;
+
+    @OneToMany(mappedBy = "stop", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OrderBy("sequence ASC")
+    private java.util.List<CruiseDestinationVisit> visits = new java.util.ArrayList<>();
+
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.JSON)
+    @Column(name = "port_window_evidence", columnDefinition = "jsonb")
+    private java.util.List<com.casms.ship.dto.PortWindowContract.Check> portWindowEvidence;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "itinerary_id", nullable = false)
@@ -132,5 +142,3 @@ public class CruiseStop {
     @Column(name = "sequence_change_reason", length = 500)
     private String sequenceChangeReason;
 }
-
-

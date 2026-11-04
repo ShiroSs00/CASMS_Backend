@@ -1,11 +1,12 @@
 package com.casms.notification.entity;
 
 import com.casms.booking.entity.Booking;
-import com.casms.booking.entity.BookingPassenger;
 import com.casms.identity.entity.User;
 import com.casms.ship.entity.Cruise;
 import com.casms.ship.entity.CruiseImpactTask;
+
 import jakarta.persistence.*;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -21,9 +22,12 @@ import java.util.UUID;
 @NoArgsConstructor
 @AllArgsConstructor
 @Entity
-@Table(name = "\"ImpactNotificationOutbox\"",
-       uniqueConstraints = @UniqueConstraint(name = "uk_impact_notification_outbox_event_booking_type",
-               columnNames = {"event_identity", "booking_id", "notification_type"}))
+@Table(
+        name = "\"ImpactNotificationOutbox\"",
+        uniqueConstraints =
+                @UniqueConstraint(
+                        name = "uk_impact_notification_outbox_event_booking_type",
+                        columnNames = {"event_identity", "booking_id", "notification_type"}))
 public class ImpactNotificationOutbox {
 
     @Id
@@ -69,7 +73,8 @@ public class ImpactNotificationOutbox {
 
     @Builder.Default
     @Column(name = "delivery_semantics", length = 255)
-    private String deliverySemantics = "IN_APP_DELIVERED (Thông báo gửi vào hộp thư trong ứng dụng)";
+    private String deliverySemantics =
+            "IN_APP_DELIVERED (Thông báo gửi vào hộp thư trong ứng dụng)";
 
     @Column(name = "in_app_delivered_at")
     private Instant inAppDeliveredAt;

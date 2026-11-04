@@ -6,6 +6,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Index;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
+
 import lombok.Getter;
 import lombok.Setter;
 
@@ -16,9 +17,16 @@ import java.util.UUID;
 @Getter
 @Setter
 @Entity
-@Table(name = "\"ShipModelAssetBlob\"", uniqueConstraints = @UniqueConstraint(
-        name = "uk_ship_model_asset_blob_path", columnNames = {"model_key", "asset_version", "asset_path"}),
-        indexes = @Index(name = "idx_ship_model_asset_blob_bundle", columnList = "model_key,asset_version"))
+@Table(
+        name = "\"ShipModelAssetBlob\"",
+        uniqueConstraints =
+                @UniqueConstraint(
+                        name = "uk_ship_model_asset_blob_path",
+                        columnNames = {"model_key", "asset_version", "asset_path"}),
+        indexes =
+                @Index(
+                        name = "idx_ship_model_asset_blob_bundle",
+                        columnList = "model_key,asset_version"))
 public class ShipModelAssetBlob {
     @Id
     @Column(name = "asset_id", nullable = false)

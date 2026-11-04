@@ -3,7 +3,9 @@ package com.casms.checkin.entity;
 import com.casms.checkin.enums.GuidanceSessionStatus;
 import com.casms.identity.entity.User;
 import com.casms.ship.entity.Cruise;
+
 import jakarta.persistence.*;
+
 import lombok.Getter;
 import lombok.Setter;
 

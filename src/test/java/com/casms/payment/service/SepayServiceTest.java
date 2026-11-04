@@ -1,5 +1,9 @@
 package com.casms.payment.service;
 
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.*;
+
 import com.casms.booking.entity.Booking;
 import com.casms.booking.enums.BookingStatus;
 import com.casms.booking.repository.BookingRepository;
@@ -27,6 +31,7 @@ import com.casms.payment.enums.PaymentType;
 import com.casms.payment.repository.InstallmentRepository;
 import com.casms.payment.repository.PaymentRepository;
 import com.casms.payment.repository.SepayTransactionRepository;
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -41,36 +46,24 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.*;
-
 @ExtendWith(MockitoExtension.class)
 class SepayServiceTest {
 
-    @Mock
-    private SepayProperties sepayProperties;
+    @Mock private SepayProperties sepayProperties;
 
-    @Mock
-    private PaymentRepository paymentRepository;
+    @Mock private PaymentRepository paymentRepository;
 
-    @Mock
-    private BookingRepository bookingRepository;
+    @Mock private BookingRepository bookingRepository;
 
-    @Mock
-    private InstallmentRepository installmentRepository;
+    @Mock private InstallmentRepository installmentRepository;
 
-    @Mock
-    private SepayTransactionRepository sepayTransactionRepository;
+    @Mock private SepayTransactionRepository sepayTransactionRepository;
 
-    @Mock
-    private PaymentService paymentService;
+    @Mock private PaymentService paymentService;
 
-    @Mock
-    private BookingService bookingService;
+    @Mock private BookingService bookingService;
 
-    @InjectMocks
-    private SepayService sepayService;
+    @InjectMocks private SepayService sepayService;
 
     private UUID bookingId;
     private UUID installment1Id;
@@ -142,8 +135,10 @@ class SepayServiceTest {
         assertNotNull(resp.getDepositPaymentOption());
         assertTrue(resp.getDepositPaymentOption().isAvailable());
         assertFalse(resp.getDepositPaymentOption().isPaid());
-        assertEquals(new BigDecimal("300.0000"), resp.getDepositPaymentOption().getRemainingAmountUsd());
-        assertEquals(new BigDecimal("7620000"), resp.getDepositPaymentOption().getRemainingAmountVnd());
+        assertEquals(
+                new BigDecimal("300.0000"), resp.getDepositPaymentOption().getRemainingAmountUsd());
+        assertEquals(
+                new BigDecimal("7620000"), resp.getDepositPaymentOption().getRemainingAmountVnd());
 
         // Kiểm tra phương án 3: STAGE
         assertNotNull(resp.getStagePaymentOption());
@@ -275,12 +270,17 @@ class SepayServiceTest {
         req.setBookingId(bookingId);
         req.setPaymentType(PaymentType.DEPOSIT);
 
-        BusinessException ex = assertThrows(BusinessException.class, () -> sepayService.createCheckout(req, null, true));
+        BusinessException ex =
+                assertThrows(
+                        BusinessException.class,
+                        () -> sepayService.createCheckout(req, null, true));
         assertEquals("DEPOSIT_ALREADY_PAID", ex.getCode());
     }
 
     @Test
-    @DisplayName("Xử lý Webhook SePay thành công: khớp payment, gọi confirmPayment và cập nhật PROCESSED")
+    @DisplayName(
+            "Xử lý Webhook SePay thành công: khớp payment, gọi confirmPayment và cập nhật"
+                + " PROCESSED")
     void processWebhook_SuccessfulMatch() {
         when(sepayProperties.isEnabled()).thenReturn(true);
         when(sepayProperties.getApiKey()).thenReturn(null);
@@ -302,8 +302,13 @@ class SepayServiceTest {
         SepayTransaction savedTx = new SepayTransaction();
         when(sepayTransactionRepository.save(any(SepayTransaction.class))).thenReturn(savedTx);
 
-        when(paymentService.confirmPayment(eq(pendingPayment.getPaymentId()), any(PaymentConfirmRequest.class)))
-                .thenReturn(PaymentResponse.builder().paymentId(pendingPayment.getPaymentId()).status(PaymentStatus.Confirmed).build());
+        when(paymentService.confirmPayment(
+                        eq(pendingPayment.getPaymentId()), any(PaymentConfirmRequest.class)))
+                .thenReturn(
+                        PaymentResponse.builder()
+                                .paymentId(pendingPayment.getPaymentId())
+                                .status(PaymentStatus.Confirmed)
+                                .build());
 
         SepayWebhookPayload payload = new SepayWebhookPayload();
         payload.setId(92704L);
@@ -320,11 +325,15 @@ class SepayServiceTest {
         assertTrue(resp.isSuccess());
         assertEquals("Payment confirmed successfully", resp.getMessage());
         assertEquals(pendingPayment.getPaymentId(), resp.getPaymentId());
-        verify(paymentService).confirmPayment(eq(pendingPayment.getPaymentId()), any(PaymentConfirmRequest.class));
+        verify(paymentService)
+                .confirmPayment(
+                        eq(pendingPayment.getPaymentId()), any(PaymentConfirmRequest.class));
     }
 
     @Test
-    @DisplayName("Xử lý Webhook SePay: Trùng mã giao dịch SePay (Idempotent) -> trả về thành công không xử lý lại")
+    @DisplayName(
+            "Xử lý Webhook SePay: Trùng mã giao dịch SePay (Idempotent) -> trả về thành công không"
+                + " xử lý lại")
     void processWebhook_Idempotent_AlreadyProcessed() {
         when(sepayProperties.isEnabled()).thenReturn(true);
         when(sepayTransactionRepository.existsBySepayId(92704L)).thenReturn(true);
@@ -350,8 +359,10 @@ class SepayServiceTest {
         SepayWebhookPayload payload = new SepayWebhookPayload();
         payload.setId(92704L);
 
-        BusinessException ex = assertThrows(BusinessException.class,
-                () -> sepayService.processWebhook(payload, "Apikey wrong-key"));
+        BusinessException ex =
+                assertThrows(
+                        BusinessException.class,
+                        () -> sepayService.processWebhook(payload, "Apikey wrong-key"));
         assertEquals("INVALID_SEPAY_API_KEY", ex.getCode());
     }
 
@@ -403,7 +414,9 @@ class SepayServiceTest {
     }
 
     @Test
-    @DisplayName("Tạo thanh toán SePay nhanh theo số tiền (Quick Checkout) thành công với trạng thái Pending")
+    @DisplayName(
+            "Tạo thanh toán SePay nhanh theo số tiền (Quick Checkout) thành công với trạng thái"
+                + " Pending")
     void createQuickCheckout_Success() {
         when(sepayProperties.getUsdToVndRate()).thenReturn(new BigDecimal("25400"));
         when(sepayProperties.getAccountNumber()).thenReturn("0901452366");
@@ -412,17 +425,20 @@ class SepayServiceTest {
         when(sepayProperties.getQrTemplate()).thenReturn("compact");
 
         when(paymentRepository.findByIdempotencyKey(any())).thenReturn(Optional.empty());
-        when(paymentRepository.save(any(Payment.class))).thenAnswer(inv -> {
-            Payment p = inv.getArgument(0);
-            p.setPaymentId(UUID.randomUUID());
-            return p;
-        });
+        when(paymentRepository.save(any(Payment.class)))
+                .thenAnswer(
+                        inv -> {
+                            Payment p = inv.getArgument(0);
+                            p.setPaymentId(UUID.randomUUID());
+                            return p;
+                        });
 
-        SepayQuickCheckoutRequest req = SepayQuickCheckoutRequest.builder()
-                .amountVnd(new BigDecimal("100000"))
-                .transferContent("CASMS BK20264512F")
-                .description("Thanh toán theo số tiền")
-                .build();
+        SepayQuickCheckoutRequest req =
+                SepayQuickCheckoutRequest.builder()
+                        .amountVnd(new BigDecimal("100000"))
+                        .transferContent("CASMS BK20264512F")
+                        .description("Thanh toán theo số tiền")
+                        .build();
 
         SepayCheckoutResponse resp = sepayService.createQuickCheckout(req);
 
@@ -432,13 +448,19 @@ class SepayServiceTest {
         assertEquals("CASMS BK20264512F", resp.getTransferContent());
         assertEquals("0901452366", resp.getAccountNumber());
         assertEquals("MBBank", resp.getBankName());
-        assertTrue(resp.getQrCodeUrl().contains("CASMS+BK20264512F") || resp.getQrCodeUrl().contains("CASMS%20BK20264512F"));
+        assertTrue(
+                resp.getQrCodeUrl().contains("CASMS+BK20264512F")
+                        || resp.getQrCodeUrl().contains("CASMS%20BK20264512F"));
 
-        verify(paymentRepository).save(argThat(p ->
-                p.getStatus() == PaymentStatus.Pending
-                && "CASMS BK20264512F".equals(p.getInternalReceiptReference())
-                && p.getOperationType() == PaymentOperationType.Collect
-                && p.getPaymentMethod() == PaymentMethod.Sepay
-        ));
+        verify(paymentRepository)
+                .save(
+                        argThat(
+                                p ->
+                                        p.getStatus() == PaymentStatus.Pending
+                                                && "CASMS BK20264512F"
+                                                        .equals(p.getInternalReceiptReference())
+                                                && p.getOperationType()
+                                                        == PaymentOperationType.Collect
+                                                && p.getPaymentMethod() == PaymentMethod.Sepay));
     }
 }

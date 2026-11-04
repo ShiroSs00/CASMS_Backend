@@ -1,6 +1,7 @@
 package com.casms.ship.dto.response;
 
 import io.swagger.v3.oas.annotations.media.Schema;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -15,7 +16,10 @@ import java.util.UUID;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@Schema(description = "Kết quả áp dụng thay đổi lịch trình, tàu hoặc cấu hình chuyến khởi hành (BE-R05b / C11, C17)")
+@Schema(
+        description =
+                "Kết quả áp dụng thay đổi lịch trình, tàu hoặc cấu hình chuyến khởi hành (BE-R05b /"
+                    + " C11, C17)")
 public class CruiseApplyChangeResponse {
 
     @Schema(description = "ID chuyến khởi hành")

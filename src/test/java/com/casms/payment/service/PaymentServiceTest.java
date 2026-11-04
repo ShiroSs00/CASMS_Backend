@@ -1,5 +1,9 @@
 package com.casms.payment.service;
 
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.*;
+
 import com.casms.booking.entity.Booking;
 import com.casms.booking.enums.BookingStatus;
 import com.casms.booking.repository.BookingRepository;
@@ -12,8 +16,9 @@ import com.casms.payment.entity.Payment;
 import com.casms.payment.enums.PaymentMethod;
 import com.casms.payment.enums.PaymentOperationType;
 import com.casms.payment.enums.PaymentStatus;
-import com.casms.payment.repository.PaymentRepository;
 import com.casms.payment.repository.InstallmentRepository;
+import com.casms.payment.repository.PaymentRepository;
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -21,6 +26,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.security.access.AccessDeniedException;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -28,25 +34,16 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.*;
-import org.springframework.security.access.AccessDeniedException;
-
 @ExtendWith(MockitoExtension.class)
 class PaymentServiceTest {
 
-    @Mock
-    private PaymentRepository paymentRepository;
+    @Mock private PaymentRepository paymentRepository;
 
-    @Mock
-    private BookingRepository bookingRepository;
+    @Mock private BookingRepository bookingRepository;
 
-    @Mock
-    private InstallmentRepository installmentRepository;
+    @Mock private InstallmentRepository installmentRepository;
 
-    @InjectMocks
-    private PaymentService paymentService;
+    @InjectMocks private PaymentService paymentService;
 
     private UUID bookingId;
     private UUID paymentId;
@@ -80,7 +77,8 @@ class PaymentServiceTest {
     @Test
     @DisplayName("Khởi tạo thanh toán thành công với mã Idempotency mới")
     void createPayment_Success() {
-        when(installmentRepository.findByBookingBookingIdOrderBySequenceNoAsc(bookingId)).thenReturn(List.of());
+        when(installmentRepository.findByBookingBookingIdOrderBySequenceNoAsc(bookingId))
+                .thenReturn(List.of());
         PaymentCreateRequest req = new PaymentCreateRequest();
         req.setBookingId(bookingId);
         req.setRequestedAmount(new BigDecimal("10000000"));
@@ -102,15 +100,21 @@ class PaymentServiceTest {
     @Test
     void createPayment_rejectsNewForeignCurrencyWithoutSaving() {
         PaymentCreateRequest req = new PaymentCreateRequest();
-        req.setBookingId(bookingId); req.setRequestedAmount(new BigDecimal("10"));
-        req.setPaymentMethod(PaymentMethod.Cash); req.setIdempotencyKey("USD-ONLY-TEST"); req.setCurrency("VND");
+        req.setBookingId(bookingId);
+        req.setRequestedAmount(new BigDecimal("10"));
+        req.setPaymentMethod(PaymentMethod.Cash);
+        req.setIdempotencyKey("USD-ONLY-TEST");
+        req.setCurrency("VND");
         when(paymentRepository.findByIdempotencyKey("USD-ONLY-TEST")).thenReturn(Optional.empty());
-        BusinessException error = assertThrows(BusinessException.class, () -> paymentService.createPayment(req));
-        assertEquals("CURRENCY_USD_REQUIRED", error.getCode()); verify(paymentRepository, never()).save(any());
+        BusinessException error =
+                assertThrows(BusinessException.class, () -> paymentService.createPayment(req));
+        assertEquals("CURRENCY_USD_REQUIRED", error.getCode());
+        verify(paymentRepository, never()).save(any());
     }
 
     @Test
-    @DisplayName("Bảo đảm Idempotent: Gửi lại cùng idempotencyKey trả về giao dịch cũ, không tạo lặp")
+    @DisplayName(
+            "Bảo đảm Idempotent: Gửi lại cùng idempotencyKey trả về giao dịch cũ, không tạo lặp")
     void createPayment_DuplicateIdempotencyKey_ReturnsExisting() {
         PaymentCreateRequest req = new PaymentCreateRequest();
         req.setBookingId(bookingId);
@@ -130,7 +134,8 @@ class PaymentServiceTest {
     @Test
     @DisplayName("Xác nhận thanh toán không tự chuyển booking sang Confirmed")
     void confirmPayment_DoesNotAutoConfirmBooking() {
-        when(installmentRepository.findByBookingBookingIdOrderBySequenceNoAsc(bookingId)).thenReturn(List.of());
+        when(installmentRepository.findByBookingBookingIdOrderBySequenceNoAsc(bookingId))
+                .thenReturn(List.of());
         PaymentConfirmRequest req = new PaymentConfirmRequest();
         req.setConfirmedAmount(new BigDecimal("10000000"));
         req.setProcessorReference("TXN-PAYPAL-9999");
@@ -161,8 +166,10 @@ class PaymentServiceTest {
         req.setProcessorReference("TXN-OVER");
         when(paymentRepository.findByIdForUpdate(paymentId)).thenReturn(Optional.of(payment));
 
-        BusinessException ex = assertThrows(BusinessException.class,
-                () -> paymentService.confirmPayment(paymentId, req));
+        BusinessException ex =
+                assertThrows(
+                        BusinessException.class,
+                        () -> paymentService.confirmPayment(paymentId, req));
 
         assertEquals("INVALID_CONFIRMED_AMOUNT", ex.getCode());
         verify(paymentRepository, never()).save(any(Payment.class));
@@ -176,8 +183,10 @@ class PaymentServiceTest {
         req.setProcessorReference("TXN-CANCELLED");
         when(paymentRepository.findByIdForUpdate(paymentId)).thenReturn(Optional.of(payment));
 
-        BusinessException ex = assertThrows(BusinessException.class,
-                () -> paymentService.confirmPayment(paymentId, req));
+        BusinessException ex =
+                assertThrows(
+                        BusinessException.class,
+                        () -> paymentService.confirmPayment(paymentId, req));
 
         assertEquals("BOOKING_CANCELLED", ex.getCode());
         verify(paymentRepository, never()).save(any(Payment.class));
@@ -197,8 +206,8 @@ class PaymentServiceTest {
         when(paymentRepository.findByIdempotencyKey("KEY-CANCELLED")).thenReturn(Optional.empty());
         when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(booking));
 
-        BusinessException ex = assertThrows(BusinessException.class,
-                () -> paymentService.createPayment(req));
+        BusinessException ex =
+                assertThrows(BusinessException.class, () -> paymentService.createPayment(req));
 
         assertEquals("BOOKING_CANCELLED", ex.getCode());
         verify(paymentRepository, never()).save(any());
@@ -212,7 +221,9 @@ class PaymentServiceTest {
         when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(booking));
         when(paymentRepository.findByBooking_BookingId(bookingId)).thenReturn(List.of(payment));
 
-        assertEquals(1, paymentService.getPaymentsForBooking(bookingId, owner.getUserId(), false).size());
+        assertEquals(
+                1,
+                paymentService.getPaymentsForBooking(bookingId, owner.getUserId(), false).size());
     }
 
     @Test
@@ -222,8 +233,9 @@ class PaymentServiceTest {
         booking.setBookedByUser(owner);
         when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(booking));
 
-        assertThrows(AccessDeniedException.class, () ->
-                paymentService.getPaymentsForBooking(bookingId, UUID.randomUUID(), false));
+        assertThrows(
+                AccessDeniedException.class,
+                () -> paymentService.getPaymentsForBooking(bookingId, UUID.randomUUID(), false));
         verify(paymentRepository, never()).findByBooking_BookingId(any());
     }
 }

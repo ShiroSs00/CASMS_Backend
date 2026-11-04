@@ -12,7 +12,9 @@ import java.util.UUID;
 @Repository
 public interface AuditRepository extends JpaRepository<AuditLog, UUID> {
     List<AuditLog> findByEntityIdOrderByOccurredAtDesc(UUID entityId);
-    Page<AuditLog> findByEntityIdOrderByOccurredAtDesc(UUID entityId, Pageable pageable);
-    Page<AuditLog> findByEntityIdInOrderByOccurredAtDesc(Collection<UUID> entityIds, Pageable pageable);
-}
 
+    Page<AuditLog> findByEntityIdOrderByOccurredAtDesc(UUID entityId, Pageable pageable);
+
+    Page<AuditLog> findByEntityIdInOrderByOccurredAtDesc(
+            Collection<UUID> entityIds, Pageable pageable);
+}

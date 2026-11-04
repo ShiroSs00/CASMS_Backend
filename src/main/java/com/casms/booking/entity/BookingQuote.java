@@ -3,7 +3,9 @@ package com.casms.booking.entity;
 import com.casms.booking.enums.PaymentPlan;
 import com.casms.identity.entity.User;
 import com.casms.ship.entity.Cruise;
+
 import jakarta.persistence.*;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;

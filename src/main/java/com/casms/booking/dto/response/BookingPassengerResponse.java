@@ -4,7 +4,9 @@ import com.casms.booking.enums.BookingPassengerParticipationStatus;
 import com.casms.identity.enums.PassengerDocumentType;
 import com.casms.servicepackage.enums.TourPackageType;
 import com.casms.ship.enums.CabinType;
+
 import io.swagger.v3.oas.annotations.media.Schema;
+
 import lombok.Getter;
 import lombok.Setter;
 
@@ -63,7 +65,9 @@ public class BookingPassengerResponse {
     private Integer deckNumber;
 
     // Tour Package Info
-    @Schema(description = "ID gói dịch vụ đã chọn", example = "b2c3d4e5-f6a7-8901-bcde-f12345678901")
+    @Schema(
+            description = "ID gói dịch vụ đã chọn",
+            example = "b2c3d4e5-f6a7-8901-bcde-f12345678901")
     private UUID tourPackageId;
 
     @Schema(description = "Tên gói dịch vụ", example = "Gói Thưởng Ngoạn Cao Cấp")
@@ -75,6 +79,9 @@ public class BookingPassengerResponse {
     @Schema(description = "Giá gói dịch vụ đã chốt", example = "250.0000")
     private BigDecimal agreedPackagePrice;
 
-    @Schema(description = "Cờ đánh dấu hành khách này có liên kết với tài khoản đang đăng nhập hay không", example = "true")
+    @Schema(
+            description =
+                    "Cờ đánh dấu hành khách này có liên kết với tài khoản đang đăng nhập hay không",
+            example = "true")
     private Boolean ownedByCurrentUser;
 }

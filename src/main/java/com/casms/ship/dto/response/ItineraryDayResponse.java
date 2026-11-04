@@ -1,8 +1,10 @@
 package com.casms.ship.dto.response;
 
-import com.casms.ship.enums.ItineraryDayType;
 import com.casms.ship.enums.ItineraryDayRole;
+import com.casms.ship.enums.ItineraryDayType;
+
 import io.swagger.v3.oas.annotations.media.Schema;
+
 import lombok.Data;
 
 import java.time.LocalDate;
@@ -28,7 +30,10 @@ public class ItineraryDayResponse {
     @Schema(description = "Loại ngày", example = "PORT_DAY")
     private ItineraryDayType dayType;
 
-    @Schema(description = "Vai trò ngày: DEPARTURE, REGULAR, ARRIVAL, DEPARTURE_AND_ARRIVAL; BE xác định theo vị trí ngày")
+    @Schema(
+            description =
+                    "Vai trò ngày: DEPARTURE, REGULAR, ARRIVAL, DEPARTURE_AND_ARRIVAL; BE xác định"
+                        + " theo vị trí ngày")
     private ItineraryDayRole dayRole;
 
     @Schema(description = "Múi giờ tàu", example = "Asia/Ho_Chi_Minh")
@@ -37,7 +42,9 @@ public class ItineraryDayResponse {
     @Schema(description = "Độ lệch giờ UTC trên tàu", example = "+07:00")
     private String shipUtcOffset;
 
-    @Schema(description = "Chuỗi hiển thị múi giờ trên tàu", example = "Asia/Ho_Chi_Minh (UTC+07:00)")
+    @Schema(
+            description = "Chuỗi hiển thị múi giờ trên tàu",
+            example = "Asia/Ho_Chi_Minh (UTC+07:00)")
     private String formattedShipTimeZone;
 
     @Schema(description = "Mô tả ngày", example = "Khám phá Vịnh Hạ Long")

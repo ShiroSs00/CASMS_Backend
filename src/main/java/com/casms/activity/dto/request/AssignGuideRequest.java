@@ -4,7 +4,4 @@ import jakarta.validation.constraints.NotNull;
 
 import java.util.UUID;
 
-public record AssignGuideRequest(
-        @NotNull UUID guideId
-) {
-}
+public record AssignGuideRequest(@NotNull UUID guideId) {}

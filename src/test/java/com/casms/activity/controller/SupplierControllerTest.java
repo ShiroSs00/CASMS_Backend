@@ -1,5 +1,10 @@
 package com.casms.activity.controller;
 
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.*;
+
 import com.casms.activity.dto.request.SupplierRequest;
 import com.casms.activity.dto.request.SupplierVerificationRequest;
 import com.casms.activity.entity.Supplier;
@@ -8,6 +13,7 @@ import com.casms.activity.service.SupplierService;
 import com.casms.common.response.ApiResponse;
 import com.casms.identity.entity.User;
 import com.casms.security.principal.CasmsPrincipal;
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -21,19 +27,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.*;
-
 @ExtendWith(MockitoExtension.class)
 class SupplierControllerTest {
 
-    @Mock
-    private SupplierService supplierService;
+    @Mock private SupplierService supplierService;
 
-    @InjectMocks
-    private SupplierController supplierController;
+    @InjectMocks private SupplierController supplierController;
 
     private UUID supplierId;
     private Supplier sampleSupplier;
@@ -80,14 +79,14 @@ class SupplierControllerTest {
 
     @Test
     void create_returnsCreatedStatusWithApiResponse() {
-        SupplierRequest request = new SupplierRequest(
-                "Ha Long Bay Tour Ltd",
-                "EXCURSION",
-                "Nguyen Van A",
-                "0987654321",
-                "contact@halongtour.com",
-                "LIC-12345"
-        );
+        SupplierRequest request =
+                new SupplierRequest(
+                        "Ha Long Bay Tour Ltd",
+                        "EXCURSION",
+                        "Nguyen Van A",
+                        "0987654321",
+                        "contact@halongtour.com",
+                        "LIC-12345");
         when(supplierService.create(any(SupplierRequest.class))).thenReturn(sampleSupplier);
 
         ResponseEntity<ApiResponse<Supplier>> response = supplierController.create(request);
@@ -101,18 +100,20 @@ class SupplierControllerTest {
 
     @Test
     void update_returnsApiResponseWithUpdatedSupplier() {
-        SupplierRequest request = new SupplierRequest(
-                "Ha Long Bay Tour Updated",
-                "EXCURSION",
-                "Nguyen Van A",
-                "0987654321",
-                "contact@halongtour.com",
-                "LIC-12345"
-        );
+        SupplierRequest request =
+                new SupplierRequest(
+                        "Ha Long Bay Tour Updated",
+                        "EXCURSION",
+                        "Nguyen Van A",
+                        "0987654321",
+                        "contact@halongtour.com",
+                        "LIC-12345");
         sampleSupplier.setSupplierName("Ha Long Bay Tour Updated");
-        when(supplierService.update(eq(supplierId), any(SupplierRequest.class))).thenReturn(sampleSupplier);
+        when(supplierService.update(eq(supplierId), any(SupplierRequest.class)))
+                .thenReturn(sampleSupplier);
 
-        ResponseEntity<ApiResponse<Supplier>> response = supplierController.update(supplierId, request);
+        ResponseEntity<ApiResponse<Supplier>> response =
+                supplierController.update(supplierId, request);
 
         assertEquals(HttpStatus.OK, response.getStatusCode());
         assertNotNull(response.getBody());
@@ -165,7 +166,8 @@ class SupplierControllerTest {
     void validate_returnsApiResponseWithValidMessage() {
         doNothing().when(supplierService).validateSupplier(supplierId);
 
-        ResponseEntity<ApiResponse<Map<String, String>>> response = supplierController.validate(supplierId);
+        ResponseEntity<ApiResponse<Map<String, String>>> response =
+                supplierController.validate(supplierId);
 
         assertEquals(HttpStatus.OK, response.getStatusCode());
         assertNotNull(response.getBody());
@@ -181,10 +183,10 @@ class SupplierControllerTest {
         employee.setUserId(employeeId);
         CasmsPrincipal principal = new CasmsPrincipal(employee, null);
 
-        SupplierVerificationRequest request = new SupplierVerificationRequest(
-                com.casms.activity.enums.SupplierVerificationStatus.VERIFIED,
-                "All documents verified"
-        );
+        SupplierVerificationRequest request =
+                new SupplierVerificationRequest(
+                        com.casms.activity.enums.SupplierVerificationStatus.VERIFIED,
+                        "All documents verified");
 
         when(supplierService.recordVerification(eq(supplierId), eq(request), eq(employeeId)))
                 .thenReturn(sampleSupplier);
@@ -208,13 +210,14 @@ class SupplierControllerTest {
         org.springframework.security.core.Authentication auth =
                 new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(
                         principal, null, principal.getAuthorities());
-        org.springframework.security.core.context.SecurityContextHolder.getContext().setAuthentication(auth);
+        org.springframework.security.core.context.SecurityContextHolder.getContext()
+                .setAuthentication(auth);
 
         try {
-            SupplierVerificationRequest request = new SupplierVerificationRequest(
-                    com.casms.activity.enums.SupplierVerificationStatus.VERIFIED,
-                    "Verified via context"
-            );
+            SupplierVerificationRequest request =
+                    new SupplierVerificationRequest(
+                            com.casms.activity.enums.SupplierVerificationStatus.VERIFIED,
+                            "Verified via context");
 
             when(supplierService.recordVerification(eq(supplierId), eq(request), eq(employeeId)))
                     .thenReturn(sampleSupplier);
@@ -235,18 +238,17 @@ class SupplierControllerTest {
     void recordVerification_withoutAuthentication_throwsBusinessException() {
         org.springframework.security.core.context.SecurityContextHolder.clearContext();
 
-        SupplierVerificationRequest request = new SupplierVerificationRequest(
-                com.casms.activity.enums.SupplierVerificationStatus.VERIFIED,
-                "No auth test"
-        );
+        SupplierVerificationRequest request =
+                new SupplierVerificationRequest(
+                        com.casms.activity.enums.SupplierVerificationStatus.VERIFIED,
+                        "No auth test");
 
-        com.casms.common.exception.BusinessException ex = assertThrows(
-                com.casms.common.exception.BusinessException.class,
-                () -> supplierController.recordVerification(supplierId, request, null)
-        );
+        com.casms.common.exception.BusinessException ex =
+                assertThrows(
+                        com.casms.common.exception.BusinessException.class,
+                        () -> supplierController.recordVerification(supplierId, request, null));
 
         assertEquals(HttpStatus.UNAUTHORIZED, ex.getStatus());
         assertEquals("AUTH_REQUIRED", ex.getCode());
     }
 }
-

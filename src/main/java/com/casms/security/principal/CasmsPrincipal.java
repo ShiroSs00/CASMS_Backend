@@ -5,18 +5,18 @@ import com.casms.identity.enums.Permission;
 import com.casms.identity.enums.Role;
 import com.casms.identity.enums.UserStatus;
 import com.casms.identity.repository.RolePermissionRepository;
+
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
+
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 
 import java.util.Collection;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Set;
 import java.util.UUID;
-import java.util.Collections;
 import java.util.stream.Stream;
 
 @Getter
@@ -32,7 +32,9 @@ public class CasmsPrincipal implements UserDetails {
 
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
-        if (user.hasRole(Role.POS)) return Set.of(new SimpleGrantedAuthority("ROLE_POS"), new SimpleGrantedAuthority("POS"));
+        if (user.hasRole(Role.POS))
+            return Set.of(
+                    new SimpleGrantedAuthority("ROLE_POS"), new SimpleGrantedAuthority("POS"));
         Set<GrantedAuthority> authorities = new HashSet<>();
         if (user.getRoles() != null) {
             for (Role role : user.getRoles()) {
@@ -42,13 +44,16 @@ public class CasmsPrincipal implements UserDetails {
         }
         if (user.getRoles() != null && rolePermissionRepository != null) {
             for (Role role : user.getRoles()) {
-                rolePermissionRepository.findByRole(role).ifPresent(rp -> {
-                    if (rp.getPermissions() != null) {
-                        for (Permission p : rp.getPermissions()) {
-                            authorities.add(new SimpleGrantedAuthority(p.name()));
-                        }
-                    }
-                });
+                rolePermissionRepository
+                        .findByRole(role)
+                        .ifPresent(
+                                rp -> {
+                                    if (rp.getPermissions() != null) {
+                                        for (Permission p : rp.getPermissions()) {
+                                            authorities.add(new SimpleGrantedAuthority(p.name()));
+                                        }
+                                    }
+                                });
             }
         }
         return authorities;
@@ -90,11 +95,13 @@ public class CasmsPrincipal implements UserDetails {
     public boolean hasPermission(Permission permission) {
         if (user.hasRole(Role.POS)) return false;
         return user.getRoles().stream()
-                .flatMap(role -> {
-                    var rpOptional = rolePermissionRepository.findByRole(role);
-                    return rpOptional.map(rp -> rp.getPermissions().stream())
-                            .orElseGet(Stream::empty);
-                })
+                .flatMap(
+                        role -> {
+                            var rpOptional = rolePermissionRepository.findByRole(role);
+                            return rpOptional
+                                    .map(rp -> rp.getPermissions().stream())
+                                    .orElseGet(Stream::empty);
+                        })
                 .anyMatch(permission::equals);
     }
 

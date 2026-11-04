@@ -1,6 +1,7 @@
 package com.casms.trip.dto.response;
 
 import io.swagger.v3.oas.annotations.media.Schema;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -25,7 +26,9 @@ public class TripCatalogResponse {
     private List<String> tripTypes = new ArrayList<>();
 
     @Builder.Default
-    @Schema(description = "Trạng thái tích hợp phân hệ Fleet (DEFERRED_EXTERNAL theo P0)", example = "DEFERRED_EXTERNAL")
+    @Schema(
+            description = "Trạng thái tích hợp phân hệ Fleet (DEFERRED_EXTERNAL theo P0)",
+            example = "DEFERRED_EXTERNAL")
     private String fleetIntegrationStatus = "DEFERRED_EXTERNAL";
 
     @Builder.Default
@@ -41,7 +44,9 @@ public class TripCatalogResponse {
     private List<CountryCatalogItem> countries = new ArrayList<>();
 
     @Builder.Default
-    @Schema(description = "Nhóm thời lượng: SHORT (1–2 ngày, mặc định 1), LONG (3–5 ngày, mặc định 3)")
+    @Schema(
+            description =
+                    "Nhóm thời lượng: SHORT (1–2 ngày, mặc định 1), LONG (3–5 ngày, mặc định 3)")
     private List<DurationGroupCatalogItem> durationGroups = new ArrayList<>();
 
     @Data
@@ -65,8 +70,11 @@ public class TripCatalogResponse {
     @AllArgsConstructor
     @NoArgsConstructor
     public static class DurationGroupCatalogItem {
-        @Schema(description = "Mã nhóm thời lượng", allowableValues = {"SHORT", "LONG"})
+        @Schema(
+                description = "Mã nhóm thời lượng",
+                allowableValues = {"SHORT", "LONG"})
         private String code;
+
         private String name;
         private int minDays;
         private int maxDays;

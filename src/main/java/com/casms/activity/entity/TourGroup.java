@@ -1,7 +1,9 @@
 package com.casms.activity.entity;
 
 import com.casms.activity.enums.TourGroupStatus;
+
 import jakarta.persistence.*;
+
 import lombok.Getter;
 import lombok.Setter;
 
@@ -11,8 +13,9 @@ import java.util.UUID;
 @Getter
 @Setter
 @Entity
-@Table(name = "\"TourGroup\"",
-       uniqueConstraints = @UniqueConstraint(columnNames = {"shore_excursion_id", "group_code"}))
+@Table(
+        name = "\"TourGroup\"",
+        uniqueConstraints = @UniqueConstraint(columnNames = {"shore_excursion_id", "group_code"}))
 public class TourGroup {
 
     @Id

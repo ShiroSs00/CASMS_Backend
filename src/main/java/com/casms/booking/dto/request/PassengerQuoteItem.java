@@ -1,6 +1,7 @@
 package com.casms.booking.dto.request;
 
 import jakarta.validation.constraints.NotNull;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -15,5 +16,6 @@ import java.util.UUID;
 public class PassengerQuoteItem {
     @NotNull(message = "Cabin ID is required")
     private UUID cabinId;
+
     private UUID tourPackageId;
 }

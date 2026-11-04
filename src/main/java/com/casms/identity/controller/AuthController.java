@@ -7,10 +7,14 @@ import com.casms.identity.dto.LoginResponse;
 import com.casms.identity.dto.UserMeResponse;
 import com.casms.identity.service.AuthService;
 import com.casms.security.principal.CasmsPrincipal;
+
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+
 import jakarta.validation.Valid;
+
 import lombok.RequiredArgsConstructor;
+
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
@@ -23,7 +27,9 @@ public class AuthController {
 
     private final AuthService authService;
 
-    @Operation(summary = "Đăng nhập", description = "Xác thực người dùng và trả về JWT access token kèm quyền hạn hiệu lực")
+    @Operation(
+            summary = "Đăng nhập",
+            description = "Xác thực người dùng và trả về JWT access token kèm quyền hạn hiệu lực")
     @PostMapping("/login")
     public ApiResponse<LoginResponse> login(@RequestBody @Valid LoginRequest request) {
         return ApiResponse.success(authService.login(request));
@@ -31,16 +37,24 @@ public class AuthController {
 
     @Operation(summary = "Làm mới token", description = "Làm mới access token từ token hiện tại")
     @PostMapping("/refresh")
-    public ApiResponse<LoginResponse> refreshToken(@RequestHeader("Authorization") String authHeader) {
+    public ApiResponse<LoginResponse> refreshToken(
+            @RequestHeader("Authorization") String authHeader) {
         String token = authHeader.replace("Bearer ", "");
         return ApiResponse.success(authService.refreshToken(token));
     }
 
-    @Operation(summary = "Thông tin phiên đăng nhập hiện tại", description = "Lấy thông tin người dùng, danh sách vai trò và quyền hạn hiệu lực (effectivePermissions)")
+    @Operation(
+            summary = "Thông tin phiên đăng nhập hiện tại",
+            description =
+                    "Lấy thông tin người dùng, danh sách vai trò và quyền hạn hiệu lực"
+                        + " (effectivePermissions)")
     @GetMapping("/me")
     public ApiResponse<UserMeResponse> me(@AuthenticationPrincipal CasmsPrincipal principal) {
         if (principal == null || principal.getUser() == null) {
-            throw new BusinessException(HttpStatus.UNAUTHORIZED, "AUTH_REQUIRED", "Yêu cầu đăng nhập để truy cập thông tin phiên");
+            throw new BusinessException(
+                    HttpStatus.UNAUTHORIZED,
+                    "AUTH_REQUIRED",
+                    "Yêu cầu đăng nhập để truy cập thông tin phiên");
         }
         return ApiResponse.success(authService.getCurrentUser(principal));
     }

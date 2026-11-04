@@ -1,6 +1,7 @@
 package com.casms.trip.dto.response;
 
 import io.swagger.v3.oas.annotations.media.Schema;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -31,10 +32,16 @@ public class PlanViolation {
     @Schema(description = "Trường dữ liệu gây vi phạm (nếu có)")
     private String field;
 
-    @Schema(description = "Đường dẫn JSON path đầy đủ đến trường vi phạm để điều hướng UI focus (ví dụ: entries[clientKey=uuid].end)")
+    @Schema(
+            description =
+                    "Đường dẫn JSON path đầy đủ đến trường vi phạm để điều hướng UI focus (ví dụ:"
+                        + " entries[clientKey=uuid].end)")
     private String fieldPath;
 
-    @Schema(description = "Gợi ý hành động khắc phục cho FE (ví dụ: EDIT_FIELD, ADD_STOP, SELECT_DAY_TYPE)")
+    @Schema(
+            description =
+                    "Gợi ý hành động khắc phục cho FE (ví dụ: EDIT_FIELD, ADD_STOP,"
+                        + " SELECT_DAY_TYPE)")
     private String actionHint;
 
     @Schema(description = "Thông điệp mô tả lỗi chi tiết")

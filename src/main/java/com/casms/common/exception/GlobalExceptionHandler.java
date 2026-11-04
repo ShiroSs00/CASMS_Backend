@@ -1,24 +1,27 @@
 package com.casms.common.exception;
 
 import com.casms.common.response.ApiResponse;
+
 import jakarta.persistence.EntityNotFoundException;
+import jakarta.persistence.OptimisticLockException;
 import jakarta.validation.ConstraintViolationException;
+
 import lombok.extern.slf4j.Slf4j;
+
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.validation.FieldError;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
-import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.server.ResponseStatusException;
-import org.springframework.dao.OptimisticLockingFailureException;
-import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
-import jakarta.persistence.OptimisticLockException;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -41,8 +44,7 @@ public class GlobalExceptionHandler {
         String msg = ex.getMessage() != null ? ex.getMessage() : "Resource not found";
         String code = resolveNotFoundCode(msg);
         log.warn("Entity not found [{}]: {}", code, msg);
-        return ResponseEntity.status(HttpStatus.NOT_FOUND)
-                .body(ApiResponse.error(msg, code));
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(ApiResponse.error(msg, code));
     }
 
     @ExceptionHandler(IllegalArgumentException.class)
@@ -59,12 +61,10 @@ public class GlobalExceptionHandler {
                     .body(ApiResponse.error(msg, "REGULATION_ALREADY_ASSIGNED"));
         } else if (lower.contains("not found")) {
             String code = resolveNotFoundCode(msg);
-            return ResponseEntity.status(HttpStatus.NOT_FOUND)
-                    .body(ApiResponse.error(msg, code));
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(ApiResponse.error(msg, code));
         }
 
-        return ResponseEntity.badRequest()
-                .body(ApiResponse.error(msg, "VALIDATION_FAILED"));
+        return ResponseEntity.badRequest().body(ApiResponse.error(msg, "VALIDATION_FAILED"));
     }
 
     @ExceptionHandler(IllegalStateException.class)
@@ -80,15 +80,15 @@ public class GlobalExceptionHandler {
                     .body(ApiResponse.error(msg, code));
         }
 
-        return ResponseEntity.status(HttpStatus.CONFLICT)
-                .body(ApiResponse.error(msg, code));
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiResponse.error(msg, code));
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ApiResponse<Void>> handleValidation(MethodArgumentNotValidException ex) {
-        String message = ex.getBindingResult().getFieldErrors().stream()
-                .map(e -> e.getField() + ": " + e.getDefaultMessage())
-                .collect(Collectors.joining(", "));
+        String message =
+                ex.getBindingResult().getFieldErrors().stream()
+                        .map(e -> e.getField() + ": " + e.getDefaultMessage())
+                        .collect(Collectors.joining(", "));
 
         Map<String, Object> details = new HashMap<>();
         for (FieldError fieldError : ex.getBindingResult().getFieldErrors()) {
@@ -101,34 +101,49 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(ConstraintViolationException.class)
-    public ResponseEntity<ApiResponse<Void>> handleConstraintViolation(ConstraintViolationException ex) {
-        String message = ex.getConstraintViolations().stream()
-                .map(v -> v.getPropertyPath() + ": " + v.getMessage())
-                .collect(Collectors.joining(", "));
+    public ResponseEntity<ApiResponse<Void>> handleConstraintViolation(
+            ConstraintViolationException ex) {
+        String message =
+                ex.getConstraintViolations().stream()
+                        .map(v -> v.getPropertyPath() + ": " + v.getMessage())
+                        .collect(Collectors.joining(", "));
         log.warn("Constraint violation: {}", message);
-        return ResponseEntity.badRequest()
-                .body(ApiResponse.error(message, "VALIDATION_FAILED"));
+        return ResponseEntity.badRequest().body(ApiResponse.error(message, "VALIDATION_FAILED"));
     }
 
     @ExceptionHandler(org.springframework.http.converter.HttpMessageNotReadableException.class)
-    public ResponseEntity<ApiResponse<Void>> handleHttpMessageNotReadable(org.springframework.http.converter.HttpMessageNotReadableException ex) {
-        log.warn("HTTP message not readable (malformed JSON or invalid format): {}", ex.getMessage());
+    public ResponseEntity<ApiResponse<Void>> handleHttpMessageNotReadable(
+            org.springframework.http.converter.HttpMessageNotReadableException ex) {
+        log.warn(
+                "HTTP message not readable (malformed JSON or invalid format): {}",
+                ex.getMessage());
         return ResponseEntity.badRequest()
-                .body(ApiResponse.error("Dữ liệu gửi lên không đúng định dạng JSON hoặc trường dữ liệu không hợp lệ", "INVALID_REQUEST_BODY"));
+                .body(
+                        ApiResponse.error(
+                                "Dữ liệu gửi lên không đúng định dạng JSON hoặc trường dữ liệu"
+                                    + " không hợp lệ",
+                                "INVALID_REQUEST_BODY"));
     }
 
     @ExceptionHandler(NoResourceFoundException.class)
     public ResponseEntity<ApiResponse<Void>> handleNoResourceFound(NoResourceFoundException ex) {
         log.warn("Resource/Endpoint not found: {}", ex.getResourcePath());
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
-                .body(ApiResponse.error("Đường dẫn hoặc tài nguyên không tồn tại: " + ex.getResourcePath(), "RESOURCE_NOT_FOUND"));
+                .body(
+                        ApiResponse.error(
+                                "Đường dẫn hoặc tài nguyên không tồn tại: " + ex.getResourcePath(),
+                                "RESOURCE_NOT_FOUND"));
     }
 
     @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
-    public ResponseEntity<ApiResponse<Void>> handleMethodNotSupported(HttpRequestMethodNotSupportedException ex) {
+    public ResponseEntity<ApiResponse<Void>> handleMethodNotSupported(
+            HttpRequestMethodNotSupportedException ex) {
         log.warn("HTTP method not supported: {}", ex.getMethod());
         return ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED)
-                .body(ApiResponse.error("Phương thức HTTP không được hỗ trợ: " + ex.getMethod(), "METHOD_NOT_ALLOWED"));
+                .body(
+                        ApiResponse.error(
+                                "Phương thức HTTP không được hỗ trợ: " + ex.getMethod(),
+                                "METHOD_NOT_ALLOWED"));
     }
 
     @ExceptionHandler(AccessDeniedException.class)
@@ -159,12 +174,18 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
-    public ResponseEntity<ApiResponse<Void>> handleMethodArgumentTypeMismatch(MethodArgumentTypeMismatchException ex) {
-        String msg = String.format("Invalid parameter '%s': value '%s' is not valid for type '%s'",
-                ex.getName(), ex.getValue(), ex.getRequiredType() != null ? ex.getRequiredType().getSimpleName() : "unknown");
+    public ResponseEntity<ApiResponse<Void>> handleMethodArgumentTypeMismatch(
+            MethodArgumentTypeMismatchException ex) {
+        String msg =
+                String.format(
+                        "Invalid parameter '%s': value '%s' is not valid for type '%s'",
+                        ex.getName(),
+                        ex.getValue(),
+                        ex.getRequiredType() != null
+                                ? ex.getRequiredType().getSimpleName()
+                                : "unknown");
         log.warn("Method argument type mismatch: {}", msg);
-        return ResponseEntity.badRequest()
-                .body(ApiResponse.error(msg, "INVALID_PARAMETER"));
+        return ResponseEntity.badRequest().body(ApiResponse.error(msg, "INVALID_PARAMETER"));
     }
 
     @ExceptionHandler({OptimisticLockingFailureException.class, OptimisticLockException.class})
@@ -172,29 +193,53 @@ public class GlobalExceptionHandler {
         log.warn("Optimistic lock conflict detected: {}", ex.getMessage());
         Map<String, Object> details = new HashMap<>();
         details.put("legacyCode", "OPTIMISTIC_LOCK_CONFLICT");
-        details.put("reason", "Dữ liệu đã bị thay đổi bởi thao tác khác. Vui lòng tải lại trang để lấy revision mới nhất.");
+        details.put(
+                "reason",
+                "Dữ liệu đã bị thay đổi bởi thao tác khác. Vui lòng tải lại trang để lấy revision"
+                    + " mới nhất.");
         return ResponseEntity.status(HttpStatus.CONFLICT)
-                .body(ApiResponse.error("Dữ liệu đã bị thay đổi bởi thao tác khác (xung đột phiên bản). Vui lòng làm mới và thử lại.",
-                        "STALE_REVISION", details, null));
+                .body(
+                        ApiResponse.error(
+                                "Dữ liệu đã bị thay đổi bởi thao tác khác (xung đột phiên bản). Vui"
+                                    + " lòng làm mới và thử lại.",
+                                "STALE_REVISION",
+                                details,
+                                null));
     }
 
     @ExceptionHandler(DataIntegrityViolationException.class)
-    public ResponseEntity<ApiResponse<Void>> handleDataIntegrityViolation(DataIntegrityViolationException ex) {
+    public ResponseEntity<ApiResponse<Void>> handleDataIntegrityViolation(
+            DataIntegrityViolationException ex) {
         log.warn("Data integrity violation: {}", ex.getMessage());
         Throwable root = ex.getMostSpecificCause();
-        String rootMsg = root != null && root.getMessage() != null ? root.getMessage().toLowerCase() : "";
-        String msg = ex.getMessage() != null ? ex.getMessage() : "Dữ liệu xung đột toàn vẹn dữ liệu";
+        String rootMsg =
+                root != null && root.getMessage() != null ? root.getMessage().toLowerCase() : "";
+        String msg =
+                ex.getMessage() != null ? ex.getMessage() : "Dữ liệu xung đột toàn vẹn dữ liệu";
         if (rootMsg.contains("idempotency") || rootMsg.contains("uq_idempotency")) {
             return ResponseEntity.status(HttpStatus.CONFLICT)
-                    .body(ApiResponse.error("Yêu cầu trùng lặp với cùng Idempotency-Key đang được xử lý hoặc đã hoàn tất.",
-                            "IDEMPOTENCY_CONFLICT"));
+                    .body(
+                            ApiResponse.error(
+                                    "Yêu cầu trùng lặp với cùng Idempotency-Key đang được xử lý"
+                                        + " hoặc đã hoàn tất.",
+                                    "IDEMPOTENCY_CONFLICT"));
         }
-        if (rootMsg.contains("unique") || rootMsg.contains("duplicate") || rootMsg.contains("uq_")) {
+        if (rootMsg.contains("unique")
+                || rootMsg.contains("duplicate")
+                || rootMsg.contains("uq_")) {
             return ResponseEntity.status(HttpStatus.CONFLICT)
-                    .body(ApiResponse.error("Dữ liệu trùng lặp trong hệ thống.", "DUPLICATE_RESOURCE"));
+                    .body(
+                            ApiResponse.error(
+                                    "Dữ liệu trùng lặp trong hệ thống.", "DUPLICATE_RESOURCE"));
         }
         return ResponseEntity.status(HttpStatus.CONFLICT)
-                .body(ApiResponse.error("Xung đột ràng buộc dữ liệu: " + (root != null && root.getMessage() != null ? root.getMessage() : msg), "DATA_INTEGRITY_VIOLATION"));
+                .body(
+                        ApiResponse.error(
+                                "Xung đột ràng buộc dữ liệu: "
+                                        + (root != null && root.getMessage() != null
+                                                ? root.getMessage()
+                                                : msg),
+                                "DATA_INTEGRITY_VIOLATION"));
     }
 
     @ExceptionHandler(Exception.class)

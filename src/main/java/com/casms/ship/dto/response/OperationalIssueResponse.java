@@ -1,9 +1,9 @@
-
 package com.casms.ship.dto.response;
 
 import com.casms.ship.enums.OperationalIssueSeverity;
 import com.casms.ship.enums.OperationalIssueStatus;
 import com.casms.ship.enums.OperationalIssueType;
+
 import lombok.Builder;
 import lombok.Getter;
 

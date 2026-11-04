@@ -3,10 +3,12 @@ package com.casms.ship.dto.response;
 import com.casms.activity.enums.OnboardActivityCategory;
 import com.casms.ship.enums.CruiseStopArrivalMethod;
 import com.casms.ship.enums.CruiseStopCallType;
-import com.casms.ship.enums.ItineraryDayType;
 import com.casms.ship.enums.ItineraryDayRole;
+import com.casms.ship.enums.ItineraryDayType;
 import com.casms.trip.enums.TripPlanEntryKind;
+
 import io.swagger.v3.oas.annotations.media.Schema;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -21,7 +23,10 @@ import java.util.UUID;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@Schema(description = "Kết quả tính toán xem trước hải trình và lịch trình thực tế cho chuyến khởi hành (C02)")
+@Schema(
+        description =
+                "Kết quả tính toán xem trước hải trình và lịch trình thực tế cho chuyến khởi hành"
+                    + " (C02)")
 public class CruiseSchedulePreviewResponse {
 
     @Schema(description = "ID của Chuyến đi nguồn")
@@ -72,22 +77,34 @@ public class CruiseSchedulePreviewResponse {
     @Schema(description = "Mã cảng kết thúc")
     private String returnPortCode;
 
-    @Schema(description = "ID của hải trình thực tế đã lưu (ItineraryId) - null khi ở chế độ preview")
+    @Schema(
+            description =
+                    "ID của hải trình thực tế đã lưu (ItineraryId) - null khi ở chế độ preview")
     private UUID itineraryId;
 
-    @Schema(description = "Trạng thái hải trình thực tế (DRAFT, APPROVED, OPEN_FOR_SALE, SUSPENDED, ...) - null khi ở chế độ preview")
+    @Schema(
+            description =
+                    "Trạng thái hải trình thực tế (DRAFT, APPROVED, OPEN_FOR_SALE, SUSPENDED, ...)"
+                        + " - null khi ở chế độ preview")
     private String itineraryStatus;
 
-    @Schema(description = "Cờ xác định lịch trình đã được lưu vào database hay chưa (false = xem trước/chưa lưu, true = đã lưu)")
+    @Schema(
+            description =
+                    "Cờ xác định lịch trình đã được lưu vào database hay chưa (false = xem"
+                        + " trước/chưa lưu, true = đã lưu)")
     private Boolean materialized;
 
-    @Schema(description = "Kết quả evaluator dùng dữ liệu hiện hành cho ngày thực tế. Chỉ VERIFIED + ACTIVE + effective có thể cho PASS; closure chặn. Không phải xác nhận cầu cảng.")
+    @Schema(
+            description =
+                    "Kết quả evaluator dùng dữ liệu hiện hành cho ngày thực tế. Chỉ VERIFIED +"
+                        + " ACTIVE + effective có thể cho PASS; closure chặn. Không phải xác nhận"
+                        + " cầu cảng.")
     private String portCallWindowStatus;
+
     private java.util.List<com.casms.ship.dto.PortWindowContract.Check> portWindowChecks;
     private List<String> materializationBlockers;
     private String dependency;
     private String sourceContentHash;
-
 
     @Schema(description = "Danh sách cảnh báo liên quan đến tính toán múi giờ và lịch trình")
     private List<String> warnings;
@@ -101,7 +118,10 @@ public class CruiseSchedulePreviewResponse {
     @AllArgsConstructor
     @Schema(description = "Thông tin ngày hải trình dự kiến")
     public static class ProjectedDayDto {
-        @Schema(description = "ID ngày hải trình thực tế đã lưu (ItineraryDayId) - null khi ở chế độ preview")
+        @Schema(
+                description =
+                        "ID ngày hải trình thực tế đã lưu (ItineraryDayId) - null khi ở chế độ"
+                            + " preview")
         private UUID itineraryDayId;
 
         @Schema(description = "Số thứ tự ngày (1-indexed)", example = "1")
@@ -110,13 +130,17 @@ public class CruiseSchedulePreviewResponse {
         @Schema(description = "Ngày dương lịch thực tế (YYYY-MM-DD)", example = "2026-11-01")
         private LocalDate calendarDate;
 
-        @Schema(description = "Trạng thái ngày (SEA_DAY hoặc PORT_DAY); vai trò khởi hành/kết thúc nằm ở dayRole")
+        @Schema(
+                description =
+                        "Trạng thái ngày (SEA_DAY hoặc PORT_DAY); vai trò khởi hành/kết thúc nằm ở"
+                            + " dayRole")
         private ItineraryDayType dayType;
 
         private ItineraryDayRole dayRole;
 
         @Schema(description = "Tiêu đề ngày")
         private String title;
+
         private String description;
 
         @Schema(description = "Múi giờ tàu áp dụng cho ngày này", example = "Asia/Ho_Chi_Minh")
@@ -135,12 +159,15 @@ public class CruiseSchedulePreviewResponse {
     @AllArgsConstructor
     @Schema(description = "Thông tin điểm dừng cảng dự kiến")
     public static class ProjectedStopDto {
-        @Schema(description = "ID của lần cập cảng thực tế đã lưu (CruiseStopId) - null khi ở chế độ preview")
+        @Schema(
+                description =
+                        "ID của lần cập cảng thực tế đã lưu (CruiseStopId) - null khi ở chế độ"
+                            + " preview")
         private UUID cruiseStopId;
+
         private com.casms.ship.dto.PortFacts portFacts;
         private java.util.List<com.casms.ship.dto.PortWindowContract.Check> portWindowChecks;
         private java.util.List<com.casms.trip.dto.response.DestinationVisitResponse> visits;
-
 
         @Schema(description = "ID của điểm dừng mẫu nguồn")
         private UUID sourceStopId;
@@ -172,7 +199,10 @@ public class CruiseSchedulePreviewResponse {
         @Schema(description = "Hạn chót toàn bộ khách lên tàu (All Aboard Time)")
         private Instant allAboardTime;
 
-        @Schema(description = "Loại ghé cảng (EMBARKATION, DISEMBARKATION, PORT_CALL, TECHNICAL, OVERNIGHT)")
+        @Schema(
+                description =
+                        "Loại ghé cảng (EMBARKATION, DISEMBARKATION, PORT_CALL, TECHNICAL,"
+                            + " OVERNIGHT)")
         private CruiseStopCallType callType;
 
         @Schema(description = "Phương thức cập cảng (BERTH, ANCHOR_TENDER)")

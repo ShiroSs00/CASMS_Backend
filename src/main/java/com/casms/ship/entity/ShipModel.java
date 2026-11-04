@@ -1,7 +1,9 @@
 package com.casms.ship.entity;
 
 import com.casms.ship.enums.ShipModelStatus;
+
 import jakarta.persistence.*;
+
 import lombok.Getter;
 import lombok.Setter;
 
@@ -11,11 +13,14 @@ import java.util.UUID;
 @Getter
 @Setter
 @Entity
-@Table(name = "\"ShipModel\"", uniqueConstraints = {
-        @UniqueConstraint(name = "uk_ship_model_version", columnNames = {"ship_id", "version"})
-}, indexes = {
-        @Index(name = "idx_ship_model_ship_status", columnList = "ship_id,status")
-})
+@Table(
+        name = "\"ShipModel\"",
+        uniqueConstraints = {
+            @UniqueConstraint(
+                    name = "uk_ship_model_version",
+                    columnNames = {"ship_id", "version"})
+        },
+        indexes = {@Index(name = "idx_ship_model_ship_status", columnList = "ship_id,status")})
 public class ShipModel {
 
     @Id

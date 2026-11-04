@@ -1,8 +1,10 @@
 package com.casms.trip.dto.request;
 
 import io.swagger.v3.oas.annotations.media.Schema;
+
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
+
 import lombok.Data;
 
 @Data
@@ -14,6 +16,8 @@ public class VersionReturnRequest {
 
     @NotBlank(message = "Rejection reason is required")
     @Size(max = 500, message = "Rejection reason must not exceed 500 characters")
-    @Schema(description = "Lý do từ chối / yêu cầu chỉnh sửa", example = "Thời gian allAboardTime ở Ngày 2 chưa đủ giãn cách với tour trên bờ.")
+    @Schema(
+            description = "Lý do từ chối / yêu cầu chỉnh sửa",
+            example = "Thời gian allAboardTime ở Ngày 2 chưa đủ giãn cách với tour trên bờ.")
     private String rejectionReason;
 }
