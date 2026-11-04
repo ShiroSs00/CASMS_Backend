@@ -3,7 +3,10 @@ package com.casms.ship.dto.response;
 import java.util.List;
 import java.util.UUID;
 
-/** Structural ship readiness only; it does not establish cruise-specific availability or cabin vacancy. */
+/**
+ * Structural ship readiness only; it does not establish cruise-specific availability or cabin
+ * vacancy.
+ */
 public record ShipReadinessAssessmentResponse(
         UUID shipId,
         String lifecycleStatus,
@@ -12,5 +15,5 @@ public record ShipReadinessAssessmentResponse(
         long cabinCount,
         List<Issue> issues,
         String scope) {
-    public record Issue(String code, String message) { }
+    public record Issue(String code, String message) {}
 }

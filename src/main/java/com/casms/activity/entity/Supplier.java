@@ -1,9 +1,10 @@
-
 package com.casms.activity.entity;
 
 import com.casms.activity.enums.SupplierStatus;
 import com.casms.activity.enums.SupplierVerificationStatus;
+
 import jakarta.persistence.*;
+
 import lombok.Getter;
 import lombok.Setter;
 
@@ -42,8 +43,7 @@ public class Supplier {
 
     @Enumerated(EnumType.STRING)
     @Column(name = "verification_status", nullable = false, length = 30)
-    private SupplierVerificationStatus verificationStatus =
-            SupplierVerificationStatus.PENDING;
+    private SupplierVerificationStatus verificationStatus = SupplierVerificationStatus.PENDING;
 
     @Column(name = "verified_at")
     private Instant verifiedAt;

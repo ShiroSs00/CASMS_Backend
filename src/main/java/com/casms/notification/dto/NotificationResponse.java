@@ -10,5 +10,4 @@ public record NotificationResponse(
         String title,
         String content,
         Instant createdAt,
-        Instant readAt) {
-}
+        Instant readAt) {}

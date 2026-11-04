@@ -2,7 +2,9 @@ package com.casms.payment.dto.response;
 
 import com.casms.booking.enums.BookingStatus;
 import com.casms.booking.enums.PaymentPlan;
+
 import io.swagger.v3.oas.annotations.media.Schema;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -129,4 +131,3 @@ public class BookingPaymentOptionsResponse {
         private String description;
     }
 }
-

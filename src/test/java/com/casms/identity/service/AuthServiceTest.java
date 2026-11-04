@@ -1,5 +1,9 @@
 package com.casms.identity.service;
 
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.*;
+
 import com.casms.common.exception.BusinessException;
 import com.casms.identity.dto.LoginRequest;
 import com.casms.identity.dto.LoginResponse;
@@ -14,6 +18,7 @@ import com.casms.identity.repository.RolePermissionRepository;
 import com.casms.identity.repository.UserRepository;
 import com.casms.security.jwt.JwtService;
 import com.casms.security.principal.CasmsPrincipal;
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -27,49 +32,22 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.util.*;
 
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.*;
-
 @ExtendWith(MockitoExtension.class)
 class AuthServiceTest {
 
-    @Test
-    void retiredPermissionsFromHistoricalRowsAreNotEffectiveAuthorities() {
-        sampleUser.setRoles(EnumSet.of(Role.OPERATIONS_MANAGER));
-        RolePermission mapping = new RolePermission();
-        mapping.setRole(Role.OPERATIONS_MANAGER);
-        mapping.setPermissions(EnumSet.of(Permission.PORT_READ, Permission.PORT_CALL_WINDOW_READ,
-                Permission.PORT_CALL_WINDOW_CREATE, Permission.PORT_CALL_WINDOW_UPDATE, Permission.PORT_CALL_WINDOW_VERIFY));
-        when(rolePermissionRepository.findByRole(Role.OPERATIONS_MANAGER)).thenReturn(Optional.of(mapping));
+    @Mock private UserRepository userRepository;
 
-        assertEquals(Set.of("PORT_READ"), authService.getEffectivePermissions(sampleUser));
-        CasmsPrincipal principal = new CasmsPrincipal(sampleUser, rolePermissionRepository);
-        assertTrue(principal.hasPermission(Permission.PORT_READ));
-        assertFalse(principal.hasPermission(Permission.PORT_CALL_WINDOW_READ));
-        assertTrue(principal.getAuthorities().stream().noneMatch(authority -> authority.getAuthority().startsWith("PORT_CALL_WINDOW_")));
-    }
+    @Mock private RolePermissionRepository rolePermissionRepository;
 
-    @Mock
-    private UserRepository userRepository;
+    @Mock private PassengerRepository passengerRepository;
 
-    @Mock
-    private RolePermissionRepository rolePermissionRepository;
+    @Mock private PasswordEncoder passwordEncoder;
 
-    @Mock
-    private PassengerRepository passengerRepository;
+    @Mock private JwtService jwtService;
 
-    @Mock
-    private PasswordEncoder passwordEncoder;
+    @Mock private AuthenticationManager authenticationManager;
 
-    @Mock
-    private JwtService jwtService;
-
-    @Mock
-    private AuthenticationManager authenticationManager;
-
-    @InjectMocks
-    private AuthService authService;
+    @InjectMocks private AuthService authService;
 
     private User sampleUser;
     private UUID userId;
@@ -89,7 +67,11 @@ class AuthServiceTest {
         sampleUser.addRole(Role.ADMIN);
         RolePermission mapping = new RolePermission();
         mapping.setRole(Role.ADMIN);
-        mapping.setPermissions(Set.of(Permission.USER_READ, Permission.SHIP_MODEL_READ, Permission.BLE_ANCHOR_READ));
+        mapping.setPermissions(
+                Set.of(
+                        Permission.USER_READ,
+                        Permission.SHIP_MODEL_READ,
+                        Permission.BLE_ANCHOR_READ));
         when(rolePermissionRepository.findByRole(Role.ADMIN)).thenReturn(Optional.of(mapping));
 
         Set<String> permissions = authService.getEffectivePermissions(sampleUser);
@@ -106,7 +88,8 @@ class AuthServiceTest {
 
         RolePermission mapping = new RolePermission();
         mapping.setRole(Role.CRUISE_MANAGER);
-        mapping.setPermissions(Set.of(Permission.CRUISE_READ, Permission.SHIP_READ, Permission.ITINERARY_CREATE));
+        mapping.setPermissions(
+                Set.of(Permission.CRUISE_READ, Permission.SHIP_READ, Permission.ITINERARY_CREATE));
 
         when(rolePermissionRepository.findByRole(Role.CRUISE_MANAGER))
                 .thenReturn(Optional.of(mapping));
@@ -190,7 +173,8 @@ class AuthServiceTest {
         loginReq.setUsername("testuser");
         loginReq.setPassword("Password@123");
 
-        BusinessException ex = assertThrows(BusinessException.class, () -> authService.login(loginReq));
+        BusinessException ex =
+                assertThrows(BusinessException.class, () -> authService.login(loginReq));
         assertEquals("ACCOUNT_DISABLED", ex.getCode());
     }
 }

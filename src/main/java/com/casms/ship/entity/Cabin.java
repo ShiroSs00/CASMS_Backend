@@ -2,7 +2,9 @@ package com.casms.ship.entity;
 
 import com.casms.ship.enums.CabinStatus;
 import com.casms.ship.enums.CabinType;
+
 import jakarta.persistence.*;
+
 import lombok.Getter;
 import lombok.Setter;
 
@@ -13,11 +15,12 @@ import java.util.UUID;
 @Getter
 @Setter
 @Entity
-@Table(name = "\"Cabin\"",
-       uniqueConstraints = {
-           @UniqueConstraint(columnNames = {"ship_id", "cabin_number"}),
-           @UniqueConstraint(columnNames = {"cabin_id", "ship_id"})
-       })
+@Table(
+        name = "\"Cabin\"",
+        uniqueConstraints = {
+            @UniqueConstraint(columnNames = {"ship_id", "cabin_number"}),
+            @UniqueConstraint(columnNames = {"cabin_id", "ship_id"})
+        })
 public class Cabin {
 
     @Id
@@ -89,20 +92,28 @@ public class Cabin {
 
     @Column(name = "model_position_x")
     private Double modelPositionX;
+
     @Column(name = "model_position_y")
     private Double modelPositionY;
+
     @Column(name = "model_position_z")
     private Double modelPositionZ;
+
     @Column(name = "model_rotation_x")
     private Double modelRotationX;
+
     @Column(name = "model_rotation_y")
     private Double modelRotationY;
+
     @Column(name = "model_rotation_z")
     private Double modelRotationZ;
+
     @Column(name = "model_width")
     private Double modelWidth;
+
     @Column(name = "model_height")
     private Double modelHeight;
+
     @Column(name = "model_depth")
     private Double modelDepth;
 
@@ -123,4 +134,3 @@ public class Cabin {
         updatedAt = Instant.now();
     }
 }
-

@@ -1,21 +1,5 @@
 package com.casms.common.controller;
 
-import com.casms.common.dto.BusinessCodeRuleResponse;
-import com.casms.common.dto.BusinessCodeRuleUpdateRequest;
-import com.casms.common.dto.CodePreviewRequest;
-import com.casms.common.dto.CodePreviewResponse;
-import com.casms.common.service.BusinessCodeRuleService;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.springframework.http.MediaType;
-import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.test.web.servlet.setup.MockMvcBuilders;
-
-import java.time.Instant;
-import java.util.List;
-import java.util.Map;
-
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -25,6 +9,23 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+import com.casms.common.dto.BusinessCodeRuleResponse;
+import com.casms.common.dto.BusinessCodeRuleUpdateRequest;
+import com.casms.common.dto.CodePreviewRequest;
+import com.casms.common.dto.CodePreviewResponse;
+import com.casms.common.service.BusinessCodeRuleService;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.http.MediaType;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+
+import java.time.Instant;
+import java.util.List;
+import java.util.Map;
 
 class BusinessCodeRuleControllerTest {
 
@@ -42,13 +43,14 @@ class BusinessCodeRuleControllerTest {
 
     @Test
     void testGetAllRules() throws Exception {
-        BusinessCodeRuleResponse item = BusinessCodeRuleResponse.builder()
-                .entityType("TRIP")
-                .pattern("{ENTITY}-{SCOPE}/{TYPE}-{SEQ:4}")
-                .scopeStrategy("BY_TYPE_AND_YEAR")
-                .active(true)
-                .updatedAt(Instant.now())
-                .build();
+        BusinessCodeRuleResponse item =
+                BusinessCodeRuleResponse.builder()
+                        .entityType("TRIP")
+                        .pattern("{ENTITY}-{SCOPE}/{TYPE}-{SEQ:4}")
+                        .scopeStrategy("BY_TYPE_AND_YEAR")
+                        .active(true)
+                        .updatedAt(Instant.now())
+                        .build();
 
         when(ruleService.getAllRules()).thenReturn(List.of(item));
 
@@ -61,13 +63,14 @@ class BusinessCodeRuleControllerTest {
 
     @Test
     void testGetRuleByEntityType() throws Exception {
-        BusinessCodeRuleResponse item = BusinessCodeRuleResponse.builder()
-                .entityType("SHIP")
-                .pattern("SH-{SHIP_TYPE}-{SEQ:3}")
-                .scopeStrategy("GLOBAL")
-                .active(true)
-                .updatedAt(Instant.now())
-                .build();
+        BusinessCodeRuleResponse item =
+                BusinessCodeRuleResponse.builder()
+                        .entityType("SHIP")
+                        .pattern("SH-{SHIP_TYPE}-{SEQ:3}")
+                        .scopeStrategy("GLOBAL")
+                        .active(true)
+                        .updatedAt(Instant.now())
+                        .build();
 
         when(ruleService.getRuleByEntityType("SHIP")).thenReturn(item);
 
@@ -80,24 +83,27 @@ class BusinessCodeRuleControllerTest {
 
     @Test
     void testPreviewCode() throws Exception {
-        CodePreviewRequest request = CodePreviewRequest.builder()
-                .entityType("TRIP")
-                .pattern("{ENTITY}-{SCOPE}/{TYPE}-{SEQ:4}")
-                .sampleContext(Map.of("SCOPE", "EX", "TYPE", "IT"))
-                .build();
+        CodePreviewRequest request =
+                CodePreviewRequest.builder()
+                        .entityType("TRIP")
+                        .pattern("{ENTITY}-{SCOPE}/{TYPE}-{SEQ:4}")
+                        .sampleContext(Map.of("SCOPE", "EX", "TYPE", "IT"))
+                        .build();
 
-        CodePreviewResponse response = CodePreviewResponse.builder()
-                .previewCode("TRIP-EX/IT-0001")
-                .simulatedKey("TRIP_EX_IT_2026")
-                .valid(true)
-                .warnings(List.of())
-                .build();
+        CodePreviewResponse response =
+                CodePreviewResponse.builder()
+                        .previewCode("TRIP-EX/IT-0001")
+                        .simulatedKey("TRIP_EX_IT_2026")
+                        .valid(true)
+                        .warnings(List.of())
+                        .build();
 
         when(ruleService.previewCode(any(CodePreviewRequest.class))).thenReturn(response);
 
-        mockMvc.perform(post("/system/business-code-rules/preview")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(request)))
+        mockMvc.perform(
+                        post("/system/business-code-rules/preview")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.previewCode").value("TRIP-EX/IT-0001"))
@@ -106,25 +112,29 @@ class BusinessCodeRuleControllerTest {
 
     @Test
     void testUpdateRule() throws Exception {
-        BusinessCodeRuleUpdateRequest request = BusinessCodeRuleUpdateRequest.builder()
-                .pattern("TRIP-{SCOPE}-{YYYY}-{SEQ:4}")
-                .scopeStrategy("BY_YEAR")
-                .description("Updated trip format")
-                .build();
+        BusinessCodeRuleUpdateRequest request =
+                BusinessCodeRuleUpdateRequest.builder()
+                        .pattern("TRIP-{SCOPE}-{YYYY}-{SEQ:4}")
+                        .scopeStrategy("BY_YEAR")
+                        .description("Updated trip format")
+                        .build();
 
-        BusinessCodeRuleResponse response = BusinessCodeRuleResponse.builder()
-                .entityType("TRIP")
-                .pattern("TRIP-{SCOPE}-{YYYY}-{SEQ:4}")
-                .scopeStrategy("BY_YEAR")
-                .description("Updated trip format")
-                .active(true)
-                .build();
+        BusinessCodeRuleResponse response =
+                BusinessCodeRuleResponse.builder()
+                        .entityType("TRIP")
+                        .pattern("TRIP-{SCOPE}-{YYYY}-{SEQ:4}")
+                        .scopeStrategy("BY_YEAR")
+                        .description("Updated trip format")
+                        .active(true)
+                        .build();
 
-        when(ruleService.updateRule(eq("TRIP"), any(BusinessCodeRuleUpdateRequest.class))).thenReturn(response);
+        when(ruleService.updateRule(eq("TRIP"), any(BusinessCodeRuleUpdateRequest.class)))
+                .thenReturn(response);
 
-        mockMvc.perform(put("/system/business-code-rules/TRIP")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(request)))
+        mockMvc.perform(
+                        put("/system/business-code-rules/TRIP")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.pattern").value("TRIP-{SCOPE}-{YYYY}-{SEQ:4}"));

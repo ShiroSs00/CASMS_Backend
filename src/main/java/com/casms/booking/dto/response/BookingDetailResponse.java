@@ -3,7 +3,9 @@ package com.casms.booking.dto.response;
 import com.casms.booking.enums.BookingContractStatus;
 import com.casms.booking.enums.BookingStatus;
 import com.casms.booking.enums.PaymentPlan;
+
 import io.swagger.v3.oas.annotations.media.Schema;
+
 import lombok.Getter;
 import lombok.Setter;
 
@@ -64,7 +66,9 @@ public class BookingDetailResponse {
     @Schema(description = "Trạng thái hợp đồng (Draft, Accepted, Cancelled)", example = "Draft")
     private BookingContractStatus contractStatus;
 
-    @Schema(description = "Mã tài liệu / hồ sơ lưu trữ hợp đồng bản cứng", example = "DOC-CTR-BK0001-20261023")
+    @Schema(
+            description = "Mã tài liệu / hồ sơ lưu trữ hợp đồng bản cứng",
+            example = "DOC-CTR-BK0001-20261023")
     private String contractDocumentReference;
 
     @Schema(description = "Thời điểm xác nhận chấp thuận / ký hợp đồng")
@@ -95,8 +99,11 @@ public class BookingDetailResponse {
     @Schema(description = "Lộ trình các đợt thanh toán theo hình thức đã chọn")
     private List<InstallmentResponse> installments;
 
-    @Schema(description = "Hướng dẫn liên hệ và tới ký hợp đồng bản cứng bảo mật",
-            example = "Vui lòng mang theo CCCD/Hộ chiếu gốc đến văn phòng đại diện tại Tầng 2, Tòa nhà CASMS Marina để ký kết hợp đồng dịch vụ trước ngày 2026-10-25.")
+    @Schema(
+            description = "Hướng dẫn liên hệ và tới ký hợp đồng bản cứng bảo mật",
+            example =
+                    "Vui lòng mang theo CCCD/Hộ chiếu gốc đến văn phòng đại diện tại Tầng 2, Tòa"
+                        + " nhà CASMS Marina để ký kết hợp đồng dịch vụ trước ngày 2026-10-25.")
     private String contractSigningInstructions;
 
     // Danh sách hành khách & phòng tự chọn

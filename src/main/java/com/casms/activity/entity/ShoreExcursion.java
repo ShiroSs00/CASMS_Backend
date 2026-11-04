@@ -1,13 +1,16 @@
 package com.casms.activity.entity;
 
-import org.hibernate.annotations.JdbcTypeCode;
-import org.hibernate.type.SqlTypes;
 import com.casms.activity.enums.ShoreExcursionStatus;
 import com.casms.ship.entity.CruiseStop;
 import com.casms.ship.entity.Port;
+
 import jakarta.persistence.*;
+
 import lombok.Getter;
 import lombok.Setter;
+
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -28,7 +31,9 @@ public class ShoreExcursion {
     @JoinColumn(name = "cruise_stop_id")
     private CruiseStop cruiseStop;
 
-    /** Cảng biển nơi tour tham quan diễn ra (cho phép liên kết trực tiếp không cần chuyến khởi hành) */
+    /**
+     * Cảng biển nơi tour tham quan diễn ra (cho phép liên kết trực tiếp không cần chuyến khởi hành)
+     */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "port_id")
     private Port port;

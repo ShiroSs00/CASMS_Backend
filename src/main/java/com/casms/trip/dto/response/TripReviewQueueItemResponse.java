@@ -3,7 +3,9 @@ package com.casms.trip.dto.response;
 import com.casms.ship.enums.ItineraryType;
 import com.casms.trip.enums.TripDurationGroup;
 import com.casms.trip.enums.TripScheduleVersionStatus;
+
 import io.swagger.v3.oas.annotations.media.Schema;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;

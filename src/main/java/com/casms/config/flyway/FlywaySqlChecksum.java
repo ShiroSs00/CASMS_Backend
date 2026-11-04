@@ -9,17 +9,17 @@ import java.util.zip.CRC32;
 
 /**
  * Computes the checksum Flyway 10 stores for an SQL migration: CRC32 over every line read as UTF-8,
- * ignoring line terminators and a leading BOM. The result matches {@code flyway_schema_history.checksum},
- * so CRLF/LF checkouts of the same file produce the same value.
+ * ignoring line terminators and a leading BOM. The result matches {@code
+ * flyway_schema_history.checksum}, so CRLF/LF checkouts of the same file produce the same value.
  */
 public final class FlywaySqlChecksum {
 
-    private FlywaySqlChecksum() {
-    }
+    private FlywaySqlChecksum() {}
 
     public static int of(InputStream content) throws IOException {
         CRC32 crc = new CRC32();
-        try (BufferedReader reader = new BufferedReader(new InputStreamReader(content, StandardCharsets.UTF_8))) {
+        try (BufferedReader reader =
+                new BufferedReader(new InputStreamReader(content, StandardCharsets.UTF_8))) {
             String line = reader.readLine();
             if (line != null && !line.isEmpty() && line.charAt(0) == '\uFEFF') {
                 line = line.substring(1);

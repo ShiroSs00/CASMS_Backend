@@ -6,7 +6,9 @@ import com.casms.trip.enums.TripDurationGroup;
 import com.casms.trip.enums.TripStatus;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+
 import jakarta.persistence.*;
+
 import lombok.Getter;
 import lombok.Setter;
 
@@ -86,7 +88,11 @@ public class Trip {
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
-    @OneToMany(mappedBy = "trip", fetch = FetchType.LAZY, cascade = CascadeType.ALL, orphanRemoval = true)
+    @OneToMany(
+            mappedBy = "trip",
+            fetch = FetchType.LAZY,
+            cascade = CascadeType.ALL,
+            orphanRemoval = true)
     @OrderBy("versionNumber ASC")
     private List<TripScheduleVersion> versions = new ArrayList<>();
 
@@ -113,8 +119,8 @@ public class Trip {
             return new ArrayList<>();
         }
         try {
-            return new ObjectMapper().readValue(
-                    domesticRegionsJson, new TypeReference<List<String>>() {});
+            return new ObjectMapper()
+                    .readValue(domesticRegionsJson, new TypeReference<List<String>>() {});
         } catch (Exception e) {
             return Arrays.stream(domesticRegionsJson.split(","))
                     .map(String::trim)
@@ -140,8 +146,8 @@ public class Trip {
             return new ArrayList<>();
         }
         try {
-            return new ObjectMapper().readValue(
-                    countryCodesJson, new TypeReference<List<String>>() {});
+            return new ObjectMapper()
+                    .readValue(countryCodesJson, new TypeReference<List<String>>() {});
         } catch (Exception e) {
             return Arrays.stream(countryCodesJson.split(","))
                     .map(String::trim)

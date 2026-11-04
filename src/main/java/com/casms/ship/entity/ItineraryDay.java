@@ -1,8 +1,10 @@
 package com.casms.ship.entity;
 
-import com.casms.ship.enums.ItineraryDayType;
 import com.casms.ship.enums.ItineraryDayRole;
+import com.casms.ship.enums.ItineraryDayType;
+
 import jakarta.persistence.*;
+
 import lombok.Getter;
 import lombok.Setter;
 
@@ -14,12 +16,13 @@ import java.util.UUID;
 @Getter
 @Setter
 @Entity
-@Table(name = "\"ItineraryDay\"",
-       uniqueConstraints = {
-           @UniqueConstraint(columnNames = {"itinerary_id", "day_number"}),
-           @UniqueConstraint(columnNames = {"itinerary_id", "date"}),
-           @UniqueConstraint(columnNames = {"itinerary_day_id", "itinerary_id"})
-       })
+@Table(
+        name = "\"ItineraryDay\"",
+        uniqueConstraints = {
+            @UniqueConstraint(columnNames = {"itinerary_id", "day_number"}),
+            @UniqueConstraint(columnNames = {"itinerary_id", "date"}),
+            @UniqueConstraint(columnNames = {"itinerary_day_id", "itinerary_id"})
+        })
 public class ItineraryDay {
 
     @Id
@@ -48,13 +51,19 @@ public class ItineraryDay {
     public ItineraryDayRole getDayRole() {
         if (dayNumber == null || itinerary == null) return dayRole;
         if (itinerary.getStartDate() == null || itinerary.getEndDate() == null) return dayRole;
-        return ItineraryDayRole.forDay(dayNumber, Math.toIntExact(java.time.temporal.ChronoUnit.DAYS.between(itinerary.getStartDate(), itinerary.getEndDate()) + 1));
+        return ItineraryDayRole.forDay(
+                dayNumber,
+                Math.toIntExact(
+                        java.time.temporal.ChronoUnit.DAYS.between(
+                                        itinerary.getStartDate(), itinerary.getEndDate())
+                                + 1));
     }
 
     @PrePersist
     @PreUpdate
-    private void synchronizeDayRole() { dayRole = getDayRole(); }
-
+    private void synchronizeDayRole() {
+        dayRole = getDayRole();
+    }
 
     @Column(name = "ship_time_zone_id", length = 100)
     private String shipTimeZoneId;
@@ -65,10 +74,18 @@ public class ItineraryDay {
     @Column(name = "description", length = 500)
     private String description;
 
-    @OneToMany(mappedBy = "arrivalItineraryDay", fetch = FetchType.LAZY, cascade = CascadeType.ALL, orphanRemoval = true)
+    @OneToMany(
+            mappedBy = "arrivalItineraryDay",
+            fetch = FetchType.LAZY,
+            cascade = CascadeType.ALL,
+            orphanRemoval = true)
     private List<CruiseStop> arrivalStops = new ArrayList<>();
 
-    @OneToMany(mappedBy = "departureItineraryDay", fetch = FetchType.LAZY, cascade = CascadeType.ALL, orphanRemoval = true)
+    @OneToMany(
+            mappedBy = "departureItineraryDay",
+            fetch = FetchType.LAZY,
+            cascade = CascadeType.ALL,
+            orphanRemoval = true)
     private List<CruiseStop> departureStops = new ArrayList<>();
 
     public void addArrivalStop(CruiseStop stop) {

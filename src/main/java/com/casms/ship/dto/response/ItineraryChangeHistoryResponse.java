@@ -17,6 +17,4 @@ public record ItineraryChangeHistoryResponse(
         String changeSummary,
         String reason,
         UUID changedByUserId,
-        Instant changedAt
-) {
-}
+        Instant changedAt) {}

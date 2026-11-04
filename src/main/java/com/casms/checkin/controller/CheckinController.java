@@ -4,17 +4,23 @@ import com.casms.checkin.dto.CheckinResponse;
 import com.casms.checkin.service.CheckinService;
 import com.casms.common.response.ApiResponse;
 import com.casms.security.principal.CasmsPrincipal;
+
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
+
 import lombok.RequiredArgsConstructor;
+
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.UUID;
 
-@Tag(name = "Check-in & Boarding", description = "Quản lý thủ tục check-in, định danh hành khách và cấp thẻ lên tàu (Boarding Pass)")
+@Tag(
+        name = "Check-in & Boarding",
+        description =
+                "Quản lý thủ tục check-in, định danh hành khách và cấp thẻ lên tàu (Boarding Pass)")
 @RestController
 @RequestMapping("/checkin")
 @RequiredArgsConstructor
@@ -22,38 +28,62 @@ public class CheckinController {
 
     private final CheckinService service;
 
-    @Operation(summary = "Bắt đầu thủ tục check-in cho hành khách", description = "Khởi tạo hồ sơ check-in và khai báo thông tin liên hệ khẩn cấp")
+    @Operation(
+            summary = "Bắt đầu thủ tục check-in cho hành khách",
+            description = "Khởi tạo hồ sơ check-in và khai báo thông tin liên hệ khẩn cấp")
     @PreAuthorize("hasAuthority('CHECKIN_CREATE')")
     @PostMapping("/passenger/{passengerId}/start")
     public ApiResponse<CheckinResponse> startCheckin(
-            @Parameter(description = "ID hành khách đặt chỗ", required = true) @PathVariable UUID passengerId,
+            @Parameter(description = "ID hành khách đặt chỗ", required = true) @PathVariable
+                    UUID passengerId,
             @RequestParam(required = false) String emergencyContactName,
             @RequestParam(required = false) String emergencyContactPhone,
             Authentication authentication) {
         var principal = (CasmsPrincipal) authentication.getPrincipal();
-        return ApiResponse.success("Check-in started successfully",
-                CheckinResponse.of(service.startCheckin(passengerId, emergencyContactName, emergencyContactPhone,
-                        principal.getUserId(), principal.isStaff())));
+        return ApiResponse.success(
+                "Check-in started successfully",
+                CheckinResponse.of(
+                        service.startCheckin(
+                                passengerId,
+                                emergencyContactName,
+                                emergencyContactPhone,
+                                principal.getUserId(),
+                                principal.isStaff())));
     }
 
-    @Operation(summary = "Hoàn tất check-in online", description = "PASSENGER hoàn tất hồ sơ của chính mình khi booking đã xác nhận, hợp đồng đã được chấp thuận và đủ liên hệ khẩn cấp. Không cần role CHECKIN_STAFF. Điểm danh hoạt động là nghiệp vụ ACTIVITY_ATTENDANCE riêng.")
+    @Operation(
+            summary = "Hoàn tất check-in online",
+            description =
+                    "PASSENGER hoàn tất hồ sơ của chính mình khi booking đã xác nhận, hợp đồng đã"
+                        + " được chấp thuận và đủ liên hệ khẩn cấp. Không cần role CHECKIN_STAFF."
+                        + " Điểm danh hoạt động là nghiệp vụ ACTIVITY_ATTENDANCE riêng.")
     @PreAuthorize("hasAuthority('CHECKIN_UPDATE')")
     @PostMapping("/passenger/{passengerId}/complete")
     public ApiResponse<CheckinResponse> completeCheckin(
-            @Parameter(description = "ID hành khách đặt chỗ", required = true) @PathVariable UUID passengerId,
+            @Parameter(description = "ID hành khách đặt chỗ", required = true) @PathVariable
+                    UUID passengerId,
             Authentication authentication) {
         var principal = (CasmsPrincipal) authentication.getPrincipal();
-        return ApiResponse.success("Check-in completed successfully",
-                CheckinResponse.of(service.completeCheckin(passengerId, principal.getUserId(), principal.isStaff())));
+        return ApiResponse.success(
+                "Check-in completed successfully",
+                CheckinResponse.of(
+                        service.completeCheckin(
+                                passengerId, principal.getUserId(), principal.isStaff())));
     }
 
-    @Operation(summary = "Kiểm tra trạng thái check-in của hành khách", description = "Tra cứu tiến trình check-in hiện tại của hành khách")
+    @Operation(
+            summary = "Kiểm tra trạng thái check-in của hành khách",
+            description = "Tra cứu tiến trình check-in hiện tại của hành khách")
     @PreAuthorize("hasAuthority('CHECKIN_READ')")
     @GetMapping("/passenger/{passengerId}/status")
     public ApiResponse<CheckinResponse> getStatus(
-            @Parameter(description = "ID hành khách đặt chỗ", required = true) @PathVariable UUID passengerId,
+            @Parameter(description = "ID hành khách đặt chỗ", required = true) @PathVariable
+                    UUID passengerId,
             Authentication authentication) {
         var principal = (CasmsPrincipal) authentication.getPrincipal();
-        return ApiResponse.success(CheckinResponse.of(service.getStatus(passengerId, principal.getUserId(), principal.isStaff())));
+        return ApiResponse.success(
+                CheckinResponse.of(
+                        service.getStatus(
+                                passengerId, principal.getUserId(), principal.isStaff())));
     }
 }

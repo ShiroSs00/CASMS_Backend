@@ -19,8 +19,10 @@ import com.casms.ship.entity.Cruise;
 import com.casms.ship.entity.CruiseImpactTask;
 import com.casms.ship.repository.CruiseImpactTaskRepository;
 import com.casms.ship.repository.CruiseRepository;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -54,9 +56,13 @@ public class NotificationService {
     @Transactional
     public NotificationResponse markRead(UUID notificationId, CasmsPrincipal principal) {
         UUID userId = requireUserId(principal);
-        Notification notification = notificationRepository
-                .findByNotificationIdAndRecipientUserUserId(notificationId, userId)
-                .orElseThrow(() -> new ResourceNotFoundException("Notification", notificationId));
+        Notification notification =
+                notificationRepository
+                        .findByNotificationIdAndRecipientUserUserId(notificationId, userId)
+                        .orElseThrow(
+                                () ->
+                                        new ResourceNotFoundException(
+                                                "Notification", notificationId));
         if (notification.getReadAt() == null) {
             notification.setReadAt(Instant.now());
         }
@@ -64,25 +70,35 @@ public class NotificationService {
     }
 
     /**
-     * BE-19: Phát thông báo tác động tới toàn bộ hành khách của chuyến đi bị ảnh hưởng (Outbox Pattern)
-     * Đảm bảo tính Idempotent trên từng (eventIdentity, bookingId, notificationType) để chống gửi trùng lặp.
-     * Tách bạch rõ giữa "task created" và "customer notified" (chỉ RESOLVED task khi đã phát thành công).
+     * BE-19: Phát thông báo tác động tới toàn bộ hành khách của chuyến đi bị ảnh hưởng (Outbox
+     * Pattern) Đảm bảo tính Idempotent trên từng (eventIdentity, bookingId, notificationType) để
+     * chống gửi trùng lặp. Tách bạch rõ giữa "task created" và "customer notified" (chỉ RESOLVED
+     * task khi đã phát thành công).
      */
     @Transactional
-    public ImpactNotificationAggregateResponse dispatchImpactNotifications(UUID cruiseId, String eventIdentity, UUID actorId) {
-        Cruise cruise = cruiseRepository.findById(cruiseId)
-                .orElseThrow(() -> new ResourceNotFoundException("Cruise", cruiseId));
+    public ImpactNotificationAggregateResponse dispatchImpactNotifications(
+            UUID cruiseId, String eventIdentity, UUID actorId) {
+        Cruise cruise =
+                cruiseRepository
+                        .findById(cruiseId)
+                        .orElseThrow(() -> new ResourceNotFoundException("Cruise", cruiseId));
 
-        String effectiveEventIdentity = (eventIdentity != null && !eventIdentity.isBlank())
-                ? eventIdentity
-                : "EVT-" + cruise.getCruiseCode() + "-IMPACT-" + System.currentTimeMillis();
+        String effectiveEventIdentity =
+                (eventIdentity != null && !eventIdentity.isBlank())
+                        ? eventIdentity
+                        : "EVT-" + cruise.getCruiseCode() + "-IMPACT-" + System.currentTimeMillis();
 
-        List<Booking> activeBookings = bookingRepository.findByCruiseCruiseIdAndBookingStatusNot(cruiseId, BookingStatus.Cancelled);
+        List<Booking> activeBookings =
+                bookingRepository.findByCruiseCruiseIdAndBookingStatusNot(
+                        cruiseId, BookingStatus.Cancelled);
 
         // Tìm CruiseImpactTask liên quan nếu có
-        CruiseImpactTask notificationTask = cruiseImpactTaskRepository
-                .findByCruiseCruiseIdAndCategory(cruiseId, "PASSENGER_NOTIFICATION")
-                .stream().findFirst().orElse(null);
+        CruiseImpactTask notificationTask =
+                cruiseImpactTaskRepository
+                        .findByCruiseCruiseIdAndCategory(cruiseId, "PASSENGER_NOTIFICATION")
+                        .stream()
+                        .findFirst()
+                        .orElse(null);
 
         long sentCount = 0;
         for (Booking booking : activeBookings) {
@@ -96,27 +112,41 @@ public class NotificationService {
                 continue;
             }
 
-            String title = String.format("[CASMS] Thông báo điều chỉnh chuyến khởi hành %s (%s)",
-                    cruise.getCruiseName(), cruise.getCruiseCode());
-            String content = String.format("Kính gửi Quý khách,\nChuyến khởi hành %s (Mã đặt chỗ: %s) có sự điều chỉnh lịch trình khởi hành sang thời gian mới: %s.\nQuý khách có thể yêu cầu đổi lịch hoặc hoàn tiền theo điều kiện hợp đồng đã ký kết.\nTrân trọng cảm ơn.",
-                    cruise.getCruiseName(), booking.getBookingReference(), cruise.getDepartureDatetime());
+            String title =
+                    String.format(
+                            "[CASMS] Thông báo điều chỉnh chuyến khởi hành %s (%s)",
+                            cruise.getCruiseName(), cruise.getCruiseCode());
+            String content =
+                    String.format(
+                            "Kính gửi Quý khách,\n"
+                                + "Chuyến khởi hành %s (Mã đặt chỗ: %s) có sự điều chỉnh lịch trình"
+                                + " khởi hành sang thời gian mới: %s.\n"
+                                + "Quý khách có thể yêu cầu đổi lịch hoặc hoàn tiền theo điều kiện"
+                                + " hợp đồng đã ký kết.\n"
+                                + "Trân trọng cảm ơn.",
+                            cruise.getCruiseName(),
+                            booking.getBookingReference(),
+                            cruise.getDepartureDatetime());
 
             // 1. Lưu bản ghi Outbox đáng tin cậy với Channel Semantics rõ ràng
-            ImpactNotificationOutbox outbox = ImpactNotificationOutbox.builder()
-                    .cruise(cruise)
-                    .task(notificationTask)
-                    .booking(booking)
-                    .recipientUser(recipient)
-                    .eventIdentity(effectiveEventIdentity)
-                    .notificationType(notificationType)
-                    .title(title)
-                    .content(content)
-                    .status("IN_APP_DELIVERED")
-                    .deliveryChannel("IN_APP")
-                    .deliverySemantics("IN_APP_DELIVERED (Thông báo gửi vào hộp thư trong ứng dụng của hành khách; phạm vi chính thức in-app only)")
-                    .inAppDeliveredAt(Instant.now())
-                    .sentAt(Instant.now())
-                    .build();
+            ImpactNotificationOutbox outbox =
+                    ImpactNotificationOutbox.builder()
+                            .cruise(cruise)
+                            .task(notificationTask)
+                            .booking(booking)
+                            .recipientUser(recipient)
+                            .eventIdentity(effectiveEventIdentity)
+                            .notificationType(notificationType)
+                            .title(title)
+                            .content(content)
+                            .status("IN_APP_DELIVERED")
+                            .deliveryChannel("IN_APP")
+                            .deliverySemantics(
+                                    "IN_APP_DELIVERED (Thông báo gửi vào hộp thư trong ứng dụng của"
+                                        + " hành khách; phạm vi chính thức in-app only)")
+                            .inAppDeliveredAt(Instant.now())
+                            .sentAt(Instant.now())
+                            .build();
             outboxRepository.save(outbox);
 
             // 2. Đồng bộ vào bảng Notification để hiển thị cho User
@@ -142,35 +172,57 @@ public class NotificationService {
                 if (actorId != null) {
                     userRepository.findById(actorId).ifPresent(notificationTask::setResolvedBy);
                 }
-                notificationTask.setEvidence(String.format("Toàn bộ %d đơn đặt chỗ đã xác nhận/đọc thông báo (ACK hoàn tất).", totalBookings));
-                notificationTask.setResolutionNotes("Khách hàng đã nhận và xác nhận đầy đủ thông báo tác động.");
+                notificationTask.setEvidence(
+                        String.format(
+                                "Toàn bộ %d đơn đặt chỗ đã xác nhận/đọc thông báo (ACK hoàn tất).",
+                                totalBookings));
+                notificationTask.setResolutionNotes(
+                        "Khách hàng đã nhận và xác nhận đầy đủ thông báo tác động.");
             } else {
                 notificationTask.setStatus("IN_PROGRESS");
-                notificationTask.setEvidence(String.format("Đã phát %d thông báo in-app (IN_APP_DELIVERED). Kênh: IN_APP (in-app only). Đang chờ hành khách xác nhận đọc (ACK: %d/%d).",
-                        sentCount, totalAck, totalBookings));
-                notificationTask.setResolutionNotes("Thông báo tác động đã được đưa vào hộp thư In-App; chưa hoàn tất ACK từ khách hàng.");
+                notificationTask.setEvidence(
+                        String.format(
+                                "Đã phát %d thông báo in-app (IN_APP_DELIVERED). Kênh: IN_APP"
+                                    + " (in-app only). Đang chờ hành khách xác nhận đọc (ACK:"
+                                    + " %d/%d).",
+                                sentCount, totalAck, totalBookings));
+                notificationTask.setResolutionNotes(
+                        "Thông báo tác động đã được đưa vào hộp thư In-App; chưa hoàn tất ACK từ"
+                            + " khách hàng.");
             }
             cruiseImpactTaskRepository.save(notificationTask);
         }
 
-        log.info("Dispatched {} impact notifications for cruise {}", sentCount, cruise.getCruiseCode());
+        log.info(
+                "Dispatched {} impact notifications for cruise {}",
+                sentCount,
+                cruise.getCruiseCode());
         return getImpactAggregate(cruiseId);
     }
 
     /**
-     * BE-19 / BE-H15: Thống kê tổng hợp trạng thái phát thông báo tác động (Safe Aggregate, không để lộ PII)
+     * BE-19 / BE-H15: Thống kê tổng hợp trạng thái phát thông báo tác động (Safe Aggregate, không
+     * để lộ PII)
      */
     @Transactional(readOnly = true)
     public ImpactNotificationAggregateResponse getImpactAggregate(UUID cruiseId) {
-        Cruise cruise = cruiseRepository.findById(cruiseId)
-                .orElseThrow(() -> new ResourceNotFoundException("Cruise", cruiseId));
+        Cruise cruise =
+                cruiseRepository
+                        .findById(cruiseId)
+                        .orElseThrow(() -> new ResourceNotFoundException("Cruise", cruiseId));
 
-        long totalBookings = bookingRepository.countByCruiseCruiseIdAndBookingStatus(cruiseId, BookingStatus.Confirmed)
-                + bookingRepository.countByCruiseCruiseIdAndBookingStatus(cruiseId, BookingStatus.Draft);
+        long totalBookings =
+                bookingRepository.countByCruiseCruiseIdAndBookingStatus(
+                                cruiseId, BookingStatus.Confirmed)
+                        + bookingRepository.countByCruiseCruiseIdAndBookingStatus(
+                                cruiseId, BookingStatus.Draft);
         long totalPassengers = bookingPassengerRepository.countActivePassengersByCruiseId(cruiseId);
 
-        long inAppDeliveredCount = outboxRepository.countByCruise_CruiseIdAndStatus(cruiseId, "IN_APP_DELIVERED");
-        long sentCount = outboxRepository.countByCruise_CruiseIdAndStatus(cruiseId, "SENT") + inAppDeliveredCount;
+        long inAppDeliveredCount =
+                outboxRepository.countByCruise_CruiseIdAndStatus(cruiseId, "IN_APP_DELIVERED");
+        long sentCount =
+                outboxRepository.countByCruise_CruiseIdAndStatus(cruiseId, "SENT")
+                        + inAppDeliveredCount;
         long pendingCount = outboxRepository.countByCruise_CruiseIdAndStatus(cruiseId, "PENDING");
         long failedCount = outboxRepository.countByCruise_CruiseIdAndStatus(cruiseId, "FAILED");
         long ackCount = outboxRepository.countByCruise_CruiseIdAndStatus(cruiseId, "ACK");
@@ -184,11 +236,12 @@ public class NotificationService {
             deliveryStatus = "COMPLETED";
         }
 
-        Instant lastDispatched = outboxRepository.findByCruise_CruiseId(cruiseId).stream()
-                .map(ImpactNotificationOutbox::getSentAt)
-                .filter(Objects::nonNull)
-                .max(Instant::compareTo)
-                .orElse(null);
+        Instant lastDispatched =
+                outboxRepository.findByCruise_CruiseId(cruiseId).stream()
+                        .map(ImpactNotificationOutbox::getSentAt)
+                        .filter(Objects::nonNull)
+                        .max(Instant::compareTo)
+                        .orElse(null);
 
         return ImpactNotificationAggregateResponse.builder()
                 .cruiseId(cruise.getCruiseId())
@@ -202,20 +255,25 @@ public class NotificationService {
                 .notificationsAcknowledgedCount(ackCount)
                 .deliveryStatus(deliveryStatus)
                 .deliveryChannel("IN_APP")
-                .deliverySemantics("Phạm vi chính thức gửi thông báo In-App. Ghi nhận thành công khi bản ghi Notification được lưu vào hệ thống.")
+                .deliverySemantics(
+                        "Phạm vi chính thức gửi thông báo In-App. Ghi nhận thành công khi bản ghi"
+                            + " Notification được lưu vào hệ thống.")
                 .lastDispatchedAt(lastDispatched)
                 .build();
     }
 
-    /**
-     * BE-19 / BE-H15: Khách hàng xác nhận đã nhận/đọc thông báo tác động (ACK)
-     */
+    /** BE-19 / BE-H15: Khách hàng xác nhận đã nhận/đọc thông báo tác động (ACK) */
     @Transactional
-    public NotificationResponse acknowledgeNotification(UUID notificationId, CasmsPrincipal principal) {
+    public NotificationResponse acknowledgeNotification(
+            UUID notificationId, CasmsPrincipal principal) {
         UUID userId = requireUserId(principal);
-        Notification notification = notificationRepository
-                .findByNotificationIdAndRecipientUserUserId(notificationId, userId)
-                .orElseThrow(() -> new ResourceNotFoundException("Notification", notificationId));
+        Notification notification =
+                notificationRepository
+                        .findByNotificationIdAndRecipientUserUserId(notificationId, userId)
+                        .orElseThrow(
+                                () ->
+                                        new ResourceNotFoundException(
+                                                "Notification", notificationId));
         Instant now = Instant.now();
         if (notification.getReadAt() == null) {
             notification.setReadAt(now);
@@ -223,7 +281,8 @@ public class NotificationService {
         }
 
         // Cập nhật ACK vào Outbox nếu tương ứng
-        List<ImpactNotificationOutbox> outboxes = outboxRepository.findByRecipientUser_UserIdAndAcknowledgedAtIsNull(userId);
+        List<ImpactNotificationOutbox> outboxes =
+                outboxRepository.findByRecipientUser_UserIdAndAcknowledgedAtIsNull(userId);
         for (ImpactNotificationOutbox o : outboxes) {
             o.setStatus("ACK");
             o.setAcknowledgedAt(now);
@@ -231,31 +290,47 @@ public class NotificationService {
         }
 
         // Tự động chuyển task sang RESOLVED nếu tất cả đơn đặt chỗ liên quan đã ACK
-        outboxes.stream().map(ImpactNotificationOutbox::getTask).filter(Objects::nonNull).distinct().forEach(task -> {
-            long remainingUnack = outboxRepository.countByCruise_CruiseIdAndStatus(task.getCruise().getCruiseId(), "IN_APP_DELIVERED")
-                    + outboxRepository.countByCruise_CruiseIdAndStatus(task.getCruise().getCruiseId(), "SENT");
-            if (remainingUnack == 0) {
-                task.setStatus("RESOLVED");
-                task.setResolvedAt(now);
-                task.setEvidence("Tất cả hành khách đã xác nhận đọc thông báo (ACK hoàn tất).");
-                cruiseImpactTaskRepository.save(task);
-            }
-        });
+        outboxes.stream()
+                .map(ImpactNotificationOutbox::getTask)
+                .filter(Objects::nonNull)
+                .distinct()
+                .forEach(
+                        task -> {
+                            long remainingUnack =
+                                    outboxRepository.countByCruise_CruiseIdAndStatus(
+                                                    task.getCruise().getCruiseId(),
+                                                    "IN_APP_DELIVERED")
+                                            + outboxRepository.countByCruise_CruiseIdAndStatus(
+                                                    task.getCruise().getCruiseId(), "SENT");
+                            if (remainingUnack == 0) {
+                                task.setStatus("RESOLVED");
+                                task.setResolvedAt(now);
+                                task.setEvidence(
+                                        "Tất cả hành khách đã xác nhận đọc thông báo (ACK hoàn"
+                                            + " tất).");
+                                cruiseImpactTaskRepository.save(task);
+                            }
+                        });
 
         return toResponse(notification);
     }
 
     private NotificationResponse toResponse(Notification notification) {
-        return new NotificationResponse(notification.getNotificationId(), notification.getBookingPassengerId(),
-                notification.getNotificationType(), notification.getTitle(), notification.getContent(),
-                notification.getCreatedAt(), notification.getReadAt());
+        return new NotificationResponse(
+                notification.getNotificationId(),
+                notification.getBookingPassengerId(),
+                notification.getNotificationType(),
+                notification.getTitle(),
+                notification.getContent(),
+                notification.getCreatedAt(),
+                notification.getReadAt());
     }
 
     private UUID requireUserId(CasmsPrincipal principal) {
         if (principal == null || principal.getUserId() == null) {
-            throw new BusinessException(HttpStatus.UNAUTHORIZED, "AUTH_REQUIRED", "Authentication is required");
+            throw new BusinessException(
+                    HttpStatus.UNAUTHORIZED, "AUTH_REQUIRED", "Authentication is required");
         }
         return principal.getUserId();
     }
 }
-

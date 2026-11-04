@@ -1,7 +1,9 @@
 package com.casms.trip.dto.response;
 
 import com.casms.activity.enums.OnboardActivityCategory;
+
 import io.swagger.v3.oas.annotations.media.Schema;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -41,7 +43,11 @@ public class PlanningSourceActivityResponse {
     @Schema(description = "Mô tả hoạt động")
     private String description;
 
-    @Schema(description = "Phân loại không gian tổ chức (FUNCTIONAL_ROOM: phòng có số, VENUE_OPEN_AREA: sảnh/boong mở)", example = "FUNCTIONAL_ROOM")
+    @Schema(
+            description =
+                    "Phân loại không gian tổ chức (FUNCTIONAL_ROOM: phòng có số, VENUE_OPEN_AREA:"
+                        + " sảnh/boong mở)",
+            example = "FUNCTIONAL_ROOM")
     private String locationType;
 
     @Schema(description = "Vị trí / Địa điểm tổ chức")
@@ -62,10 +68,14 @@ public class PlanningSourceActivityResponse {
     @Schema(description = "Số phòng/cabin", example = "202")
     private String cabinNumber;
 
-    @Schema(description = "Tên phòng / tên công năng chuyên biệt", example = "Phòng Massage Đá Nóng VIP")
+    @Schema(
+            description = "Tên phòng / tên công năng chuyên biệt",
+            example = "Phòng Massage Đá Nóng VIP")
     private String roomName;
 
-    @Schema(description = "Địa điểm hiển thị trực quan tổng hợp cho khách", example = "Tầng 2 (Lotus Wellness & Spa Deck) - Phòng 202 (Phòng Massage Đá Nóng VIP)")
+    @Schema(
+            description = "Địa điểm hiển thị trực quan tổng hợp cho khách",
+            example = "Tầng 2 (Lotus Wellness & Spa Deck) - Phòng 202 (Phòng Massage Đá Nóng VIP)")
     private String displayLocation;
 
     @Schema(description = "Giá tham khảo")

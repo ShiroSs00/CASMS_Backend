@@ -1,7 +1,9 @@
 package com.casms.ship.dto.response;
 
 import com.casms.ship.enums.ReadinessStatus;
+
 import io.swagger.v3.oas.annotations.media.Schema;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -16,7 +18,10 @@ import java.util.UUID;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@Schema(description = "Kết quả đánh giá tính sẵn sàng mở bán của chuyến khởi hành (Sale Readiness Gate - BE-08/BE-09)")
+@Schema(
+        description =
+                "Kết quả đánh giá tính sẵn sàng mở bán của chuyến khởi hành (Sale Readiness Gate -"
+                    + " BE-08/BE-09)")
 public class CruiseSaleReadinessResponse {
 
     @Schema(description = "ID chuyến khởi hành")

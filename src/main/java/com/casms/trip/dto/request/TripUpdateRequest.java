@@ -2,9 +2,12 @@ package com.casms.trip.dto.request;
 
 import com.casms.ship.enums.ItineraryType;
 import com.casms.trip.enums.TripDurationGroup;
+
 import io.swagger.v3.oas.annotations.media.Schema;
+
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Size;
+
 import lombok.Data;
 
 import java.util.List;
@@ -43,7 +46,9 @@ public class TripUpdateRequest {
     @Schema(description = "Danh sách mã miền (nếu phạm vi là DOMESTIC)")
     private List<String> domesticRegions;
 
-    @Schema(description = "Danh sách mã quốc gia/vùng lãnh thổ ISO-2 (nếu phạm vi là INTERNATIONAL)")
+    @Schema(
+            description =
+                    "Danh sách mã quốc gia/vùng lãnh thổ ISO-2 (nếu phạm vi là INTERNATIONAL)")
     private List<String> countryCodes;
 
     @Schema(description = "Yêu cầu kỹ thuật tàu (ghi chú tự do)")

@@ -1,6 +1,7 @@
 package com.casms.trip.repository;
 
 import com.casms.trip.entity.TripPlanDay;
+
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 

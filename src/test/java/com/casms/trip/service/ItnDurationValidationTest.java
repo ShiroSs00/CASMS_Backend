@@ -1,5 +1,8 @@
 package com.casms.trip.service;
 
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
+
 import com.casms.common.exception.BusinessException;
 import com.casms.ship.enums.ItineraryDayType;
 import com.casms.trip.entity.Trip;
@@ -9,6 +12,7 @@ import com.casms.trip.enums.TripDurationGroup;
 import com.casms.trip.enums.TripScheduleVersionStatus;
 import com.casms.trip.enums.TripStatus;
 import com.casms.trip.repository.TripScheduleVersionRepository;
+
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 
@@ -16,13 +20,12 @@ import java.util.ArrayList;
 import java.util.Optional;
 import java.util.UUID;
 
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.*;
-
 class ItnDurationValidationTest {
-    private final TripScheduleVersionRepository versions = mock(TripScheduleVersionRepository.class);
-    private final TripScheduleVersionService service = new TripScheduleVersionService(
-            null, versions, null, null, null, null, null, null, null, null);
+    private final TripScheduleVersionRepository versions =
+            mock(TripScheduleVersionRepository.class);
+    private final TripScheduleVersionService service =
+            new TripScheduleVersionService(
+                    null, versions, null, null, null, null, null, null, null, null);
 
     private TripScheduleVersion itinerary(String group, int count) {
         Trip trip = new Trip();
@@ -57,12 +60,17 @@ class ItnDurationValidationTest {
     @CsvSource({"SHORT,3", "LONG,2", "LONG,6"})
     void validationAndFinalizationRejectWrongGroup(String group, int count) {
         var version = itinerary(group, count);
-        assertTrue(service.validateVersionInternal(version).stream()
-                .anyMatch(v -> "INVALID_DURATION".equals(v.getCode())));
+        assertTrue(
+                service.validateVersionInternal(version).stream()
+                        .anyMatch(v -> "INVALID_DURATION".equals(v.getCode())));
         UUID id = UUID.randomUUID();
         when(versions.findById(id)).thenReturn(Optional.of(version));
-        assertEquals("INVALID_DURATION", assertThrows(BusinessException.class,
-                () -> service.finalizeVersion(id, 1L, UUID.randomUUID())).getCode());
+        assertEquals(
+                "INVALID_DURATION",
+                assertThrows(
+                                BusinessException.class,
+                                () -> service.finalizeVersion(id, 1L, UUID.randomUUID()))
+                        .getCode());
         verify(versions, never()).save(any());
     }
 }

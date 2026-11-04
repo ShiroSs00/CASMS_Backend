@@ -1,9 +1,11 @@
 package com.casms.config;
 
+import com.casms.identity.repository.RolePermissionRepository;
 import com.casms.security.authorization.CasmsPermissionEvaluator;
 import com.casms.security.jwt.JwtAuthenticationFilter;
-import com.casms.identity.repository.RolePermissionRepository;
+
 import lombok.RequiredArgsConstructor;
+
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -13,20 +15,17 @@ import org.springframework.security.config.annotation.authentication.configurati
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
-import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
+import org.springframework.security.web.util.matcher.RequestMatcher;
 
 @Configuration
 @EnableWebSecurity
-@EnableMethodSecurity(
-        prePostEnabled = true,
-        securedEnabled = true,
-        jsr250Enabled = true
-)
+@EnableMethodSecurity(prePostEnabled = true, securedEnabled = true, jsr250Enabled = true)
 @RequiredArgsConstructor
 public class SecurityConfig {
 
@@ -35,48 +34,61 @@ public class SecurityConfig {
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
-        http
-                .cors(Customizer.withDefaults())
-                .csrf(AbstractHttpConfigurer::disable)
+        RequestMatcher bearerTokenRequest =
+                request -> {
+                    String authHeader = request.getHeader("Authorization");
+                    return authHeader != null && authHeader.startsWith("Bearer ");
+                };
+        http.cors(Customizer.withDefaults())
+                .csrf(
+                        csrf ->
+                                csrf.ignoringRequestMatchers(
+                                        new AntPathRequestMatcher("/h2-console/**"),
+                                        new AntPathRequestMatcher("/payment/sepay/**"),
+                                        bearerTokenRequest))
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .authorizeHttpRequests(auth -> auth
-                        .requestMatchers(
-                                "/v3/api-docs/**",
-                                "/v3/api-docs.yaml",
-                                "/swagger-ui/**",
-                                "/swagger-ui.html",
-                                "/swagger-resources/**",
-                                "/webjars/**",
-                                "/auth/**",
-                                "/h2-console/**",
-                                "/booking/available-cabins",
-                                "/booking/3d-available-cabins",
-                                "/booking/lookup",
-                                "/booking/recovery",
-                                "/payment/sepay/**"
-                        ).permitAll()
-                        .requestMatchers(HttpMethod.GET,
-                                "/cruises/*/public-itinerary",
-                                "/booking/quotes/**",
-                                "/cruise",
-                                "/cruise/**",
-                                "/destinations",
-                                "/destinations/**",
-                                "/ports",
-                                "/ports/**",
-                                "/ships/**",
-                                "/itineraries",
-                                "/itineraries/**",
-                                "/cruise-stops/**",
-                                "/decks/**",
-                                "/cabins/**",
-                                "/servicepackage/packages",
-                                "/servicepackage/packages/**"
-                        ).permitAll()
-                        .requestMatchers(HttpMethod.POST, "/booking", "/booking/quotes").permitAll()
-                        .anyRequest().authenticated()
-                )
-                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+                .authorizeHttpRequests(
+                        auth ->
+                                auth.requestMatchers(
+                                                "/v3/api-docs/**",
+                                                "/v3/api-docs.yaml",
+                                                "/swagger-ui/**",
+                                                "/swagger-ui.html",
+                                                "/swagger-resources/**",
+                                                "/webjars/**",
+                                                "/auth/**",
+                                                "/h2-console/**",
+                                                "/booking/available-cabins",
+                                                "/booking/3d-available-cabins",
+                                                "/booking/lookup",
+                                                "/booking/recovery",
+                                                "/payment/sepay/**")
+                                        .permitAll()
+                                        .requestMatchers(
+                                                HttpMethod.GET,
+                                                "/booking/quotes/**",
+                                                "/cruise",
+                                                "/cruise/**",
+                                                "/destinations",
+                                                "/destinations/**",
+                                                "/ports",
+                                                "/ports/**",
+                                                "/ships/**",
+                                                "/itineraries",
+                                                "/itineraries/**",
+                                                "/cruise-stops/**",
+                                                "/decks/**",
+                                                "/cabins/**",
+                                                "/servicepackage/packages",
+                                                "/servicepackage/packages/**")
+                                        .permitAll()
+                                        .requestMatchers(
+                                                HttpMethod.POST, "/booking", "/booking/quotes")
+                                        .permitAll()
+                                        .anyRequest()
+                                        .authenticated())
+                .addFilterBefore(
+                        jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();
     }
 
@@ -86,7 +98,8 @@ public class SecurityConfig {
     }
 
     @Bean
-    public AuthenticationManager authenticationManager(AuthenticationConfiguration config) throws Exception {
+    public AuthenticationManager authenticationManager(AuthenticationConfiguration config)
+            throws Exception {
         return config.getAuthenticationManager();
     }
 

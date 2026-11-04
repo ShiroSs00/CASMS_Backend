@@ -1,5 +1,9 @@
 package com.casms.config.flyway;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 import org.junit.jupiter.api.Test;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
@@ -8,17 +12,11 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Properties;
 import java.util.TreeMap;
-import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
-/**
- * BE-FIX-00: committed migrations are immutable. Guards against a repeat of the V16/V35 edits.
- */
+/** BE-FIX-00: committed migrations are immutable. Guards against a repeat of the V16/V35 edits. */
 class MigrationChecksumLockTest {
 
     private static final String[] LOCATIONS = {"migration", "prod-migration"};
@@ -33,17 +31,32 @@ class MigrationChecksumLockTest {
             Integer checksum = actual.get(key);
             int expected = Integer.parseInt(lock.getProperty(key).trim());
             if (checksum == null) {
-                problems.add(key + " is locked but missing (applied migrations must not be deleted or renamed)");
+                problems.add(
+                        key
+                                + " is locked but missing (applied migrations must not be deleted"
+                                + " or renamed)");
             } else if (checksum != expected) {
-                problems.add(key + " changed: locked " + expected + ", now " + checksum
-                        + " (restore it and put the change in a new migration)");
+                problems.add(
+                        key
+                                + " changed: locked "
+                                + expected
+                                + ", now "
+                                + checksum
+                                + " (restore it and put the change in a new migration)");
             }
         }
-        actual.forEach((key, checksum) -> {
-            if (!lock.containsKey(key)) {
-                problems.add(key + " is not in flyway/migration-checksums.properties; append: " + key + "=" + checksum);
-            }
-        });
+        actual.forEach(
+                (key, checksum) -> {
+                    if (!lock.containsKey(key)) {
+                        problems.add(
+                                key
+                                        + " is not in flyway/migration-checksums.properties;"
+                                        + " append: "
+                                        + key
+                                        + "="
+                                        + checksum);
+                    }
+                });
 
         assertTrue(problems.isEmpty(), String.join(System.lineSeparator(), problems));
     }
@@ -51,33 +64,47 @@ class MigrationChecksumLockTest {
     @Test
     void acceptedDriftsPointAtTheCommittedChecksum() throws IOException {
         Map<String, Integer> actual = classpathChecksums();
-        for (LegacyChecksumRealigner.AcceptedDrift drift : LegacyChecksumRealigner.ACCEPTED_DRIFTS) {
+        for (LegacyChecksumRealigner.AcceptedDrift drift :
+                LegacyChecksumRealigner.ACCEPTED_DRIFTS) {
             Integer checksum = actual.get("migration/" + drift.script());
             assertNotNull(checksum, drift.script() + " not found on classpath");
             assertEquals(drift.currentChecksum(), checksum, drift.script());
             assertTrue(drift.script().startsWith("V" + drift.version() + "__"), drift.script());
-            assertTrue(drift.legacyChecksums().stream().noneMatch(c -> c == drift.currentChecksum()), drift.script());
+            assertTrue(
+                    drift.legacyChecksums().stream().noneMatch(c -> c == drift.currentChecksum()),
+                    drift.script());
         }
     }
 
     @Test
     void migrationVersionsAreUniqueWithinEachFlywayLocation() throws IOException {
-        var resolver=new PathMatchingResourcePatternResolver();
-        for(String location:LOCATIONS){
-            var scriptsByVersion=new java.util.HashMap<String,String>();
-            for(Resource resource:resolver.getResources("classpath*:db/"+location+"/*.sql")){
-                String script=resource.getFilename();
-                if(script==null||!script.startsWith("V"))continue;
-                String version=script.substring(1,script.indexOf("__"));
-                String previous=scriptsByVersion.putIfAbsent(version,script);
-                assertTrue(previous==null,()->"Duplicate Flyway version "+version+": "+previous+" and "+script);
+        var resolver = new PathMatchingResourcePatternResolver();
+        for (String location : LOCATIONS) {
+            var scriptsByVersion = new java.util.HashMap<String, String>();
+            for (Resource resource :
+                    resolver.getResources("classpath*:db/" + location + "/*.sql")) {
+                String script = resource.getFilename();
+                if (script == null || !script.startsWith("V")) continue;
+                String version = script.substring(1, script.indexOf("__"));
+                String previous = scriptsByVersion.putIfAbsent(version, script);
+                assertTrue(
+                        previous == null,
+                        () ->
+                                "Duplicate Flyway version "
+                                        + version
+                                        + ": "
+                                        + previous
+                                        + " and "
+                                        + script);
             }
         }
     }
 
     private static Properties loadLock() throws IOException {
         Properties lock = new Properties();
-        try (InputStream in = MigrationChecksumLockTest.class.getResourceAsStream("/flyway/migration-checksums.properties")) {
+        try (InputStream in =
+                MigrationChecksumLockTest.class.getResourceAsStream(
+                        "/flyway/migration-checksums.properties")) {
             assertNotNull(in, "flyway/migration-checksums.properties missing");
             lock.load(in);
         }
@@ -88,9 +115,11 @@ class MigrationChecksumLockTest {
         PathMatchingResourcePatternResolver resolver = new PathMatchingResourcePatternResolver();
         Map<String, Integer> checksums = new TreeMap<>();
         for (String location : LOCATIONS) {
-            for (Resource resource : resolver.getResources("classpath*:db/" + location + "/*.sql")) {
+            for (Resource resource :
+                    resolver.getResources("classpath*:db/" + location + "/*.sql")) {
                 try (InputStream in = resource.getInputStream()) {
-                    checksums.put(location + "/" + resource.getFilename(), FlywaySqlChecksum.of(in));
+                    checksums.put(
+                            location + "/" + resource.getFilename(), FlywaySqlChecksum.of(in));
                 }
             }
         }

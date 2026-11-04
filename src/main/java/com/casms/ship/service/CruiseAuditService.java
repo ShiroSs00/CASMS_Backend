@@ -8,8 +8,10 @@ import com.casms.ship.entity.Cruise;
 import com.casms.ship.entity.CruiseAuditEvent;
 import com.casms.ship.repository.CruiseAuditEventRepository;
 import com.casms.ship.repository.CruiseRepository;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -30,8 +32,8 @@ public class CruiseAuditService {
     private final UserRepository userRepository;
 
     /**
-     * BE-25: Ghi nhận sự kiện kiểm toán nghiệp vụ (Cruise Business Audit Event)
-     * Đảm bảo ghi trong transaction commit, idempotent theo eventIdentity, không ghi "thành công ảo".
+     * BE-25: Ghi nhận sự kiện kiểm toán nghiệp vụ (Cruise Business Audit Event) Đảm bảo ghi trong
+     * transaction commit, idempotent theo eventIdentity, không ghi "thành công ảo".
      */
     @Transactional
     public CruiseAuditEvent recordEvent(
@@ -49,46 +51,71 @@ public class CruiseAuditService {
 
         if (cruise == null) return null;
 
-        String effectiveEventIdentity = (eventIdentity != null && !eventIdentity.isBlank())
-                ? eventIdentity
-                : "AUD-" + cruise.getCruiseCode() + "-" + eventType + "-" + System.currentTimeMillis();
+        String effectiveEventIdentity =
+                (eventIdentity != null && !eventIdentity.isBlank())
+                        ? eventIdentity
+                        : "AUD-"
+                                + cruise.getCruiseCode()
+                                + "-"
+                                + eventType
+                                + "-"
+                                + System.currentTimeMillis();
 
         if (auditEventRepository.existsByEventIdentity(effectiveEventIdentity)) {
-            log.info("Audit event with identity {} already recorded, skipping duplicate.", effectiveEventIdentity);
+            log.info(
+                    "Audit event with identity {} already recorded, skipping duplicate.",
+                    effectiveEventIdentity);
             return null;
         }
 
         String actorUsername = "SYSTEM";
         if (actorId != null) {
-            actorUsername = userRepository.findById(actorId)
-                    .map(User::getUsername)
-                    .orElse(actorId.toString());
+            actorUsername =
+                    userRepository
+                            .findById(actorId)
+                            .map(User::getUsername)
+                            .orElse(actorId.toString());
         }
 
-        String fingerprint = generateFingerprint(String.format("%s:%s:%s:%s:%s",
-                cruise.getCruiseId(), eventType, effectiveEventIdentity, actorUsername, cruise.getRevision()));
+        String fingerprint =
+                generateFingerprint(
+                        String.format(
+                                "%s:%s:%s:%s:%s",
+                                cruise.getCruiseId(),
+                                eventType,
+                                effectiveEventIdentity,
+                                actorUsername,
+                                cruise.getRevision()));
 
-        CruiseAuditEvent event = CruiseAuditEvent.builder()
-                .cruise(cruise)
-                .eventType(eventType)
-                .eventIdentity(effectiveEventIdentity)
-                .actorId(actorId)
-                .actorUsername(actorUsername)
-                .actorRole(actorRole)
-                .requiredPermission(requiredPermission)
-                .scope(scope != null ? scope : "WHOLE_CRUISE")
-                .beforeDigest(beforeDigest)
-                .afterDigest(afterDigest)
-                .reason(reason)
-                .evidence(evidence)
-                .fingerprint(fingerprint)
-                .sourceVersionId(cruise.getSourceVersion() != null ? cruise.getSourceVersion().getVersionId() : null)
-                .revision(cruise.getRevision())
-                .timestamp(Instant.now())
-                .build();
+        CruiseAuditEvent event =
+                CruiseAuditEvent.builder()
+                        .cruise(cruise)
+                        .eventType(eventType)
+                        .eventIdentity(effectiveEventIdentity)
+                        .actorId(actorId)
+                        .actorUsername(actorUsername)
+                        .actorRole(actorRole)
+                        .requiredPermission(requiredPermission)
+                        .scope(scope != null ? scope : "WHOLE_CRUISE")
+                        .beforeDigest(beforeDigest)
+                        .afterDigest(afterDigest)
+                        .reason(reason)
+                        .evidence(evidence)
+                        .fingerprint(fingerprint)
+                        .sourceVersionId(
+                                cruise.getSourceVersion() != null
+                                        ? cruise.getSourceVersion().getVersionId()
+                                        : null)
+                        .revision(cruise.getRevision())
+                        .timestamp(Instant.now())
+                        .build();
 
         CruiseAuditEvent saved = auditEventRepository.save(event);
-        log.info("Recorded CruiseAuditEvent [{}] for Cruise {}: {}", eventType, cruise.getCruiseCode(), effectiveEventIdentity);
+        log.info(
+                "Recorded CruiseAuditEvent [{}] for Cruise {}: {}",
+                eventType,
+                cruise.getCruiseCode(),
+                effectiveEventIdentity);
         return saved;
     }
 
@@ -103,7 +130,9 @@ public class CruiseAuditService {
 
         List<CruiseAuditEvent> events;
         if (eventType != null && !eventType.isBlank()) {
-            events = auditEventRepository.findByCruise_CruiseIdAndEventTypeOrderByTimestampDesc(cruiseId, eventType.trim().toUpperCase());
+            events =
+                    auditEventRepository.findByCruise_CruiseIdAndEventTypeOrderByTimestampDesc(
+                            cruiseId, eventType.trim().toUpperCase());
         } else {
             events = auditEventRepository.findByCruise_CruiseIdOrderByTimestampDesc(cruiseId);
         }

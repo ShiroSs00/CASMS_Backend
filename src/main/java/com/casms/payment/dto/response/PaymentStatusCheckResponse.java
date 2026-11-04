@@ -3,7 +3,9 @@ package com.casms.payment.dto.response;
 import com.casms.booking.enums.BookingStatus;
 import com.casms.payment.enums.PaymentMethod;
 import com.casms.payment.enums.PaymentStatus;
+
 import io.swagger.v3.oas.annotations.media.Schema;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -63,4 +65,3 @@ public class PaymentStatusCheckResponse {
     @Schema(description = "Số dư còn lại của đơn sau giao dịch này (USD)")
     private BigDecimal remainingBookingBalance;
 }
-

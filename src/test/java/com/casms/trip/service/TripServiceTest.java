@@ -1,5 +1,9 @@
 package com.casms.trip.service;
 
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.*;
+
 import com.casms.common.exception.BusinessException;
 import com.casms.common.service.BusinessCodeGenerator;
 import com.casms.identity.entity.User;
@@ -9,13 +13,13 @@ import com.casms.trip.dto.request.TripCreateRequest;
 import com.casms.trip.dto.request.TripUpdateRequest;
 import com.casms.trip.dto.response.TripDetailResponse;
 import com.casms.trip.entity.Trip;
-import com.casms.trip.entity.TripPlanDay;
 import com.casms.trip.entity.TripScheduleVersion;
 import com.casms.trip.enums.TripScheduleVersionStatus;
 import com.casms.trip.enums.TripStatus;
 import com.casms.trip.repository.TripPlanDayRepository;
 import com.casms.trip.repository.TripRepository;
 import com.casms.trip.repository.TripScheduleVersionRepository;
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -24,38 +28,25 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.Instant;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
-
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class TripServiceTest {
 
-    @Mock
-    private TripRepository tripRepository;
+    @Mock private TripRepository tripRepository;
 
-    @Mock
-    private TripScheduleVersionRepository versionRepository;
+    @Mock private TripScheduleVersionRepository versionRepository;
 
-    @Mock
-    private TripPlanDayRepository dayRepository;
+    @Mock private TripPlanDayRepository dayRepository;
 
-    @Mock
-    private UserRepository userRepository;
+    @Mock private UserRepository userRepository;
 
-    @Mock
-    private BusinessCodeGenerator businessCodeGenerator;
+    @Mock private BusinessCodeGenerator businessCodeGenerator;
 
-    @Mock
-    private com.casms.audit.AuditService auditService;
+    @Mock private com.casms.audit.AuditService auditService;
 
-    @InjectMocks
-    private TripService tripService;
+    @InjectMocks private TripService tripService;
 
     private UUID actorId;
     private User actor;
@@ -78,16 +69,20 @@ class TripServiceTest {
 
         when(businessCodeGenerator.next("TR")).thenReturn("TR-1001");
         when(userRepository.findById(actorId)).thenReturn(Optional.of(actor));
-        when(tripRepository.save(any(Trip.class))).thenAnswer(inv -> {
-            Trip t = inv.getArgument(0);
-            t.setTripId(UUID.randomUUID());
-            return t;
-        });
-        when(versionRepository.save(any(TripScheduleVersion.class))).thenAnswer(inv -> {
-            TripScheduleVersion v = inv.getArgument(0);
-            v.setVersionId(UUID.randomUUID());
-            return v;
-        });
+        when(tripRepository.save(any(Trip.class)))
+                .thenAnswer(
+                        inv -> {
+                            Trip t = inv.getArgument(0);
+                            t.setTripId(UUID.randomUUID());
+                            return t;
+                        });
+        when(versionRepository.save(any(TripScheduleVersion.class)))
+                .thenAnswer(
+                        inv -> {
+                            TripScheduleVersion v = inv.getArgument(0);
+                            v.setVersionId(UUID.randomUUID());
+                            return v;
+                        });
 
         TripDetailResponse res = tripService.createTrip(request, actorId);
 
@@ -100,13 +95,15 @@ class TripServiceTest {
         assertEquals(1, res.getVersions().get(0).getVersionNumber());
         assertEquals(TripScheduleVersionStatus.DRAFT, res.getVersions().get(0).getStatus());
 
-        verify(versionRepository).save(argThat(v ->
-                v.getVersionNumber() == 1
-                && v.getDays().size() == 4
-                && v.getDays().get(0).getDayNumber() == 1
-                && v.getDays().get(0).getDayType() == null
-                && v.getDays().get(3).getDayNumber() == 4
-        ));
+        verify(versionRepository)
+                .save(
+                        argThat(
+                                v ->
+                                        v.getVersionNumber() == 1
+                                                && v.getDays().size() == 4
+                                                && v.getDays().get(0).getDayNumber() == 1
+                                                && v.getDays().get(0).getDayType() == null
+                                                && v.getDays().get(3).getDayNumber() == 4));
     }
 
     @Test
@@ -118,12 +115,15 @@ class TripServiceTest {
         request.setTripType(ItineraryType.ONE_WAY);
 
         when(businessCodeGenerator.next("TR")).thenReturn("TR-1002");
-        when(tripRepository.save(any(Trip.class))).thenAnswer(inv -> {
-            Trip t = inv.getArgument(0);
-            t.setTripId(UUID.randomUUID());
-            return t;
-        });
-        when(versionRepository.save(any(TripScheduleVersion.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(tripRepository.save(any(Trip.class)))
+                .thenAnswer(
+                        inv -> {
+                            Trip t = inv.getArgument(0);
+                            t.setTripId(UUID.randomUUID());
+                            return t;
+                        });
+        when(versionRepository.save(any(TripScheduleVersion.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
 
         TripDetailResponse res = tripService.createTrip(request, actorId);
 
@@ -146,8 +146,10 @@ class TripServiceTest {
         TripUpdateRequest updateRequest = new TripUpdateRequest();
         updateRequest.setDurationDays(5);
 
-        BusinessException ex = assertThrows(BusinessException.class,
-                () -> tripService.updateTrip(tripId, updateRequest, actorId));
+        BusinessException ex =
+                assertThrows(
+                        BusinessException.class,
+                        () -> tripService.updateTrip(tripId, updateRequest, actorId));
         assertEquals("TRIP_DURATION_LOCKED", ex.getCode());
     }
 
@@ -167,8 +169,10 @@ class TripServiceTest {
         updateRequest.setDurationDays(5);
 
         // BE-09: PUT/PATCH changing durationDays must be rejected
-        BusinessException ex = assertThrows(BusinessException.class,
-                () -> tripService.updateTrip(tripId, updateRequest, actorId));
+        BusinessException ex =
+                assertThrows(
+                        BusinessException.class,
+                        () -> tripService.updateTrip(tripId, updateRequest, actorId));
         assertEquals("INVALID_DAY_COUNT", ex.getCode());
 
         // Resubmitting same durationDays succeeds without modifying day structure

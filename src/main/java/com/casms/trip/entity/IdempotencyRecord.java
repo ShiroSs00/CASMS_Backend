@@ -1,6 +1,7 @@
 package com.casms.trip.entity;
 
 import jakarta.persistence.*;
+
 import lombok.Getter;
 import lombok.Setter;
 
@@ -10,8 +11,12 @@ import java.util.UUID;
 @Getter
 @Setter
 @Entity
-@Table(name = "\"IdempotencyRecord\"",
-       uniqueConstraints = @UniqueConstraint(name = "uq_idempotency_actor_op_key", columnNames = {"actor_id", "operation", "idempotency_key"}))
+@Table(
+        name = "\"IdempotencyRecord\"",
+        uniqueConstraints =
+                @UniqueConstraint(
+                        name = "uq_idempotency_actor_op_key",
+                        columnNames = {"actor_id", "operation", "idempotency_key"}))
 public class IdempotencyRecord {
 
     @Id

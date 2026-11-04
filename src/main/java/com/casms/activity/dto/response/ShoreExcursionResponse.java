@@ -26,20 +26,16 @@ public record ShoreExcursionResponse(
         ShoreExcursionStatus status,
         String cancellationReason,
         Instant createdAt,
-        Instant updatedAt
-) {
+        Instant updatedAt) {
     public static ShoreExcursionResponse from(
-            ShoreExcursion excursion,
-            long registeredParticipants
-    ) {
-        long available = Math.max(
-                0,
-                excursion.getMaximumCapacity() - registeredParticipants
-        );
+            ShoreExcursion excursion, long registeredParticipants) {
+        long available = Math.max(0, excursion.getMaximumCapacity() - registeredParticipants);
 
         return new ShoreExcursionResponse(
                 excursion.getShoreExcursionId(),
-                excursion.getCruiseStop() == null ? null : excursion.getCruiseStop().getCruiseStopId(),
+                excursion.getCruiseStop() == null
+                        ? null
+                        : excursion.getCruiseStop().getCruiseStopId(),
                 excursion.getExcursionCode(),
                 excursion.getExcursionName(),
                 excursion.getSupplier().getSupplierId(),
@@ -52,13 +48,10 @@ public record ShoreExcursionResponse(
                 registeredParticipants,
                 available,
                 excursion.getPrice(),
-                excursion.getCurrencyCode() == null
-                        ? null
-                        : excursion.getCurrencyCode().trim(),
+                excursion.getCurrencyCode() == null ? null : excursion.getCurrencyCode().trim(),
                 excursion.getStatus(),
                 excursion.getCancellationReason(),
                 excursion.getCreatedAt(),
-                excursion.getUpdatedAt()
-        );
+                excursion.getUpdatedAt());
     }
 }

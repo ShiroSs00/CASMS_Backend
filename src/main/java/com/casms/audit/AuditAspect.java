@@ -1,14 +1,15 @@
 package com.casms.audit;
 
 import lombok.extern.slf4j.Slf4j;
+
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.Around;
 import org.aspectj.lang.annotation.Aspect;
 import org.springframework.stereotype.Component;
 
 /**
- * Skeleton AuditAspect.
- * Business-specific pointcuts should be added when audit requirements are defined.
+ * Skeleton AuditAspect. Business-specific pointcuts should be added when audit requirements are
+ * defined.
  */
 @Slf4j
 @Aspect

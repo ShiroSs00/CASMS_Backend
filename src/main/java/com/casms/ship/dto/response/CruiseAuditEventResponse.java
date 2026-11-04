@@ -1,6 +1,7 @@
 package com.casms.ship.dto.response;
 
 import io.swagger.v3.oas.annotations.media.Schema;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -13,7 +14,10 @@ import java.util.UUID;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@Schema(description = "Bản ghi nhật ký kiểm toán sự kiện và quyết định vận hành của chuyến khởi hành (BE-25 Audit Trail)")
+@Schema(
+        description =
+                "Bản ghi nhật ký kiểm toán sự kiện và quyết định vận hành của chuyến khởi hành"
+                    + " (BE-25 Audit Trail)")
 public class CruiseAuditEventResponse {
 
     @Schema(description = "ID sự kiện kiểm toán")
@@ -25,7 +29,11 @@ public class CruiseAuditEventResponse {
     @Schema(description = "Mã chuyến khởi hành")
     private String cruiseCode;
 
-    @Schema(description = "Loại sự kiện (SOURCE_MATERIALIZE, SHIP_ASSIGN, SHIP_CHANGE, SALE_OPEN, SALE_STOP, SALE_RESUME, CHANGE_APPLY, DEPARTURE_START, CRUISE_COMPLETE, READINESS_EVAL)")
+    @Schema(
+            description =
+                    "Loại sự kiện (SOURCE_MATERIALIZE, SHIP_ASSIGN, SHIP_CHANGE, SALE_OPEN,"
+                        + " SALE_STOP, SALE_RESUME, CHANGE_APPLY, DEPARTURE_START, CRUISE_COMPLETE,"
+                        + " READINESS_EVAL)")
     private String eventType;
 
     @Schema(description = "Mã định danh sự kiện bất biến (Event Identity)")

@@ -3,19 +3,21 @@ package com.casms.identity.service;
 import com.casms.common.exception.BusinessException;
 import com.casms.identity.dto.LoginRequest;
 import com.casms.identity.dto.LoginResponse;
+import com.casms.identity.dto.UserMeResponse;
 import com.casms.identity.entity.Passenger;
 import com.casms.identity.entity.User;
-import com.casms.identity.repository.PassengerRepository;
-import com.casms.identity.repository.UserRepository;
-import com.casms.security.jwt.JwtService;
-import com.casms.identity.dto.UserMeResponse;
 import com.casms.identity.enums.Permission;
 import com.casms.identity.enums.Role;
 import com.casms.identity.enums.UserStatus;
+import com.casms.identity.repository.PassengerRepository;
 import com.casms.identity.repository.RolePermissionRepository;
+import com.casms.identity.repository.UserRepository;
+import com.casms.security.jwt.JwtService;
 import com.casms.security.principal.CasmsPrincipal;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -26,7 +28,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.*;
-import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -47,9 +48,10 @@ public class AuthService {
         // Authenticate using Spring Security
         Authentication authentication;
         try {
-            authentication = authenticationManager.authenticate(
-                    new UsernamePasswordAuthenticationToken(request.getUsername(), request.getPassword())
-            );
+            authentication =
+                    authenticationManager.authenticate(
+                            new UsernamePasswordAuthenticationToken(
+                                    request.getUsername(), request.getPassword()));
         } catch (BadCredentialsException e) {
             log.warn("Failed login attempt for username: {}", request.getUsername());
             throw new BusinessException("INVALID_CREDENTIALS", "Invalid username or password");
@@ -97,8 +99,11 @@ public class AuthService {
         }
 
         // Get user
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new BusinessException("USER_NOT_FOUND", "User not found"));
+        User user =
+                userRepository
+                        .findById(userId)
+                        .orElseThrow(
+                                () -> new BusinessException("USER_NOT_FOUND", "User not found"));
 
         // Generate new token
         String newAccessToken = jwtService.generateToken(user.getUsername(), user.getUserId());
@@ -123,14 +128,16 @@ public class AuthService {
         Set<String> permissions = new TreeSet<>();
         if (user.getRoles() != null && rolePermissionRepository != null) {
             for (Role role : user.getRoles()) {
-                rolePermissionRepository.findByRole(role).ifPresent(rp -> {
-                    if (rp.getPermissions() != null) {
-                        for (Permission p : rp.getPermissions()) {
-                            if (p.isRetired()) continue;
-                            permissions.add(p.name());
-                        }
-                    }
-                });
+                rolePermissionRepository
+                        .findByRole(role)
+                        .ifPresent(
+                                rp -> {
+                                    if (rp.getPermissions() != null) {
+                                        for (Permission p : rp.getPermissions()) {
+                                            permissions.add(p.name());
+                                        }
+                                    }
+                                });
             }
         }
         return permissions;
@@ -140,11 +147,13 @@ public class AuthService {
     public UserMeResponse getCurrentUser(CasmsPrincipal principal) {
         User user = principal.getUser();
         User freshUser = userRepository.findById(user.getUserId()).orElse(user);
-        UUID passengerId = (passengerRepository != null)
-                ? passengerRepository.findByUser_UserId(freshUser.getUserId())
-                        .map(Passenger::getPassengerId)
-                        .orElse(null)
-                : null;
+        UUID passengerId =
+                (passengerRepository != null)
+                        ? passengerRepository
+                                .findByUser_UserId(freshUser.getUserId())
+                                .map(Passenger::getPassengerId)
+                                .orElse(null)
+                        : null;
         return UserMeResponse.builder()
                 .userId(freshUser.getUserId())
                 .username(freshUser.getUsername())

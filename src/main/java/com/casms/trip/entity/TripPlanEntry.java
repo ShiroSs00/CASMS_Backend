@@ -5,7 +5,9 @@ import com.casms.ship.entity.Cabin;
 import com.casms.ship.entity.Deck;
 import com.casms.ship.entity.Destination;
 import com.casms.trip.enums.TripPlanEntryKind;
+
 import jakarta.persistence.*;
+
 import lombok.Getter;
 import lombok.Setter;
 
@@ -15,8 +17,12 @@ import java.util.UUID;
 @Getter
 @Setter
 @Entity
-@Table(name = "\"TripPlanEntry\"",
-       uniqueConstraints = @UniqueConstraint(name = "uq_version_entry_client_key", columnNames = {"version_id", "client_key"}))
+@Table(
+        name = "\"TripPlanEntry\"",
+        uniqueConstraints =
+                @UniqueConstraint(
+                        name = "uq_version_entry_client_key",
+                        columnNames = {"version_id", "client_key"}))
 public class TripPlanEntry {
 
     @Id

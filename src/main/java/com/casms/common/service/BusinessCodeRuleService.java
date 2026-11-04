@@ -6,8 +6,10 @@ import com.casms.common.dto.BusinessCodeRuleUpdateRequest;
 import com.casms.common.dto.CodePreviewRequest;
 import com.casms.common.dto.CodePreviewResponse;
 import com.casms.common.exception.BusinessException;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -31,38 +33,59 @@ public class BusinessCodeRuleService {
     private static final Pattern SEQ_REGEX = Pattern.compile("\\{SEQ:?(\\d+)?\\}");
 
     public List<BusinessCodeRuleResponse> getAllRules() {
-        String sql = "SELECT entity_type, pattern, scope_strategy, description, is_active, updated_at FROM business_code_rule ORDER BY entity_type";
-        return jdbcTemplate.query(sql, (rs, i) -> {
-            String entityType = rs.getString("entity_type");
-            return BusinessCodeRuleResponse.builder()
-                    .entityType(entityType)
-                    .pattern(rs.getString("pattern"))
-                    .scopeStrategy(rs.getString("scope_strategy"))
-                    .description(rs.getString("description"))
-                    .active(rs.getBoolean("is_active"))
-                    .updatedAt(rs.getTimestamp("updated_at") != null ? rs.getTimestamp("updated_at").toInstant() : Instant.now())
-                    .supportedTokens(getSupportedTokens(entityType))
-                    .defaultSampleContext(getDefaultSampleContext(entityType))
-                    .build();
-        });
+        String sql =
+                "SELECT entity_type, pattern, scope_strategy, description, is_active, updated_at"
+                    + " FROM business_code_rule ORDER BY entity_type";
+        return jdbcTemplate.query(
+                sql,
+                (rs, i) -> {
+                    String entityType = rs.getString("entity_type");
+                    return BusinessCodeRuleResponse.builder()
+                            .entityType(entityType)
+                            .pattern(rs.getString("pattern"))
+                            .scopeStrategy(rs.getString("scope_strategy"))
+                            .description(rs.getString("description"))
+                            .active(rs.getBoolean("is_active"))
+                            .updatedAt(
+                                    rs.getTimestamp("updated_at") != null
+                                            ? rs.getTimestamp("updated_at").toInstant()
+                                            : Instant.now())
+                            .supportedTokens(getSupportedTokens(entityType))
+                            .defaultSampleContext(getDefaultSampleContext(entityType))
+                            .build();
+                });
     }
 
     public BusinessCodeRuleResponse getRuleByEntityType(String entityType) {
         String normalizedEntity = entityType.trim().toUpperCase();
-        String sql = "SELECT entity_type, pattern, scope_strategy, description, is_active, updated_at FROM business_code_rule WHERE UPPER(entity_type) = ?";
-        List<BusinessCodeRuleResponse> list = jdbcTemplate.query(sql, (rs, i) -> BusinessCodeRuleResponse.builder()
-                .entityType(rs.getString("entity_type"))
-                .pattern(rs.getString("pattern"))
-                .scopeStrategy(rs.getString("scope_strategy"))
-                .description(rs.getString("description"))
-                .active(rs.getBoolean("is_active"))
-                .updatedAt(rs.getTimestamp("updated_at") != null ? rs.getTimestamp("updated_at").toInstant() : Instant.now())
-                .supportedTokens(getSupportedTokens(normalizedEntity))
-                .defaultSampleContext(getDefaultSampleContext(normalizedEntity))
-                .build(), normalizedEntity);
+        String sql =
+                "SELECT entity_type, pattern, scope_strategy, description, is_active, updated_at"
+                    + " FROM business_code_rule WHERE UPPER(entity_type) = ?";
+        List<BusinessCodeRuleResponse> list =
+                jdbcTemplate.query(
+                        sql,
+                        (rs, i) ->
+                                BusinessCodeRuleResponse.builder()
+                                        .entityType(rs.getString("entity_type"))
+                                        .pattern(rs.getString("pattern"))
+                                        .scopeStrategy(rs.getString("scope_strategy"))
+                                        .description(rs.getString("description"))
+                                        .active(rs.getBoolean("is_active"))
+                                        .updatedAt(
+                                                rs.getTimestamp("updated_at") != null
+                                                        ? rs.getTimestamp("updated_at").toInstant()
+                                                        : Instant.now())
+                                        .supportedTokens(getSupportedTokens(normalizedEntity))
+                                        .defaultSampleContext(
+                                                getDefaultSampleContext(normalizedEntity))
+                                        .build(),
+                        normalizedEntity);
 
         if (list.isEmpty()) {
-            throw new BusinessException(HttpStatus.NOT_FOUND, "RULE_NOT_FOUND", "Không tìm thấy cấu hình mã cho: " + entityType);
+            throw new BusinessException(
+                    HttpStatus.NOT_FOUND,
+                    "RULE_NOT_FOUND",
+                    "Không tìm thấy cấu hình mã cho: " + entityType);
         }
         return list.get(0);
     }
@@ -74,7 +97,9 @@ public class BusinessCodeRuleService {
 
         Matcher seqMatcher = SEQ_REGEX.matcher(pattern);
         if (!seqMatcher.find()) {
-            warnings.add("Cảnh báo: Thiếu token số thứ tự {SEQ:n}. Mã có nguy cơ bị trùng lặp nếu sinh hàng loạt.");
+            warnings.add(
+                    "Cảnh báo: Thiếu token số thứ tự {SEQ:n}. Mã có nguy cơ bị trùng lặp nếu sinh"
+                        + " hàng loạt.");
         }
 
         Map<String, String> context = new HashMap<>(getDefaultSampleContext(entityType));
@@ -110,7 +135,8 @@ public class BusinessCodeRuleService {
             result = matcher.replaceFirst(formattedSeq);
         }
 
-        String simulatedKey = buildSequenceKey(entityType, request.getScopeStrategy(), context, yearFull);
+        String simulatedKey =
+                buildSequenceKey(entityType, request.getScopeStrategy(), context, yearFull);
 
         return CodePreviewResponse.builder()
                 .previewCode(result)
@@ -121,40 +147,61 @@ public class BusinessCodeRuleService {
     }
 
     @Transactional
-    public BusinessCodeRuleResponse updateRule(String entityType, BusinessCodeRuleUpdateRequest request) {
+    public BusinessCodeRuleResponse updateRule(
+            String entityType, BusinessCodeRuleUpdateRequest request) {
         String normalizedEntity = entityType.trim().toUpperCase();
         String pattern = request.getPattern().trim();
 
         if (!pattern.contains("{SEQ")) {
-            throw new BusinessException(HttpStatus.UNPROCESSABLE_ENTITY, "INVALID_PATTERN",
-                    "Pattern bắt buộc phải chứa token {SEQ:n} (ví dụ {SEQ:4}) để đảm bảo tính duy nhất.");
+            throw new BusinessException(
+                    HttpStatus.UNPROCESSABLE_ENTITY,
+                    "INVALID_PATTERN",
+                    "Pattern bắt buộc phải chứa token {SEQ:n} (ví dụ {SEQ:4}) để đảm bảo tính duy"
+                        + " nhất.");
         }
 
-        String sql = """
-            UPDATE business_code_rule 
-            SET pattern = ?, scope_strategy = ?, description = ?, updated_at = CURRENT_TIMESTAMP
-            WHERE UPPER(entity_type) = ?
-        """;
-        int updated = jdbcTemplate.update(sql, pattern, request.getScopeStrategy().trim().toUpperCase(), request.getDescription(), normalizedEntity);
+        String sql =
+                """
+    UPDATE business_code_rule
+    SET pattern = ?, scope_strategy = ?, description = ?, updated_at = CURRENT_TIMESTAMP
+    WHERE UPPER(entity_type) = ?
+""";
+        int updated =
+                jdbcTemplate.update(
+                        sql,
+                        pattern,
+                        request.getScopeStrategy().trim().toUpperCase(),
+                        request.getDescription(),
+                        normalizedEntity);
         if (updated == 0) {
-            throw new BusinessException(HttpStatus.NOT_FOUND, "RULE_NOT_FOUND", "Không tìm thấy cấu hình mã để cập nhật cho: " + entityType);
+            throw new BusinessException(
+                    HttpStatus.NOT_FOUND,
+                    "RULE_NOT_FOUND",
+                    "Không tìm thấy cấu hình mã để cập nhật cho: " + entityType);
         }
 
-        log.info("Updated Business Code Rule for {}: pattern={}, strategy={}", normalizedEntity, pattern, request.getScopeStrategy());
+        log.info(
+                "Updated Business Code Rule for {}: pattern={}, strategy={}",
+                normalizedEntity,
+                pattern,
+                request.getScopeStrategy());
         return getRuleByEntityType(normalizedEntity);
     }
 
-    /**
-     * Sinh mã thực tế an toàn đa luồng (concurrency-safe) từ cơ sở dữ liệu.
-     */
+    /** Sinh mã thực tế an toàn đa luồng (concurrency-safe) từ cơ sở dữ liệu. */
     @Transactional
     public String generateCode(String entityType, Map<String, String> context) {
         String normalizedEntity = entityType.trim().toUpperCase();
-        String sql = "SELECT pattern, scope_strategy FROM business_code_rule WHERE UPPER(entity_type) = ? AND is_active = true";
+        String sql =
+                "SELECT pattern, scope_strategy FROM business_code_rule WHERE UPPER(entity_type) ="
+                    + " ? AND is_active = true";
         List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql, normalizedEntity);
 
         if (rows.isEmpty()) {
-            throw new BusinessException(HttpStatus.NOT_FOUND, "RULE_NOT_FOUND", "Chưa cấu hình rule sinh mã cho: " + entityType);
+            throw new BusinessException(
+                    HttpStatus.NOT_FOUND,
+                    "RULE_NOT_FOUND",
+                    "Chưa cấu hình rule sinh mã cho: " + entityType);
         }
 
         String pattern = (String) rows.get(0).get("pattern");
@@ -172,7 +219,9 @@ public class BusinessCodeRuleService {
         if (context != null) {
             for (Map.Entry<String, String> entry : context.entrySet()) {
                 if (entry.getValue() != null) {
-                    result = result.replace("{" + entry.getKey().toUpperCase() + "}", entry.getValue());
+                    result =
+                            result.replace(
+                                    "{" + entry.getKey().toUpperCase() + "}", entry.getValue());
                 }
             }
         }
@@ -195,32 +244,43 @@ public class BusinessCodeRuleService {
     }
 
     private long getNextSequenceValue(String sequenceKey) {
-        String sql = """
-            INSERT INTO code_sequence_tracker (sequence_key, current_value, updated_at)
-            VALUES (?, 1, CURRENT_TIMESTAMP)
-            ON CONFLICT (sequence_key)
-            DO UPDATE SET 
-                current_value = code_sequence_tracker.current_value + 1,
-                updated_at = CURRENT_TIMESTAMP
-            RETURNING current_value;
-        """;
+        String sql =
+                """
+                    INSERT INTO code_sequence_tracker (sequence_key, current_value, updated_at)
+                    VALUES (?, 1, CURRENT_TIMESTAMP)
+                    ON CONFLICT (sequence_key)
+                    DO UPDATE SET
+                        current_value = code_sequence_tracker.current_value + 1,
+                        updated_at = CURRENT_TIMESTAMP
+                    RETURNING current_value;
+                """;
         Long val = jdbcTemplate.queryForObject(sql, Long.class, sequenceKey);
         return val != null ? val : 1L;
     }
 
-    private String buildSequenceKey(String entityType, String scopeStrategy, Map<String, String> context, String year) {
+    private String buildSequenceKey(
+            String entityType, String scopeStrategy, Map<String, String> context, String year) {
         if (scopeStrategy == null) {
             return entityType + "_GLOBAL";
         }
         return switch (scopeStrategy.toUpperCase()) {
             case "BY_YEAR" -> entityType + "_" + year;
             case "BY_TYPE_AND_YEAR" -> {
-                String scope = context != null && context.get("SCOPE") != null ? context.get("SCOPE") : "GEN";
-                String type = context != null && context.get("TYPE") != null ? context.get("TYPE") : "STD";
+                String scope =
+                        context != null && context.get("SCOPE") != null
+                                ? context.get("SCOPE")
+                                : "GEN";
+                String type =
+                        context != null && context.get("TYPE") != null
+                                ? context.get("TYPE")
+                                : "STD";
                 yield String.format("%s_%s_%s_%s", entityType, scope, type, year);
             }
             case "BY_PORT" -> {
-                String port = context != null && context.get("PORT") != null ? context.get("PORT") : "ANY";
+                String port =
+                        context != null && context.get("PORT") != null
+                                ? context.get("PORT")
+                                : "ANY";
                 yield entityType + "_" + port;
             }
             default -> entityType + "_GLOBAL";
@@ -229,23 +289,74 @@ public class BusinessCodeRuleService {
 
     private List<TokenMetadata> getSupportedTokens(String entityType) {
         List<TokenMetadata> tokens = new ArrayList<>();
-        tokens.add(TokenMetadata.builder().key("{ENTITY}").label("Tên thực thể (" + entityType + ")").example(entityType).build());
-        tokens.add(TokenMetadata.builder().key("{YYYY}").label("Năm (4 số)").example("2026").build());
+        tokens.add(
+                TokenMetadata.builder()
+                        .key("{ENTITY}")
+                        .label("Tên thực thể (" + entityType + ")")
+                        .example(entityType)
+                        .build());
+        tokens.add(
+                TokenMetadata.builder().key("{YYYY}").label("Năm (4 số)").example("2026").build());
         tokens.add(TokenMetadata.builder().key("{YY}").label("Năm (2 số)").example("26").build());
-        tokens.add(TokenMetadata.builder().key("{SEQ:3}").label("STT 3 chữ số").example("001").build());
-        tokens.add(TokenMetadata.builder().key("{SEQ:4}").label("STT 4 chữ số").example("0001").build());
-        tokens.add(TokenMetadata.builder().key("{SEQ:5}").label("STT 5 chữ số").example("00001").build());
+        tokens.add(
+                TokenMetadata.builder()
+                        .key("{SEQ:3}")
+                        .label("STT 3 chữ số")
+                        .example("001")
+                        .build());
+        tokens.add(
+                TokenMetadata.builder()
+                        .key("{SEQ:4}")
+                        .label("STT 4 chữ số")
+                        .example("0001")
+                        .build());
+        tokens.add(
+                TokenMetadata.builder()
+                        .key("{SEQ:5}")
+                        .label("STT 5 chữ số")
+                        .example("00001")
+                        .build());
 
         if ("TRIP".equalsIgnoreCase(entityType)) {
-            tokens.add(TokenMetadata.builder().key("{SCOPE}").label("Phạm vi (EX: Quốc tế, DO: Nội địa)").example("EX").build());
-            tokens.add(TokenMetadata.builder().key("{TYPE}").label("Loại chuyến (IT: Lịch trình, CH: Thuê bao)").example("IT").build());
+            tokens.add(
+                    TokenMetadata.builder()
+                            .key("{SCOPE}")
+                            .label("Phạm vi (EX: Quốc tế, DO: Nội địa)")
+                            .example("EX")
+                            .build());
+            tokens.add(
+                    TokenMetadata.builder()
+                            .key("{TYPE}")
+                            .label("Loại chuyến (IT: Lịch trình, CH: Thuê bao)")
+                            .example("IT")
+                            .build());
         } else if ("SHIP".equalsIgnoreCase(entityType)) {
-            tokens.add(TokenMetadata.builder().key("{SHIP_TYPE}").label("Loại tàu (LUX: Du thuyền, EXP: Thám hiểm, CAT: Hai thân)").example("LUX").build());
+            tokens.add(
+                    TokenMetadata.builder()
+                            .key("{SHIP_TYPE}")
+                            .label("Loại tàu (LUX: Du thuyền, EXP: Thám hiểm, CAT: Hai thân)")
+                            .example("LUX")
+                            .build());
         } else if ("CRUISE".equalsIgnoreCase(entityType)) {
-            tokens.add(TokenMetadata.builder().key("{SHIP}").label("Mã tàu thực tế").example("SH01").build());
-            tokens.add(TokenMetadata.builder().key("{PORT}").label("Mã cảng xuất phát").example("SGN").build());
+            tokens.add(
+                    TokenMetadata.builder()
+                            .key("{SHIP}")
+                            .label("Mã tàu thực tế")
+                            .example("SH01")
+                            .build());
+            tokens.add(
+                    TokenMetadata.builder()
+                            .key("{PORT}")
+                            .label("Mã cảng xuất phát")
+                            .example("SGN")
+                            .build());
         } else if ("EXCURSION".equalsIgnoreCase(entityType)) {
-            tokens.add(TokenMetadata.builder().key("{PORT}").label("Mã cảng ghé").example("SGN").build());
+            tokens.add(
+                    TokenMetadata.builder()
+                            .key("{PORT}")
+                            .label("Mã cảng ghé")
+                            .example("SGN")
+                            .build());
         }
         return tokens;
     }

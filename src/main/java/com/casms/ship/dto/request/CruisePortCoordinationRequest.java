@@ -1,8 +1,11 @@
 package com.casms.ship.dto.request;
 
 import com.casms.ship.enums.CruiseStopArrivalMethod;
+
 import io.swagger.v3.oas.annotations.media.Schema;
+
 import jakarta.validation.constraints.Size;
+
 import lombok.Data;
 
 import java.time.Instant;
@@ -22,14 +25,18 @@ public class CruisePortCoordinationRequest {
     @Schema(description = "Phương thức cập cảng: BERTH hoặc TENDER", example = "BERTH")
     private CruiseStopArrivalMethod arrivalMethod;
 
-    @Schema(description = "Thời gian di chuyển bằng xuồng trung chuyển tender (phút)", example = "30")
+    @Schema(
+            description = "Thời gian di chuyển bằng xuồng trung chuyển tender (phút)",
+            example = "30")
     private Integer tenderTransferMinutes;
 
     @Schema(description = "Mã tham chiếu giấy phép cảng chính thức", example = "CLR-HPG-2026-001")
     @Size(max = 100, message = "Mã tham chiếu không vượt quá 100 ký tự")
     private String officialClearanceReference;
 
-    @Schema(description = "Cơ quan thẩm quyền cấp giấy phép", example = "Cảng vụ Hàng hải Hải Phòng")
+    @Schema(
+            description = "Cơ quan thẩm quyền cấp giấy phép",
+            example = "Cảng vụ Hàng hải Hải Phòng")
     @Size(max = 150, message = "Tên cơ quan không vượt quá 150 ký tự")
     private String clearanceAuthority;
 
@@ -49,21 +56,31 @@ public class CruisePortCoordinationRequest {
     @Size(max = 255, message = "Email không vượt quá 255 ký tự")
     private String portContactEmail;
 
-    @Schema(description = "Phạm vi trách nhiệm phối hợp", example = "Làm thủ tục cập bến, hoa tiêu và sắp xếp cầu cảng")
+    @Schema(
+            description = "Phạm vi trách nhiệm phối hợp",
+            example = "Làm thủ tục cập bến, hoa tiêu và sắp xếp cầu cảng")
     @Size(max = 500, message = "Trách nhiệm không vượt quá 500 ký tự")
     private String portContactResponsibility;
 
-    @Schema(description = "Trạng thái phối hợp cảng: NOT_STARTED, SUBMITTED, IN_COORDINATION, CONFIRMED, REJECTED", example = "CONFIRMED")
+    @Schema(
+            description =
+                    "Trạng thái phối hợp cảng: NOT_STARTED, SUBMITTED, IN_COORDINATION, CONFIRMED,"
+                        + " REJECTED",
+            example = "CONFIRMED")
     private String coordinationStatus;
 
-    @Schema(description = "Hạn chót hoàn tất phối hợp cảng (ISO-8601)", example = "2026-01-14T12:00:00Z")
+    @Schema(
+            description = "Hạn chót hoàn tất phối hợp cảng (ISO-8601)",
+            example = "2026-01-14T12:00:00Z")
     private Instant coordinationDeadline;
 
     @Schema(description = "Mã hồ sơ phối hợp cảng", example = "DOS-HPH-2026-001")
     @Size(max = 100, message = "Mã hồ sơ không vượt quá 100 ký tự")
     private String dossierReference;
 
-    @Schema(description = "Ghi chú điều phối cảng", example = "Đã gửi danh sách thuyền viên và chứng thư an toàn")
+    @Schema(
+            description = "Ghi chú điều phối cảng",
+            example = "Đã gửi danh sách thuyền viên và chứng thư an toàn")
     @Size(max = 1000, message = "Ghi chú không vượt quá 1000 ký tự")
     private String notes;
 }

@@ -3,7 +3,9 @@ package com.casms.identity.entity;
 import com.casms.booking.entity.BookingPassenger;
 import com.casms.identity.enums.PassengerBleIdentityStatus;
 import com.casms.ship.entity.Cruise;
+
 import jakarta.persistence.*;
+
 import lombok.Getter;
 import lombok.Setter;
 
@@ -14,12 +16,21 @@ import java.util.UUID;
 @Getter
 @Setter
 @Entity
-@Table(name = "\"PassengerBleIdentity\"", uniqueConstraints = {
-        @UniqueConstraint(name = "uk_passenger_ble_active_tag", columnNames = {"cruise_id", "active_ble_identifier"}),
-        @UniqueConstraint(name = "uk_passenger_ble_active_passenger", columnNames = {"cruise_id", "active_booking_passenger_id"})
-}, indexes = {
-        @Index(name = "idx_passenger_ble_history", columnList = "cruise_id,booking_passenger_id,assigned_at")
-})
+@Table(
+        name = "\"PassengerBleIdentity\"",
+        uniqueConstraints = {
+            @UniqueConstraint(
+                    name = "uk_passenger_ble_active_tag",
+                    columnNames = {"cruise_id", "active_ble_identifier"}),
+            @UniqueConstraint(
+                    name = "uk_passenger_ble_active_passenger",
+                    columnNames = {"cruise_id", "active_booking_passenger_id"})
+        },
+        indexes = {
+            @Index(
+                    name = "idx_passenger_ble_history",
+                    columnList = "cruise_id,booking_passenger_id,assigned_at")
+        })
 public class PassengerBleIdentity {
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)

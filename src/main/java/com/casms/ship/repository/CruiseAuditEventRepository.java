@@ -1,6 +1,7 @@
 package com.casms.ship.repository;
 
 import com.casms.ship.entity.CruiseAuditEvent;
+
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
@@ -12,7 +13,8 @@ public interface CruiseAuditEventRepository extends JpaRepository<CruiseAuditEve
 
     List<CruiseAuditEvent> findByCruise_CruiseIdOrderByTimestampDesc(UUID cruiseId);
 
-    List<CruiseAuditEvent> findByCruise_CruiseIdAndEventTypeOrderByTimestampDesc(UUID cruiseId, String eventType);
+    List<CruiseAuditEvent> findByCruise_CruiseIdAndEventTypeOrderByTimestampDesc(
+            UUID cruiseId, String eventType);
 
     boolean existsByEventIdentity(String eventIdentity);
 

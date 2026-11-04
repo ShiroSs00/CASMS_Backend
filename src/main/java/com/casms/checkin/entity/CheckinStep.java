@@ -3,7 +3,9 @@ package com.casms.checkin.entity;
 import com.casms.checkin.enums.CheckinStepCode;
 import com.casms.checkin.enums.CheckinStepStatus;
 import com.casms.identity.entity.User;
+
 import jakarta.persistence.*;
+
 import lombok.Getter;
 import lombok.Setter;
 
@@ -13,8 +15,9 @@ import java.util.UUID;
 @Getter
 @Setter
 @Entity
-@Table(name = "\"CheckinStep\"",
-       uniqueConstraints = @UniqueConstraint(columnNames = {"cruise_checkin_id", "step_code"}))
+@Table(
+        name = "\"CheckinStep\"",
+        uniqueConstraints = @UniqueConstraint(columnNames = {"cruise_checkin_id", "step_code"}))
 public class CheckinStep {
 
     @Id

@@ -4,7 +4,9 @@ import com.casms.ship.entity.Destination;
 import com.casms.ship.entity.Port;
 import com.casms.ship.enums.CruiseStopArrivalMethod;
 import com.casms.ship.enums.CruiseStopCallType;
+
 import jakarta.persistence.*;
+
 import lombok.Getter;
 import lombok.Setter;
 
@@ -16,11 +18,16 @@ import java.util.UUID;
 @Getter
 @Setter
 @Entity
-@Table(name = "\"TripPlanStop\"",
-       uniqueConstraints = {
-           @UniqueConstraint(name = "uq_version_stop_client_key", columnNames = {"version_id", "client_key"}),
-           @UniqueConstraint(name = "uq_version_stop_order", columnNames = {"version_id", "stop_order"})
-       })
+@Table(
+        name = "\"TripPlanStop\"",
+        uniqueConstraints = {
+            @UniqueConstraint(
+                    name = "uq_version_stop_client_key",
+                    columnNames = {"version_id", "client_key"}),
+            @UniqueConstraint(
+                    name = "uq_version_stop_order",
+                    columnNames = {"version_id", "stop_order"})
+        })
 public class TripPlanStop {
 
     @Id
@@ -81,9 +88,11 @@ public class TripPlanStop {
     @OneToMany(mappedBy = "stop", fetch = FetchType.LAZY)
     private List<TripPlanEntry> shoreEntries = new ArrayList<>();
 
-    @OneToMany(mappedBy="stop",cascade=CascadeType.ALL,orphanRemoval=true) @OrderBy("sequence ASC, clientKey ASC")
-    private List<DestinationVisit> visits=new ArrayList<>();
-    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.JSON) @Column(name="port_facts",columnDefinition="jsonb")
-    private com.casms.ship.dto.PortFacts portFacts;
+    @OneToMany(mappedBy = "stop", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OrderBy("sequence ASC, clientKey ASC")
+    private List<DestinationVisit> visits = new ArrayList<>();
 
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.JSON)
+    @Column(name = "port_facts", columnDefinition = "jsonb")
+    private com.casms.ship.dto.PortFacts portFacts;
 }

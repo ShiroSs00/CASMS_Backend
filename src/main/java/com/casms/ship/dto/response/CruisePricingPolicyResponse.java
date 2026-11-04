@@ -1,7 +1,9 @@
 package com.casms.ship.dto.response;
 
 import com.casms.ship.enums.PricingPolicyStatus;
+
 import io.swagger.v3.oas.annotations.media.Schema;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -20,6 +22,7 @@ public class CruisePricingPolicyResponse {
 
     @Schema(description = "ID chính sách giá")
     private UUID pricingPolicyId;
+
     private int policyNumber;
     private long revision;
     private UUID submittedBy;

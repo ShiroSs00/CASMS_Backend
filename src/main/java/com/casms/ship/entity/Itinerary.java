@@ -3,7 +3,9 @@ package com.casms.ship.entity;
 import com.casms.identity.entity.User;
 import com.casms.ship.enums.ItineraryStatus;
 import com.casms.ship.enums.ItineraryType;
+
 import jakarta.persistence.*;
+
 import lombok.Getter;
 import lombok.Setter;
 
@@ -19,9 +21,12 @@ import java.util.UUID;
 @Table(name = "\"Itinerary\"")
 public class Itinerary {
 
-    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.JSON) @Column(name="departure_port_facts",columnDefinition="jsonb")
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.JSON)
+    @Column(name = "departure_port_facts", columnDefinition = "jsonb")
     private com.casms.ship.dto.PortFacts departurePortFacts;
-    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.JSON) @Column(name="return_port_facts",columnDefinition="jsonb")
+
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.JSON)
+    @Column(name = "return_port_facts", columnDefinition = "jsonb")
     private com.casms.ship.dto.PortFacts returnPortFacts;
 
     @Id
@@ -74,7 +79,11 @@ public class Itinerary {
     @JoinColumn(name = "created_by_user_id")
     private User createdByUser;
 
-    @OneToMany(mappedBy = "itinerary", fetch = FetchType.LAZY, cascade = CascadeType.ALL, orphanRemoval = true)
+    @OneToMany(
+            mappedBy = "itinerary",
+            fetch = FetchType.LAZY,
+            cascade = CascadeType.ALL,
+            orphanRemoval = true)
     private List<ItineraryDay> days = new ArrayList<>();
 
     @Column(name = "created_at", nullable = false)

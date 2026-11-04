@@ -53,8 +53,8 @@ public class CruiseDownstreamHandoffResponse {
     private boolean manifestLocked;
 
     @Builder.Default
-    private List<CruiseManifestResponse.PassengerManifestItem> passengerManifest = new ArrayList<>();
+    private List<CruiseManifestResponse.PassengerManifestItem> passengerManifest =
+            new ArrayList<>();
 
-    @Builder.Default
-    private List<CruiseStaffResponse> staffAssignments = new ArrayList<>();
+    @Builder.Default private List<CruiseStaffResponse> staffAssignments = new ArrayList<>();
 }

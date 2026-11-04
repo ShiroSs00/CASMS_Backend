@@ -1,7 +1,9 @@
 package com.casms.trip.dto.response;
 
 import com.casms.trip.enums.TripScheduleVersionStatus;
+
 import io.swagger.v3.oas.annotations.media.Schema;
+
 import lombok.Data;
 
 import java.time.Instant;

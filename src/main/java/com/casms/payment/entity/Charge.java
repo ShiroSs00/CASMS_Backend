@@ -2,7 +2,9 @@ package com.casms.payment.entity;
 
 import com.casms.identity.entity.Passenger;
 import com.casms.identity.entity.User;
+
 import jakarta.persistence.*;
+
 import lombok.Getter;
 import lombok.Setter;
 

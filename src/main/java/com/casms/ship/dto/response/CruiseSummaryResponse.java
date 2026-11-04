@@ -1,6 +1,7 @@
 package com.casms.ship.dto.response;
 
 import com.casms.ship.enums.CruiseStatus;
+
 import lombok.Data;
 
 import java.time.Instant;

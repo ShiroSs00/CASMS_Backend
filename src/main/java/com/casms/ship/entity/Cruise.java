@@ -5,7 +5,9 @@ import com.casms.ship.enums.CruiseCruiseType;
 import com.casms.ship.enums.CruiseStatus;
 import com.casms.trip.entity.Trip;
 import com.casms.trip.entity.TripScheduleVersion;
+
 import jakarta.persistence.*;
+
 import lombok.Getter;
 import lombok.Setter;
 
@@ -15,8 +17,9 @@ import java.util.UUID;
 @Getter
 @Setter
 @Entity
-@Table(name = "\"Cruise\"",
-       uniqueConstraints = @UniqueConstraint(columnNames = {"cruise_id", "ship_id"}))
+@Table(
+        name = "\"Cruise\"",
+        uniqueConstraints = @UniqueConstraint(columnNames = {"cruise_id", "ship_id"}))
 public class Cruise {
 
     @Id
@@ -132,14 +135,19 @@ public class Cruise {
 
     @Column(name = "itinerary_mode", nullable = false)
     private String itineraryMode = "FIXED";
+
     @Column(name = "planned_scope")
     private String plannedScope;
+
     @Column(name = "booking_opens_at")
     private Instant bookingOpensAt;
+
     @Column(name = "booking_closes_at")
     private Instant bookingClosesAt;
+
     @Column(name = "guidance_opens_at")
     private Instant guidanceOpensAt;
+
     @Column(name = "guidance_closes_at")
     private Instant guidanceClosesAt;
 

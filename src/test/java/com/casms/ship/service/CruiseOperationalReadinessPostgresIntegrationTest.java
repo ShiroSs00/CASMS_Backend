@@ -1,5 +1,7 @@
 package com.casms.ship.service;
 
+import static org.junit.jupiter.api.Assertions.*;
+
 import com.casms.activity.entity.OnboardActivity;
 import com.casms.activity.entity.ShoreExcursion;
 import com.casms.activity.entity.Supplier;
@@ -11,7 +13,6 @@ import com.casms.activity.repository.OnboardActivityRepository;
 import com.casms.activity.repository.ShoreExcursionRepository;
 import com.casms.activity.repository.SupplierRepository;
 import com.casms.common.exception.BusinessException;
-import java.math.BigDecimal;
 import com.casms.identity.entity.User;
 import com.casms.identity.enums.Role;
 import com.casms.identity.enums.UserStatus;
@@ -35,20 +36,20 @@ import com.casms.trip.enums.TripPlanEntryKind;
 import com.casms.trip.enums.TripScheduleVersionStatus;
 import com.casms.trip.enums.TripStatus;
 import com.casms.trip.repository.*;
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalTime;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
-
-import static org.junit.jupiter.api.Assertions.*;
 
 @SpringBootTest
 public class CruiseOperationalReadinessPostgresIntegrationTest {
@@ -163,7 +164,8 @@ public class CruiseOperationalReadinessPostgresIntegrationTest {
         testStaffUser = userRepository.save(testStaffUser);
     }
 
-    private CruiseCreateRequest buildCreateRequest(String name, Instant dep, Instant ret, UUID shipId) {
+    private CruiseCreateRequest buildCreateRequest(
+            String name, Instant dep, Instant ret, UUID shipId) {
         CruiseCreateRequest req = new CruiseCreateRequest();
         req.setCruiseName(name);
         req.setDepartureDatetime(dep);
@@ -180,11 +182,13 @@ public class CruiseOperationalReadinessPostgresIntegrationTest {
         Instant dep = Instant.now().plus(30, ChronoUnit.DAYS);
         Instant ret = dep.plus(3, ChronoUnit.DAYS);
 
-        CruiseCreateRequest createReq = buildCreateRequest("Cruise Compatibility Test", dep, ret, null);
+        CruiseCreateRequest createReq =
+                buildCreateRequest("Cruise Compatibility Test", dep, ret, null);
         CruiseResponse cruise = cruiseService.create(createReq);
 
         // 1. Check compatibility on active configured ship
-        ShipCompatibilityResponse compat = cruiseService.checkShipCompatibility(cruise.getCruiseId(), testShip.getShipId());
+        ShipCompatibilityResponse compat =
+                cruiseService.checkShipCompatibility(cruise.getCruiseId(), testShip.getShipId());
         assertTrue(compat.isCompatible());
         assertTrue(compat.isShipActive());
         assertTrue(compat.isScheduleAvailable());
@@ -195,26 +199,40 @@ public class CruiseOperationalReadinessPostgresIntegrationTest {
         assertTrue(compat.getIssues().isEmpty());
 
         // 2. Assign ship
-        CruiseResponse assigned = cruiseService.assignShip(cruise.getCruiseId(), testShip.getShipId());
+        CruiseResponse assigned =
+                cruiseService.assignShip(cruise.getCruiseId(), testShip.getShipId());
         assertEquals(testShip.getShipId(), assigned.getShipId());
 
         // 3. Create second overlapping cruise and verify ship is no longer schedule-available
-        CruiseCreateRequest overlapReq = buildCreateRequest("Overlap Cruise", dep.plus(1, ChronoUnit.DAYS), ret.plus(1, ChronoUnit.DAYS), null);
+        CruiseCreateRequest overlapReq =
+                buildCreateRequest(
+                        "Overlap Cruise",
+                        dep.plus(1, ChronoUnit.DAYS),
+                        ret.plus(1, ChronoUnit.DAYS),
+                        null);
         CruiseResponse overlapCruise = cruiseService.create(overlapReq);
 
-        ShipCompatibilityResponse overlapCompat = cruiseService.checkShipCompatibility(overlapCruise.getCruiseId(), testShip.getShipId());
+        ShipCompatibilityResponse overlapCompat =
+                cruiseService.checkShipCompatibility(
+                        overlapCruise.getCruiseId(), testShip.getShipId());
         assertFalse(overlapCompat.isCompatible());
         assertFalse(overlapCompat.isScheduleAvailable());
         assertFalse(overlapCompat.getIssues().isEmpty());
 
         // 4. Verify assignShip fails with schedule conflict
-        BusinessException ex = assertThrows(BusinessException.class, () ->
-                cruiseService.assignShip(overlapCruise.getCruiseId(), testShip.getShipId()));
+        BusinessException ex =
+                assertThrows(
+                        BusinessException.class,
+                        () ->
+                                cruiseService.assignShip(
+                                        overlapCruise.getCruiseId(), testShip.getShipId()));
         assertEquals("SHIP_SCHEDULE_CONFLICT", ex.getCode());
     }
 
     @Test
-    @DisplayName("BE-04 / Concurrency: Hai request gán cùng tàu vào hai Cruise trùng thời gian không thể cùng thành công")
+    @DisplayName(
+            "BE-04 / Concurrency: Hai request gán cùng tàu vào hai Cruise trùng thời gian không thể"
+                + " cùng thành công")
     void test_E05_concurrency_ship_assignment() throws Exception {
         Instant dep = Instant.now().plus(40, ChronoUnit.DAYS);
         Instant ret = dep.plus(4, ChronoUnit.DAYS);
@@ -222,7 +240,12 @@ public class CruiseOperationalReadinessPostgresIntegrationTest {
         CruiseCreateRequest req1 = buildCreateRequest("Concurrent Cruise 1", dep, ret, null);
         CruiseResponse cruise1 = cruiseService.create(req1);
 
-        CruiseCreateRequest req2 = buildCreateRequest("Concurrent Cruise 2", dep.plus(1, ChronoUnit.DAYS), ret.minus(1, ChronoUnit.DAYS), null);
+        CruiseCreateRequest req2 =
+                buildCreateRequest(
+                        "Concurrent Cruise 2",
+                        dep.plus(1, ChronoUnit.DAYS),
+                        ret.minus(1, ChronoUnit.DAYS),
+                        null);
         CruiseResponse cruise2 = cruiseService.create(req2);
 
         int threadCount = 2;
@@ -233,31 +256,39 @@ public class CruiseOperationalReadinessPostgresIntegrationTest {
         AtomicInteger successCount = new AtomicInteger(0);
         AtomicInteger conflictCount = new AtomicInteger(0);
 
-        Future<?> f1 = executor.submit(() -> {
-            readyLatch.countDown();
-            try {
-                startLatch.await();
-                cruiseService.assignShip(cruise1.getCruiseId(), testShip.getShipId());
-                successCount.incrementAndGet();
-            } catch (BusinessException be) {
-                if ("SHIP_SCHEDULE_CONFLICT".equals(be.getCode())) {
-                    conflictCount.incrementAndGet();
-                }
-            } catch (Exception ignored) {}
-        });
+        Future<?> f1 =
+                executor.submit(
+                        () -> {
+                            readyLatch.countDown();
+                            try {
+                                startLatch.await();
+                                cruiseService.assignShip(
+                                        cruise1.getCruiseId(), testShip.getShipId());
+                                successCount.incrementAndGet();
+                            } catch (BusinessException be) {
+                                if ("SHIP_SCHEDULE_CONFLICT".equals(be.getCode())) {
+                                    conflictCount.incrementAndGet();
+                                }
+                            } catch (Exception ignored) {
+                            }
+                        });
 
-        Future<?> f2 = executor.submit(() -> {
-            readyLatch.countDown();
-            try {
-                startLatch.await();
-                cruiseService.assignShip(cruise2.getCruiseId(), testShip.getShipId());
-                successCount.incrementAndGet();
-            } catch (BusinessException be) {
-                if ("SHIP_SCHEDULE_CONFLICT".equals(be.getCode())) {
-                    conflictCount.incrementAndGet();
-                }
-            } catch (Exception ignored) {}
-        });
+        Future<?> f2 =
+                executor.submit(
+                        () -> {
+                            readyLatch.countDown();
+                            try {
+                                startLatch.await();
+                                cruiseService.assignShip(
+                                        cruise2.getCruiseId(), testShip.getShipId());
+                                successCount.incrementAndGet();
+                            } catch (BusinessException be) {
+                                if ("SHIP_SCHEDULE_CONFLICT".equals(be.getCode())) {
+                                    conflictCount.incrementAndGet();
+                                }
+                            } catch (Exception ignored) {
+                            }
+                        });
 
         readyLatch.await(5, TimeUnit.SECONDS);
         startLatch.countDown();
@@ -268,11 +299,16 @@ public class CruiseOperationalReadinessPostgresIntegrationTest {
 
         // Exactly one cruise must succeed, and the other must be rejected
         assertEquals(1, successCount.get(), "Exactly one concurrent assignment must succeed");
-        assertEquals(1, conflictCount.get(), "The other concurrent assignment must get SHIP_SCHEDULE_CONFLICT");
+        assertEquals(
+                1,
+                conflictCount.get(),
+                "The other concurrent assignment must get SHIP_SCHEDULE_CONFLICT");
     }
 
     @Test
-    @DisplayName("BE-05 / E06, E30: Operational Program Mapping từ TripPlanEntry sang OnboardActivity và ShoreExcursion")
+    @DisplayName(
+            "BE-05 / E06, E30: Operational Program Mapping từ TripPlanEntry sang OnboardActivity và"
+                + " ShoreExcursion")
     void test_E06_and_E30_operational_program_mapping() {
         // 1. Create Trip and published TripScheduleVersion with Plan Entries
         Trip trip = new Trip();
@@ -365,17 +401,21 @@ public class CruiseOperationalReadinessPostgresIntegrationTest {
         Instant dep = Instant.now().plus(50, ChronoUnit.DAYS);
         Instant ret = dep.plus(3, ChronoUnit.DAYS);
 
-        CruiseCreateRequest createReq = buildCreateRequest("Cruise Operational Program Test", dep, ret, testShip.getShipId());
+        CruiseCreateRequest createReq =
+                buildCreateRequest(
+                        "Cruise Operational Program Test", dep, ret, testShip.getShipId());
         createReq.setSourceVersionId(version.getVersionId());
         CruiseResponse cruise = cruiseService.create(createReq);
 
         // 3. Verify programs are synced
-        OperationalProgramSyncResponse syncRes = operationalProgramMappingService.syncProgramsForCruise(cruise.getCruiseId());
+        OperationalProgramSyncResponse syncRes =
+                operationalProgramMappingService.syncProgramsForCruise(cruise.getCruiseId());
         assertEquals(1, syncRes.getOnboardActivitiesCount());
         assertEquals(1, syncRes.getShoreExcursionsCount());
 
         // Verify OnboardActivity record in database
-        List<OnboardActivity> activities = onboardActivityRepository.findByCruise_CruiseId(cruise.getCruiseId());
+        List<OnboardActivity> activities =
+                onboardActivityRepository.findByCruise_CruiseId(cruise.getCruiseId());
         assertEquals(1, activities.size());
         OnboardActivity act = activities.get(0);
         assertEquals("Lớp Học Nấu Ăn OCV", act.getActivityName());
@@ -388,25 +428,30 @@ public class CruiseOperationalReadinessPostgresIntegrationTest {
         assertTrue(excCount >= 1);
 
         // 4. Retry / Idempotency check: syncing again must not duplicate activities or excursions
-        OperationalProgramSyncResponse retrySync = operationalProgramMappingService.syncProgramsForCruise(cruise.getCruiseId());
+        OperationalProgramSyncResponse retrySync =
+                operationalProgramMappingService.syncProgramsForCruise(cruise.getCruiseId());
         assertEquals(1, retrySync.getOnboardActivitiesCount());
         assertEquals(1, retrySync.getShoreExcursionsCount());
 
-        List<OnboardActivity> activitiesAfterRetry = onboardActivityRepository.findByCruise_CruiseId(cruise.getCruiseId());
+        List<OnboardActivity> activitiesAfterRetry =
+                onboardActivityRepository.findByCruise_CruiseId(cruise.getCruiseId());
         assertEquals(1, activitiesAfterRetry.size(), "Activities must not be duplicated on retry");
     }
 
     @Test
-    @DisplayName("BE-06 / E21, E22, E23: Kiểm tra nhân sự và quy định (Staff & Regulation Readiness)")
+    @DisplayName(
+            "BE-06 / E21, E22, E23: Kiểm tra nhân sự và quy định (Staff & Regulation Readiness)")
     void test_E21_E22_E23_staff_and_regulation_readiness() {
         Instant dep = Instant.now().plus(60, ChronoUnit.DAYS);
         Instant ret = dep.plus(3, ChronoUnit.DAYS);
 
-        CruiseCreateRequest createReq = buildCreateRequest("Staff Readiness Test Cruise", dep, ret, testShip.getShipId());
+        CruiseCreateRequest createReq =
+                buildCreateRequest("Staff Readiness Test Cruise", dep, ret, testShip.getShipId());
         CruiseResponse cruise = cruiseService.create(createReq);
 
         // 1. Without Captain: readiness should flag missing captain
-        CruiseReadinessResponse unready = cruiseService.validateOperationalReadiness(cruise.getCruiseId());
+        CruiseReadinessResponse unready =
+                cruiseService.validateOperationalReadiness(cruise.getCruiseId());
         assertFalse(unready.isCaptainAssigned());
         assertFalse(unready.isReady());
         assertTrue(unready.getBlockers().contains("MISSING_CAPTAIN"));
@@ -420,23 +465,28 @@ public class CruiseOperationalReadinessPostgresIntegrationTest {
         cruiseStaffService.assignStaff(cruise.getCruiseId(), staffReq, testStaffUser.getUserId());
 
         // 3. Re-evaluate readiness: Captain is now assigned
-        CruiseReadinessResponse readyWithStaff = cruiseService.validateOperationalReadiness(cruise.getCruiseId());
+        CruiseReadinessResponse readyWithStaff =
+                cruiseService.validateOperationalReadiness(cruise.getCruiseId());
         assertTrue(readyWithStaff.isCaptainAssigned());
         assertTrue(readyWithStaff.isStaffAssigned());
         assertFalse(readyWithStaff.getBlockers().contains("MISSING_CAPTAIN"));
     }
 
     @Test
-    @DisplayName("BE-10 / E08, E10, E14, E15, E28, E29: Đánh giá tác động thay đổi, Stale Revision và Recovery Tasks")
+    @DisplayName(
+            "BE-10 / E08, E10, E14, E15, E28, E29: Đánh giá tác động thay đổi, Stale Revision và"
+                + " Recovery Tasks")
     void test_BE10_change_impact_and_recovery_tasks() {
         Instant dep = Instant.now().plus(70, ChronoUnit.DAYS);
         Instant ret = dep.plus(3, ChronoUnit.DAYS);
 
-        CruiseCreateRequest createReq = buildCreateRequest("Change Impact Test Cruise", dep, ret, testShip.getShipId());
+        CruiseCreateRequest createReq =
+                buildCreateRequest("Change Impact Test Cruise", dep, ret, testShip.getShipId());
         CruiseResponse cruise = cruiseService.create(createReq);
 
         // 1. Preview Ship Change Impact
-        ShipChangeImpactResponse shipImpact = cruiseService.previewShipChangeImpact(cruise.getCruiseId(), secondShip.getShipId());
+        ShipChangeImpactResponse shipImpact =
+                cruiseService.previewShipChangeImpact(cruise.getCruiseId(), secondShip.getShipId());
         assertNotNull(shipImpact);
         assertEquals(cruise.getCruiseId(), shipImpact.getCruiseId());
         assertEquals(testShip.getShipId(), shipImpact.getCurrentShipId());
@@ -447,43 +497,56 @@ public class CruiseOperationalReadinessPostgresIntegrationTest {
         Instant shiftedDep = dep.plus(2, ChronoUnit.DAYS);
         Instant shiftedRet = ret.plus(2, ChronoUnit.DAYS);
 
-        CruiseChangeImpactRequest impactReq = CruiseChangeImpactRequest.builder()
-                .newDepartureDatetime(shiftedDep)
-                .newReturnDatetime(shiftedRet)
-                .newShipId(secondShip.getShipId())
-                .expectedRevision(cruise.getRevision())
-                .reason("Điều chỉnh theo điều kiện thủy triều")
-                .build();
+        CruiseChangeImpactRequest impactReq =
+                CruiseChangeImpactRequest.builder()
+                        .newDepartureDatetime(shiftedDep)
+                        .newReturnDatetime(shiftedRet)
+                        .newShipId(secondShip.getShipId())
+                        .expectedRevision(cruise.getRevision())
+                        .reason("Điều chỉnh theo điều kiện thủy triều")
+                        .build();
 
-        CruiseChangeImpactResponse changeImpact = cruiseImpactAssessmentService.previewChangeImpact(cruise.getCruiseId(), impactReq);
+        CruiseChangeImpactResponse changeImpact =
+                cruiseImpactAssessmentService.previewChangeImpact(cruise.getCruiseId(), impactReq);
         assertTrue(changeImpact.isScheduleImpacted());
         assertEquals(2, changeImpact.getDateShiftDays());
         assertTrue(changeImpact.isShipImpacted());
         assertTrue(changeImpact.isCanProceed());
 
         // 3. Optimistic locking / Stale Revision check (E08)
-        CruiseChangeImpactRequest staleReq = CruiseChangeImpactRequest.builder()
-                .newDepartureDatetime(shiftedDep)
-                .newReturnDatetime(shiftedRet)
-                .expectedRevision(cruise.getRevision() + 99L) // Wrong revision
-                .build();
-        BusinessException staleEx = assertThrows(BusinessException.class, () ->
-                cruiseImpactAssessmentService.previewChangeImpact(cruise.getCruiseId(), staleReq));
+        CruiseChangeImpactRequest staleReq =
+                CruiseChangeImpactRequest.builder()
+                        .newDepartureDatetime(shiftedDep)
+                        .newReturnDatetime(shiftedRet)
+                        .expectedRevision(cruise.getRevision() + 99L) // Wrong revision
+                        .build();
+        BusinessException staleEx =
+                assertThrows(
+                        BusinessException.class,
+                        () ->
+                                cruiseImpactAssessmentService.previewChangeImpact(
+                                        cruise.getCruiseId(), staleReq));
         assertEquals("STALE_REVISION", staleEx.getCode());
 
         // 4. Generate and persist impact tasks (C17)
-        List<CruiseImpactTaskResponse> tasks = cruiseImpactAssessmentService.generateAndPersistImpactTasks(cruise.getCruiseId(), impactReq);
+        List<CruiseImpactTaskResponse> tasks =
+                cruiseImpactAssessmentService.generateAndPersistImpactTasks(
+                        cruise.getCruiseId(), impactReq);
         assertNotNull(tasks);
 
         // 5. Query persisted tasks
-        List<CruiseImpactTaskResponse> list = cruiseImpactAssessmentService.listTasks(cruise.getCruiseId(), null);
+        List<CruiseImpactTaskResponse> list =
+                cruiseImpactAssessmentService.listTasks(cruise.getCruiseId(), null);
         assertNotNull(list);
 
         // 6. Test resolving a task if tasks were generated
         if (!list.isEmpty()) {
             CruiseImpactTaskResponse firstTask = list.get(0);
-            CruiseImpactTaskResponse resolved = cruiseImpactAssessmentService.resolveTask(
-                    firstTask.getTaskId(), "Đã cập nhật hệ thống và xác nhận đối tác", testStaffUser.getUserId());
+            CruiseImpactTaskResponse resolved =
+                    cruiseImpactAssessmentService.resolveTask(
+                            firstTask.getTaskId(),
+                            "Đã cập nhật hệ thống và xác nhận đối tác",
+                            testStaffUser.getUserId());
             assertEquals("RESOLVED", resolved.getStatus());
             assertEquals("Đã cập nhật hệ thống và xác nhận đối tác", resolved.getResolutionNotes());
         }

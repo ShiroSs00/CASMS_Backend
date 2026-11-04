@@ -13,8 +13,10 @@ import com.casms.ship.enums.PortStatus;
 import com.casms.ship.repository.DestinationRepository;
 import com.casms.ship.repository.PortRepository;
 import com.casms.ship.util.PortTimeZoneHelper;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -41,16 +43,23 @@ public class PortService {
 
         String portCode = request.getPortCode().trim().toUpperCase(java.util.Locale.ROOT);
         if (portRepository.existsByPortCode(portCode)) {
-            throw new BusinessException("PORT_CODE_EXISTS", "Port code already exists: " + request.getPortCode());
+            throw new BusinessException(
+                    "PORT_CODE_EXISTS", "Port code already exists: " + request.getPortCode());
         }
 
         Destination destination = null;
         if (request.getDestinationId() != null) {
-            destination = destinationRepository.findById(request.getDestinationId())
-                    .orElseThrow(() -> new ResourceNotFoundException("Destination", request.getDestinationId()));
+            destination =
+                    destinationRepository
+                            .findById(request.getDestinationId())
+                            .orElseThrow(
+                                    () ->
+                                            new ResourceNotFoundException(
+                                                    "Destination", request.getDestinationId()));
         }
 
-        String effectiveCountryCode = PortTimeZoneHelper.requireCountryCode(request.getCountryCode());
+        String effectiveCountryCode =
+                PortTimeZoneHelper.requireCountryCode(request.getCountryCode());
         String timeZoneId = PortTimeZoneHelper.requirePortTimeZone(request.getTimeZoneId());
 
         Port port = new Port();
@@ -64,11 +73,15 @@ public class PortService {
         port.setLongitude(request.getLongitude());
         validateCoordinates(request.getLatitude(), request.getLongitude());
         port.setCoordinateSource(newCoordinateSource(request.getCoordinateSource()));
-        port.setLocationType(request.getLocationType() != null ? request.getLocationType() : PortLocationType.PORT);
+        port.setLocationType(
+                request.getLocationType() != null
+                        ? request.getLocationType()
+                        : PortLocationType.PORT);
         port.setStatus(request.getStatus() != null ? request.getStatus() : PortStatus.ACTIVE);
 
         port = portRepository.saveAndFlush(port);
-        auditService.recordDirectoryMutation("Port", port.getPortId(), "CREATE", java.util.Map.of(), snapshot(port));
+        auditService.recordDirectoryMutation(
+                "Port", port.getPortId(), "CREATE", java.util.Map.of(), snapshot(port));
         return mapToResponse(port);
     }
 
@@ -78,12 +91,18 @@ public class PortService {
     }
 
     @Transactional(readOnly = true)
-    public Page<PortResponse> list(List<String> countryCodes, PortStatus status, String search, Pageable pageable) {
-        List<String> normalizedCountries = (countryCodes != null && !countryCodes.isEmpty())
-                ? countryCodes.stream().filter(c -> c != null && !c.isBlank()).map(c -> c.trim().toUpperCase()).toList()
-                : null;
+    public Page<PortResponse> list(
+            List<String> countryCodes, PortStatus status, String search, Pageable pageable) {
+        List<String> normalizedCountries =
+                (countryCodes != null && !countryCodes.isEmpty())
+                        ? countryCodes.stream()
+                                .filter(c -> c != null && !c.isBlank())
+                                .map(c -> c.trim().toUpperCase())
+                                .toList()
+                        : null;
         String normalizedSearch = (search != null && !search.isBlank()) ? search.trim() : null;
-        return portRepository.findPortsWithFilters(normalizedCountries, status, normalizedSearch, pageable)
+        return portRepository
+                .findPortsWithFilters(normalizedCountries, status, normalizedSearch, pageable)
                 .map(this::mapToResponse);
     }
 
@@ -94,11 +113,17 @@ public class PortService {
 
     @Transactional(readOnly = true)
     public List<PortResponse> listAllActive(List<String> countryCodes, String search) {
-        List<String> normalizedCountries = (countryCodes != null && !countryCodes.isEmpty())
-                ? countryCodes.stream().filter(c -> c != null && !c.isBlank()).map(c -> c.trim().toUpperCase()).toList()
-                : null;
+        List<String> normalizedCountries =
+                (countryCodes != null && !countryCodes.isEmpty())
+                        ? countryCodes.stream()
+                                .filter(c -> c != null && !c.isBlank())
+                                .map(c -> c.trim().toUpperCase())
+                                .toList()
+                        : null;
         String normalizedSearch = (search != null && !search.isBlank()) ? search.trim() : null;
-        return portRepository.findActivePortsWithFilters(normalizedCountries, normalizedSearch).stream()
+        return portRepository
+                .findActivePortsWithFilters(normalizedCountries, normalizedSearch)
+                .stream()
                 .map(this::mapToResponse)
                 .collect(Collectors.toList());
     }
@@ -116,9 +141,14 @@ public class PortService {
 
     @Transactional(readOnly = true)
     public TimeZoneOptionResponse resolveTimeZoneByCountry(String countryCode) {
-        String tzId = PortTimeZoneHelper.resolveDefaultTimeZoneByCountry(countryCode)
-                .orElseThrow(() -> new BusinessException("TIME_ZONE_NOT_FOUND",
-                        "Không tìm thấy múi giờ mặc định cho quốc gia: " + countryCode));
+        String tzId =
+                PortTimeZoneHelper.resolveDefaultTimeZoneByCountry(countryCode)
+                        .orElseThrow(
+                                () ->
+                                        new BusinessException(
+                                                "TIME_ZONE_NOT_FOUND",
+                                                "Không tìm thấy múi giờ mặc định cho quốc gia: "
+                                                        + countryCode));
         String offset = PortTimeZoneHelper.calculateUtcOffset(tzId);
         String display = PortTimeZoneHelper.formatTimeZoneDisplay(tzId);
         String localTime = PortTimeZoneHelper.getCurrentLocalTimeIso(tzId);
@@ -137,9 +167,12 @@ public class PortService {
     public PortResponse update(UUID portId, PortUpdateRequest request) {
         Port port = getPortById(portId);
         var before = snapshot(port);
-        boolean geographic = request.getCoordinateSource() != null
-                || (request.getLatitude() != null && !sameNumber(request.getLatitude(), port.getLatitude()))
-                || (request.getLongitude() != null && !sameNumber(request.getLongitude(), port.getLongitude()));
+        boolean geographic =
+                request.getCoordinateSource() != null
+                        || (request.getLatitude() != null
+                                && !sameNumber(request.getLatitude(), port.getLatitude()))
+                        || (request.getLongitude() != null
+                                && !sameNumber(request.getLongitude(), port.getLongitude()));
         if (geographic) {
             validateCoordinates(request.getLatitude(), request.getLongitude());
             var selectedSource = newCoordinateSource(request.getCoordinateSource());
@@ -147,29 +180,39 @@ public class PortService {
             port.setLongitude(request.getLongitude());
             port.setCoordinateSource(selectedSource);
         }
-        // An unrelated PATCH (including unchanged legacy coordinates) keeps existing provenance verbatim.
+        // An unrelated PATCH (including unchanged legacy coordinates) keeps existing provenance
+        // verbatim.
         PortTimeZoneHelper.requireCountryCode(port.getCountryCode());
-        PortTimeZoneHelper.requirePortTimeZone(request.getTimeZoneId() == null ? port.getTimeZoneId() : request.getTimeZoneId());
+        PortTimeZoneHelper.requirePortTimeZone(
+                request.getTimeZoneId() == null ? port.getTimeZoneId() : request.getTimeZoneId());
 
         if (request.getPortName() != null) {
-            if (request.getPortName().isBlank()) throw new BusinessException("INVALID_PORT_NAME", "Tên cảng không được để trống.");
+            if (request.getPortName().isBlank())
+                throw new BusinessException("INVALID_PORT_NAME", "Tên cảng không được để trống.");
             port.setPortName(request.getPortName().trim());
         }
         if (request.getDescription() != null) {
             port.setDescription(request.getDescription());
         }
         if (request.getDestinationId() != null) {
-            Destination destination = destinationRepository.findById(request.getDestinationId())
-                    .orElseThrow(() -> new ResourceNotFoundException("Destination", request.getDestinationId()));
+            Destination destination =
+                    destinationRepository
+                            .findById(request.getDestinationId())
+                            .orElseThrow(
+                                    () ->
+                                            new ResourceNotFoundException(
+                                                    "Destination", request.getDestinationId()));
             port.setDestination(destination);
         }
-        if (request.getTimeZoneId() != null) port.setTimeZoneId(PortTimeZoneHelper.requirePortTimeZone(request.getTimeZoneId()));
+        if (request.getTimeZoneId() != null)
+            port.setTimeZoneId(PortTimeZoneHelper.requirePortTimeZone(request.getTimeZoneId()));
         if (request.getLocationType() != null) {
             port.setLocationType(request.getLocationType());
         }
 
         port = portRepository.saveAndFlush(port);
-        auditService.recordDirectoryMutation("Port", port.getPortId(), "UPDATE", before, snapshot(port));
+        auditService.recordDirectoryMutation(
+                "Port", port.getPortId(), "UPDATE", before, snapshot(port));
         return mapToResponse(port);
     }
 
@@ -178,19 +221,16 @@ public class PortService {
         Port port = getPortById(portId);
 
         if (portRepository.hasDirectoryReferences(portId)) {
-            throw new BusinessException(org.springframework.http.HttpStatus.CONFLICT, "PORT_IN_USE", "Cảng đang được lịch trình hoặc chuyến khởi hành tham chiếu; không thể xóa.");
+            throw new BusinessException(
+                    org.springframework.http.HttpStatus.CONFLICT,
+                    "PORT_IN_USE",
+                    "Cảng đang được lịch trình hoặc chuyến khởi hành tham chiếu; không thể xóa.");
         }
 
         var before = snapshot(port);
-        try {
-            portRepository.delete(port);
-            // Historical storage keeps its foreign keys; never cascade-delete archived evidence.
-            portRepository.flush();
-        } catch (org.springframework.dao.DataIntegrityViolationException referenced) {
-            throw new BusinessException(org.springframework.http.HttpStatus.CONFLICT, "PORT_IN_USE",
-                    "Cảng đang được dữ liệu lịch sử tham chiếu; không thể xóa.");
-        }
-        auditService.recordDirectoryMutation("Port", portId, "DELETE_UNUSED", before, java.util.Map.of());
+        portRepository.delete(port);
+        auditService.recordDirectoryMutation(
+                "Port", portId, "DELETE_UNUSED", before, java.util.Map.of());
         log.info("Deleted unused port: {}", portId);
     }
 
@@ -207,7 +247,8 @@ public class PortService {
         PortTimeZoneHelper.requirePortTimeZone(port.getTimeZoneId());
         port.setStatus(PortStatus.ACTIVE);
         port = portRepository.saveAndFlush(port);
-        auditService.recordDirectoryMutation("Port", port.getPortId(), "ACTIVATE", before, snapshot(port));
+        auditService.recordDirectoryMutation(
+                "Port", port.getPortId(), "ACTIVATE", before, snapshot(port));
         log.info("Activated port: {}", portId);
         return mapToResponse(port);
     }
@@ -228,7 +269,8 @@ public class PortService {
         PortTimeZoneHelper.requirePortTimeZone(port.getTimeZoneId());
         port.setStatus(PortStatus.INACTIVE);
         port = portRepository.saveAndFlush(port);
-        auditService.recordDirectoryMutation("Port", port.getPortId(), "DEACTIVATE", before, snapshot(port));
+        auditService.recordDirectoryMutation(
+                "Port", port.getPortId(), "DEACTIVATE", before, snapshot(port));
         log.info("Deactivated port: {}", portId);
         return mapToResponse(port);
     }
@@ -250,21 +292,34 @@ public class PortService {
         return first != null && second != null && first.compareTo(second) == 0;
     }
 
-    private void validateCoordinates(java.math.BigDecimal latitude, java.math.BigDecimal longitude) {
-        if (latitude == null || longitude == null || latitude.abs().compareTo(java.math.BigDecimal.valueOf(90)) > 0
+    private void validateCoordinates(
+            java.math.BigDecimal latitude, java.math.BigDecimal longitude) {
+        if (latitude == null
+                || longitude == null
+                || latitude.abs().compareTo(java.math.BigDecimal.valueOf(90)) > 0
                 || longitude.abs().compareTo(java.math.BigDecimal.valueOf(180)) > 0) {
-            throw new BusinessException(org.springframework.http.HttpStatus.UNPROCESSABLE_ENTITY,
-                    "INVALID_PORT_COORDINATES", "Chọn kết quả Geocoding có đủ tọa độ hợp lệ.");
+            throw new BusinessException(
+                    org.springframework.http.HttpStatus.UNPROCESSABLE_ENTITY,
+                    "INVALID_PORT_COORDINATES",
+                    "Chọn kết quả Geocoding có đủ tọa độ hợp lệ.");
         }
     }
 
-    private com.casms.ship.dto.PortCoordinateSource newCoordinateSource(com.casms.ship.dto.PortCoordinateSource input) {
-        if (input == null || !"OPEN_METEO_GEOCODING".equals(input.getProvider()) || !"GEONAMES".equals(input.getDataset())
-                || !"GEOCODED_LOCALITY".equals(input.getCoordinateReferenceType()) || input.getExternalLocationId() == null
-                || input.getExternalLocationId() < 1 || input.getExternalLocationId() > 9007199254740991L
-                || input.getLocationName() == null || input.getLocationName().isBlank()) {
-            throw new BusinessException(org.springframework.http.HttpStatus.UNPROCESSABLE_ENTITY,
-                    "PORT_COORDINATE_SOURCE_REQUIRED", "Tạo cảng hoặc đổi tọa độ cần chọn kết quả GeoNames qua Open-Meteo hợp lệ.");
+    private com.casms.ship.dto.PortCoordinateSource newCoordinateSource(
+            com.casms.ship.dto.PortCoordinateSource input) {
+        if (input == null
+                || !"OPEN_METEO_GEOCODING".equals(input.getProvider())
+                || !"GEONAMES".equals(input.getDataset())
+                || !"GEOCODED_LOCALITY".equals(input.getCoordinateReferenceType())
+                || input.getExternalLocationId() == null
+                || input.getExternalLocationId() < 1
+                || input.getExternalLocationId() > 9007199254740991L
+                || input.getLocationName() == null
+                || input.getLocationName().isBlank()) {
+            throw new BusinessException(
+                    org.springframework.http.HttpStatus.UNPROCESSABLE_ENTITY,
+                    "PORT_COORDINATE_SOURCE_REQUIRED",
+                    "Tạo cảng hoặc đổi tọa độ cần chọn kết quả GeoNames qua Open-Meteo hợp lệ.");
         }
         var source = new com.casms.ship.dto.PortCoordinateSource();
         source.setProvider(input.getProvider());
@@ -280,8 +335,8 @@ public class PortService {
         return source;
     }
 
-    private java.util.Map<String,Object> snapshot(Port port) {
-        var fields = new java.util.LinkedHashMap<String,Object>();
+    private java.util.Map<String, Object> snapshot(Port port) {
+        var fields = new java.util.LinkedHashMap<String, Object>();
         fields.put("portId", port.getPortId());
         fields.put("portCode", port.getPortCode());
         fields.put("portName", port.getPortName());
@@ -292,7 +347,9 @@ public class PortService {
         fields.put("coordinateSource", port.getCoordinateSource());
         fields.put("description", port.getDescription());
         fields.put("locationType", port.getLocationType());
-        fields.put("destinationId", port.getDestination() == null ? null : port.getDestination().getDestinationId());
+        fields.put(
+                "destinationId",
+                port.getDestination() == null ? null : port.getDestination().getDestinationId());
         fields.put("status", port.getStatus());
         fields.put("createdAt", port.getCreatedAt());
         fields.put("updatedAt", port.getUpdatedAt());
@@ -300,7 +357,10 @@ public class PortService {
     }
 
     private Port getPortById(UUID portId) {
-        return (org.springframework.transaction.support.TransactionSynchronizationManager.isCurrentTransactionReadOnly() ? portRepository.findById(portId) : portRepository.lockDirectory(portId))
+        return (org.springframework.transaction.support.TransactionSynchronizationManager
+                                .isCurrentTransactionReadOnly()
+                        ? portRepository.findById(portId)
+                        : portRepository.lockDirectory(portId))
                 .orElseThrow(() -> new ResourceNotFoundException("Port", portId));
     }
 
@@ -318,7 +378,8 @@ public class PortService {
         res.setLatitude(port.getLatitude());
         res.setCoordinateSource(port.getCoordinateSource());
         res.setLongitude(port.getLongitude());
-        res.setLocationType(port.getLocationType() != null ? port.getLocationType() : PortLocationType.PORT);
+        res.setLocationType(
+                port.getLocationType() != null ? port.getLocationType() : PortLocationType.PORT);
         res.setStatus(port.getStatus());
         if (port.getDestination() != null) {
             res.setDestinationId(port.getDestination().getDestinationId());

@@ -1,9 +1,12 @@
 package com.casms.ship.service;
 
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.*;
+
 import com.casms.common.exception.BusinessException;
 import com.casms.ship.dto.request.PortCreateRequest;
 import com.casms.ship.dto.response.ItineraryDayResponse;
-import com.casms.ship.dto.response.PortResponse;
 import com.casms.ship.dto.response.PortSummaryResponse;
 import com.casms.ship.dto.response.TimeZoneOptionResponse;
 import com.casms.ship.entity.*;
@@ -16,6 +19,7 @@ import com.casms.ship.repository.ItineraryDayRepository;
 import com.casms.ship.repository.ItineraryRepository;
 import com.casms.ship.repository.PortRepository;
 import com.casms.ship.util.PortTimeZoneHelper;
+
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -24,62 +28,75 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
-import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.*;
-
 @ExtendWith(MockitoExtension.class)
 class PortDestinationTimeZoneServiceTest {
 
-    @Mock
-    private PortRepository portRepository;
+    @Mock private PortRepository portRepository;
 
-    @Mock
-    private DestinationRepository destinationRepository;
+    @Mock private DestinationRepository destinationRepository;
 
-    @Mock
-    private ItineraryDayRepository itineraryDayRepository;
+    @Mock private ItineraryDayRepository itineraryDayRepository;
 
-    @Mock
-    private ItineraryRepository itineraryRepository;
+    @Mock private ItineraryRepository itineraryRepository;
 
-    @InjectMocks
-    private PortService portService;
+    @InjectMocks private PortService portService;
 
-    @InjectMocks
-    private DestinationService destinationService;
+    @InjectMocks private DestinationService destinationService;
 
-    @InjectMocks
-    private ItineraryDayService itineraryDayService;
+    @InjectMocks private ItineraryDayService itineraryDayService;
 
     @Test
-    @DisplayName("PortTimeZoneHelper: Suy luận múi giờ cho Châu Á, Châu Âu, Châu Mỹ và Châu Đại Dương")
+    @DisplayName(
+            "PortTimeZoneHelper: Suy luận múi giờ cho Châu Á, Châu Âu, Châu Mỹ và Châu Đại Dương")
     void testTimeZoneHelperAutoResolution() {
         // Châu Á
-        assertEquals("Asia/Tokyo", PortTimeZoneHelper.resolveDefaultTimeZoneByCountry("JP").orElseThrow());
-        assertEquals("Asia/Tokyo", PortTimeZoneHelper.resolveDefaultTimeZoneByCountry("jp").orElseThrow());
-        assertEquals("Asia/Ho_Chi_Minh", PortTimeZoneHelper.resolveDefaultTimeZoneByCountry("VN").orElseThrow());
-        assertEquals("Asia/Singapore", PortTimeZoneHelper.resolveDefaultTimeZoneByCountry("SG").orElseThrow());
-        assertEquals("Asia/Seoul", PortTimeZoneHelper.resolveDefaultTimeZoneByCountry("KR").orElseThrow());
+        assertEquals(
+                "Asia/Tokyo",
+                PortTimeZoneHelper.resolveDefaultTimeZoneByCountry("JP").orElseThrow());
+        assertEquals(
+                "Asia/Tokyo",
+                PortTimeZoneHelper.resolveDefaultTimeZoneByCountry("jp").orElseThrow());
+        assertEquals(
+                "Asia/Ho_Chi_Minh",
+                PortTimeZoneHelper.resolveDefaultTimeZoneByCountry("VN").orElseThrow());
+        assertEquals(
+                "Asia/Singapore",
+                PortTimeZoneHelper.resolveDefaultTimeZoneByCountry("SG").orElseThrow());
+        assertEquals(
+                "Asia/Seoul",
+                PortTimeZoneHelper.resolveDefaultTimeZoneByCountry("KR").orElseThrow());
 
         // Châu Âu & Địa Trung Hải
-        assertEquals("Europe/Paris", PortTimeZoneHelper.resolveDefaultTimeZoneByCountry("FR").orElseThrow());
-        assertEquals("Europe/Rome", PortTimeZoneHelper.resolveDefaultTimeZoneByCountry("IT").orElseThrow());
-        assertEquals("Europe/London", PortTimeZoneHelper.resolveDefaultTimeZoneByCountry("GB").orElseThrow());
+        assertEquals(
+                "Europe/Paris",
+                PortTimeZoneHelper.resolveDefaultTimeZoneByCountry("FR").orElseThrow());
+        assertEquals(
+                "Europe/Rome",
+                PortTimeZoneHelper.resolveDefaultTimeZoneByCountry("IT").orElseThrow());
+        assertEquals(
+                "Europe/London",
+                PortTimeZoneHelper.resolveDefaultTimeZoneByCountry("GB").orElseThrow());
 
         // Châu Mỹ & Caribbean
-        assertEquals("America/New_York", PortTimeZoneHelper.resolveDefaultTimeZoneByCountry("US").orElseThrow());
-        assertEquals("America/Nassau", PortTimeZoneHelper.resolveDefaultTimeZoneByCountry("BS").orElseThrow());
+        assertEquals(
+                "America/New_York",
+                PortTimeZoneHelper.resolveDefaultTimeZoneByCountry("US").orElseThrow());
+        assertEquals(
+                "America/Nassau",
+                PortTimeZoneHelper.resolveDefaultTimeZoneByCountry("BS").orElseThrow());
 
         // Châu Đại Dương
-        assertEquals("Australia/Sydney", PortTimeZoneHelper.resolveDefaultTimeZoneByCountry("AU").orElseThrow());
-        assertEquals("Pacific/Auckland", PortTimeZoneHelper.resolveDefaultTimeZoneByCountry("NZ").orElseThrow());
+        assertEquals(
+                "Australia/Sydney",
+                PortTimeZoneHelper.resolveDefaultTimeZoneByCountry("AU").orElseThrow());
+        assertEquals(
+                "Pacific/Auckland",
+                PortTimeZoneHelper.resolveDefaultTimeZoneByCountry("NZ").orElseThrow());
 
         assertTrue(PortTimeZoneHelper.isValidTimeZoneId("Asia/Tokyo"));
         assertTrue(PortTimeZoneHelper.isValidTimeZoneId("Europe/Paris"));
@@ -92,34 +109,50 @@ class PortDestinationTimeZoneServiceTest {
         assertEquals("+09:00", PortTimeZoneHelper.calculateUtcOffset("Asia/Tokyo"));
         assertEquals("+07:00", PortTimeZoneHelper.calculateUtcOffset("Asia/Ho_Chi_Minh"));
         assertEquals("+08:00", PortTimeZoneHelper.calculateUtcOffset("Asia/Singapore"));
-        assertEquals("Asia/Tokyo (UTC+09:00)", PortTimeZoneHelper.formatTimeZoneDisplay("Asia/Tokyo"));
+        assertEquals(
+                "Asia/Tokyo (UTC+09:00)", PortTimeZoneHelper.formatTimeZoneDisplay("Asia/Tokyo"));
         assertNotNull(PortTimeZoneHelper.getCurrentLocalTimeIso("Asia/Tokyo"));
     }
 
     @Test
-    @DisplayName("PortTimeZoneHelper: Lấy danh sách múi giờ chuẩn IANA kèm gợi ý theo quốc gia và tìm kiếm")
+    @DisplayName(
+            "PortTimeZoneHelper: Lấy danh sách múi giờ chuẩn IANA kèm gợi ý theo quốc gia và tìm"
+                + " kiếm")
     void testGetSupportedTimeZoneOptions() {
-        List<TimeZoneOptionResponse> options = PortTimeZoneHelper.getSupportedTimeZoneOptions("Tokyo", "JP");
+        List<TimeZoneOptionResponse> options =
+                PortTimeZoneHelper.getSupportedTimeZoneOptions("Tokyo", "JP");
         assertFalse(options.isEmpty());
         assertTrue(options.stream().anyMatch(opt -> opt.getTimeZoneId().equals("Asia/Tokyo")));
 
-        TimeZoneOptionResponse tokyoOpt = options.stream()
-                .filter(opt -> opt.getTimeZoneId().equals("Asia/Tokyo"))
-                .findFirst().orElseThrow();
+        TimeZoneOptionResponse tokyoOpt =
+                options.stream()
+                        .filter(opt -> opt.getTimeZoneId().equals("Asia/Tokyo"))
+                        .findFirst()
+                        .orElseThrow();
         assertTrue(tokyoOpt.isRecommended());
         assertEquals("+09:00", tokyoOpt.getUtcOffset());
         assertNotNull(tokyoOpt.getCurrentLocalTime());
 
-        List<TimeZoneOptionResponse> parisOptions = PortTimeZoneHelper.getSupportedTimeZoneOptions("Paris", "FR");
-        assertTrue(parisOptions.stream().anyMatch(opt -> opt.getTimeZoneId().equals("Europe/Paris")));
+        List<TimeZoneOptionResponse> parisOptions =
+                PortTimeZoneHelper.getSupportedTimeZoneOptions("Paris", "FR");
+        assertTrue(
+                parisOptions.stream().anyMatch(opt -> opt.getTimeZoneId().equals("Europe/Paris")));
     }
 
     @Test
-    @DisplayName("PortService.create requires explicit business timezone and never defaults by country")
+    @DisplayName(
+            "PortService.create requires explicit business timezone and never defaults by country")
     void testCreatePortRequiresBusinessTimeZone() {
-        PortCreateRequest request=new PortCreateRequest();request.setPortCode("JPYOK");request.setPortName("Yokohama");request.setCountryCode("JP");
-        var error=assertThrows(com.casms.common.exception.BusinessException.class,()->portService.create(request));
-        assertEquals("TIME_ZONE_REQUIRED",error.getCode());verify(portRepository,never()).saveAndFlush(any());
+        PortCreateRequest request = new PortCreateRequest();
+        request.setPortCode("JPYOK");
+        request.setPortName("Yokohama");
+        request.setCountryCode("JP");
+        var error =
+                assertThrows(
+                        com.casms.common.exception.BusinessException.class,
+                        () -> portService.create(request));
+        assertEquals("TIME_ZONE_REQUIRED", error.getCode());
+        verify(portRepository, never()).saveAndFlush(any());
     }
 
     @Test
@@ -133,7 +166,8 @@ class PortDestinationTimeZoneServiceTest {
 
         when(portRepository.existsByPortCode("JPYOK")).thenReturn(false);
 
-        BusinessException exception = assertThrows(BusinessException.class, () -> portService.create(request));
+        BusinessException exception =
+                assertThrows(BusinessException.class, () -> portService.create(request));
         assertEquals("INVALID_TIME_ZONE", exception.getCode());
     }
 
@@ -148,7 +182,9 @@ class PortDestinationTimeZoneServiceTest {
     }
 
     @Test
-    @DisplayName("DestinationService.listPortsByDestination: Trả về danh sách cảng kèm thông tin múi giờ đầy đủ")
+    @DisplayName(
+            "DestinationService.listPortsByDestination: Trả về danh sách cảng kèm thông tin múi giờ"
+                + " đầy đủ")
     void testListPortsByDestinationEnrichesTimeZones() {
         UUID destinationId = UUID.randomUUID();
         Destination destination = new Destination();
@@ -219,7 +255,8 @@ class PortDestinationTimeZoneServiceTest {
 
         // Trường hợp nhập múi giờ hợp lệ
         when(itineraryDayRepository.findById(dayId)).thenReturn(Optional.of(day));
-        when(itineraryDayRepository.save(any(ItineraryDay.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(itineraryDayRepository.save(any(ItineraryDay.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
 
         ItineraryDayResponse validRes = itineraryDayService.setShipTimeZone(dayId, "Europe/Rome");
         assertNotNull(validRes);
@@ -227,13 +264,17 @@ class PortDestinationTimeZoneServiceTest {
         assertNotNull(validRes.getShipUtcOffset());
 
         // Trường hợp nhập múi giờ sai
-        BusinessException ex = assertThrows(BusinessException.class,
-                () -> itineraryDayService.setShipTimeZone(dayId, "Invalid/Mars_Time"));
+        BusinessException ex =
+                assertThrows(
+                        BusinessException.class,
+                        () -> itineraryDayService.setShipTimeZone(dayId, "Invalid/Mars_Time"));
         assertEquals("INVALID_TIME_ZONE", ex.getCode());
     }
 
     @Test
-    @DisplayName("ItineraryDayService.syncShipTimeZonesFromStops: Đồng bộ múi giờ tự động cho hải trình đa quốc gia (Singapore -> VN -> HK -> JP)")
+    @DisplayName(
+            "ItineraryDayService.syncShipTimeZonesFromStops: Đồng bộ múi giờ tự động cho hải trình"
+                + " đa quốc gia (Singapore -> VN -> HK -> JP)")
     void testSyncShipTimeZonesForMultiCountryItinerary() {
         UUID itineraryId = UUID.randomUUID();
         Itinerary itinerary = new Itinerary();
@@ -296,10 +337,13 @@ class PortDestinationTimeZoneServiceTest {
         List<ItineraryDay> days = List.of(day1, day2, day3, day4);
 
         when(itineraryRepository.findById(itineraryId)).thenReturn(Optional.of(itinerary));
-        when(itineraryDayRepository.findByItineraryItineraryIdOrderByDayNumberAsc(itineraryId)).thenReturn(days);
-        when(itineraryDayRepository.saveAll(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(itineraryDayRepository.findByItineraryItineraryIdOrderByDayNumberAsc(itineraryId))
+                .thenReturn(days);
+        when(itineraryDayRepository.saveAll(any()))
+                .thenAnswer(invocation -> invocation.getArgument(0));
 
-        List<ItineraryDayResponse> synced = itineraryDayService.syncShipTimeZonesFromStops(itineraryId);
+        List<ItineraryDayResponse> synced =
+                itineraryDayService.syncShipTimeZonesFromStops(itineraryId);
 
         assertEquals(4, synced.size());
 

@@ -1,7 +1,9 @@
 package com.casms.ship.dto.response;
 
 import com.casms.ship.enums.DestinationStatus;
+
 import io.swagger.v3.oas.annotations.media.Schema;
+
 import lombok.Data;
 
 import java.time.Instant;
@@ -12,7 +14,9 @@ import java.util.UUID;
 @Schema(description = "Thông tin chi tiết điểm đến")
 public class DestinationResponse {
 
-    @Schema(description = "ID duy nhất của điểm đến", example = "3fa85f64-5717-4562-b3fc-2c963f66afa6")
+    @Schema(
+            description = "ID duy nhất của điểm đến",
+            example = "3fa85f64-5717-4562-b3fc-2c963f66afa6")
     private UUID destinationId;
 
     @Schema(description = "Tên điểm đến", example = "Hạ Long")

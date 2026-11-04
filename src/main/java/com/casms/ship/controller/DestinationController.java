@@ -6,11 +6,15 @@ import com.casms.ship.dto.request.DestinationUpdateRequest;
 import com.casms.ship.dto.response.DestinationResponse;
 import com.casms.ship.dto.response.PortSummaryResponse;
 import com.casms.ship.service.DestinationService;
+
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
+
 import jakarta.validation.Valid;
+
 import lombok.RequiredArgsConstructor;
+
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
@@ -27,94 +31,136 @@ import java.util.UUID;
 public class DestinationController {
 
     private final DestinationService service;
-    @org.springframework.beans.factory.annotation.Autowired private com.casms.audit.AuditRepository directoryAudit;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.casms.audit.AuditRepository directoryAudit;
+
     @GetMapping("/{destinationId}/history")
     @PreAuthorize("hasRole('OPERATIONS_MANAGER') and hasAuthority('DESTINATION_READ')")
-    @Operation(summary="Lịch sử thay đổi danh mục",description="Audit thực tế của master; trước/sau khi có bằng chứng, không suy đoán lịch sử thiếu metadata.")
-    public ApiResponse<Page<com.casms.audit.AuditLog>> history(@PathVariable UUID destinationId,Pageable pageable){
-        service.detail(destinationId);return ApiResponse.success(directoryAudit.findByEntityIdOrderByOccurredAtDesc(destinationId,pageable));
+    @Operation(
+            summary = "Lịch sử thay đổi danh mục",
+            description =
+                    "Audit thực tế của master; trước/sau khi có bằng chứng, không suy đoán lịch sử"
+                        + " thiếu metadata.")
+    public ApiResponse<Page<com.casms.audit.AuditLog>> history(
+            @PathVariable UUID destinationId, Pageable pageable) {
+        service.detail(destinationId);
+        return ApiResponse.success(
+                directoryAudit.findByEntityIdOrderByOccurredAtDesc(destinationId, pageable));
     }
 
-
-    @Operation(summary = "Tạo điểm đến mới", description = "Đăng ký điểm đến du lịch mới vào hệ thống")
+    @Operation(
+            summary = "Tạo điểm đến mới",
+            description = "Đăng ký điểm đến du lịch mới vào hệ thống")
     @PreAuthorize("hasRole('OPERATIONS_MANAGER') and hasAuthority('DESTINATION_CREATE')")
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    public ApiResponse<DestinationResponse> create(@RequestBody @Valid DestinationCreateRequest request) {
+    public ApiResponse<DestinationResponse> create(
+            @RequestBody @Valid DestinationCreateRequest request) {
         return ApiResponse.success(service.create(request));
     }
 
-    @Operation(summary = "Danh sách điểm đến", description = "Lấy danh sách điểm đến (hỗ trợ phân trang)")
+    @Operation(
+            summary = "Danh sách điểm đến",
+            description = "Lấy danh sách điểm đến (hỗ trợ phân trang)")
     @PreAuthorize("hasAuthority('DESTINATION_READ')")
     @GetMapping
-    public ApiResponse<Page<DestinationResponse>> list(@RequestParam(required=false) String search, @RequestParam(required=false) String countryCode, @RequestParam(required=false) com.casms.ship.enums.DestinationStatus status, Pageable pageable) {
+    public ApiResponse<Page<DestinationResponse>> list(
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) String countryCode,
+            @RequestParam(required = false) com.casms.ship.enums.DestinationStatus status,
+            Pageable pageable) {
         return ApiResponse.success(service.list(search, countryCode, status, pageable));
     }
 
-    @Operation(summary = "Danh sách điểm đến hoạt động", description = "Lấy danh sách tất cả điểm đến đang ACTIVE (không phân trang)")
+    @Operation(
+            summary = "Danh sách điểm đến hoạt động",
+            description = "Lấy danh sách tất cả điểm đến đang ACTIVE (không phân trang)")
     @PreAuthorize("permitAll()")
     @GetMapping("/active")
     public ApiResponse<List<DestinationResponse>> listActive() {
         return ApiResponse.success(service.listAllActive());
     }
 
-    @Operation(summary = "Chi tiết điểm đến", description = "Lấy thông tin chi tiết của một điểm đến theo ID")
+    @Operation(
+            summary = "Chi tiết điểm đến",
+            description = "Lấy thông tin chi tiết của một điểm đến theo ID")
     @PreAuthorize("permitAll()")
     @GetMapping("/{destinationId}")
     public ApiResponse<DestinationResponse> detail(
-            @Parameter(description = "ID của điểm đến", required = true) @PathVariable UUID destinationId) {
+            @Parameter(description = "ID của điểm đến", required = true) @PathVariable
+                    UUID destinationId) {
         return ApiResponse.success(service.detail(destinationId));
     }
 
-    @Operation(summary = "Cập nhật điểm đến", description = "Cập nhật thông tin điểm đến (tên, mô tả)")
+    @Operation(
+            summary = "Cập nhật điểm đến",
+            description = "Cập nhật thông tin điểm đến (tên, mô tả)")
     @PreAuthorize("hasRole('OPERATIONS_MANAGER') and hasAuthority('DESTINATION_UPDATE')")
     @PatchMapping("/{destinationId}")
     public ApiResponse<DestinationResponse> update(
-            @Parameter(description = "ID của điểm đến", required = true) @PathVariable UUID destinationId,
+            @Parameter(description = "ID của điểm đến", required = true) @PathVariable
+                    UUID destinationId,
             @RequestBody @Valid DestinationUpdateRequest request) {
         return ApiResponse.success(service.update(destinationId, request));
     }
 
-    @Operation(summary = "Xóa điểm đến chưa sử dụng", description = "Xóa điểm đến nếu chưa được gán cho bất kỳ điểm dừng chuyến khởi hành nào")
+    @Operation(
+            summary = "Xóa điểm đến chưa sử dụng",
+            description =
+                    "Xóa điểm đến nếu chưa được gán cho bất kỳ điểm dừng chuyến khởi hành nào")
     @PreAuthorize("hasRole('OPERATIONS_MANAGER') and hasAuthority('DESTINATION_DELETE_UNUSED')")
     @DeleteMapping("/{destinationId}/unused")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public ApiResponse<Void> deleteUnused(
-            @Parameter(description = "ID của điểm đến", required = true) @PathVariable UUID destinationId) {
+            @Parameter(description = "ID của điểm đến", required = true) @PathVariable
+                    UUID destinationId) {
         service.deleteUnused(destinationId);
         return ApiResponse.success("Deleted unused destination successfully", null);
     }
 
-    @Operation(summary = "Danh sách cảng theo điểm đến", description = "Lấy danh sách các cảng thuộc về điểm đến này")
+    @Operation(
+            summary = "Danh sách cảng theo điểm đến",
+            description = "Lấy danh sách các cảng thuộc về điểm đến này")
     @PreAuthorize("permitAll()")
     @GetMapping("/{destinationId}/ports")
     public ApiResponse<List<PortSummaryResponse>> listPortsByDestination(
-            @Parameter(description = "ID của điểm đến", required = true) @PathVariable UUID destinationId) {
+            @Parameter(description = "ID của điểm đến", required = true) @PathVariable
+                    UUID destinationId) {
         return ApiResponse.success(service.listPortsByDestination(destinationId));
     }
 
-    @Operation(summary = "Kiểm tra tính hợp lệ điểm đến", description = "Xác minh tính hợp lệ của dữ liệu điểm đến")
+    @Operation(
+            summary = "Kiểm tra tính hợp lệ điểm đến",
+            description = "Xác minh tính hợp lệ của dữ liệu điểm đến")
     @PreAuthorize("hasAuthority('DESTINATION_VALIDATE')")
     @PostMapping("/{destinationId}/validate")
     public ApiResponse<Void> validateDestination(
-            @Parameter(description = "ID của điểm đến", required = true) @PathVariable UUID destinationId) {
+            @Parameter(description = "ID của điểm đến", required = true) @PathVariable
+                    UUID destinationId) {
         service.validateDestination(destinationId);
         return ApiResponse.success("Destination validation passed", null);
     }
 
-    @Operation(summary = "Kích hoạt điểm đến", description = "Chuyển trạng thái điểm đến sang ACTIVE")
+    @Operation(
+            summary = "Kích hoạt điểm đến",
+            description = "Chuyển trạng thái điểm đến sang ACTIVE")
     @PreAuthorize("hasRole('OPERATIONS_MANAGER') and hasAuthority('DESTINATION_UPDATE')")
     @PatchMapping("/{destinationId}/activate")
     public ApiResponse<DestinationResponse> activate(
-            @Parameter(description = "ID của điểm đến", required = true) @PathVariable UUID destinationId) {
+            @Parameter(description = "ID của điểm đến", required = true) @PathVariable
+                    UUID destinationId) {
         return ApiResponse.success(service.activate(destinationId));
     }
 
-    @Operation(summary = "Ngừng kích hoạt điểm đến", description = "Chuyển trạng thái điểm đến sang INACTIVE")
+    @Operation(
+            summary = "Ngừng kích hoạt điểm đến",
+            description = "Chuyển trạng thái điểm đến sang INACTIVE")
     @PreAuthorize("hasRole('OPERATIONS_MANAGER') and hasAuthority('DESTINATION_UPDATE')")
     @PatchMapping("/{destinationId}/deactivate")
     public ApiResponse<DestinationResponse> deactivate(
-            @Parameter(description = "ID của điểm đến", required = true) @PathVariable UUID destinationId) {
+            @Parameter(description = "ID của điểm đến", required = true) @PathVariable
+                    UUID destinationId) {
         return ApiResponse.success(service.deactivate(destinationId));
     }
 }

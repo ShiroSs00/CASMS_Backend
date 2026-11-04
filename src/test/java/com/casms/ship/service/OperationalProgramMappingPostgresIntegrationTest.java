@@ -1,5 +1,7 @@
 package com.casms.ship.service;
 
+import static org.junit.jupiter.api.Assertions.*;
+
 import com.casms.activity.entity.OnboardActivity;
 import com.casms.activity.entity.Registration;
 import com.casms.activity.entity.ShoreExcursion;
@@ -32,6 +34,7 @@ import com.casms.trip.enums.TripPlanEntryKind;
 import com.casms.trip.enums.TripScheduleVersionStatus;
 import com.casms.trip.enums.TripStatus;
 import com.casms.trip.repository.*;
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -45,8 +48,6 @@ import java.time.LocalTime;
 import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
-
-import static org.junit.jupiter.api.Assertions.*;
 
 @SpringBootTest
 public class OperationalProgramMappingPostgresIntegrationTest {
@@ -205,10 +206,13 @@ public class OperationalProgramMappingPostgresIntegrationTest {
     }
 
     private TripPlanDay getDay(TripScheduleVersion version, int dayNumber) {
-        return planDayRepository.findByVersion_VersionIdAndDayNumber(version.getVersionId(), dayNumber).orElseThrow();
+        return planDayRepository
+                .findByVersion_VersionIdAndDayNumber(version.getVersionId(), dayNumber)
+                .orElseThrow();
     }
 
-    private Cruise createTestCruise(String cruiseCode, Instant dep, Instant ret, Ship ship, TripScheduleVersion version) {
+    private Cruise createTestCruise(
+            String cruiseCode, Instant dep, Instant ret, Ship ship, TripScheduleVersion version) {
         Cruise cruise = new Cruise();
         cruise.setCruiseCode(cruiseCode);
         cruise.setCruiseName("Chuyến đi " + cruiseCode);
@@ -236,7 +240,8 @@ public class OperationalProgramMappingPostgresIntegrationTest {
         return itineraryRepository.save(itinerary);
     }
 
-    private ItineraryDay createTestItineraryDay(Itinerary itinerary, int dayNumber, LocalDate date) {
+    private ItineraryDay createTestItineraryDay(
+            Itinerary itinerary, int dayNumber, LocalDate date) {
         ItineraryDay day = new ItineraryDay();
         day.setItinerary(itinerary);
         day.setDayNumber(dayNumber);
@@ -261,7 +266,9 @@ public class OperationalProgramMappingPostgresIntegrationTest {
     }
 
     @Test
-    @DisplayName("BE-R04 - Test 1: Ghé cùng cảng hai lần (đúng occurrence, không fallback về stops.get(0))")
+    @DisplayName(
+            "BE-R04 - Test 1: Ghé cùng cảng hai lần (đúng occurrence, không fallback về"
+                + " stops.get(0))")
     void test_01_port_visited_twice_matches_exact_occurrence_without_fallback() {
         Trip trip = createTestTrip();
         TripScheduleVersion version = createTestVersion(trip);
@@ -330,7 +337,13 @@ public class OperationalProgramMappingPostgresIntegrationTest {
         // Create Cruise and materialized CruiseStops
         Instant dep = Instant.now().plus(10, ChronoUnit.DAYS).truncatedTo(ChronoUnit.HOURS);
         Instant ret = dep.plus(3, ChronoUnit.DAYS);
-        Cruise cruise = createTestCruise("CR-TWICE-" + UUID.randomUUID().toString().substring(0, 4), dep, ret, testShipA, version);
+        Cruise cruise =
+                createTestCruise(
+                        "CR-TWICE-" + UUID.randomUUID().toString().substring(0, 4),
+                        dep,
+                        ret,
+                        testShipA,
+                        version);
         Itinerary itinerary = createTestItinerary(cruise);
 
         LocalDate baseDate = dep.atZone(ZoneOffset.UTC).toLocalDate();
@@ -360,21 +373,30 @@ public class OperationalProgramMappingPostgresIntegrationTest {
         cs2.setCallType(CruiseStopCallType.NORMAL);
         cs2.setArrivalMethod(CruiseStopArrivalMethod.BERTH);
         cs2.setStatus(CruiseStopStatus.PLANNED);
-        cs2.setPlannedArrival(baseDate.plusDays(2).atTime(10, 0).atZone(ZoneOffset.UTC).toInstant());
-        cs2.setPlannedDeparture(baseDate.plusDays(2).atTime(18, 0).atZone(ZoneOffset.UTC).toInstant());
+        cs2.setPlannedArrival(
+                baseDate.plusDays(2).atTime(10, 0).atZone(ZoneOffset.UTC).toInstant());
+        cs2.setPlannedDeparture(
+                baseDate.plusDays(2).atTime(18, 0).atZone(ZoneOffset.UTC).toInstant());
         cs2.setNotes("sourceStopId:" + stop2.getStopId());
         cs2 = cruiseStopRepository.save(cs2);
 
         // Execute mapping
-        OperationalProgramSyncResponse response = operationalProgramMappingService.mapOperationalPrograms(cruise, version);
+        OperationalProgramSyncResponse response =
+                operationalProgramMappingService.mapOperationalPrograms(cruise, version);
 
         assertEquals(2, response.getShoreExcursionsCount());
         assertEquals(2, response.getItems().size());
 
-        OperationalProgramMappingItemResponse item1 = response.getItems().stream()
-                .filter(i -> "EXC-DAN-1".equals(i.getClientKey())).findFirst().orElseThrow();
-        OperationalProgramMappingItemResponse item2 = response.getItems().stream()
-                .filter(i -> "EXC-DAN-2".equals(i.getClientKey())).findFirst().orElseThrow();
+        OperationalProgramMappingItemResponse item1 =
+                response.getItems().stream()
+                        .filter(i -> "EXC-DAN-1".equals(i.getClientKey()))
+                        .findFirst()
+                        .orElseThrow();
+        OperationalProgramMappingItemResponse item2 =
+                response.getItems().stream()
+                        .filter(i -> "EXC-DAN-2".equals(i.getClientKey()))
+                        .findFirst()
+                        .orElseThrow();
 
         assertEquals("CREATED", item1.getStatus());
         assertEquals("CREATED", item2.getStatus());
@@ -383,10 +405,15 @@ public class OperationalProgramMappingPostgresIntegrationTest {
         ShoreExcursion se2 = shoreExcursionRepository.findById(item2.getTargetId()).orElseThrow();
 
         // Verify exact occurrence matching
-        assertEquals(cs1.getCruiseStopId(), se1.getCruiseStop().getCruiseStopId(),
+        assertEquals(
+                cs1.getCruiseStopId(),
+                se1.getCruiseStop().getCruiseStopId(),
                 "Tour 1 phải liên kết chính xác với lần ghé cảng 1 (cs1)");
-        assertEquals(cs2.getCruiseStopId(), se2.getCruiseStop().getCruiseStopId(),
-                "Tour 2 phải liên kết chính xác với lần ghé cảng 2 (cs2), KHÔNG được fallback về cs1");
+        assertEquals(
+                cs2.getCruiseStopId(),
+                se2.getCruiseStop().getCruiseStopId(),
+                "Tour 2 phải liên kết chính xác với lần ghé cảng 2 (cs2), KHÔNG được fallback về"
+                    + " cs1");
     }
 
     @Test
@@ -408,21 +435,35 @@ public class OperationalProgramMappingPostgresIntegrationTest {
         planEntryRepository.save(actEntry);
 
         Instant dep1 = Instant.now().plus(15, ChronoUnit.DAYS).truncatedTo(ChronoUnit.HOURS);
-        Cruise cruise1 = createTestCruise("CR-A1-" + UUID.randomUUID().toString().substring(0, 4), dep1, dep1.plus(3, ChronoUnit.DAYS), testShipA, version);
+        Cruise cruise1 =
+                createTestCruise(
+                        "CR-A1-" + UUID.randomUUID().toString().substring(0, 4),
+                        dep1,
+                        dep1.plus(3, ChronoUnit.DAYS),
+                        testShipA,
+                        version);
         createTestItinerary(cruise1);
 
         Instant dep2 = Instant.now().plus(25, ChronoUnit.DAYS).truncatedTo(ChronoUnit.HOURS);
-        Cruise cruise2 = createTestCruise("CR-A2-" + UUID.randomUUID().toString().substring(0, 4), dep2, dep2.plus(3, ChronoUnit.DAYS), testShipA, version);
+        Cruise cruise2 =
+                createTestCruise(
+                        "CR-A2-" + UUID.randomUUID().toString().substring(0, 4),
+                        dep2,
+                        dep2.plus(3, ChronoUnit.DAYS),
+                        testShipA,
+                        version);
         createTestItinerary(cruise2);
 
         // Sync cruise 1
-        OperationalProgramSyncResponse res1 = operationalProgramMappingService.mapOperationalPrograms(cruise1, version);
+        OperationalProgramSyncResponse res1 =
+                operationalProgramMappingService.mapOperationalPrograms(cruise1, version);
         assertEquals(1, res1.getOnboardActivitiesCount());
         UUID actId1 = res1.getItems().get(0).getTargetId();
         String code1 = res1.getItems().get(0).getTargetCode();
 
         // Sync cruise 2
-        OperationalProgramSyncResponse res2 = operationalProgramMappingService.mapOperationalPrograms(cruise2, version);
+        OperationalProgramSyncResponse res2 =
+                operationalProgramMappingService.mapOperationalPrograms(cruise2, version);
         assertEquals(1, res2.getOnboardActivitiesCount());
         UUID actId2 = res2.getItems().get(0).getTargetId();
         String code2 = res2.getItems().get(0).getTargetCode();
@@ -433,14 +474,19 @@ public class OperationalProgramMappingPostgresIntegrationTest {
         assertTrue(code1.contains(cruise1.getCruiseCode()));
         assertTrue(code2.contains(cruise2.getCruiseCode()));
 
-        assertEquals(1, onboardActivityRepository.findByCruise_CruiseId(cruise1.getCruiseId()).size());
-        assertEquals(1, onboardActivityRepository.findByCruise_CruiseId(cruise2.getCruiseId()).size());
+        assertEquals(
+                1, onboardActivityRepository.findByCruise_CruiseId(cruise1.getCruiseId()).size());
+        assertEquals(
+                1, onboardActivityRepository.findByCruise_CruiseId(cruise2.getCruiseId()).size());
     }
 
     @Test
-    @DisplayName("BE-R04 - Test 3: Thiếu supplier (không tự chọn active đầu tiên, không tạo VERIFIED giả)")
+    @DisplayName(
+            "BE-R04 - Test 3: Thiếu supplier (không tự chọn active đầu tiên, không tạo VERIFIED"
+                + " giả)")
     void test_03_missing_supplier_does_not_invent_verified_supplier() {
-        // Đảm bảo có ít nhất 1 supplier ACTIVE và VERIFIED trong DB để kiểm tra hệ thống KHÔNG tự ý vơ bừa
+        // Đảm bảo có ít nhất 1 supplier ACTIVE và VERIFIED trong DB để kiểm tra hệ thống KHÔNG tự ý
+        // vơ bừa
         Supplier existingSupplier = new Supplier();
         existingSupplier.setSupplierName("Nhà Cung Cấp Uy Tín OCV Có Sẵn");
         existingSupplier.setContactName("Nguyễn Quản Lý");
@@ -478,9 +524,16 @@ public class OperationalProgramMappingPostgresIntegrationTest {
         planEntryRepository.save(excEntry);
 
         Instant dep = Instant.now().plus(30, ChronoUnit.DAYS).truncatedTo(ChronoUnit.HOURS);
-        Cruise cruise = createTestCruise("CR-SUP-" + UUID.randomUUID().toString().substring(0, 4), dep, dep.plus(2, ChronoUnit.DAYS), testShipA, version);
+        Cruise cruise =
+                createTestCruise(
+                        "CR-SUP-" + UUID.randomUUID().toString().substring(0, 4),
+                        dep,
+                        dep.plus(2, ChronoUnit.DAYS),
+                        testShipA,
+                        version);
         Itinerary itinerary = createTestItinerary(cruise);
-        ItineraryDay day = createTestItineraryDay(itinerary, 1, dep.atZone(ZoneOffset.UTC).toLocalDate());
+        ItineraryDay day =
+                createTestItineraryDay(itinerary, 1, dep.atZone(ZoneOffset.UTC).toLocalDate());
 
         CruiseStop cs = new CruiseStop();
         cs.setItinerary(itinerary);
@@ -497,12 +550,18 @@ public class OperationalProgramMappingPostgresIntegrationTest {
         cruiseStopRepository.save(cs);
 
         // Run mapping
-        OperationalProgramSyncResponse response = operationalProgramMappingService.mapOperationalPrograms(cruise, version);
-        assertEquals(0, response.getShoreExcursionsCount(), "Không tạo bản ghi tour bờ khi thiếu supplier");
+        OperationalProgramSyncResponse response =
+                operationalProgramMappingService.mapOperationalPrograms(cruise, version);
+        assertEquals(
+                0,
+                response.getShoreExcursionsCount(),
+                "Không tạo bản ghi tour bờ khi thiếu supplier");
 
         OperationalProgramMappingItemResponse item = response.getItems().get(0);
         assertEquals("FAILED", item.getStatus());
-        assertNull(item.getTargetId(), "Không được tự chọn supplier active đầu tiên hoặc tạo dummy supplier");
+        assertNull(
+                item.getTargetId(),
+                "Không được tự chọn supplier active đầu tiên hoặc tạo dummy supplier");
 
         // Warnings và requiredData phải cảnh báo rõ
         assertTrue(item.getWarnings().stream().anyMatch(w -> w.contains("Chưa có nhà cung cấp")));
@@ -511,7 +570,8 @@ public class OperationalProgramMappingPostgresIntegrationTest {
     }
 
     @Test
-    @DisplayName("BE-R04 - Test 4: Venue sai tàu (deck/cabin không thuộc tàu được gán -> cảnh báo rõ)")
+    @DisplayName(
+            "BE-R04 - Test 4: Venue sai tàu (deck/cabin không thuộc tàu được gán -> cảnh báo rõ)")
     void test_04_venue_wrong_ship_emits_warning_without_falsifying_readiness() {
         Trip trip = createTestTrip();
         TripScheduleVersion version = createTestVersion(trip);
@@ -533,28 +593,40 @@ public class OperationalProgramMappingPostgresIntegrationTest {
 
         // Cruise được gán cho Ship A
         Instant dep = Instant.now().plus(35, ChronoUnit.DAYS).truncatedTo(ChronoUnit.HOURS);
-        Cruise cruise = createTestCruise("CR-VENUE-" + UUID.randomUUID().toString().substring(0, 4), dep, dep.plus(2, ChronoUnit.DAYS), testShipA, version);
+        Cruise cruise =
+                createTestCruise(
+                        "CR-VENUE-" + UUID.randomUUID().toString().substring(0, 4),
+                        dep,
+                        dep.plus(2, ChronoUnit.DAYS),
+                        testShipA,
+                        version);
         createTestItinerary(cruise);
 
         // Run mapping
-        OperationalProgramSyncResponse response = operationalProgramMappingService.mapOperationalPrograms(cruise, version);
+        OperationalProgramSyncResponse response =
+                operationalProgramMappingService.mapOperationalPrograms(cruise, version);
         assertEquals(1, response.getOnboardActivitiesCount());
 
         OperationalProgramMappingItemResponse item = response.getItems().get(0);
-        OnboardActivity created = onboardActivityRepository.findById(item.getTargetId()).orElseThrow();
+        OnboardActivity created =
+                onboardActivityRepository.findById(item.getTargetId()).orElseThrow();
 
         // Assert: deck và cabin sai tàu không được liên kết bừa
         assertNull(created.getDeck(), "Deck sai tàu không được gán cho hoạt động của tàu A");
         assertNull(created.getCabin(), "Cabin sai tàu không được gán cho hoạt động của tàu A");
 
         // Assert warnings
-        assertTrue(item.getWarnings().stream().anyMatch(w -> w.contains("không thuộc con tàu được gán")));
+        assertTrue(
+                item.getWarnings().stream()
+                        .anyMatch(w -> w.contains("không thuộc con tàu được gán")));
         assertNotNull(item.getRequiredData());
         assertTrue(item.getRequiredData().contains("Cần điều chỉnh"));
     }
 
     @Test
-    @DisplayName("BE-R04 - Test 5: Khung phục vụ không reservation (SERVING_WINDOW tách biệt, không tạo OnboardActivity)")
+    @DisplayName(
+            "BE-R04 - Test 5: Khung phục vụ không reservation (SERVING_WINDOW tách biệt, không tạo"
+                + " OnboardActivity)")
     void test_05_serving_window_is_not_reservable_activity() {
         Trip trip = createTestTrip();
         TripScheduleVersion version = createTestVersion(trip);
@@ -574,30 +646,46 @@ public class OperationalProgramMappingPostgresIntegrationTest {
         planEntryRepository.save(swEntry);
 
         Instant dep = Instant.now().plus(40, ChronoUnit.DAYS).truncatedTo(ChronoUnit.HOURS);
-        Cruise cruise = createTestCruise("CR-SW-" + UUID.randomUUID().toString().substring(0, 4), dep, dep.plus(2, ChronoUnit.DAYS), testShipA, version);
+        Cruise cruise =
+                createTestCruise(
+                        "CR-SW-" + UUID.randomUUID().toString().substring(0, 4),
+                        dep,
+                        dep.plus(2, ChronoUnit.DAYS),
+                        testShipA,
+                        version);
         createTestItinerary(cruise);
 
         // Run mapping
-        OperationalProgramSyncResponse response = operationalProgramMappingService.mapOperationalPrograms(cruise, version);
+        OperationalProgramSyncResponse response =
+                operationalProgramMappingService.mapOperationalPrograms(cruise, version);
 
-        assertEquals(0, response.getOnboardActivitiesCount(), "SERVING_WINDOW không được tính vào OnboardActivities");
-        assertEquals(1, response.getServingWindowsCount(), "SERVING_WINDOW phải được ghi nhận riêng");
+        assertEquals(
+                0,
+                response.getOnboardActivitiesCount(),
+                "SERVING_WINDOW không được tính vào OnboardActivities");
+        assertEquals(
+                1, response.getServingWindowsCount(), "SERVING_WINDOW phải được ghi nhận riêng");
         assertEquals(1, response.getItems().size());
 
         OperationalProgramMappingItemResponse item = response.getItems().get(0);
         assertEquals(TripPlanEntryKind.SERVING_WINDOW, item.getKind());
-        assertFalse(item.isReservationRequired(), "Khung phục vụ KHÔNG yêu cầu đặt chỗ (reservationRequired = false)");
+        assertFalse(
+                item.isReservationRequired(),
+                "Khung phục vụ KHÔNG yêu cầu đặt chỗ (reservationRequired = false)");
         assertEquals("SERVING_WINDOW", item.getTargetType());
         assertEquals("LINKED", item.getStatus());
         assertEquals(serviceId, item.getTargetId());
 
         // Kiểm tra trong DB: không có OnboardActivity nào được tạo
-        assertTrue(onboardActivityRepository.findByCruise_CruiseId(cruise.getCruiseId()).isEmpty(),
+        assertTrue(
+                onboardActivityRepository.findByCruise_CruiseId(cruise.getCruiseId()).isEmpty(),
                 "Tuyệt đối không tạo bản ghi OnboardActivity giả cho SERVING_WINDOW");
     }
 
     @Test
-    @DisplayName("BE-R04 - Test 6: Sync retry / Idempotent (chạy lại không nhân đôi bản ghi, trả LINKED)")
+    @DisplayName(
+            "BE-R04 - Test 6: Sync retry / Idempotent (chạy lại không nhân đôi bản ghi, trả"
+                + " LINKED)")
     void test_06_sync_retry_is_idempotent_without_duplicates() {
         Trip trip = createTestTrip();
         TripScheduleVersion version = createTestVersion(trip);
@@ -615,27 +703,40 @@ public class OperationalProgramMappingPostgresIntegrationTest {
         planEntryRepository.save(actEntry);
 
         Instant dep = Instant.now().plus(45, ChronoUnit.DAYS).truncatedTo(ChronoUnit.HOURS);
-        Cruise cruise = createTestCruise("CR-RETRY-" + UUID.randomUUID().toString().substring(0, 4), dep, dep.plus(2, ChronoUnit.DAYS), testShipA, version);
+        Cruise cruise =
+                createTestCruise(
+                        "CR-RETRY-" + UUID.randomUUID().toString().substring(0, 4),
+                        dep,
+                        dep.plus(2, ChronoUnit.DAYS),
+                        testShipA,
+                        version);
         createTestItinerary(cruise);
 
         // Sync 1: CREATED
-        OperationalProgramSyncResponse sync1 = operationalProgramMappingService.mapOperationalPrograms(cruise, version);
+        OperationalProgramSyncResponse sync1 =
+                operationalProgramMappingService.mapOperationalPrograms(cruise, version);
         assertEquals(1, sync1.getOnboardActivitiesCount());
         assertEquals("CREATED", sync1.getItems().get(0).getStatus());
 
         // Sync 2: LINKED (Idempotent update)
-        OperationalProgramSyncResponse sync2 = operationalProgramMappingService.mapOperationalPrograms(cruise, version);
+        OperationalProgramSyncResponse sync2 =
+                operationalProgramMappingService.mapOperationalPrograms(cruise, version);
         assertEquals(1, sync2.getOnboardActivitiesCount());
         assertEquals("LINKED", sync2.getItems().get(0).getStatus());
-        assertEquals("Đã cập nhật theo kế hoạch nguồn (Idempotent update)", sync2.getItems().get(0).getReason());
+        assertEquals(
+                "Đã cập nhật theo kế hoạch nguồn (Idempotent update)",
+                sync2.getItems().get(0).getReason());
 
         // Kiểm tra database: vẫn chỉ có duy nhất 1 bản ghi
-        List<OnboardActivity> acts = onboardActivityRepository.findByCruise_CruiseId(cruise.getCruiseId());
+        List<OnboardActivity> acts =
+                onboardActivityRepository.findByCruise_CruiseId(cruise.getCruiseId());
         assertEquals(1, acts.size(), "Không được nhân đôi bản ghi khi retry sync");
     }
 
     @Test
-    @DisplayName("BE-R04 - Test 7: Chương trình đã có đăng ký của khách (bảo toàn cấu hình, không ghi đè)")
+    @DisplayName(
+            "BE-R04 - Test 7: Chương trình đã có đăng ký của khách (bảo toàn cấu hình, không ghi"
+                + " đè)")
     void test_07_preserve_program_with_existing_passenger_registration() {
         Trip trip = createTestTrip();
         TripScheduleVersion version = createTestVersion(trip);
@@ -653,11 +754,18 @@ public class OperationalProgramMappingPostgresIntegrationTest {
         actEntry = planEntryRepository.save(actEntry);
 
         Instant dep = Instant.now().plus(50, ChronoUnit.DAYS).truncatedTo(ChronoUnit.HOURS);
-        Cruise cruise = createTestCruise("CR-REG-" + UUID.randomUUID().toString().substring(0, 4), dep, dep.plus(2, ChronoUnit.DAYS), testShipA, version);
+        Cruise cruise =
+                createTestCruise(
+                        "CR-REG-" + UUID.randomUUID().toString().substring(0, 4),
+                        dep,
+                        dep.plus(2, ChronoUnit.DAYS),
+                        testShipA,
+                        version);
         createTestItinerary(cruise);
 
         // Sync lần đầu để tạo OnboardActivity
-        OperationalProgramSyncResponse sync1 = operationalProgramMappingService.mapOperationalPrograms(cruise, version);
+        OperationalProgramSyncResponse sync1 =
+                operationalProgramMappingService.mapOperationalPrograms(cruise, version);
         UUID activityId = sync1.getItems().get(0).getTargetId();
         OnboardActivity activity = onboardActivityRepository.findById(activityId).orElseThrow();
 
@@ -699,7 +807,8 @@ public class OperationalProgramMappingPostgresIntegrationTest {
         planEntryRepository.save(actEntry);
 
         // Chạy lại sync
-        OperationalProgramSyncResponse sync2 = operationalProgramMappingService.mapOperationalPrograms(cruise, version);
+        OperationalProgramSyncResponse sync2 =
+                operationalProgramMappingService.mapOperationalPrograms(cruise, version);
         OperationalProgramMappingItemResponse item = sync2.getItems().get(0);
 
         assertEquals("LINKED", item.getStatus());
@@ -708,8 +817,11 @@ public class OperationalProgramMappingPostgresIntegrationTest {
 
         // Kiểm tra bản ghi trong DB không bị ghi đè tiêu đề
         OnboardActivity afterSync = onboardActivityRepository.findById(activityId).orElseThrow();
-        assertEquals("Dịch Vụ Spa Thư Giãn", afterSync.getActivityName(),
-                "Tên hoạt động trong database phải được bảo toàn, không bị ghi đè khi đã có khách đăng ký");
+        assertEquals(
+                "Dịch Vụ Spa Thư Giãn",
+                afterSync.getActivityName(),
+                "Tên hoạt động trong database phải được bảo toàn, không bị ghi đè khi đã có khách"
+                    + " đăng ký");
     }
 
     @Test
@@ -748,7 +860,13 @@ public class OperationalProgramMappingPostgresIntegrationTest {
         planEntryRepository.save(excEntry);
 
         Instant dep = Instant.now().plus(60, ChronoUnit.DAYS).truncatedTo(ChronoUnit.HOURS);
-        Cruise cruise = createTestCruise("CR-WIN-" + UUID.randomUUID().toString().substring(0, 4), dep, dep.plus(2, ChronoUnit.DAYS), testShipA, version);
+        Cruise cruise =
+                createTestCruise(
+                        "CR-WIN-" + UUID.randomUUID().toString().substring(0, 4),
+                        dep,
+                        dep.plus(2, ChronoUnit.DAYS),
+                        testShipA,
+                        version);
         Itinerary itinerary = createTestItinerary(cruise);
 
         LocalDate baseDate = dep.atZone(ZoneOffset.UTC).toLocalDate();
@@ -770,17 +888,22 @@ public class OperationalProgramMappingPostgresIntegrationTest {
         cruiseStopRepository.save(cs);
 
         // Run mapping
-        OperationalProgramSyncResponse response = operationalProgramMappingService.mapOperationalPrograms(cruise, version);
+        OperationalProgramSyncResponse response =
+                operationalProgramMappingService.mapOperationalPrograms(cruise, version);
         assertEquals(1, response.getShoreExcursionsCount());
 
         OperationalProgramMappingItemResponse item = response.getItems().get(0);
-        assertTrue(item.getWarnings().stream().anyMatch(w -> w.contains("nằm ngoài khung giờ tàu cập cảng")));
+        assertTrue(
+                item.getWarnings().stream()
+                        .anyMatch(w -> w.contains("nằm ngoài khung giờ tàu cập cảng")));
         assertNotNull(item.getRequiredData());
         assertTrue(item.getRequiredData().contains("Thời gian tour ngoài khung giờ cảng"));
     }
 
     @Test
-    @DisplayName("BE-R04 - Test 9: Batch lỗi giữa chừng & không tìm thấy stop (Partial resilience, FAILED từng mục)")
+    @DisplayName(
+            "BE-R04 - Test 9: Batch lỗi giữa chừng & không tìm thấy stop (Partial resilience,"
+                + " FAILED từng mục)")
     void test_09_partial_batch_failure_resilience_and_unmatched_stop() {
         Trip trip = createTestTrip();
         TripScheduleVersion version = createTestVersion(trip);
@@ -838,23 +961,39 @@ public class OperationalProgramMappingPostgresIntegrationTest {
         planEntryRepository.save(entry3);
 
         Instant dep = Instant.now().plus(70, ChronoUnit.DAYS).truncatedTo(ChronoUnit.HOURS);
-        Cruise cruise = createTestCruise("CR-BATCH-" + UUID.randomUUID().toString().substring(0, 4), dep, dep.plus(2, ChronoUnit.DAYS), testShipA, version);
+        Cruise cruise =
+                createTestCruise(
+                        "CR-BATCH-" + UUID.randomUUID().toString().substring(0, 4),
+                        dep,
+                        dep.plus(2, ChronoUnit.DAYS),
+                        testShipA,
+                        version);
         createTestItinerary(cruise);
 
         // Run mapping
-        OperationalProgramSyncResponse response = operationalProgramMappingService.mapOperationalPrograms(cruise, version);
+        OperationalProgramSyncResponse response =
+                operationalProgramMappingService.mapOperationalPrograms(cruise, version);
 
         assertEquals(1, response.getOnboardActivitiesCount());
         assertEquals(0, response.getShoreExcursionsCount());
         assertEquals(1, response.getServingWindowsCount());
         assertEquals(3, response.getItems().size());
 
-        OperationalProgramMappingItemResponse item1 = response.getItems().stream()
-                .filter(i -> "VALID-ACT".equals(i.getClientKey())).findFirst().orElseThrow();
-        OperationalProgramMappingItemResponse item2 = response.getItems().stream()
-                .filter(i -> "ORPHAN-TOUR".equals(i.getClientKey())).findFirst().orElseThrow();
-        OperationalProgramMappingItemResponse item3 = response.getItems().stream()
-                .filter(i -> "VALID-SW".equals(i.getClientKey())).findFirst().orElseThrow();
+        OperationalProgramMappingItemResponse item1 =
+                response.getItems().stream()
+                        .filter(i -> "VALID-ACT".equals(i.getClientKey()))
+                        .findFirst()
+                        .orElseThrow();
+        OperationalProgramMappingItemResponse item2 =
+                response.getItems().stream()
+                        .filter(i -> "ORPHAN-TOUR".equals(i.getClientKey()))
+                        .findFirst()
+                        .orElseThrow();
+        OperationalProgramMappingItemResponse item3 =
+                response.getItems().stream()
+                        .filter(i -> "VALID-SW".equals(i.getClientKey()))
+                        .findFirst()
+                        .orElseThrow();
 
         assertEquals("CREATED", item1.getStatus());
         assertEquals("FAILED", item2.getStatus(), "Entry không khớp cảng phải trả về FAILED");

@@ -1,6 +1,12 @@
 package com.casms.config.flyway;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 import com.casms.ship.enums.CruiseCruiseType;
+
 import org.flywaydb.core.Flyway;
 import org.flywaydb.core.api.exception.FlywayValidateException;
 import org.junit.jupiter.api.AfterEach;
@@ -19,34 +25,34 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 /**
  * BE-FIX-00 against a real PostgreSQL server. Every scenario runs in its own throw-away database
  * and uses the same realign-then-migrate sequence as {@code DatabaseConfig}.
  *
- * <p>Connection: {@code CASMS_PG_ADMIN_URL} (default {@code jdbc:postgresql://localhost:5432/postgres}),
- * {@code DB_USERNAME}/{@code DB_PASSWORD} (defaults match application.yml). The optional clone scenario
- * runs only when {@code -Dcasms.flyway.cloneSource=<existing database>} is set; it copies that database
- * via {@code CREATE DATABASE ... TEMPLATE} and never touches the source.</p>
+ * <p>Connection: {@code CASMS_PG_ADMIN_URL} (default {@code
+ * jdbc:postgresql://localhost:5432/postgres}), {@code DB_USERNAME}/{@code DB_PASSWORD} (defaults
+ * match application.yml). The optional clone scenario runs only when {@code
+ * -Dcasms.flyway.cloneSource=<existing database>} is set; it copies that database via {@code CREATE
+ * DATABASE ... TEMPLATE} and never touches the source.
  */
 class FlywayMigrationPostgresIntegrationTest {
 
-    private static final String ADMIN_URL = env("CASMS_PG_ADMIN_URL", "jdbc:postgresql://localhost:5432/postgres");
+    private static final String ADMIN_URL =
+            env("CASMS_PG_ADMIN_URL", "jdbc:postgresql://localhost:5432/postgres");
     private static final String USER = env("DB_USERNAME", "postgres");
     private static final String PASSWORD = env("DB_PASSWORD", "12345");
     private static final String[] APP_LOCATIONS = {"classpath:db/migration"};
-    private static final String[] PROD_LOCATIONS = {"classpath:db/migration", "classpath:db/prod-migration"};
+    private static final String[] PROD_LOCATIONS = {
+        "classpath:db/migration", "classpath:db/prod-migration"
+    };
     private static final String LATEST = "76";
 
     private final List<String> createdDatabases = new ArrayList<>();
 
     @AfterEach
     void dropDatabases() throws SQLException {
-        try (Connection admin = admin(); Statement st = admin.createStatement()) {
+        try (Connection admin = admin();
+                Statement st = admin.createStatement()) {
             for (String db : createdDatabases) {
                 st.execute("DROP DATABASE IF EXISTS " + db + " WITH (FORCE)");
             }
@@ -63,31 +69,86 @@ class FlywayMigrationPostgresIntegrationTest {
         assertEquals(LATEST, flyway.info().current().getVersion().getVersion());
         assertTrue(flyway.validateWithResult().validationSuccessful);
         try (Connection c = connect(db)) {
-            assertEquals(1L, count(c, "SELECT count(*) FROM \"User\" WHERE username = 'operations_manager'"));
-            assertEquals(0L, count(c, "SELECT count(*) FROM \"OnboardActivity\" WHERE category = 'WORKSHOPS_CLASSES'"));
-            assertEquals(0L, count(c, "SELECT count(*) FROM \"TripPlanEntry\" WHERE category = 'WORKSHOPS_CLASSES'"));
+            assertEquals(
+                    1L,
+                    count(
+                            c,
+                            "SELECT count(*) FROM \"User\" WHERE username = 'operations_manager'"));
+            assertEquals(
+                    0L,
+                    count(
+                            c,
+                            "SELECT count(*) FROM \"OnboardActivity\" WHERE category ="
+                                + " 'WORKSHOPS_CLASSES'"));
+            assertEquals(
+                    0L,
+                    count(
+                            c,
+                            "SELECT count(*) FROM \"TripPlanEntry\" WHERE category ="
+                                + " 'WORKSHOPS_CLASSES'"));
             assertLineageConstraintsValidated(c);
         }
     }
 
     @Test
     void roleMigrationPreservesAccountRowsAndUnrelatedRoles() throws SQLException {
-        String db=createDatabase();flyway(db,"74",APP_LOCATIONS).migrate();
-        try(Connection c=connect(db);Statement st=c.createStatement()) {
+        String db = createDatabase();
+        flyway(db, "74", APP_LOCATIONS).migrate();
+        try (Connection c = connect(db);
+                Statement st = c.createStatement()) {
             st.execute("CREATE TABLE users_before_roles AS SELECT * FROM \"User\"");
-            st.executeUpdate("INSERT INTO \"UserRole\" (user_id,role) SELECT user_id,'CHECKIN_STAFF' FROM \"User\" WHERE username='onboard_staff'");
+            st.executeUpdate(
+                    "INSERT INTO \"UserRole\" (user_id,role) SELECT user_id,'CHECKIN_STAFF' FROM"
+                        + " \"User\" WHERE username='onboard_staff'");
         }
-        Flyway upgraded=flyway(db,null,APP_LOCATIONS);migrateLikeApplication(upgraded);upgraded.migrate();
-        try(Connection c=connect(db)) {
-            assertEquals(0,count(c,"SELECT count(*) FROM (SELECT * FROM users_before_roles EXCEPT SELECT * FROM \"User\") changed"));
-            assertEquals(0,count(c,"SELECT count(*) FROM \"UserRole\" WHERE role IN ('CHECKIN_STAFF','CUSTOMER_SERVICE')"));
-            assertEquals(0,count(c,"SELECT count(*) FROM \"RolePermissionMapping\" WHERE role IN ('POS','CHECKIN_STAFF','CUSTOMER_SERVICE')"));
-            assertEquals(1,count(c,"SELECT count(*) FROM \"UserRole\" r JOIN \"User\" u USING(user_id) WHERE u.username='customer_service' AND r.role='POS'"));
-            assertEquals(0,count(c,"SELECT count(*) FROM \"UserRole\" r JOIN \"User\" u USING(user_id) WHERE u.username='checkin_staff'"));
-            assertEquals(1,count(c,"SELECT count(*) FROM \"UserRole\" r JOIN \"User\" u USING(user_id) WHERE u.username='onboard_staff' AND r.role='ONBOARD_STAFF'"));
-            assertEquals(0,count(c,"SELECT count(*) FROM \"StaffServiceAssignment\""));
-            assertEquals(0,count(c,"SELECT count(*) FROM \"StaffActivityAssignment\""));
-            assertEquals(0,count(c,"SELECT count(*) FROM \"RolePermissionMapping\" WHERE role='ONBOARD_STAFF' AND permission='PAYMENT_PROCESS'"));
+        Flyway upgraded = flyway(db, null, APP_LOCATIONS);
+        migrateLikeApplication(upgraded);
+        upgraded.migrate();
+        try (Connection c = connect(db)) {
+            assertEquals(
+                    0,
+                    count(
+                            c,
+                            "SELECT count(*) FROM (SELECT * FROM users_before_roles EXCEPT SELECT *"
+                                + " FROM \"User\") changed"));
+            assertEquals(
+                    0,
+                    count(
+                            c,
+                            "SELECT count(*) FROM \"UserRole\" WHERE role IN"
+                                + " ('CHECKIN_STAFF','CUSTOMER_SERVICE')"));
+            assertEquals(
+                    0,
+                    count(
+                            c,
+                            "SELECT count(*) FROM \"RolePermissionMapping\" WHERE role IN"
+                                + " ('POS','CHECKIN_STAFF','CUSTOMER_SERVICE')"));
+            assertEquals(
+                    1,
+                    count(
+                            c,
+                            "SELECT count(*) FROM \"UserRole\" r JOIN \"User\" u USING(user_id)"
+                                + " WHERE u.username='customer_service' AND r.role='POS'"));
+            assertEquals(
+                    0,
+                    count(
+                            c,
+                            "SELECT count(*) FROM \"UserRole\" r JOIN \"User\" u USING(user_id)"
+                                + " WHERE u.username='checkin_staff'"));
+            assertEquals(
+                    1,
+                    count(
+                            c,
+                            "SELECT count(*) FROM \"UserRole\" r JOIN \"User\" u USING(user_id)"
+                                + " WHERE u.username='onboard_staff' AND r.role='ONBOARD_STAFF'"));
+            assertEquals(0, count(c, "SELECT count(*) FROM \"StaffServiceAssignment\""));
+            assertEquals(0, count(c, "SELECT count(*) FROM \"StaffActivityAssignment\""));
+            assertEquals(
+                    0,
+                    count(
+                            c,
+                            "SELECT count(*) FROM \"RolePermissionMapping\" WHERE"
+                                + " role='ONBOARD_STAFF' AND permission='PAYMENT_PROCESS'"));
         }
         assertTrue(upgraded.validateWithResult().validationSuccessful);
     }
@@ -102,7 +163,12 @@ class FlywayMigrationPostgresIntegrationTest {
         assertEquals(LATEST, flyway.info().current().getVersion().getVersion());
         assertTrue(flyway.validateWithResult().validationSuccessful);
         try (Connection c = connect(db)) {
-            assertEquals(1L, count(c, "SELECT count(*) FROM flyway_schema_history WHERE version = '38' AND success"));
+            assertEquals(
+                    1L,
+                    count(
+                            c,
+                            "SELECT count(*) FROM flyway_schema_history WHERE version = '38' AND"
+                                + " success"));
         }
     }
 
@@ -115,7 +181,12 @@ class FlywayMigrationPostgresIntegrationTest {
         try (Connection c = connect(db)) {
             insertLegacyCruise(c, legacyCruiseId);
             // The originally applied V35 left the retired category on seed activities.
-            assertTrue(count(c, "SELECT count(*) FROM \"OnboardActivity\" WHERE category = 'WORKSHOPS_CLASSES'") > 0);
+            assertTrue(
+                    count(
+                                    c,
+                                    "SELECT count(*) FROM \"OnboardActivity\" WHERE category ="
+                                        + " 'WORKSHOPS_CLASSES'")
+                            > 0);
             // Simulate databases that recorded edited revisions of V3, V16 and V35.
             setChecksum(c, "3", 1244942886);
             setChecksum(c, "16", 260098715);
@@ -123,7 +194,10 @@ class FlywayMigrationPostgresIntegrationTest {
         }
 
         Flyway flyway = flyway(db, null, APP_LOCATIONS);
-        assertThrows(FlywayValidateException.class, flyway::migrate, "plain migrate must reject the drift");
+        assertThrows(
+                FlywayValidateException.class,
+                flyway::migrate,
+                "plain migrate must reject the drift");
         assertEquals(3, migrateLikeApplication(flyway));
 
         assertEquals(LATEST, flyway.info().current().getVersion().getVersion());
@@ -132,10 +206,17 @@ class FlywayMigrationPostgresIntegrationTest {
             assertEquals(-147999042L, checksum(c, "3"));
             assertEquals(-1471729173L, checksum(c, "16"));
             assertEquals(267207917L, checksum(c, "35"));
-            assertEquals(0L, count(c, "SELECT count(*) FROM \"OnboardActivity\" WHERE category = 'WORKSHOPS_CLASSES'"));
+            assertEquals(
+                    0L,
+                    count(
+                            c,
+                            "SELECT count(*) FROM \"OnboardActivity\" WHERE category ="
+                                + " 'WORKSHOPS_CLASSES'"));
 
-            try (PreparedStatement ps = c.prepareStatement(
-                    "SELECT cruise_code, revision, source_trip_id, source_version_id FROM \"Cruise\" WHERE cruise_id = ?")) {
+            try (PreparedStatement ps =
+                    c.prepareStatement(
+                            "SELECT cruise_code, revision, source_trip_id, source_version_id FROM"
+                                + " \"Cruise\" WHERE cruise_id = ?")) {
                 ps.setObject(1, legacyCruiseId);
                 try (ResultSet rs = ps.executeQuery()) {
                     assertTrue(rs.next(), "legacy cruise must survive the upgrade");
@@ -182,51 +263,77 @@ class FlywayMigrationPostgresIntegrationTest {
         try (Connection c = connect(db)) {
             assertEquals(-477179883L, checksum(c, "34"));
             for (var entry : before.entrySet())
-                assertEquals(entry.getValue(), count(c, "SELECT count(*) FROM \"" + entry.getKey() + "\""));
+                assertEquals(
+                        entry.getValue(),
+                        count(c, "SELECT count(*) FROM \"" + entry.getKey() + "\""));
             setChecksum(c, "34", 42);
         }
         assertThrows(FlywayValidateException.class, () -> migrateLikeApplication(flyway));
     }
 
     @Test
-    void filesystemLocationsReconcileOnlyTheReviewedV34Checksum(@org.junit.jupiter.api.io.TempDir java.nio.file.Path directory) throws Exception {
+    void filesystemLocationsReconcileOnlyTheReviewedV34Checksum(
+            @org.junit.jupiter.api.io.TempDir java.nio.file.Path directory) throws Exception {
         String db = createDatabase();
         migrateLikeApplication(flyway(db, null, APP_LOCATIONS));
-        try (Connection c = connect(db)) { setChecksum(c, "34", -1753018760); }
-        var resources = new org.springframework.core.io.support.PathMatchingResourcePatternResolver()
-                .getResources("classpath:db/migration/V*.sql");
+        try (Connection c = connect(db)) {
+            setChecksum(c, "34", -1753018760);
+        }
+        var resources =
+                new org.springframework.core.io.support.PathMatchingResourcePatternResolver()
+                        .getResources("classpath:db/migration/V*.sql");
         for (var resource : resources) {
             try (var input = resource.getInputStream()) {
-                java.nio.file.Files.copy(input, directory.resolve(java.util.Objects.requireNonNull(resource.getFilename())));
+                java.nio.file.Files.copy(
+                        input,
+                        directory.resolve(
+                                java.util.Objects.requireNonNull(resource.getFilename())));
             }
         }
         Flyway flyway = flyway(db, null, "filesystem:" + directory.toString().replace('\\', '/'));
         assertEquals(1, migrateLikeApplication(flyway));
         assertTrue(flyway.validateWithResult().validationSuccessful);
-        try (Connection c = connect(db)) { setChecksum(c, "34", 42); }
+        try (Connection c = connect(db)) {
+            setChecksum(c, "34", 42);
+        }
         assertThrows(FlywayValidateException.class, () -> migrateLikeApplication(flyway));
     }
 
     @Test
     void cloneOfExistingDatabaseUpgradesWithoutDataLoss() throws SQLException {
         String source = System.getProperty("casms.flyway.cloneSource");
-        Assumptions.assumeTrue(source != null && source.matches("[A-Za-z0-9_]+"),
-                "set -Dcasms.flyway.cloneSource=<database> to run against a copy of an existing database");
+        Assumptions.assumeTrue(
+                source != null && source.matches("[A-Za-z0-9_]+"),
+                "set -Dcasms.flyway.cloneSource=<database> to run against a copy of an existing"
+                    + " database");
         String db = "casms_flyway_clone_" + UUID.randomUUID().toString().substring(0, 8);
-        try (Connection admin = admin(); Statement st = admin.createStatement()) {
+        try (Connection admin = admin();
+                Statement st = admin.createStatement()) {
             st.execute("CREATE DATABASE " + db + " TEMPLATE " + source);
         }
         createdDatabases.add(db);
 
-        String[] tables = {"User", "Trip", "TripScheduleVersion", "Cruise", "CruiseStop", "Booking", "OnboardActivity"};
+        String[] tables = {
+            "User",
+            "Trip",
+            "TripScheduleVersion",
+            "Cruise",
+            "CruiseStop",
+            "Booking",
+            "OnboardActivity"
+        };
         Map<String, Long> before = new LinkedHashMap<>();
         String versionBefore;
         try (Connection c = connect(db)) {
             for (String table : tables) {
                 before.put(table, count(c, "SELECT count(*) FROM \"" + table + "\""));
             }
-            versionBefore = String.valueOf(count(c,
-                    "SELECT max(CAST(version AS int)) FROM flyway_schema_history WHERE success"));
+            versionBefore =
+                    String.valueOf(
+                            count(
+                                    c,
+                                    "SELECT max(CAST(version AS int)) FROM flyway_schema_history"
+                                        + " WHERE success"));
         }
 
         Flyway flyway = flyway(db, null, APP_LOCATIONS);
@@ -236,11 +343,21 @@ class FlywayMigrationPostgresIntegrationTest {
         assertTrue(flyway.validateWithResult().validationSuccessful);
         try (Connection c = connect(db)) {
             for (String table : tables) {
-                assertEquals(before.get(table), count(c, "SELECT count(*) FROM \"" + table + "\""), table);
+                assertEquals(
+                        before.get(table),
+                        count(c, "SELECT count(*) FROM \"" + table + "\""),
+                        table);
             }
-            assertEquals(0L, count(c, "SELECT count(*) FROM \"OnboardActivity\" WHERE category = 'WORKSHOPS_CLASSES'"));
+            assertEquals(
+                    0L,
+                    count(
+                            c,
+                            "SELECT count(*) FROM \"OnboardActivity\" WHERE category ="
+                                + " 'WORKSHOPS_CLASSES'"));
         }
-        System.out.printf("[BE-FIX-00] clone of %s: schema V%s -> V%s, realigned %d checksum(s), row counts %s preserved%n",
+        System.out.printf(
+                "[BE-FIX-00] clone of %s: schema V%s -> V%s, realigned %d checksum(s), row counts"
+                    + " %s preserved%n",
                 source, versionBefore, LATEST, realigned, before);
         assertDemoSeederPreservesLegacyInventory(db);
     }
@@ -249,27 +366,53 @@ class FlywayMigrationPostgresIntegrationTest {
     void demoSeederPreservesReservedLegacyInventoryAndIsIdempotent() throws SQLException {
         String db = createDatabase();
         migrateLikeApplication(flyway(db, null, APP_LOCATIONS));
-        try (Connection c = connect(db); Statement st = c.createStatement()) {
-            st.execute("INSERT INTO \"Ship\" (ship_id,ship_code,ship_name,status,total_capacity,total_decks,created_at,updated_at) VALUES ('85000000-0000-4000-8000-000000000201','IT-LEGACY-SHIP','Existing inventory','READY',10,1,now(),now())");
-            st.execute("INSERT INTO \"Deck\" (deck_id,ship_id,deck_number,deck_name,created_at,updated_at) VALUES ('85000000-0000-4000-8000-000000000202','85000000-0000-4000-8000-000000000201',1,'Existing deck',now(),now())");
-            st.execute("INSERT INTO \"Cabin\" (cabin_id,ship_id,deck_id,cabin_number,cabin_type,capacity,status,is_accessible,created_at,updated_at) VALUES ('85000000-0000-4000-8000-000000000203','85000000-0000-4000-8000-000000000201','85000000-0000-4000-8000-000000000202','OLD-101','SUITE',4,'AVAILABLE',false,now(),now())");
+        try (Connection c = connect(db);
+                Statement st = c.createStatement()) {
+            st.execute(
+                    "INSERT INTO \"Ship\""
+                        + " (ship_id,ship_code,ship_name,status,total_capacity,total_decks,created_at,updated_at)"
+                        + " VALUES"
+                        + " ('85000000-0000-4000-8000-000000000201','IT-LEGACY-SHIP','Existing"
+                        + " inventory','READY',10,1,now(),now())");
+            st.execute(
+                    "INSERT INTO \"Deck\""
+                        + " (deck_id,ship_id,deck_number,deck_name,created_at,updated_at) VALUES"
+                        + " ('85000000-0000-4000-8000-000000000202','85000000-0000-4000-8000-000000000201',1,'Existing"
+                        + " deck',now(),now())");
+            st.execute(
+                    "INSERT INTO \"Cabin\""
+                        + " (cabin_id,ship_id,deck_id,cabin_number,cabin_type,capacity,status,is_accessible,created_at,updated_at)"
+                        + " VALUES"
+                        + " ('85000000-0000-4000-8000-000000000203','85000000-0000-4000-8000-000000000201','85000000-0000-4000-8000-000000000202','OLD-101','SUITE',4,'AVAILABLE',false,now(),now())");
         }
         assertDemoSeederPreservesLegacyInventory(db);
     }
 
     private static void assertDemoSeederPreservesLegacyInventory(String db) throws SQLException {
-        Map<String,String> keys = Map.of("Ship","ship_id","Deck","deck_id","Cabin","cabin_id");
-        try (Connection c = connect(db); Statement st = c.createStatement()) {
-            // Compare only records that existed before seeding, including inventories without reserved UUIDs.
-            Map<String,Map<UUID,String>> original = new LinkedHashMap<>();
+        Map<String, String> keys =
+                Map.of("Ship", "ship_id", "Deck", "deck_id", "Cabin", "cabin_id");
+        try (Connection c = connect(db);
+                Statement st = c.createStatement()) {
+            // Compare only records that existed before seeding, including inventories without
+            // reserved UUIDs.
+            Map<String, Map<UUID, String>> original = new LinkedHashMap<>();
             for (var table : keys.entrySet()) {
-                Map<UUID,String> rows = new LinkedHashMap<>();
-                try (ResultSet result = st.executeQuery("SELECT " + table.getValue() + ",to_jsonb(t)::text FROM \"" + table.getKey() + "\" t")) {
-                    while (result.next()) rows.put(result.getObject(1,UUID.class),result.getString(2));
+                Map<UUID, String> rows = new LinkedHashMap<>();
+                try (ResultSet result =
+                        st.executeQuery(
+                                "SELECT "
+                                        + table.getValue()
+                                        + ",to_jsonb(t)::text FROM \""
+                                        + table.getKey()
+                                        + "\" t")) {
+                    while (result.next())
+                        rows.put(result.getObject(1, UUID.class), result.getString(2));
                 }
-                original.put(table.getKey(),rows);
+                original.put(table.getKey(), rows);
             }
-            var dataSource = new org.springframework.jdbc.datasource.DriverManagerDataSource(url(db), USER, PASSWORD);
+            var dataSource =
+                    new org.springframework.jdbc.datasource.DriverManagerDataSource(
+                            url(db), USER, PASSWORD);
             var seeder = new com.casms.servicepackage.config.DemoCatalogSeeder(dataSource);
             seeder.run(null);
             long ships = count(c, "SELECT count(*) FROM \"Ship\"");
@@ -278,17 +421,33 @@ class FlywayMigrationPostgresIntegrationTest {
             assertEquals(ships, count(c, "SELECT count(*) FROM \"Ship\""));
             assertEquals(cabins, count(c, "SELECT count(*) FROM \"Cabin\""));
             for (var table : keys.entrySet()) {
-                try (PreparedStatement query = c.prepareStatement("SELECT to_jsonb(t)::text FROM \"" + table.getKey() + "\" t WHERE " + table.getValue() + "=?")) {
+                try (PreparedStatement query =
+                        c.prepareStatement(
+                                "SELECT to_jsonb(t)::text FROM \""
+                                        + table.getKey()
+                                        + "\" t WHERE "
+                                        + table.getValue()
+                                        + "=?")) {
                     for (var row : original.get(table.getKey()).entrySet()) {
-                        query.setObject(1,row.getKey());
+                        query.setObject(1, row.getKey());
                         try (ResultSet result = query.executeQuery()) {
-                            assertTrue(result.next(),"Existing " + table.getKey() + " row must survive");
-                            assertEquals(row.getValue(),result.getString(1),table.getKey() + " " + row.getKey());
+                            assertTrue(
+                                    result.next(),
+                                    "Existing " + table.getKey() + " row must survive");
+                            assertEquals(
+                                    row.getValue(),
+                                    result.getString(1),
+                                    table.getKey() + " " + row.getKey());
                         }
                     }
                 }
             }
-            assertEquals(4L, count(c, "SELECT count(*) FROM \"Cabin\" c JOIN \"Ship\" s USING(ship_id) WHERE s.ship_code='DEMO-CATALOG-SHIP'"));
+            assertEquals(
+                    4L,
+                    count(
+                            c,
+                            "SELECT count(*) FROM \"Cabin\" c JOIN \"Ship\" s USING(ship_id) WHERE"
+                                + " s.ship_code='DEMO-CATALOG-SHIP'"));
         }
     }
 
@@ -301,13 +460,15 @@ class FlywayMigrationPostgresIntegrationTest {
     }
 
     private static void insertLegacyCruise(Connection c, UUID cruiseId) throws SQLException {
-        try (PreparedStatement ps = c.prepareStatement("""
-                INSERT INTO "Cruise" (cruise_id, cruise_code, cruise_name, cruise_type, departure_datetime,
-                                      return_datetime, departure_port_id, return_port_id, status, created_at, updated_at)
-                SELECT ?, 'LEGACY-IT-1', 'Legacy cruise before V37', ?, now() + interval '10 days',
-                       now() + interval '13 days', p.port_id, p.port_id, 'DRAFT', now(), now()
-                FROM "Port" p ORDER BY p.port_code LIMIT 1
-                """)) {
+        try (PreparedStatement ps =
+                c.prepareStatement(
+                        """
+INSERT INTO "Cruise" (cruise_id, cruise_code, cruise_name, cruise_type, departure_datetime,
+                      return_datetime, departure_port_id, return_port_id, status, created_at, updated_at)
+SELECT ?, 'LEGACY-IT-1', 'Legacy cruise before V37', ?, now() + interval '10 days',
+       now() + interval '13 days', p.port_id, p.port_id, 'DRAFT', now(), now()
+FROM "Port" p ORDER BY p.port_code LIMIT 1
+""")) {
             ps.setObject(1, cruiseId);
             ps.setString(2, CruiseCruiseType.values()[0].name());
             assertEquals(1, ps.executeUpdate(), "seeded ports are required");
@@ -315,13 +476,22 @@ class FlywayMigrationPostgresIntegrationTest {
     }
 
     private static void assertLineageConstraintsValidated(Connection c) throws SQLException {
-        assertEquals(3L, count(c, """
-                SELECT count(*) FROM pg_constraint
-                WHERE conname IN ('uq_trip_schedule_version_trip_version', 'ck_cruise_source_pair',
-                                  'fk_cruise_source_trip_version')
-                  AND convalidated
-                """));
-        assertEquals(1L, count(c, "SELECT count(*) FROM pg_indexes WHERE indexname = 'idx_cruise_source_version_departure'"));
+        assertEquals(
+                3L,
+                count(
+                        c,
+                        """
+SELECT count(*) FROM pg_constraint
+WHERE conname IN ('uq_trip_schedule_version_trip_version', 'ck_cruise_source_pair',
+                  'fk_cruise_source_trip_version')
+  AND convalidated
+"""));
+        assertEquals(
+                1L,
+                count(
+                        c,
+                        "SELECT count(*) FROM pg_indexes WHERE indexname ="
+                            + " 'idx_cruise_source_version_departure'"));
     }
 
     private static void assertLineageIsEnforced(Connection c, UUID cruiseId) throws SQLException {
@@ -330,9 +500,11 @@ class FlywayMigrationPostgresIntegrationTest {
         UUID versionA = versionOf(c, tripA);
         UUID versionB = versionOf(c, tripB);
 
-        SQLException mismatch = assertThrows(SQLException.class, () -> linkCruise(c, cruiseId, tripA, versionB));
+        SQLException mismatch =
+                assertThrows(SQLException.class, () -> linkCruise(c, cruiseId, tripA, versionB));
         assertEquals("23503", mismatch.getSQLState(), "version of another trip must be rejected");
-        SQLException half = assertThrows(SQLException.class, () -> linkCruise(c, cruiseId, tripA, null));
+        SQLException half =
+                assertThrows(SQLException.class, () -> linkCruise(c, cruiseId, tripA, null));
         assertEquals("23514", half.getSQLState(), "trip without version must be rejected");
 
         linkCruise(c, cruiseId, tripA, versionA);
@@ -340,15 +512,19 @@ class FlywayMigrationPostgresIntegrationTest {
 
     private static UUID insertTripWithVersion(Connection c, String code) throws SQLException {
         UUID tripId = UUID.randomUUID();
-        try (PreparedStatement ps = c.prepareStatement(
-                "INSERT INTO \"Trip\" (trip_id, trip_code, name, duration_days, duration_nights) VALUES (?, ?, ?, 3, 2)")) {
+        try (PreparedStatement ps =
+                c.prepareStatement(
+                        "INSERT INTO \"Trip\" (trip_id, trip_code, name, duration_days,"
+                            + " duration_nights) VALUES (?, ?, ?, 3, 2)")) {
             ps.setObject(1, tripId);
             ps.setString(2, code);
             ps.setString(3, code);
             ps.executeUpdate();
         }
-        try (PreparedStatement ps = c.prepareStatement(
-                "INSERT INTO \"TripScheduleVersion\" (trip_id, version_number) VALUES (?, 1)")) {
+        try (PreparedStatement ps =
+                c.prepareStatement(
+                        "INSERT INTO \"TripScheduleVersion\" (trip_id, version_number) VALUES (?,"
+                            + " 1)")) {
             ps.setObject(1, tripId);
             ps.executeUpdate();
         }
@@ -356,7 +532,9 @@ class FlywayMigrationPostgresIntegrationTest {
     }
 
     private static UUID versionOf(Connection c, UUID tripId) throws SQLException {
-        try (PreparedStatement ps = c.prepareStatement("SELECT version_id FROM \"TripScheduleVersion\" WHERE trip_id = ?")) {
+        try (PreparedStatement ps =
+                c.prepareStatement(
+                        "SELECT version_id FROM \"TripScheduleVersion\" WHERE trip_id = ?")) {
             ps.setObject(1, tripId);
             try (ResultSet rs = ps.executeQuery()) {
                 assertTrue(rs.next());
@@ -365,9 +543,12 @@ class FlywayMigrationPostgresIntegrationTest {
         }
     }
 
-    private static void linkCruise(Connection c, UUID cruiseId, UUID tripId, UUID versionId) throws SQLException {
-        try (PreparedStatement ps = c.prepareStatement(
-                "UPDATE \"Cruise\" SET source_trip_id = ?, source_version_id = ? WHERE cruise_id = ?")) {
+    private static void linkCruise(Connection c, UUID cruiseId, UUID tripId, UUID versionId)
+            throws SQLException {
+        try (PreparedStatement ps =
+                c.prepareStatement(
+                        "UPDATE \"Cruise\" SET source_trip_id = ?, source_version_id = ? WHERE"
+                            + " cruise_id = ?")) {
             ps.setObject(1, tripId);
             ps.setObject(2, versionId);
             ps.setObject(3, cruiseId);
@@ -375,8 +556,11 @@ class FlywayMigrationPostgresIntegrationTest {
         }
     }
 
-    private static void setChecksum(Connection c, String version, int checksum) throws SQLException {
-        try (PreparedStatement ps = c.prepareStatement("UPDATE flyway_schema_history SET checksum = ? WHERE version = ?")) {
+    private static void setChecksum(Connection c, String version, int checksum)
+            throws SQLException {
+        try (PreparedStatement ps =
+                c.prepareStatement(
+                        "UPDATE flyway_schema_history SET checksum = ? WHERE version = ?")) {
             ps.setInt(1, checksum);
             ps.setString(2, version);
             assertEquals(1, ps.executeUpdate());
@@ -384,11 +568,13 @@ class FlywayMigrationPostgresIntegrationTest {
     }
 
     private static long checksum(Connection c, String version) throws SQLException {
-        return count(c, "SELECT checksum FROM flyway_schema_history WHERE version = '" + version + "'");
+        return count(
+                c, "SELECT checksum FROM flyway_schema_history WHERE version = '" + version + "'");
     }
 
     private static long count(Connection c, String sql) throws SQLException {
-        try (Statement st = c.createStatement(); ResultSet rs = st.executeQuery(sql)) {
+        try (Statement st = c.createStatement();
+                ResultSet rs = st.executeQuery(sql)) {
             assertTrue(rs.next());
             return rs.getLong(1);
         }
@@ -396,7 +582,8 @@ class FlywayMigrationPostgresIntegrationTest {
 
     private String createDatabase() throws SQLException {
         String db = "casms_flyway_it_" + UUID.randomUUID().toString().substring(0, 8);
-        try (Connection admin = admin(); Statement st = admin.createStatement()) {
+        try (Connection admin = admin();
+                Statement st = admin.createStatement()) {
             st.execute("CREATE DATABASE " + db);
         }
         createdDatabases.add(db);
@@ -404,11 +591,12 @@ class FlywayMigrationPostgresIntegrationTest {
     }
 
     private static Flyway flyway(String db, String target, String... locations) {
-        var configuration = Flyway.configure()
-                .dataSource(url(db), USER, PASSWORD)
-                .locations(locations)
-                .baselineOnMigrate(true)
-                .validateOnMigrate(true);
+        var configuration =
+                Flyway.configure()
+                        .dataSource(url(db), USER, PASSWORD)
+                        .locations(locations)
+                        .baselineOnMigrate(true)
+                        .validateOnMigrate(true);
         if (target != null) {
             configuration.target(target);
         }
@@ -424,7 +612,10 @@ class FlywayMigrationPostgresIntegrationTest {
     }
 
     private static String url(String db) {
-        String base = ADMIN_URL.contains("?") ? ADMIN_URL.substring(0, ADMIN_URL.indexOf('?')) : ADMIN_URL;
+        String base =
+                ADMIN_URL.contains("?")
+                        ? ADMIN_URL.substring(0, ADMIN_URL.indexOf('?'))
+                        : ADMIN_URL;
         return base.substring(0, base.lastIndexOf('/') + 1) + db + "?stringtype=unspecified";
     }
 

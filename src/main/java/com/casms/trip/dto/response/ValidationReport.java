@@ -1,6 +1,7 @@
 package com.casms.trip.dto.response;
 
 import io.swagger.v3.oas.annotations.media.Schema;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -14,7 +15,9 @@ import java.util.UUID;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@Schema(description = "Báo cáo thẩm định tính khả thi của bản kế hoạch lịch trình (Validation Report)")
+@Schema(
+        description =
+                "Báo cáo thẩm định tính khả thi của bản kế hoạch lịch trình (Validation Report)")
 public class ValidationReport {
 
     @Schema(description = "ID của phiên bản kế hoạch")
@@ -23,7 +26,10 @@ public class ValidationReport {
     @Schema(description = "Revision của phiên bản lúc thẩm định")
     private Long revision;
 
-    @Schema(description = "Kết luận cấu trúc bản kế hoạch đủ điều kiện chốt mẫu bởi CRM; không có nghĩa các deferredChecks đã đạt")
+    @Schema(
+            description =
+                    "Kết luận cấu trúc bản kế hoạch đủ điều kiện chốt mẫu bởi CRM; không có nghĩa"
+                        + " các deferredChecks đã đạt")
     private Boolean validForSubmit;
 
     @Builder.Default
@@ -31,7 +37,10 @@ public class ValidationReport {
     private List<PlanViolation> violations = new ArrayList<>();
 
     @Builder.Default
-    @Schema(description = "Danh sách các khâu kiểm tra hoãn sang giai đoạn actual (ví dụ: FLEET_COMPATIBILITY_DEFERRED, NEEDS_SAILING_DATE)")
+    @Schema(
+            description =
+                    "Danh sách các khâu kiểm tra hoãn sang giai đoạn actual (ví dụ:"
+                        + " FLEET_COMPATIBILITY_DEFERRED, NEEDS_SAILING_DATE)")
     private List<String> deferredChecks = new ArrayList<>();
 
     @Schema(description = "Phiên bản chính sách quy tắc áp dụng", example = "v1.0")

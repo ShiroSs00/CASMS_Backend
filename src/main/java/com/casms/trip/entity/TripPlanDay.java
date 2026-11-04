@@ -1,13 +1,15 @@
 package com.casms.trip.entity;
 
-import com.casms.ship.enums.ItineraryDayType;
 import com.casms.ship.entity.Port;
-import java.time.LocalTime;
 import com.casms.ship.enums.ItineraryDayRole;
+import com.casms.ship.enums.ItineraryDayType;
+
 import jakarta.persistence.*;
+
 import lombok.Getter;
 import lombok.Setter;
 
+import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -15,11 +17,16 @@ import java.util.UUID;
 @Getter
 @Setter
 @Entity
-@Table(name = "\"TripPlanDay\"",
-       uniqueConstraints = @UniqueConstraint(name = "uq_version_day_number", columnNames = {"version_id", "day_number"}))
+@Table(
+        name = "\"TripPlanDay\"",
+        uniqueConstraints =
+                @UniqueConstraint(
+                        name = "uq_version_day_number",
+                        columnNames = {"version_id", "day_number"}))
 public class TripPlanDay {
 
-    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.JSON) @Column(name="departure_port_facts",columnDefinition="jsonb")
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.JSON)
+    @Column(name = "departure_port_facts", columnDefinition = "jsonb")
     private com.casms.ship.dto.PortFacts departurePortFacts;
 
     @Id
@@ -51,14 +58,16 @@ public class TripPlanDay {
 
     public ItineraryDayRole getDayRole() {
         if (dayNumber == null || version == null) return dayRole;
-        if (version.getTrip() == null || version.getTrip().getDurationDays() == null) return dayRole;
+        if (version.getTrip() == null || version.getTrip().getDurationDays() == null)
+            return dayRole;
         return ItineraryDayRole.forDay(dayNumber, version.getTrip().getDurationDays());
     }
 
     @PrePersist
     @PreUpdate
-    private void synchronizeDayRole() { dayRole = getDayRole(); }
-
+    private void synchronizeDayRole() {
+        dayRole = getDayRole();
+    }
 
     @Column(name = "ship_time_zone_id", nullable = false, length = 100)
     private String shipTimeZoneId = "Asia/Ho_Chi_Minh";
@@ -69,7 +78,11 @@ public class TripPlanDay {
     @Column(name = "description", columnDefinition = "TEXT")
     private String description;
 
-    @OneToMany(mappedBy = "day", fetch = FetchType.LAZY, cascade = CascadeType.ALL, orphanRemoval = true)
+    @OneToMany(
+            mappedBy = "day",
+            fetch = FetchType.LAZY,
+            cascade = CascadeType.ALL,
+            orphanRemoval = true)
     @OrderBy("startDayNumber ASC, plannedStartTime ASC")
     private List<TripPlanEntry> entries = new ArrayList<>();
 }

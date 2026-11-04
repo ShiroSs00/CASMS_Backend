@@ -1,7 +1,9 @@
 package com.casms.payment.entity;
 
 import com.casms.payment.enums.FinalSettlementStatus;
+
 import jakarta.persistence.*;
+
 import lombok.Getter;
 import lombok.Setter;
 

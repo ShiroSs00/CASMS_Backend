@@ -1,6 +1,7 @@
 package com.casms.checkin.repository;
 
 import com.casms.checkin.entity.GuidanceSession;
+
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 

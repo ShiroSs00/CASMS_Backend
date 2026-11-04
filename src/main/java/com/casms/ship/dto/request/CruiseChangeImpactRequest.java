@@ -1,7 +1,9 @@
 package com.casms.ship.dto.request;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+
 import io.swagger.v3.oas.annotations.media.Schema;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -15,7 +17,10 @@ import java.util.UUID;
 @NoArgsConstructor
 @AllArgsConstructor
 @JsonIgnoreProperties(ignoreUnknown = true)
-@Schema(description = "Yêu cầu đánh giá tác động thay đổi lịch trình, tàu hoặc cấu hình chuyến khởi hành (C11, C17)")
+@Schema(
+        description =
+                "Yêu cầu đánh giá tác động thay đổi lịch trình, tàu hoặc cấu hình chuyến khởi hành"
+                    + " (C11, C17)")
 public class CruiseChangeImpactRequest {
 
     @Schema(description = "Thời điểm khởi hành mới dự kiến")
@@ -36,9 +41,13 @@ public class CruiseChangeImpactRequest {
     @Schema(description = "Định danh sự kiện thay đổi (Event Identity phục vụ deduplication / C17)")
     private String eventIdentity;
 
-    @Schema(description = "Revision mong đợi của Cruise để chống ghi đè (Optimistic Lock / C11)", example = "1")
+    @Schema(
+            description = "Revision mong đợi của Cruise để chống ghi đè (Optimistic Lock / C11)",
+            example = "1")
     private Long expectedRevision;
 
-    @Schema(description = "Lý do thay đổi cấu hình hoặc lịch trình", example = "Điều chỉnh theo yêu cầu kỹ thuật luồng hàng hải")
+    @Schema(
+            description = "Lý do thay đổi cấu hình hoặc lịch trình",
+            example = "Điều chỉnh theo yêu cầu kỹ thuật luồng hàng hải")
     private String reason;
 }
