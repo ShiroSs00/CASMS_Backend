@@ -193,10 +193,10 @@ public class CruisePackageService {
                 &&(input.occurrenceId().equals(b.getOnboardActivityId())||input.occurrenceId().equals(b.getShoreExcursionId())||input.occurrenceId().equals(b.getServiceId())));
         if(duplicate) fail("FARE_BINDING_DUPLICATE","Lần phục vụ đã được liên kết với quyền lợi này.");
         var binding=new DepartureCruisePackageBenefit(); binding.setId(UUID.randomUUID()); binding.setOfferId(offerId); binding.setBenefitId(benefit.getId());
-        repository.insert(binding);
         binding.setOnboardActivityId(type==ResourceType.ACTIVITY?input.occurrenceId():null);
         binding.setShoreExcursionId(type==ResourceType.EXCURSION?input.occurrenceId():null);
         binding.setServiceId(type==ResourceType.SERVICE?input.occurrenceId():null);
+        repository.insert(binding);
         offer.setCommercialRevision(offer.getCommercialRevision()+1);
         repository.increment(offer); repository.flush(); return offerView(offer);
     }
