@@ -5,7 +5,13 @@ echo "=== Bắt đầu quá trình tự động cập nhật Backend CASMS ==="
 
 cd /home/ubuntu/casms
 
-# 1. Dọn dẹp build cache docker cũ để giải phóng dung lượng đĩa
+# 1. Đảm bảo file .env tồn tại nếu server chưa có
+if [ ! -f .env ] && [ -f .env.example ]; then
+    echo "Tạo file .env từ template .env.example..."
+    cp .env.example .env
+fi
+
+# 2. Dọn dẹp build cache docker cũ để giải phóng dung lượng đĩa
 echo "Dọn dẹp build cache cũ để đảm bảo đủ dung lượng..."
 docker builder prune -f || true
 
