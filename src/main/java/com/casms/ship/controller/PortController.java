@@ -206,7 +206,7 @@ public class PortController {
         return ApiResponse.success(service.activate(portId));
     }
 
-    @Operation(summary = "Ngừng kích hoạt cảng", description = "Chuyển trạng thái cảng sang INACTIVE")
+    @Operation(summary = "Vô hiệu hóa cảng", description = "Chuyển trạng thái cảng sang INACTIVE")
     @PreAuthorize("hasRole('OPERATIONS_MANAGER') and hasAuthority('PORT_DEACTIVATE')")
     @PostMapping("/{portId}/deactivate")
     public ApiResponse<PortResponse> deactivate(
@@ -215,34 +215,23 @@ public class PortController {
     }
 
     @Operation(
-            summary = "Danh sách cảng gợi ý theo điểm đến",
-            description = "Lấy danh sách các cảng thuộc một điểm đến cụ thể")
-    @PreAuthorize("permitAll()")
-    @GetMapping("/by-destination/{destinationId}")
-    public ApiResponse<List<PortResponse>> listByDestination(
-            @Parameter(description = "ID của điểm đến", required = true) @PathVariable
-                    UUID destinationId) {
-        return ApiResponse.success(service.listByDestination(destinationId));
-    }
-
-    @Operation(
-            summary = "Tra cứu múi giờ cảng",
-            description = "Lấy múi giờ IANA chuẩn của cảng theo ID")
-    @PreAuthorize("permitAll()")
-    @GetMapping("/{portId}/timezone")
-    public ApiResponse<String> getPortTimeZone(
+            summary = "Kiểm tra tính hợp lệ cảng",
+            description = "Xác minh tính hợp lệ của dữ liệu cảng")
+    @PreAuthorize("hasAuthority('PORT_VALIDATE')")
+    @PostMapping("/{portId}/validate")
+    public ApiResponse<Void> validatePort(
             @Parameter(description = "ID của cảng", required = true) @PathVariable UUID portId) {
-        return ApiResponse.success("Port timezone retrieved", service.getPortTimeZone(portId));
+        service.validatePort(portId);
+        return ApiResponse.success("Port validation passed", null);
     }
 
     @Operation(
-            summary = "Danh sách quốc gia có cảng hoạt động",
-            description =
-                    "Lấy danh sách các quốc gia (code + name) có ít nhất một cảng đang hoạt động")
-    @PreAuthorize("permitAll()")
-    @GetMapping("/countries")
-    public ApiResponse<List<com.casms.ship.dto.response.CountryOptionResponse>>
-            listSupportedCountries() {
-        return ApiResponse.success(service.listSupportedCountries());
+            summary = "Kiểm tra sẵn sàng vận hành",
+            description = "Kiểm tra cảng có đang ACTIVE và sẵn sàng cho hoạt động không")
+    @PreAuthorize("hasAuthority('PORT_READ')")
+    @GetMapping("/{portId}/availability")
+    public ApiResponse<Boolean> checkOperationalAvailability(
+            @Parameter(description = "ID của cảng", required = true) @PathVariable UUID portId) {
+        return ApiResponse.success(service.checkOperationalAvailability(portId));
     }
 }
