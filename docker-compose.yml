@@ -7,12 +7,10 @@ services:
     restart: unless-stopped
     ports:
       - "8080:8080"
+    env_file:
+      - .env
     environment:
-      DB_URL: ${DB_URL:-jdbc:postgresql://aws-0-ap-south-1.pooler.supabase.com:5432/postgres?stringtype=unspecified}
-      DB_USERNAME: ${DB_USERNAME:-postgres.tzzrxbizuypofsciiuzy}
-      DB_PASSWORD: ${DB_PASSWORD:-Baothanh@890}
-      JWT_SECRET: ${JWT_SECRET:-changeme-use-a-long-random-secret-in-production-1234567890-must-be-very-long}
-      SPRING_PROFILES_ACTIVE: dev
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
     networks:
       - casms-network
 
