@@ -181,19 +181,20 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ResponseEntity<ApiResponse<Void>> handleDataIntegrityViolation(DataIntegrityViolationException ex) {
         log.warn("Data integrity violation: {}", ex.getMessage());
+        Throwable root = ex.getMostSpecificCause();
+        String rootMsg = root != null && root.getMessage() != null ? root.getMessage().toLowerCase() : "";
         String msg = ex.getMessage() != null ? ex.getMessage() : "Dữ liệu xung đột toàn vẹn dữ liệu";
-        String lower = msg.toLowerCase();
-        if (lower.contains("idempotency") || lower.contains("uq_idempotency")) {
+        if (rootMsg.contains("idempotency") || rootMsg.contains("uq_idempotency")) {
             return ResponseEntity.status(HttpStatus.CONFLICT)
                     .body(ApiResponse.error("Yêu cầu trùng lặp với cùng Idempotency-Key đang được xử lý hoặc đã hoàn tất.",
                             "IDEMPOTENCY_CONFLICT"));
         }
-        if (lower.contains("unique") || lower.contains("duplicate") || lower.contains("uq_")) {
+        if (rootMsg.contains("unique") || rootMsg.contains("duplicate") || rootMsg.contains("uq_")) {
             return ResponseEntity.status(HttpStatus.CONFLICT)
                     .body(ApiResponse.error("Dữ liệu trùng lặp trong hệ thống.", "DUPLICATE_RESOURCE"));
         }
         return ResponseEntity.status(HttpStatus.CONFLICT)
-                .body(ApiResponse.error("Xung đột ràng buộc dữ liệu: " + msg, "DATA_INTEGRITY_VIOLATION"));
+                .body(ApiResponse.error("Xung đột ràng buộc dữ liệu: " + (root != null && root.getMessage() != null ? root.getMessage() : msg), "DATA_INTEGRITY_VIOLATION"));
     }
 
     @ExceptionHandler(Exception.class)

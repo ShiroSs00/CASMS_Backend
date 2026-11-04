@@ -408,6 +408,11 @@ public class SepayService {
             transferContent = "CASMS BK2026" + randomNum + "F";
         }
 
+        // Tu dong tim booking neu transferContent chua ma tham chieu cua mot don dat tour co that
+        if (booking == null && transferContent != null) {
+            booking = findMatchingBooking(transferContent);
+        }
+
         String idempotencyKey = (request.getIdempotencyKey() != null && !request.getIdempotencyKey().isBlank())
                 ? request.getIdempotencyKey().trim()
                 : "QUICK-" + transferContent.replaceAll("[^A-Za-z0-9]", "") + "-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase(Locale.ROOT);
