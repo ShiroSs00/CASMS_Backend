@@ -8,9 +8,9 @@ spring:
       max-request-size: 2GB
 
   datasource:
-    url: ${DB_URL:jdbc:postgresql://aws-0-ap-south-1.pooler.supabase.com:5432/postgres?stringtype=unspecified}
-    username: ${DB_USERNAME:postgres.tzzrxbizuypofsciiuzy}
-    password: ${DB_PASSWORD:Baothanh@890}
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
     driver-class-name: org.postgresql.Driver
     hikari:
       data-source-properties:
@@ -46,7 +46,7 @@ server:
     context-path: /api
 
 jwt:
-  secret: ${JWT_SECRET:1nxHqbJWCAIL9cnuVvhJgoUuS58qJNQBBMBebu0Rihk}
+  secret: ${JWT_SECRET}
   expiration-ms: ${JWT_EXPIRATION_MS:86400000}
 
 logging:
@@ -74,7 +74,7 @@ casms:
   payment:
     sepay:
       enabled: ${SEPAY_ENABLED:true}
-      api-key: ${SEPAY_API_KEY:kLcYvncQwZwYH2DCNtIKqdzCCKm10o3sMPr8IXVtVLd}
+      api-key: ${SEPAY_API_KEY:}
       bank-name: ${SEPAY_BANK_NAME:MBBank}
       account-number: ${SEPAY_ACCOUNT_NUMBER:0901452366}
       account-name: ${SEPAY_ACCOUNT_NAME:CASMS CRUISE}
