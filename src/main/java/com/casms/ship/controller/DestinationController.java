@@ -1,5 +1,7 @@
 package com.casms.ship.controller;
 
+import com.casms.audit.AuditLog;
+import com.casms.audit.AuditRepository;
 import com.casms.common.response.ApiResponse;
 import com.casms.ship.dto.request.DestinationCreateRequest;
 import com.casms.ship.dto.request.DestinationUpdateRequest;
@@ -31,9 +33,7 @@ import java.util.UUID;
 public class DestinationController {
 
     private final DestinationService service;
-
-    @org.springframework.beans.factory.annotation.Autowired
-    private com.casms.audit.AuditRepository directoryAudit;
+    private final AuditRepository directoryAudit;
 
     @GetMapping("/{destinationId}/history")
     @PreAuthorize("hasRole('OPERATIONS_MANAGER') and hasAuthority('DESTINATION_READ')")
@@ -42,7 +42,7 @@ public class DestinationController {
             description =
                     "Audit thực tế của master; trước/sau khi có bằng chứng, không suy đoán lịch sử"
                         + " thiếu metadata.")
-    public ApiResponse<Page<com.casms.audit.AuditLog>> history(
+    public ApiResponse<Page<AuditLog>> history(
             @PathVariable UUID destinationId, Pageable pageable) {
         service.detail(destinationId);
         return ApiResponse.success(
@@ -111,7 +111,6 @@ public class DestinationController {
                     "Xóa điểm đến nếu chưa được gán cho bất kỳ điểm dừng chuyến khởi hành nào")
     @PreAuthorize("hasRole('OPERATIONS_MANAGER') and hasAuthority('DESTINATION_DELETE_UNUSED')")
     @DeleteMapping("/{destinationId}/unused")
-    @ResponseStatus(HttpStatus.NO_CONTENT)
     public ApiResponse<Void> deleteUnused(
             @Parameter(description = "ID của điểm đến", required = true) @PathVariable
                     UUID destinationId) {

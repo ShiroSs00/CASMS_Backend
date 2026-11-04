@@ -1,5 +1,10 @@
 package com.casms.ship.controller;
 
+import com.casms.audit.AuditLog;
+import com.casms.audit.AuditRepository;
+
+import com.casms.audit.AuditLog;
+import com.casms.audit.AuditRepository;
 import com.casms.common.response.ApiResponse;
 import com.casms.ship.dto.request.PortCreateRequest;
 import com.casms.ship.dto.request.PortUpdateRequest;
@@ -33,9 +38,7 @@ import java.util.UUID;
 public class PortController {
 
     private final PortService service;
-
-    @org.springframework.beans.factory.annotation.Autowired
-    private com.casms.audit.AuditRepository directoryAudit;
+    private final AuditRepository directoryAudit;
 
     @GetMapping("/{portId}/history")
     @PreAuthorize("hasRole('OPERATIONS_MANAGER') and hasAuthority('PORT_READ')")
@@ -44,7 +47,7 @@ public class PortController {
             description =
                     "Audit thực tế của master; trước/sau khi có bằng chứng, không suy đoán lịch sử"
                         + " thiếu metadata.")
-    public ApiResponse<Page<com.casms.audit.AuditLog>> history(
+    public ApiResponse<Page<AuditLog>> history(
             @PathVariable UUID portId, Pageable pageable) {
         service.detail(portId);
         return ApiResponse.success(
@@ -189,7 +192,6 @@ public class PortController {
                     "Xóa cảng nếu cảng chưa được gán cho bất kỳ điểm dừng chuyến khởi hành nào")
     @PreAuthorize("hasRole('OPERATIONS_MANAGER') and hasAuthority('PORT_DELETE_UNUSED')")
     @DeleteMapping("/{portId}/unused")
-    @ResponseStatus(HttpStatus.NO_CONTENT)
     public ApiResponse<Void> deleteUnused(
             @Parameter(description = "ID của cảng", required = true) @PathVariable UUID portId) {
         service.deleteUnused(portId);
@@ -204,7 +206,7 @@ public class PortController {
         return ApiResponse.success(service.activate(portId));
     }
 
-    @Operation(summary = "Vô hiệu hóa cảng", description = "Chuyển trạng thái cảng sang INACTIVE")
+    @Operation(summary = "Ngừng kích hoạt cảng", description = "Chuyển trạng thái cảng sang INACTIVE")
     @PreAuthorize("hasRole('OPERATIONS_MANAGER') and hasAuthority('PORT_DEACTIVATE')")
     @PostMapping("/{portId}/deactivate")
     public ApiResponse<PortResponse> deactivate(
@@ -213,23 +215,34 @@ public class PortController {
     }
 
     @Operation(
-            summary = "Kiểm tra tính hợp lệ cảng",
-            description = "Xác minh tính hợp lệ của dữ liệu cảng")
-    @PreAuthorize("hasAuthority('PORT_VALIDATE')")
-    @PostMapping("/{portId}/validate")
-    public ApiResponse<Void> validatePort(
-            @Parameter(description = "ID của cảng", required = true) @PathVariable UUID portId) {
-        service.validatePort(portId);
-        return ApiResponse.success("Port validation passed", null);
+            summary = "Danh sách cảng gợi ý theo điểm đến",
+            description = "Lấy danh sách các cảng thuộc một điểm đến cụ thể")
+    @PreAuthorize("permitAll()")
+    @GetMapping("/by-destination/{destinationId}")
+    public ApiResponse<List<PortResponse>> listByDestination(
+            @Parameter(description = "ID của điểm đến", required = true) @PathVariable
+                    UUID destinationId) {
+        return ApiResponse.success(service.listByDestination(destinationId));
     }
 
     @Operation(
-            summary = "Kiểm tra sẵn sàng vận hành",
-            description = "Kiểm tra cảng có đang ACTIVE và sẵn sàng cho hoạt động không")
-    @PreAuthorize("hasAuthority('PORT_READ')")
-    @GetMapping("/{portId}/availability")
-    public ApiResponse<Boolean> checkOperationalAvailability(
+            summary = "Tra cứu múi giờ cảng",
+            description = "Lấy múi giờ IANA chuẩn của cảng theo ID")
+    @PreAuthorize("permitAll()")
+    @GetMapping("/{portId}/timezone")
+    public ApiResponse<String> getPortTimeZone(
             @Parameter(description = "ID của cảng", required = true) @PathVariable UUID portId) {
-        return ApiResponse.success(service.checkOperationalAvailability(portId));
+        return ApiResponse.success("Port timezone retrieved", service.getPortTimeZone(portId));
+    }
+
+    @Operation(
+            summary = "Danh sách quốc gia có cảng hoạt động",
+            description =
+                    "Lấy danh sách các quốc gia (code + name) có ít nhất một cảng đang hoạt động")
+    @PreAuthorize("permitAll()")
+    @GetMapping("/countries")
+    public ApiResponse<List<com.casms.ship.dto.response.CountryOptionResponse>>
+            listSupportedCountries() {
+        return ApiResponse.success(service.listSupportedCountries());
     }
 }
