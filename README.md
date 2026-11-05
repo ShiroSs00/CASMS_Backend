@@ -2,11 +2,11 @@
 
 [![Java](https://img.shields.io/badge/Java-21-orange.svg)](https://adoptium.net/)
 [![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.3.4-brightgreen.svg)](https://spring.io/projects/spring-boot)
-[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-Supabase-blue.svg)](https://supabase.com/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-blue.svg)](https://www.postgresql.org/)
 [![Flyway](https://img.shields.io/badge/Flyway-Migrations-red.svg)](https://flywaydb.org/)
 [![License](https://img.shields.io/badge/License-Proprietary-yellow.svg)]()
 
-> **CASMS Backend** là hệ sinh thái máy chủ dịch vụ (RESTful API & Domain Services) chuyên sâu phục vụ công tác quản lý, điều hành và số hóa toàn diện quy trình du lịch du thuyền: từ quản lý đội tàu, hải trình, chính sách giá vé, đặt chỗ & hợp đồng điện tử, cổng thanh toán tự động SePay VietQR (MBBank), quy trình làm thủ tục check-in & giám sát hành khách qua sóng BLE tại cầu cảng, cho đến các dịch vụ ẩm thực, vui chơi giải trí trên tàu và tour khám phá trên bờ (Shore Excursions).
+> **CASMS Backend** là hệ sinh thái máy chủ dịch vụ (RESTful API & Domain Services) chuyên sâu phục vụ công tác quản lý, điều hành và số hóa toàn diện quy trình du lịch du thuyền: từ quản lý đội tàu, hải trình, chính sách giá vé, đặt chỗ & hợp đồng điện tử, cổng thanh toán tự động SePay VietQR, quy trình làm thủ tục check-in & giám sát hành khách qua sóng BLE tại cầu cảng, cho đến các dịch vụ ẩm thực, vui chơi giải trí trên tàu và tour khám phá trên bờ (Shore Excursions).
 
 ---
 
@@ -29,20 +29,20 @@ Hệ thống được thiết kế theo mô hình **Domain-Driven Modular Archit
 
 ```mermaid
 flowchart TD
-    Client["Clients: Web Portal, Mobile App, POS Devices, Kiosk Check-in"] --> Nginx["Nginx Reverse Proxy & SSL (https://fcraft.io.vn)"]
+    Client["Clients: Web Portal, Mobile App, POS Devices, Kiosk Check-in"] --> Nginx["Nginx Reverse Proxy & SSL (https://<YOUR_DOMAIN>)"]
     Nginx --> SpringBoot["CASMS Spring Boot 3.3.4 Core (/api)"]
 
     subgraph Core_Domains ["Domain Nghiệp vụ Chính"]
         CruiseDomain["Cruise & Fleet Domain\n- Quản lý tàu, boong tàu, cabin\n- Hải trình, cảng biển, chính sách giá\n- Gói du thuyền (Packages & Addons)"]
         BookingDomain["Booking & Contract Domain\n- Giữ chỗ tạm thời (Hold Cabin)\n- Snapshot báo giá & chiết khấu\n- Ký kết hợp đồng điện tử (E-Contract)"]
-        PaymentDomain["Payment & Settlement Domain\n- SePay VietQR (MBBank)\n- Phân bổ trả góp Waterfall Allocation\n- Onboard Folio & Hoàn tiền (Refund)"]
+        PaymentDomain["Payment & Settlement Domain\n- SePay VietQR\n- Phân bổ trả góp Waterfall Allocation\n- Onboard Folio & Hoàn tiền (Refund)"]
         CheckinDomain["Check-in & Tracking Domain\n- Check-in hành khách & Thẻ lên tàu\n- Định danh BLE & Giám sát cầu cảng"]
         ActivityDomain["Activities & Excursions Domain\n- Hoạt động giải trí trên tàu\n- Tour du lịch bờ & Quản lý đoàn tour\n- Nhà cung cấp dịch vụ ngoài (Suppliers)"]
         PosDomain["POS & Service Operations\n- Quầy dịch vụ trên boong (Deck POS)\n- Phân công ca nhân viên & Thiết bị POS"]
     end
 
     SpringBoot --> Core_Domains
-    Core_Domains --> Database[(PostgreSQL Database\nSupabase Pooler + Flyway V1-V89)]
+    Core_Domains --> Database[(PostgreSQL Database\nFlyway V1-V89)]
     PaymentDomain <--> SePayGateway["SePay Payment Gateway (VietQR Webhook)"]
 ```
 
@@ -63,13 +63,13 @@ flowchart TD
 | **Backend Framework** | Spring Boot | `3.3.4` (Java 21) |
 | **Security & Auth** | Spring Security & JJWT | `io.jsonwebtoken: 0.12.6` (HMAC-SHA256, Stateless JWT) |
 | **ORM / Data Access** | Spring Data JPA / Hibernate | Hỗ trợ ánh xạ kiểu PostgreSQL JSONB qua `hypersistence-utils-hibernate-63` |
-| **Cơ sở dữ liệu** | PostgreSQL | Lưu trữ trên nền tảng Supabase (chạy qua Session Pooler) |
+| **Cơ sở dữ liệu** | PostgreSQL | Lưu trữ trên máy chủ PostgreSQL (phiên bản 15+) |
 | **Database Migration** | Flyway DB | `V1` đến `V89` với cơ chế `LegacyChecksumRealigner` |
 | **API Docs** | SpringDoc OpenAPI | `2.6.0` (Swagger UI interactive testing) |
 | **Containerization** | Docker & Docker Compose | Multi-stage build tối ưu kích thước image |
 | **Hạ tầng Cloud** | Amazon Web Services (AWS) | EC2 Ubuntu 24.04, CodeCommit, CodePipeline, CodeDeploy |
 | **Web Server / SSL** | Nginx Reverse Proxy | Chứng chỉ Let's Encrypt SSL tự động gia hạn |
-| **Cổng thanh toán** | SePay VietQR | Tích hợp MBBank (Webhook xử lý tự động với độ trễ < 2s) |
+| **Cổng thanh toán** | SePay VietQR | Webhook xử lý giao dịch tự động |
 
 ---
 
@@ -123,22 +123,22 @@ Hệ thống sử dụng các biến môi trường để bảo mật thông tin
 
 ### Bảng chi tiết các biến môi trường:
 
-| Tên biến | Bắt buộc | Giá trị mẫu / Mặc định | Ý nghĩa & Hướng dẫn |
-| :--- | :---: | :--- | :--- |
-| `DB_URL` | **Có** | `jdbc:postgresql://<DB_HOST>:<DB_PORT>/<DB_NAME>?stringtype=unspecified` | Chuỗi kết nối JDBC PostgreSQL. Bắt buộc có tham số `stringtype=unspecified` khi dùng với Supabase Pooler để tránh lỗi mapping enum. |
-| `DB_USERNAME` | **Có** | `<your_db_username>` | Tài khoản kết nối cơ sở dữ liệu. |
-| `DB_PASSWORD` | **Có** | `*********` | Mật khẩu truy cập cơ sở dữ liệu. |
-| `JWT_SECRET` | **Có** | `Chuỗi ngẫu nhiên tối thiểu 256-bit (Base64/Hex)` | Khóa bí mật dùng để ký và giải mã JSON Web Token (HS256/HS512). |
-| `JWT_EXPIRATION_MS` | Không | `86400000` (24 giờ) | Thời gian hiệu lực của Access Token tính bằng mili-giây. |
-| `SEPAY_ENABLED` | Không | `true` | Bật/tắt phân hệ tích hợp cổng thanh toán SePay. |
-| `SEPAY_API_KEY` | **Có** | `Lấy từ dashboard my.sepay.vn` | Mã khóa bảo mật định danh tài khoản SePay của doanh nghiệp. |
-| `SEPAY_BANK_NAME` | Không | `MBBank` | Tên ngân hàng nhận thanh toán VietQR. |
-| `SEPAY_ACCOUNT_NUMBER` | **Có** | `<your_bank_account_number>` | Số tài khoản ngân hàng thụ hưởng tiền thanh toán. |
-| `SEPAY_ACCOUNT_NAME` | Không | `CASMS CRUISE` | Tên chủ tài khoản ngân hàng hiển thị trên mã QR. |
-| `SEPAY_USD_TO_VND_RATE`| Không | `25400` | Tỷ giá quy đổi từ USD (giá niêm yết du thuyền) sang VND để tạo mã VietQR. |
-| `SEPAY_QR_TEMPLATE` | Không | `compact` | Mẫu hiển thị mã VietQR của SePay (`compact`, `compact2`, `qr_only`). |
-| `SEPAY_TOLERANCE_PERCENT`| Không | `1.0` | Ngưỡng dung sai chấp nhận sai lệch thanh toán (mặc định cho phép lệch tối đa 1% do làm tròn tỷ giá). |
-| `SPRING_PROFILES_ACTIVE`| Không | `dev` hoặc `prod` | Profile Spring Boot đang kích hoạt. |
+| Tên biến | Bắt buộc | Mô tả chức năng |
+| :--- | :---: | :--- |
+| `DB_URL` | **Có** | Chuỗi kết nối JDBC PostgreSQL (`jdbc:postgresql://<HOST>:<PORT>/<DATABASE>`). |
+| `DB_USERNAME` | **Có** | Tên tài khoản kết nối cơ sở dữ liệu. |
+| `DB_PASSWORD` | **Có** | Mật khẩu truy cập cơ sở dữ liệu. |
+| `JWT_SECRET` | **Có** | Khóa bí mật dùng để ký và giải mã JSON Web Token (HS256/HS512). |
+| `JWT_EXPIRATION_MS` | Không | Thời gian hiệu lực của Access Token (mili-giây). |
+| `SEPAY_ENABLED` | Không | Cờ kích hoạt phân hệ tích hợp thanh toán SePay. |
+| `SEPAY_API_KEY` | **Có** | Khóa API định danh tài khoản tích hợp cổng thanh toán. |
+| `SEPAY_BANK_NAME` | Không | Tên ngân hàng thụ hưởng nhận thanh toán VietQR. |
+| `SEPAY_ACCOUNT_NUMBER` | **Có** | Số tài khoản ngân hàng thụ hưởng tiền thanh toán. |
+| `SEPAY_ACCOUNT_NAME` | Không | Tên chủ tài khoản thụ hưởng hiển thị trên mã QR. |
+| `SEPAY_USD_TO_VND_RATE` | Không | Tỷ giá quy đổi ngoại tệ (USD sang VND) để tạo mã VietQR. |
+| `SEPAY_QR_TEMPLATE` | Không | Mẫu hiển thị mã VietQR (`compact`, `compact2`, `qr_only`). |
+| `SEPAY_TOLERANCE_PERCENT` | Không | Ngưỡng dung sai chênh lệch thanh toán cho phép. |
+| `SPRING_PROFILES_ACTIVE` | Không | Profile môi trường kích hoạt (`dev`, `prod`). |
 
 ---
 
@@ -154,7 +154,7 @@ Hệ thống sử dụng các biến môi trường để bảo mật thông tin
    ```bash
    mvn -version
    ```
-3. **Cơ sở dữ liệu PostgreSQL**: Cơ sở dữ liệu Supabase đã mở cổng kết nối hoặc PostgreSQL 15+ cài cục bộ.
+3. **Cơ sở dữ liệu PostgreSQL**: Máy chủ PostgreSQL 15+ đang chạy cục bộ hoặc trên cloud.
 
 ### 5.2. Các bước khởi chạy chi tiết
 
@@ -209,7 +209,7 @@ sequenceDiagram
     participant FE as Frontend CASMS
     participant BE as Backend CASMS (/api)
     participant SePay as Cổng thanh toán SePay
-    participant MB as Ngân hàng MBBank
+    participant MB as Ngân hàng
 
     Guest->>FE: Chọn đợt thanh toán (Installment / Full)
     FE->>BE: GET /api/payment/sepay/qr?bookingId=...
@@ -234,10 +234,10 @@ Khi nhận được webhook thanh toán từ SePay, `SepayService` sẽ xử lý
   - Tự động cộng dồn số tiền đã thanh toán (`paidAmount`) và so khớp với tổng số tiền của đợt (`amount`).
 - Áp dụng dung sai sai số tỷ giá `SEPAY_TOLERANCE_PERCENT` (mặc định 1%) để tránh trường hợp đợt thanh toán bị treo chỉ vì thiếu vài trăm đồng do làm tròn số học.
 
-### 6.2. Cấu hình Webhook trên `my.sepay.vn`
-1. Đăng nhập trang quản trị SePay.
+### 6.2. Cấu hình Webhook trên Cổng thanh toán
+1. Đăng nhập trang quản trị cổng thanh toán.
 2. Vào mục **Cấu hình Webhook** -> **Tạo mới Webhook**:
-   - **URL Webhook**: `https://fcraft.io.vn/api/payment/sepay/webhook`
+   - **URL Webhook**: `https://<YOUR_DOMAIN>/api/payment/sepay/webhook`
    - **Phương thức**: `POST`
    - **Xác thực**: Gửi kèm `Authorization: Bearer <SEPAY_API_KEY>`
 3. Khi test local, có thể sử dụng công cụ **ngrok** hoặc **Cloudflare Tunnel** để tạo URL công khai trỏ về cổng `8080`.
@@ -257,7 +257,7 @@ flowchart LR
 
     subgraph EC2_Runtime ["Môi trường Chạy EC2"]
         DockerCompose["Docker Compose\n(Rebuild & Container Restart)"]
-        NginxProxy["Nginx SSL Reverse Proxy\n(fcraft.io.vn:443)"]
+        NginxProxy["Nginx SSL Reverse Proxy\n(<YOUR_DOMAIN>:443)"]
         NginxProxy --> DockerCompose
     end
 
@@ -272,7 +272,7 @@ Khi CodeDeploy kéo mã nguồn mới nhất về thư mục `/home/ubuntu/casms
 4. `docker image prune -f`: Xóa các image cũ dạng dangling/untagged để giữ bộ nhớ đĩa luôn tối ưu.
 
 ### 7.2. Cấu hình Nginx Reverse Proxy trên Server
-Nginx tiếp nhận kết nối bảo mật HTTPS từ người dùng tại domain `https://fcraft.io.vn` và định tuyến toàn bộ request bắt đầu bằng `/api/` về container Backend tại `localhost:8080`:
+Nginx tiếp nhận kết nối bảo mật HTTPS từ người dùng tại domain `https://<YOUR_DOMAIN>` và định tuyến toàn bộ request bắt đầu bằng `/api/` về container Backend tại `localhost:8080`:
 
 ```nginx
 location /api/ {
@@ -300,8 +300,8 @@ location /api/ {
 Toàn bộ hệ thống REST API đều được tự động tạo tài liệu tương tác chuẩn OpenAPI v3:
 
 - **Môi trường Production**:
-  - **Swagger UI**: [https://fcraft.io.vn/api/swagger-ui/index.html](https://fcraft.io.vn/api/swagger-ui/index.html)
-  - **OpenAPI JSON Spec**: `https://fcraft.io.vn/api/v3/api-docs`
+  - **Swagger UI**: [https://<YOUR_DOMAIN>/api/swagger-ui/index.html](https://<YOUR_DOMAIN>/api/swagger-ui/index.html)
+  - **OpenAPI JSON Spec**: `https://<YOUR_DOMAIN>/api/v3/api-docs`
 - **Môi trường Local**:
   - **Swagger UI**: `http://localhost:8080/api/swagger-ui.html`
   - **OpenAPI JSON Spec**: `http://localhost:8080/api/v3/api-docs`
@@ -335,5 +335,5 @@ Trong quá trình phát triển nhanh, các tập tin migration SQL lịch sử 
 Dự án được xây dựng và duy trì bởi Đội ngũ Kỹ sư Phần mềm CASMS - Khóa tốt nghiệp Kỹ thuật Phần mềm (FPT University).
 
 - **Trưởng nhóm Kỹ thuật**: Backend & DevOps Core Team
-- **Hệ thống Quản lý**: [CASMS Portal](https://fcraft.io.vn)
+- **Hệ thống Quản lý**: [CASMS Portal](https://<YOUR_DOMAIN>)
 - **Hỗ trợ Kỹ thuật**: Mọi thắc mắc và đóng góp vui lòng tạo Issue trên hệ thống Git hoặc liên hệ ban quản trị.
