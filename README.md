@@ -12,6 +12,8 @@
 
 ## 📑 Mục lục
 1. [Kiến trúc Tổng thể & Phân rã Domain](#1-kiến-trúc-tổng-thể--phân-rã-domain)
+   - 1.1. [Các phân hệ nghiệp vụ chính](#11-các-phân-hệ-nghiệp-vụ-chính)
+   - 1.2. [Sơ đồ tuần tự Khép kín: Từ Tạo Tàu đến Thanh toán](#12-sơ-đồ-tuần-tự-khép-kín-từ-tạo-tàu-đến-thanh-toán-end-to-end-flow)
 2. [Ngăn xếp Công nghệ (Tech Stack)](#2-ngăn-xếp-công-nghệ-tech-stack)
 3. [Cấu trúc Thư mục Dự án](#3-cấu-trúc-thư-mục-dự-án)
 4. [Hướng dẫn Cấu hình Môi trường](#4-hướng-dẫn-cấu-hình-môi-trường)
@@ -46,13 +48,146 @@ flowchart TD
     PaymentDomain <--> SePayGateway["SePay Payment Gateway (VietQR Webhook)"]
 ```
 
-### Các phân hệ chính:
+### 1.1. Các phân hệ nghiệp vụ chính:
 1. **Cruise & Fleet Domain (`ship`, `trip`, `cruisepackage`)**: Quản lý thông số kỹ thuật của đội tàu, sơ đồ các tầng boong (`decks`), danh mục phòng nghỉ (`cabins`), hải trình (`itineraries`), khung giờ cập cảng (`port windows`), gói kỳ nghỉ trọn gói (`cruise packages`) và bảng giá vé theo mùa/hạng phòng.
 2. **Booking Domain (`booking`)**: Xử lý toàn bộ vòng đời đặt chỗ: từ khởi tạo booking, giữ cabin tạm thời (Hold), tạo snapshot báo giá đóng băng chi phí, phát hành hợp đồng điện tử xác nhận hành trình, cho đến quản lý danh sách hành khách đi cùng (`manifest`).
 3. **Payment Domain (`payment`)**: Tích hợp cổng thanh toán tự động VietQR thông qua SePay, thuật toán phân bổ thanh toán tuần tự (Waterfall Allocation) cho các gói trả góp nhiều đợt, quản lý số dư ký quỹ trên tàu (`Onboard Folio`), và xử lý yêu cầu hoàn tiền (`Refunds`).
 4. **Check-in & Security Domain (`checkin`, `identity`)**: Quy trình làm thủ tục trước chuyến đi, phát hành thẻ lên tàu có mã QR, gắn vòng đeo tay Bluetooth Low Energy (BLE) định danh hành khách, ghi nhận trạng thái lên/xuống tàu tại cổng kiểm soát (`Gangway Tracking`).
 5. **Activity & Shore Excursion Domain (`activity`, `servicepackage`)**: Quản lý lịch trình các sự kiện giải trí trên tàu, các tour tham quan trên bờ tại từng điểm dừng cảng, sắp xếp hành khách vào từng đoàn xe/hướng dẫn viên (`Tour Groups`).
 6. **POS & Onboard Operations Domain (`pos`)**: Quản lý các điểm bán lẻ, quầy bar, nhà hàng, spa trên tàu; quản lý thiết bị POS cầm tay, phân ca làm việc cho nhân viên phục vụ, và ghi nợ chi tiêu trực tiếp vào tài khoản phòng của hành khách.
+
+### 1.2. Sơ đồ tuần tự Khép kín: Từ Tạo Tàu đến Thanh toán (End-to-End Flow)
+
+Sơ đồ thể hiện chu trình vận hành và kinh doanh khép kín của nền tảng CASMS: bắt đầu từ khâu Quản trị thiết lập đội tàu & buồng phòng, Điều hành lập hải trình & mở bán chuyến đi, Sản phẩm định giá vé, cho đến khi Khách hàng tìm kiếm, đặt giữ chỗ Cabin, ký hợp đồng điện tử và thanh toán tự động qua VietQR:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Admin as Ban Quản trị / Điều hành
+    actor Guest as Khách hàng / Đại lý
+    participant FE as Frontend (Web / App)
+    participant ShipSvc as Phân hệ Đội tàu (Ship/Deck/Cabin)
+    participant TripSvc as Phân hệ Chuyến đi & Gói vé
+    participant BookingSvc as Phân hệ Đặt chỗ & Hợp đồng
+    participant PaymentSvc as Phân hệ Thanh toán (SePay)
+    participant DB as PostgreSQL Database
+    participant Bank as Ngân hàng & Cổng SePay
+
+    %% ==========================================
+    %% GIAI ĐOẠN 1: THIẾT LẬP TÀU & HẠ TẦNG PHÒNG
+    %% ==========================================
+    rect rgb(235, 245, 255)
+    note over Admin, DB: Giai đoạn 1: Thiết lập Đội tàu & Cấu trúc Buồng phòng
+    Admin->>FE: 1. Khai báo thông số tàu du lịch mới
+    FE->>ShipSvc: POST /api/ships (Tên tàu, Mã hiệu, Sức chứa, Model)
+    ShipSvc->>DB: INSERT INTO ships
+    DB-->>ShipSvc: shipId
+
+    Admin->>FE: 2. Thiết lập cấu trúc các tầng boong tàu
+    FE->>ShipSvc: POST /api/decks (shipId, số tầng boong, công năng)
+    ShipSvc->>DB: INSERT INTO decks
+    DB-->>ShipSvc: deckId
+
+    Admin->>FE: 3. Khởi tạo danh mục Cabin trên từng tầng boong
+    FE->>ShipSvc: POST /api/cabins (deckId, số phòng, hạng cabin, sức chứa)
+    ShipSvc->>DB: INSERT INTO cabins
+    DB-->>ShipSvc: cabinId(s)
+    end
+
+    %% ==========================================
+    %% GIAI ĐOẠN 2: LẬP HẢI TRÌNH & MỞ BÁN CHUYẾN ĐI
+    %% ==========================================
+    rect rgb(240, 255, 240)
+    note over Admin, DB: Giai đoạn 2: Lập Hải trình & Đóng gói Kỳ nghỉ
+    Admin->>FE: 4. Thiết lập Cảng biển & Hải trình mẫu
+    FE->>TripSvc: POST /api/itineraries (Điểm dừng, khung giờ cập cảng)
+    TripSvc->>DB: INSERT INTO itineraries, port_windows
+
+    Admin->>FE: 5. Khởi tạo Chuyến đi thực tế (Trip)
+    FE->>TripSvc: POST /api/trips (shipId, itineraryId, ngày khởi hành / cập bến)
+    TripSvc->>DB: INSERT INTO trips
+
+    Admin->>FE: 6. Tạo Gói du thuyền & Thiết lập Bảng giá vé
+    FE->>TripSvc: POST /api/cruise-package-templates (Giá theo hạng Cabin, Mùa)
+    TripSvc->>DB: INSERT INTO cruise_packages, fare_pricing_rules
+    TripSvc-->>FE: Xuất bản chuyến đi & Mở bán thành công!
+    end
+
+    %% ==========================================
+    %% GIAI ĐOẠN 3: TÌM KIẾM, BÁO GIÁ & KHÓA GIỮ CABIN
+    %% ==========================================
+    rect rgb(255, 250, 235)
+    note over Guest, DB: Giai đoạn 3: Tìm kiếm, Báo giá & Khóa giữ Cabin tạm thời
+    Guest->>FE: 7. Tìm kiếm chuyến đi & Xem sơ đồ buồng phòng trống
+    FE->>BookingSvc: GET /api/booking/available-cabins?tripId={id}
+    BookingSvc->>DB: SELECT cabins WHERE is_held=false AND status='AVAILABLE'
+    DB-->>BookingSvc: Danh sách Cabin khả dụng
+    BookingSvc-->>FE: Hiển thị sơ đồ boong & phòng trống trực quan
+
+    Guest->>FE: 8. Chọn Cabin & Yêu cầu Báo giá (Snapshot)
+    FE->>BookingSvc: POST /api/booking/quotes (tripId, cabinIds, số lượng khách)
+    BookingSvc->>TripSvc: Tính giá vé theo chính sách khuyến mãi & phụ thu
+    TripSvc-->>BookingSvc: Tổng tiền báo giá (USD)
+    BookingSvc->>DB: INSERT INTO quote_snapshots
+    BookingSvc-->>FE: Trả về Báo giá đóng băng chi phí
+
+    Guest->>FE: 9. Nhập thông tin hành khách & Khởi tạo Đơn đặt phòng
+    FE->>BookingSvc: POST /api/booking (Khách hàng, Cabin, Gói trả góp)
+    activate BookingSvc
+    BookingSvc->>DB: Kiểm tra tính sẵn sàng & Khóa bi quan Cabin
+    BookingSvc->>DB: INSERT INTO bookings (Status = 'PENDING', holdExpiresAt = NOW + 15 phút)
+    BookingSvc->>DB: Cập nhật CabinAssignment: isHeld = true
+    BookingSvc->>DB: Sinh danh sách các đợt trả góp (Installments)
+    BookingSvc-->>FE: Trả về bookingId & Bắt đầu đếm ngược 15 phút giữ phòng
+    deactivate BookingSvc
+    end
+
+    %% ==========================================
+    %% GIAI ĐOẠN 4: KÝ KẾT HỢP ĐỒNG ĐIỆN TỬ
+    %% ==========================================
+    rect rgb(255, 240, 245)
+    note over Guest, DB: Giai đoạn 4: Ký kết Hợp đồng Điện tử (E-Contract)
+    Guest->>FE: 10. Đọc điều khoản & Xác nhận chấp thuận hợp đồng
+    FE->>BookingSvc: POST /api/booking/{bookingId}/contract/accept
+    BookingSvc->>DB: Cập nhật contractSignedAt = NOW, Status = 'AWAITING_PAYMENT'
+    BookingSvc-->>FE: Xác nhận ký hợp đồng thành công!
+    end
+
+    %% ==========================================
+    %% GIAI ĐOẠN 5: THANH TOÁN VIETQR & ĐỐI SOÁT TỰ ĐỘNG
+    %% ==========================================
+    rect rgb(245, 240, 255)
+    note over Guest, Bank: Giai đoạn 5: Thanh toán VietQR & Xử lý Webhook Tự động
+    Guest->>FE: 11. Bấm Thanh toán (Đợt 1 hoặc Toàn phần)
+    FE->>PaymentSvc: GET /api/payment/sepay/qr?bookingId={id}&installmentId={id}
+    PaymentSvc->>DB: Truy vấn thông tin đợt trả góp
+    PaymentSvc->>PaymentSvc: Quy đổi USD sang VND (Tỷ giá SEPAY_USD_TO_VND_RATE)
+    PaymentSvc->>PaymentSvc: Sinh nội dung chuyển khoản duy nhất (VD: CASMS12345)
+    PaymentSvc-->>FE: Trả về URL VietQR + Số tiền VND + Nội dung CK
+    FE-->>Guest: Hiển thị mã QR động trên màn hình
+
+    Guest->>Bank: 12. Mở App Ngân hàng quét VietQR & Xác nhận chuyển tiền
+    Bank->>Bank: Chuyển khoản thành công vào tài khoản thụ hưởng
+    Bank->>Bank: Cổng thanh toán nhận thông báo biến động số dư tức thì
+
+    Bank->>PaymentSvc: 13. POST /api/payment/sepay/webhook (Kèm Bearer API Key & Payload)
+    activate PaymentSvc
+    PaymentSvc->>PaymentSvc: Xác thực Bearer API Key
+    PaymentSvc->>PaymentSvc: Phân tích nội dung CK trích xuất bookingId
+    PaymentSvc->>DB: Khóa bi quan Booking & Lấy danh sách Installments (dueDate ASC)
+    PaymentSvc->>PaymentSvc: Chạy thuật toán Waterfall Sequential Allocation
+    PaymentSvc->>DB: Cập nhật Installment -> PAID
+    PaymentSvc->>DB: Cập nhật Booking -> PAID / PARTIALLY_PAID
+    PaymentSvc->>DB: Xóa cờ tạm giữ (isHeld = false) & Xác nhận phòng vĩnh viễn
+    PaymentSvc-->>Bank: HTTP 200 OK {"success": true}
+    deactivate PaymentSvc
+
+    PaymentSvc--)FE: 14. Bắn sự kiện thời gian thực (WebSocket / Polling)
+    FE-->>Guest: 15. Thông báo: "Thanh toán & Đặt vé Du thuyền Thành công!"
+    end
+```
+
+---
 
 ---
 
