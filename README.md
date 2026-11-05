@@ -200,33 +200,65 @@ mvn test
 
 ## 6. Tích hợp Cổng thanh toán SePay VietQR
 
-Hệ thống CASMS tích hợp cơ chế thanh toán tự động không chạm thông qua **SePay VietQR Gateway**:
+Hệ thống CASMS tích hợp cơ chế thanh toán tự động không chạm thông qua **SePay VietQR Gateway**, được chia tách thành **2 sơ đồ tuần tự (Sequence Diagrams)** tương ứng với 2 giai đoạn xử lý độc lập:
+
+### 6.1. Sơ đồ tuần tự 1: Khởi tạo Thanh toán & Sinh mã VietQR Động (Client-Side Synchronous Flow)
+Quy trình khách hàng hoặc đại lý yêu cầu thanh toán một đợt trả góp hoặc toàn bộ đơn đặt chỗ:
 
 ```mermaid
 sequenceDiagram
     autonumber
     actor Guest as Khách hàng / Đại lý
-    participant FE as Frontend CASMS
+    participant FE as Frontend (Web / App)
     participant BE as Backend CASMS (/api)
-    participant SePay as Cổng thanh toán SePay
-    participant MB as Ngân hàng
+    participant DB as PostgreSQL Database
 
-    Guest->>FE: Chọn đợt thanh toán (Installment / Full)
-    FE->>BE: GET /api/payment/sepay/qr?bookingId=...
-    BE->>BE: Tính tiền VND (USD * Rate) & Tạo nội dung CK duy nhất (CASMS...)
-    BE-->>FE: Trả về URL ảnh VietQR + Mã giao dịch
-    FE-->>Guest: Hiển thị mã QR động trên màn hình
-    Guest->>MB: Quét mã QR & Xác nhận chuyển khoản qua App Ngân hàng
-    MB->>SePay: Ghi nhận biến động số dư tài khoản tài khoản ngân hàng thụ hưởng
-    SePay->>BE: POST /api/payment/sepay/webhook (Kèm Bearer API Key)
-    BE->>BE: Xác thực API Key & Kiểm tra số tiền nhận được
-    BE->>BE: Áp dụng thuật toán Waterfall Sequential Allocation
-    BE->>BE: Đánh dấu các đợt trả góp là PAID & Mở rộng thời gian giữ Cabin
-    BE-->>SePay: HTTP 200 OK {"success": true}
-    BE-->>FE: WebSocket / Polling: Cập nhật trạng thái Đã thanh toán!
+    Guest->>FE: Chọn đơn đặt chỗ & Đợt thanh toán (Installment / Full)
+    FE->>BE: GET /api/payment/sepay/qr?bookingId={id}&installmentId={id}
+    activate BE
+    BE->>DB: Truy vấn thông tin Booking & Số tiền đợt trả góp
+    DB-->>BE: Dữ liệu Booking & Giá trị cần đóng (USD)
+    BE->>BE: Quy đổi tỷ giá USD sang VND (SEPAY_USD_TO_VND_RATE)
+    BE->>BE: Sinh mã nội dung chuyển khoản định danh duy nhất (VD: CASMS12345)
+    BE->>BE: Tạo URL mã VietQR động chuẩn Napas 247
+    BE-->>FE: Trả về URL ảnh VietQR + Mã giao dịch + Số tiền VND
+    deactivate BE
+    FE-->>Guest: Hiển thị mã QR thanh toán kèm đồng hồ đếm ngược
+    Guest->>Guest: Sử dụng App Ngân hàng quét mã VietQR và xác nhận chuyển khoản
 ```
 
-### 6.1. Thuật toán Phân bổ Trả góp Tuần tự (Waterfall Sequential Allocation)
+### 6.2. Sơ đồ tuần tự 2: Xử lý Webhook Biến động Số dư & Phân bổ Trả góp Waterfall (Server-Side Asynchronous Flow)
+Quy trình cổng thanh toán thông báo biến động số dư tài khoản ngân hàng và hệ thống tự động đối soát, cập nhật trạng thái đơn đặt chỗ:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Bank as Ngân hàng Thụ hưởng
+    participant Gateway as Cổng thanh toán SePay
+    participant BE as Backend CASMS (/api)
+    participant DB as PostgreSQL Database
+    participant FE as Frontend (Khách hàng)
+
+    Bank->>Gateway: Ghi nhận biến động số dư (Tiền vào tài khoản thụ hưởng)
+    activate Gateway
+    Gateway->>BE: POST /api/payment/sepay/webhook (Kèm Bearer API Key & Payload)
+    deactivate Gateway
+    activate BE
+    BE->>BE: Xác thực Bearer API Key hợp lệ
+    BE->>BE: Trích xuất mã định danh Booking từ nội dung chuyển khoản
+    BE->>DB: Khóa bi quan (Pessimistic Lock) Booking & Lấy danh sách Installments
+    DB-->>BE: Danh sách đợt trả góp (sắp xếp theo dueDate ASC)
+    BE->>BE: Thực thi thuật toán Waterfall Allocation (Phân bổ tiền tuần tự)
+    BE->>BE: So khớp sai số tỷ giá (SEPAY_TOLERANCE_PERCENT)
+    BE->>DB: Cập nhật đợt trả góp -> PAID & Cập nhật Booking -> PAID / PARTIALLY_PAID
+    BE->>DB: Gia hạn hoặc xác nhận khóa giữ Cabin chính thức
+    BE-->>Gateway: HTTP 200 OK {"success": true, "message": "Processed successfully"}
+    deactivate BE
+    BE--)FE: Thông báo thời gian thực trạng thái Đã thanh toán (WebSocket / Polling)
+    FE-->>FE: Tự động chuyển màn hình: Xác nhận Đặt chỗ & Thanh toán thành công!
+```
+
+### 6.3. Thuật toán Phân bổ Trả góp Tuần tự (Waterfall Sequential Allocation)
 Khi nhận được webhook thanh toán từ SePay, `SepayService` sẽ xử lý thông minh:
 - Sắp xếp tất cả các đợt trả góp (`Installments`) chưa hoàn thành theo thứ tự thời hạn thanh toán (`dueDate ASC`).
 - Lần lượt gán số tiền thực nhận vào đợt trả góp sớm nhất:
@@ -234,7 +266,7 @@ Khi nhận được webhook thanh toán từ SePay, `SepayService` sẽ xử lý
   - Tự động cộng dồn số tiền đã thanh toán (`paidAmount`) và so khớp với tổng số tiền của đợt (`amount`).
 - Áp dụng dung sai sai số tỷ giá `SEPAY_TOLERANCE_PERCENT` (mặc định 1%) để tránh trường hợp đợt thanh toán bị treo chỉ vì thiếu vài trăm đồng do làm tròn số học.
 
-### 6.2. Cấu hình Webhook trên Cổng thanh toán
+### 6.4. Cấu hình Webhook trên Cổng thanh toán
 1. Đăng nhập trang quản trị cổng thanh toán.
 2. Vào mục **Cấu hình Webhook** -> **Tạo mới Webhook**:
    - **URL Webhook**: `https://<YOUR_DOMAIN>/api/payment/sepay/webhook`
@@ -322,6 +354,34 @@ Toàn bộ hệ thống REST API đều được tự động tạo tài liệu 
   - **Cơ chế phòng hộ**: Tác vụ tuyệt đối KHÔNG hủy bất kỳ booking nào đã có xác nhận thanh toán (`PaymentStatus.PAID` hoặc `PARTIALLY_PAID`) hoặc đã ký hợp đồng điện tử.
   - Bộ đệm ân hạn (`Grace Period`): Khách hàng thanh toán trước thời điểm hủy trong vòng 5 phút sẽ được tự động bảo lưu và gia hạn giữ cabin thêm 24 giờ để hoàn thiện ký kết hợp đồng.
   - Các câu truy vấn kiểm tra trùng lặp phòng (`CabinAssignmentRepository`, `BookingPassengerRepository`) được bảo vệ bằng mệnh đề loại bỏ phòng hết hạn giữ chỗ ngay ở tầng cơ sở dữ liệu (`holdExpiresAt <= CURRENT_TIMESTAMP`).
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Guest as Khách hàng
+    participant FE as Frontend
+    participant BE as Backend CASMS (/api)
+    participant Scheduler as BookingHoldCleanupScheduler
+    participant DB as PostgreSQL Database
+
+    Guest->>FE: Chọn Chuyến đi, Gói du thuyền & Chọn Cabin
+    FE->>BE: POST /api/booking/initiate (Thông tin cabin, khách)
+    activate BE
+    BE->>DB: Kiểm tra tình trạng trống của Cabin (Không bị trùng lặp / hết hạn hold)
+    DB-->>BE: Cabin khả dụng
+    BE->>DB: Tạo Booking (Trạng thái = PENDING, holdExpiresAt = NOW + 15 phút)
+    BE->>DB: Khóa tạm thời Cabin (CabinAssignment: isHeld = true)
+    BE-->>FE: Trả về Booking ID & Thời gian đếm ngược 15 phút
+    deactivate BE
+    FE-->>Guest: Hiển thị giao diện giữ chỗ và hẹn giờ thanh toán
+
+    Note over Scheduler, DB: Tác vụ nền chạy định kỳ mỗi phút
+    loop Chu kỳ quét định kỳ
+        Scheduler->>DB: Quét Booking PENDING có holdExpiresAt <= NOW & chưa thanh toán
+        DB-->>Scheduler: Danh sách booking quá hạn giữ chỗ
+        Scheduler->>DB: Cập nhật Booking -> CANCELLED & Hủy khóa giữ Cabin (Release Lock)
+    end
+```
 
 ### 9.2. Cơ chế Điều hòa Checksum Migration (Flyway LegacyChecksumRealigner)
 Trong quá trình phát triển nhanh, các tập tin migration SQL lịch sử (`V1` đến `V89`) đôi khi được tinh chỉnh comment hoặc định dạng. Thay vì phải xóa trắng database hoặc chạy lệnh repair thủ công ngoài server:
