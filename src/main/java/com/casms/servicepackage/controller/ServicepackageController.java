@@ -39,6 +39,14 @@ public class ServicepackageController {
     private final ServiceCatalogReadService catalogReads;
     private final ServiceScheduleManagementService scheduleManagement;
     private final ServiceCategoryRepository categoryRepository;
+    private final com.casms.cruisepackage.service.CruisePackageEntitlementService fareEntitlements;
+ @PreAuthorize("hasAnyAuthority('SERVICE_REQUEST_READ','SERVICE_REQUEST_CREATE','SERVICE_REQUEST_EXECUTE')")
+ @GetMapping("/requests/{id}/fare-entitlement")
+ public ApiResponse<com.casms.cruisepackage.service.CruisePackageEntitlementService.OperationEntitlement> requestEntitlement(@PathVariable UUID id,Authentication auth){
+  var principal=(CasmsPrincipal)auth.getPrincipal();var request=serviceRequests.get(id,principal.getUserId(),principal.isStaff());
+  return ApiResponse.success(new com.casms.cruisepackage.service.CruisePackageEntitlementService.OperationEntitlement(id,fareEntitlements.operationGrant(request.getFareBenefitSnapshotId(),request.getBookingPassenger()==null?null:request.getBookingPassenger().getBookingPassengerId())));
+ }
+
 
     // ==========================================
     // DTO & VIEW DEFINITIONS
@@ -60,6 +68,11 @@ public class ServicepackageController {
             ServiceUsagePolicy preCruiseUsagePolicy,
             @Positive Integer preCruiseUsageLimit,
             @Size(max=100) String usageTimeZone) {
+        public ServiceCatalogDto(String name, String description, String type, BigDecimal price,
+                String currency, Integer capacity, Boolean scheduled, UUID categoryId, String unitCode) {
+            this(name, description, type, price, currency, capacity, scheduled, categoryId,
+                    null, null, null, unitCode, null, null, null);
+        }
         public ServiceCatalogDto(String name, String description, String type, BigDecimal price,
                 String currency, Integer capacity, Boolean scheduled, UUID categoryId) {
             this(name, description, type, price, currency, capacity, scheduled, categoryId,
@@ -94,6 +107,9 @@ public class ServicepackageController {
     public record ServiceRequestUpdateDto(
             @NotNull @Positive Integer quantity, @Size(max = 500) String note) {}
 
+    public record ServiceFulfillmentDto(
+            @NotNull @Positive Integer fulfilledQuantity, @NotBlank @Size(max = 30) String unitCode) {}
+
     public record ServiceScheduleCreateDto(
             @NotNull UUID serviceId,
             UUID cruiseId,
@@ -120,7 +136,7 @@ public class ServicepackageController {
             Instant requestTime,
             Instant completedAt,
             String usageMode, ServiceUsagePolicy usagePolicySnapshot, Integer usageLimitSnapshot,
-            String usageTimeZoneSnapshot, UUID fareBenefitSnapshotId, Integer fulfilledQuantity) {
+            String usageTimeZoneSnapshot, UUID fareBenefitSnapshotId, Integer fulfilledQuantity, String fulfillmentUnitCode) {
         public static ServiceRequestView of(ServiceRequest r) {
             return new ServiceRequestView(
                     r.getServiceRequestId(),
@@ -142,7 +158,7 @@ public class ServicepackageController {
                     r.getRequestTime(),
                     r.getCompletedAt(), r.getUsageMode(), r.getUsagePolicySnapshot(), r.getUsageLimitSnapshot(),
                     r.getUsageTimeZoneSnapshot(), r.getFareBenefitSnapshotId(),
-                    r.getUsageRecords().stream().mapToInt(ServiceUsage::getQuantity).sum());
+                    r.getUsageRecords().stream().mapToInt(ServiceUsage::getQuantity).sum(), r.getFareFulfillmentUnitCode());
         }
     }
 
@@ -663,8 +679,20 @@ public class ServicepackageController {
     @PreAuthorize("hasAnyAuthority('SERVICE_REQUEST_ASSIGN', 'SERVICE_REQUEST_EXECUTE')")
     @PostMapping("/requests/{id}/actions/{action}")
     public ApiResponse<ServiceRequestView> serviceRequestAction(
-            @PathVariable UUID id, @PathVariable String action, Authentication auth) {
+            @PathVariable UUID id, @PathVariable String action, Authentication auth,
+            @Valid @RequestBody(required = false) ServiceFulfillmentDto fulfillment) {
         var p = (CasmsPrincipal) auth.getPrincipal();
+        if ("complete".equals(action)) {
+            var request = serviceRequests.get(id, p.getUserId(), p.isStaff());
+            if (request.getFareBenefitSnapshotId() != null
+                    && (fulfillment == null
+                            || !Objects.equals(fulfillment.fulfilledQuantity(), request.getQuantity())
+                            || !Objects.equals(fulfillment.unitCode(), request.getFareFulfillmentUnitCode()))) {
+                throw new com.casms.common.exception.BusinessException(
+                        "BENEFIT_FULFILLMENT_QUANTITY_INVALID",
+                        "Luồng hoàn thành hiện tại phục vụ toàn bộ yêu cầu. Cần xác nhận số lượng thực tế và đúng đơn vị; không tự lấy số lượng yêu cầu làm số lượng đã phục vụ.");
+            }
+        }
         return ApiResponse.success(
                 ServiceRequestView.of(serviceRequests.transition(id, p.getUserId(), action)));
     }
@@ -868,7 +896,11 @@ public class ServicepackageController {
         if (r.canBuyPreCruise() != null) s.setCanBuyPreCruise(r.canBuyPreCruise());
         if (r.canBuyOnboard() != null) s.setCanBuyOnboard(r.canBuyOnboard());
         if (r.canSellIndependently() != null) s.setCanSellIndependently(r.canSellIndependently());
-        if (r.unitCode() != null) s.setUnitCode(r.unitCode());
+        if (r.unitCode() != null) {
+            if (r.unitCode().isBlank()) throw new com.casms.common.exception.BusinessException(
+                    "BENEFIT_USAGE_UNIT_UNSUPPORTED", "Đơn vị dịch vụ không được để trống khi cấu hình.");
+            s.setUnitCode(r.unitCode().trim());
+        }
         if (r.preCruiseUsagePolicy() != null) {
             s.setPreCruiseUsagePolicy(r.preCruiseUsagePolicy());
             s.setPreCruiseUsageLimit(r.preCruiseUsageLimit());

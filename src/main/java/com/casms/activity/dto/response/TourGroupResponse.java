@@ -23,8 +23,27 @@ public record TourGroupResponse(
         Instant actualDepartureTime,
         Instant actualReturnTime,
         TourGroupStatus status,
-        String notes) {
-    public static TourGroupResponse from(TourGroup group, long assignedPassengers) {
+        String notes,
+        String guideName
+) {
+    public TourGroupResponse(UUID tourGroupId, UUID shoreExcursionId, String excursionName,
+            String groupCode, Integer maximumCapacity, long assignedPassengers, long availableCapacity,
+            UUID guideId, UUID vehicleId, String meetingPoint, Instant assemblyTime,
+            Instant plannedDepartureTime, Instant plannedReturnTime, Instant actualDepartureTime,
+            Instant actualReturnTime, TourGroupStatus status, String notes) {
+        this(tourGroupId, shoreExcursionId, excursionName, groupCode, maximumCapacity,
+                assignedPassengers, availableCapacity, guideId, vehicleId, meetingPoint,
+                assemblyTime, plannedDepartureTime, plannedReturnTime, actualDepartureTime,
+                actualReturnTime, status, notes, null);
+    }
+    public static TourGroupResponse from(
+            TourGroup group,
+            long assignedPassengers
+    ) {
+        return from(group, assignedPassengers, null);
+    }
+
+    public static TourGroupResponse from(TourGroup group, long assignedPassengers, String guideName) {
         return new TourGroupResponse(
                 group.getTourGroupId(),
                 group.getShoreExcursion().getShoreExcursionId(),
@@ -42,6 +61,8 @@ public record TourGroupResponse(
                 group.getActualDepartureTime(),
                 group.getActualReturnTime(),
                 group.getStatus(),
-                group.getNotes());
+                group.getNotes(),
+                guideName
+        );
     }
 }

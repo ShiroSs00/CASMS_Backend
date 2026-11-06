@@ -20,7 +20,7 @@ public record ShoreExcursionResponse(
         Integer minimumParticipants,
         Integer maximumCapacity,
         long registeredParticipants,
-        long availableCapacity,
+        Long availableCapacity,
         BigDecimal price,
         String currencyCode,
         ShoreExcursionStatus status,
@@ -28,8 +28,11 @@ public record ShoreExcursionResponse(
         Instant createdAt,
         Instant updatedAt) {
     public static ShoreExcursionResponse from(
-            ShoreExcursion excursion, long registeredParticipants) {
-        long available = Math.max(0, excursion.getMaximumCapacity() - registeredParticipants);
+            ShoreExcursion excursion,
+            long registeredParticipants
+    ) {
+        Long available = excursion.getMaximumCapacity() == null ? null
+                : Math.max(0, excursion.getMaximumCapacity() - registeredParticipants);
 
         return new ShoreExcursionResponse(
                 excursion.getShoreExcursionId(),

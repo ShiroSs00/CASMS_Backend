@@ -54,6 +54,16 @@ public class ShoreExcursionService {
 
     // ==================== CRUD ====================
 
+    /** Shared benefit source. Real occurrences still use the unchanged operational request. */
+    public ShoreExcursion createDefinition(String name,UUID supplierId,String meetingPoint) {
+        var supplier=supplierRepository.findById(supplierId).orElseThrow(()->new EntityNotFoundException("Supplier not found"));
+        if(supplier.getStatus()!=SupplierStatus.ACTIVE||supplier.getVerificationStatus()!=SupplierVerificationStatus.VERIFIED)
+            throw new IllegalStateException("Supplier must be active and verified");
+        var e=new ShoreExcursion();e.setExcursionCode(businessCodeGenerator.next("EX"));
+        e.setExcursionName(name.trim());e.setSupplier(supplier);e.setMeetingPoint(meetingPoint.trim());
+        e.setStatus(ShoreExcursionStatus.PLANNED);
+        return excursionRepository.save(e);
+    }
     public ShoreExcursionResponse create(ShoreExcursionRequest request) {
         ShoreExcursion excursion = new ShoreExcursion();
         excursion.setExcursionCode(businessCodeGenerator.next("EX"));
@@ -84,10 +94,9 @@ public class ShoreExcursionService {
         }
 
         return excursions.stream()
-                .filter(
-                        e ->
-                                supplierId == null
-                                        || e.getSupplier().getSupplierId().equals(supplierId))
+                .filter(e -> e.getCruiseStop()!=null)
+                .filter(e -> supplierId == null
+                        || e.getSupplier().getSupplierId().equals(supplierId))
                 .filter(e -> status == null || e.getStatus() == status)
                 .map(this::toResponse)
                 .toList();

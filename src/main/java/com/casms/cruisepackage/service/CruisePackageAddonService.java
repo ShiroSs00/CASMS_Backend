@@ -30,6 +30,45 @@ public class CruisePackageAddonService {
     public record Input(@NotNull CruisePackageContracts.ResourceType resourceType,@NotNull UUID resourceId,
             @NotNull @DecimalMin("0") @Digits(integer=15,fraction=4) BigDecimal amount,
             @NotEmpty List<@NotNull @Valid Window> windows,@NotBlank @Size(max=4000) String eligibility) {}
+    public record Candidate(CruisePackageContracts.ResourceType resourceType, UUID resourceId,
+            String name, String unitCode, Instant cutoffLimit, boolean eligible, String blocker) {}
+    public record Configuration(UUID cruiseId, UUID shipId, boolean canCreate, String reason,
+            Instant departureAt, Instant returnAt, Instant bookingOpensAt, Instant bookingClosesAt,
+            List<Candidate> candidates) {}
+    /** Advisory read; writes re-run resource and window validation under the existing voyage lock. */
+    public Configuration configuration(UUID cruiseId) {
+        maker();
+        var rows = jdbc.queryForList("SELECT ship_id,status,departure_datetime,return_datetime,booking_opens_at,booking_closes_at FROM \"Cruise\" WHERE cruise_id=?", cruiseId);
+        if (rows.isEmpty()) throw error("CRUISE_NOT_FOUND", "Không tìm thấy chuyến khởi hành.");
+        var cruise = rows.getFirst();
+        UUID shipId = (UUID) cruise.get("ship_id");
+        boolean editable = Set.of("DRAFT", "PUBLISHED").contains(cruise.get("status"));
+        String reason = !editable ? "Trạng thái chuyến không cho phép tạo cấu hình Add-on."
+                : shipId == null ? "Cần phân công tàu trước khi cấu hình Add-on." : null;
+        List<Candidate> candidates = new ArrayList<>();
+        if (shipId != null) {
+            var sources = jdbc.queryForList("SELECT 'ACTIVITY' AS kind,onboard_activity_id AS id,activity_name AS name FROM \"OnboardActivity\" WHERE cruise_id=? UNION ALL SELECT 'EXCURSION',e.shore_excursion_id,e.excursion_name FROM \"ShoreExcursion\" e JOIN \"CruiseStop\" p USING(cruise_stop_id) JOIN \"Itinerary\" i USING(itinerary_id) WHERE i.cruise_id=? UNION ALL SELECT 'SERVICE',s.service_id,s.service_name FROM \"Service\" s WHERE EXISTS(SELECT 1 FROM \"DeckServiceAssignment\" a JOIN \"Deck\" d USING(deck_id) WHERE a.service_id=s.service_id AND d.ship_id=?) ORDER BY kind,name,id", cruiseId, cruiseId, shipId);
+            for (var source : sources) {
+                var type = CruisePackageContracts.ResourceType.valueOf((String) source.get("kind"));
+                UUID id = (UUID) source.get("id");
+                try {
+                    var resource = resource(type, id, cruiseId, shipId);
+                    candidates.add(new Candidate(type, id, (String) resource.get("name"),
+                            (String) resource.get("unit_code"), instant(resource.get("cutoff_limit")), true, null));
+                } catch (BusinessException blocked) {
+                    candidates.add(new Candidate(type, id, (String) source.get("name"), null, null,
+                            false, blocked.getCode() + ": " + blocked.getMessage()));
+                }
+            }
+        }
+        return new Configuration(cruiseId, shipId, reason == null, reason,
+                instant(cruise.get("departure_datetime")), instant(cruise.get("return_datetime")),
+                instant(cruise.get("booking_opens_at")), instant(cruise.get("booking_closes_at")), candidates);
+    }
+    private Instant instant(Object value) {
+        return value instanceof java.sql.Timestamp t ? t.toInstant()
+                : value instanceof java.time.OffsetDateTime t ? t.toInstant() : null;
+    }
     public List<CruisePackageAddonOffer> list(UUID cruiseId){return em.createQuery("from CruisePackageAddonOffer where cruiseId=:id order by createdAt,id",CruisePackageAddonOffer.class).setParameter("id",cruiseId).getResultList();}
     private UUID maker(){var auth=org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
         if(auth==null||!(auth.getPrincipal() instanceof CasmsPrincipal actor)||!actor.hasRole(Role.ACTIVITY_SERVICE_MANAGER)||!actor.hasAuthority("TOUR_PACKAGE_MANAGE"))throw new org.springframework.security.access.AccessDeniedException("ASM Add-on configuration permission required");return actor.getUserId();}

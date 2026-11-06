@@ -51,6 +51,7 @@ public class ServicepackageService {
     private final FeedbackRepository feedbackRepo;
     private final BusinessCodeGenerator businessCodeGenerator;
     private final ShipServiceAvailability shipServices;
+    private final org.springframework.jdbc.core.JdbcTemplate jdbc;
 
     @Transactional(readOnly = true)
     public List<Service> services() {
@@ -315,6 +316,7 @@ public class ServicepackageService {
 
     public BookingPassengerPackage assignPackage(
             UUID bpId, UUID packageId, UUID userId, boolean staff) {
+        guardNewLegacyAssignment(bpId, userId, staff);
         BookingPassenger bp =
                 bookingPassengerRepo
                         .lockById(bpId)
@@ -338,6 +340,7 @@ public class ServicepackageService {
 
     public BookingPassengerPackage changePackage(
             UUID bpId, UUID packageId, UUID userId, boolean staff) {
+        guardNewLegacyAssignment(bpId, userId, staff);
         BookingPassengerPackage a =
                 assignmentRepo
                         .lockByBookingPassengerId(bpId)
@@ -525,6 +528,16 @@ public class ServicepackageService {
         return p;
     }
 
+    /** Serialize with enrollment before acquiring the passenger/assignment write lock. Historical reads remain allowed. */
+    private void guardNewLegacyAssignment(UUID passengerId, UUID userId, boolean staff) {
+        var passenger=bookingPassengerRepo.findById(passengerId).orElseThrow(()->missing("Booking passenger",passengerId));
+        assertAssignmentAccess(passenger,userId,staff);
+        UUID cruiseId=passenger.getBooking().getCruise().getCruiseId();
+        jdbc.queryForObject("SELECT cruise_id FROM \"Cruise\" WHERE cruise_id=? FOR UPDATE",UUID.class,cruiseId);
+        if(Boolean.TRUE.equals(jdbc.queryForObject("SELECT EXISTS(SELECT 1 FROM \"CruisePlanPackageSelection\" WHERE cruise_id=?)",Boolean.class,cruiseId)))
+            throw new com.casms.common.exception.BusinessException(org.springframework.http.HttpStatus.CONFLICT,
+                    "LEGACY_TOUR_PACKAGE_UNSUPPORTED","Chuyến này sử dụng Gói du thuyền; không thể phân bổ hoặc đổi gói dịch vụ cũ.");
+    }
     private static void assertAssignmentAccess(BookingPassenger bp, UUID userId, boolean staff) {
         if (!staff
                 && (bp.getPassenger().getUser() == null

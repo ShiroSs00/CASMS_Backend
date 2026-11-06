@@ -48,10 +48,10 @@ public class ShoreExcursion {
     @JoinColumn(name = "supplier_id", nullable = false)
     private Supplier supplier;
 
-    @Column(name = "start_time", nullable = false)
+    @Column(name = "start_time")
     private Instant startTime;
 
-    @Column(name = "planned_return_time", nullable = false)
+    @Column(name = "planned_return_time")
     private Instant plannedReturnTime;
 
     @Column(name = "location_text", length = 255)
@@ -70,7 +70,7 @@ public class ShoreExcursion {
     @Column(name = "minimum_participants")
     private Integer minimumParticipants;
 
-    @Column(name = "maximum_capacity", nullable = false)
+    @Column(name = "maximum_capacity")
     private Integer maximumCapacity;
 
     @Column(name = "price", precision = 19, scale = 4)

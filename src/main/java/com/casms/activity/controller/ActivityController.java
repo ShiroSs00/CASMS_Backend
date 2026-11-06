@@ -44,9 +44,16 @@ public class ActivityController {
                 fareEntitlements.operationGrant(registration.getFareBenefitSnapshotId(),registration.getBookingPassenger().getBookingPassengerId())));
     }
 
-    @Schema(
-            name = "ActivityRequest",
-            description = "Thông tin tạo hoặc cập nhật hoạt động trên tàu")
+    public record DefinitionRequest(@NotBlank @Size(max=200) String name,@Size(max=1000) String description) {}
+    public record DefinitionView(UUID id,String name,String unitCode) {}
+    @PostMapping("/definitions")
+    @PreAuthorize("hasRole('ACTIVITY_SERVICE_MANAGER') and hasAuthority('ACTIVITY_CREATE')")
+    @ResponseStatus(HttpStatus.CREATED)
+    public ApiResponse<DefinitionView> createDefinition(@Valid @RequestBody DefinitionRequest input) {
+        var a=service.createDefinition(input.name(),input.description());
+        return ApiResponse.success(new DefinitionView(a.getOnboardActivityId(),a.getActivityName(),null));
+    }
+    @Schema(name = "ActivityRequest", description = "Thông tin tạo hoặc cập nhật hoạt động trên tàu")
     public record ActivityRequest(
             @Schema(description = "Tên hoạt động", example = "Yoga buổi sáng")
                     @NotBlank
@@ -220,8 +227,7 @@ public class ActivityController {
     @PreAuthorize("hasAuthority('ACTIVITY_READ')")
     @GetMapping
     public ApiResponse<List<ActivityView>> list() {
-        return ApiResponse.success(
-                service.listActivities().stream().map(ActivityView::of).toList());
+        return ApiResponse.success(service.listActivities().stream().filter(a->a.getCruise()!=null).map(ActivityView::of).toList());
     }
 
     @Operation(summary = "Chi tiết hoạt động", description = "Lấy thông tin một hoạt động theo ID")

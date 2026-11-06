@@ -33,6 +33,17 @@ public class ShoreExcursionController {
 
     private final ShoreExcursionService shoreExcursionService;
 
+    public record DefinitionRequest(@jakarta.validation.constraints.NotBlank @jakarta.validation.constraints.Size(max=250) String name,
+            @jakarta.validation.constraints.NotNull UUID supplierId,
+            @jakarta.validation.constraints.NotBlank @jakarta.validation.constraints.Size(max=250) String meetingPoint) {}
+    public record DefinitionView(UUID id,String name,String unitCode) {}
+    @PostMapping("/definitions")
+    @PreAuthorize("hasRole('ACTIVITY_SERVICE_MANAGER') and hasAuthority('EXCURSION_CREATE')")
+    @ResponseStatus(HttpStatus.CREATED)
+    public com.casms.common.response.ApiResponse<DefinitionView> createDefinition(@Valid @RequestBody DefinitionRequest input) {
+        var e=shoreExcursionService.createDefinition(input.name(),input.supplierId(),input.meetingPoint());
+        return com.casms.common.response.ApiResponse.success(new DefinitionView(e.getShoreExcursionId(),e.getExcursionName(),null));
+    }
     // CREATE
     @Operation(
             summary = "Tạo tour tham quan trên bờ",

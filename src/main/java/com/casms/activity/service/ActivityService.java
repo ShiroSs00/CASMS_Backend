@@ -101,6 +101,15 @@ public class ActivityService {
         return createActivity(a, cruiseId, input.deckId(), input.cabinId());
     }
 
+    /** Reusable content; no invented date, venue, capacity or component price. */
+    public OnboardActivity createDefinition(String name, String description) {
+        var a=new OnboardActivity();
+        a.setActivityCode(businessCodeGenerator.next("AC"));
+        a.setCatalogEntry(true);
+        a.setActivityName(name.trim());a.setDescription(description);
+        a.setStatus(OnboardActivityStatus.PLANNED);
+        return activities.save(a);
+    }
     public OnboardActivity createActivity(OnboardActivity a, UUID cruiseId) {
         return createActivity(a, cruiseId, null, null);
     }

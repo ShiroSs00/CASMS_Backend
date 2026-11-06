@@ -443,6 +443,8 @@ public class TourGroupPassengerService {
                 assignment.getAssignedAt(),
                 assignment.getCheckedInAt(),
                 assignment.getReturnedAt(),
-                assignment.getCreatedAt());
+                assignment.getCreatedAt(),
+                assignment.getPassenger().getFullName()
+        );
     }
 }

@@ -15,4 +15,11 @@ public record TourGroupPassengerResponse(
         Instant assignedAt,
         Instant checkedInAt,
         Instant returnedAt,
-        Instant createdAt) {}
+        Instant createdAt,
+        String passengerName
+) {
+    public TourGroupPassengerResponse(UUID id,UUID groupId,String code,UUID excursionId,UUID passengerId,
+        TourGroupPassengerAssignmentStatus status,Instant assigned,Instant checked,Instant returned,Instant created) {
+        this(id,groupId,code,excursionId,passengerId,status,assigned,checked,returned,created,null);
+    }
+}
