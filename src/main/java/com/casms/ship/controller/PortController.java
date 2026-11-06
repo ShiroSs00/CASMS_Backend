@@ -3,8 +3,6 @@ package com.casms.ship.controller;
 import com.casms.audit.AuditLog;
 import com.casms.audit.AuditRepository;
 
-import com.casms.audit.AuditLog;
-import com.casms.audit.AuditRepository;
 import com.casms.common.response.ApiResponse;
 import com.casms.ship.dto.request.PortCreateRequest;
 import com.casms.ship.dto.request.PortUpdateRequest;

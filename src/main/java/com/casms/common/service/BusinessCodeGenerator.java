@@ -37,8 +37,10 @@ public class BusinessCodeGenerator {
             throw new IllegalArgumentException("Unsupported business code prefix");
         }
         try {
-            long value =
-                    jdbcTemplate.queryForObject("SELECT nextval('" + sequence + "')", Long.class);
+            Long value = jdbcTemplate.queryForObject("SELECT nextval(?)", Long.class, sequence);
+            if (value == null) {
+                throw new IllegalStateException("Database sequence returned null for " + sequence);
+            }
             return prefix + "-" + String.format("%04d", value);
         } catch (org.springframework.dao.DataAccessException ex) {
             Throwable cause = ex;

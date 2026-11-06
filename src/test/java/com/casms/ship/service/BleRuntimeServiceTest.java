@@ -86,9 +86,10 @@ class BleRuntimeServiceTest {
         when(identities.findByCruiseCruiseIdAndActiveBleIdentifier(cruiseId, "TAG-1"))
                 .thenReturn(Optional.empty());
 
+        BleReadingRequest readingRequest = reading("TAG-1", -65, Instant.now());
         assertThrows(
                 BusinessException.class,
-                () -> service.ingest(cruiseId, receiverId, reading("TAG-1", -65, Instant.now())));
+                () -> service.ingest(cruiseId, receiverId, readingRequest));
         verify(records, never()).save(any());
     }
 

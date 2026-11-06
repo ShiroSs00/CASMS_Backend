@@ -48,7 +48,7 @@ public class PassengerBookingItemRequest {
 
     @Schema(description = "Số điện thoại", example = "+84912345678")
     @Pattern(
-            regexp = "^(\\+?[0-9]{8,15})?$",
+            regexp = "^(\\+?\\d{8,15})?$",
             message = "Phone number must be valid (8 to 15 digits, optional + prefix)")
     private String phoneNumber;
 

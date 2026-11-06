@@ -45,15 +45,14 @@ public class OpenApiConfig {
                 .info(
                         new Info()
                                 .title("CASMS - Cruise Administration & Management System API")
-                                .description(
-                                        "Tài liệu API cho Hệ thống Quản trị & Điều hành Du thuyền"
-                                            + " CASMS (Modular Monolith).\n\n"
-                                            + "### Hướng dẫn xác thực:\n"
-                                            + "- Nhấn nút **Authorize** bên phải và nhập token"
-                                            + " JWT.\n"
-                                            + "- Định dạng: `Bearer <token>` hoặc chỉ `<token>`.\n"
-                                            + "- Sau khi authorize, các API bảo mật sẽ tự động đính"
-                                            + " kèm header `Authorization: Bearer <token>`.")
+                                .description("""
+                                        Tài liệu API cho Hệ thống Quản trị & Điều hành Du thuyền CASMS (Modular Monolith).
+
+                                        ### Hướng dẫn xác thực:
+                                        - Nhấn nút **Authorize** bên phải và nhập token JWT.
+                                        - Định dạng: `Bearer <token>` hoặc chỉ `<token>`.
+                                        - Sau khi authorize, các API bảo mật sẽ tự động đính kèm header `Authorization: Bearer <token>`.
+                                        """)
                                 .version("1.0.0")
                                 .contact(
                                         new Contact()

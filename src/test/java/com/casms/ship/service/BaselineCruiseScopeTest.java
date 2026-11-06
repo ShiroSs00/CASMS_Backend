@@ -37,9 +37,10 @@ class BaselineCruiseScopeTest {
                                 cruiseA.equals(i.getArgument(0))
                                         ? Optional.of(assignment)
                                         : Optional.empty());
+        UUID removedBy = UUID.randomUUID();
         assertThrows(
                 ResourceNotFoundException.class,
-                () -> service.removeStaff(cruiseB, user, UUID.randomUUID()));
+                () -> service.removeStaff(cruiseB, user, removedBy));
         verify(assignments)
                 .findFirstByCruise_CruiseIdAndUser_UserIdAndStatusOrderByAssignedAtDesc(
                         cruiseB, user, "ACTIVE");

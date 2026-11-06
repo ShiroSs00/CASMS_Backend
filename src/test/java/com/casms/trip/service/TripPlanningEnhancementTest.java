@@ -944,7 +944,7 @@ public class TripPlanningEnhancementTest {
         assertEquals(TripScheduleVersionStatus.CANCELLED, res.getStatus());
         assertEquals("Hủy phương án này để làm lại từ đầu", res.getRejectionReason());
         verify(auditService)
-                .record(
+                .recordAudit(
                         eq(actorId),
                         eq("CANCEL_DRAFT"),
                         eq("TripScheduleVersion"),
@@ -1103,7 +1103,7 @@ public class TripPlanningEnhancementTest {
                                         v.getStatus() == TripScheduleVersionStatus.DRAFT
                                                 && v.getSubmittedRevision() == null));
         verify(auditService)
-                .record(
+                .recordAudit(
                         eq(actorId),
                         eq("WITHDRAW"),
                         eq("TripScheduleVersion"),

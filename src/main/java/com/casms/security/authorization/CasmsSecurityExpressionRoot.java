@@ -20,8 +20,8 @@ public class CasmsSecurityExpressionRoot extends SecurityExpressionRoot
 
     public CasmsSecurityExpressionRoot(Authentication authentication) {
         super(authentication);
-        if (authentication != null && authentication.getPrincipal() instanceof CasmsPrincipal) {
-            this.principal = (CasmsPrincipal) authentication.getPrincipal();
+        if (authentication != null && authentication.getPrincipal() instanceof CasmsPrincipal casmsPrincipal) {
+            this.principal = casmsPrincipal;
         } else {
             this.principal = null;
         }

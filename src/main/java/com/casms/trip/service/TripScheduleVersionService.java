@@ -915,7 +915,7 @@ public class TripScheduleVersionService {
                 version.getRevision());
 
         if (auditService != null) {
-            auditService.record(
+            auditService.recordAudit(
                     actorId,
                     "SAVE_DRAFT",
                     "TripScheduleVersion",
@@ -1048,7 +1048,7 @@ public class TripScheduleVersionService {
                     request != null && request.getReason() != null
                             ? request.getReason()
                             : "Cancelled draft version";
-            auditService.record(
+            auditService.recordAudit(
                     actorId,
                     "CANCEL_DRAFT",
                     "TripScheduleVersion",
@@ -1180,7 +1180,7 @@ public class TripScheduleVersionService {
                 actorId);
 
         if (auditService != null) {
-            auditService.record(
+            auditService.recordAudit(
                     actorId,
                     "FINALIZE",
                     "TripScheduleVersion",

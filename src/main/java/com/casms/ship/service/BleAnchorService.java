@@ -128,14 +128,28 @@ public class BleAnchorService {
     @Transactional
     public BleAnchorResponse update(UUID shipId, UUID anchorId, BleAnchorUpdateRequest request) {
         LocationDevice device = get(shipId, anchorId);
+        validateBleAnchorType(device, anchorId);
+        if (request.getDeckId() != null) {
+            device.setDeck(requireDeck(device.getShip(), request.getDeckId()));
+        }
+        updateBleIdentifier(device, shipId, request.getBleIdentifier());
+        updateDeviceTransform(device, request);
+        updateMetadata(device, request);
+        updateRadioConfig(device, request);
+        updateDeviceStatus(device, request.getStatus());
+        return response(devices.save(device));
+    }
+
+    private static void validateBleAnchorType(LocationDevice device, UUID anchorId) {
         if (device.getDeviceType() != LocationDeviceType.BLE_RECEIVER
                 && device.getDeviceType() != LocationDeviceType.BLE_BEACON) {
             throw new ResourceNotFoundException("BLE anchor", anchorId);
         }
-        if (request.getDeckId() != null)
-            device.setDeck(requireDeck(device.getShip(), request.getDeckId()));
-        if (request.getBleIdentifier() != null) {
-            String identifier = normalizeBleIdentifier(request.getBleIdentifier());
+    }
+
+    private void updateBleIdentifier(LocationDevice device, UUID shipId, String rawIdentifier) {
+        if (rawIdentifier != null) {
+            String identifier = normalizeBleIdentifier(rawIdentifier);
             if (identifier != null
                     && !identifier.equals(device.getBleIdentifier())
                     && devices.existsByShipShipIdAndBleIdentifier(shipId, identifier)) {
@@ -144,47 +158,55 @@ public class BleAnchorService {
             }
             device.setBleIdentifier(identifier);
         }
+    }
+
+    private void updateDeviceTransform(LocationDevice device, BleAnchorUpdateRequest request) {
         Double x = request.getX() == null ? device.getModelPositionX() : request.getX();
         Double y = request.getY() == null ? device.getModelPositionY() : request.getY();
         Double z = request.getZ() == null ? device.getModelPositionZ() : request.getZ();
-        Double rx =
-                request.getRotationX() == null
-                        ? device.getModelRotationX()
-                        : request.getRotationX();
-        Double ry =
-                request.getRotationY() == null
-                        ? device.getModelRotationY()
-                        : request.getRotationY();
-        Double rz =
-                request.getRotationZ() == null
-                        ? device.getModelRotationZ()
-                        : request.getRotationZ();
+        Double rx = request.getRotationX() == null ? device.getModelRotationX() : request.getRotationX();
+        Double ry = request.getRotationY() == null ? device.getModelRotationY() : request.getRotationY();
+        Double rz = request.getRotationZ() == null ? device.getModelRotationZ() : request.getRotationZ();
         validateTransform(x, y, z, rx, ry, rz);
         applyTransform(device, x, y, z, rx, ry, rz);
-        if (request.getDeviceName() != null)
+    }
+
+    private static void updateMetadata(LocationDevice device, BleAnchorUpdateRequest request) {
+        if (request.getDeviceName() != null) {
             device.setDeviceName(normalize(request.getDeviceName()));
-        if (request.getModelNodeKey() != null)
+        }
+        if (request.getModelNodeKey() != null) {
             device.setModelNodeKey(normalize(request.getModelNodeKey()));
+        }
+    }
+
+    private void updateRadioConfig(LocationDevice device, BleAnchorUpdateRequest request) {
         if (request.getTxPowerDbm() != null) {
-            if (!request.getTxPowerDbm().equals(device.getTxPowerDbm()))
+            if (!request.getTxPowerDbm().equals(device.getTxPowerDbm())) {
                 device.setCalibrated(false);
+            }
             device.setTxPowerDbm(request.getTxPowerDbm());
         }
-        if (request.getPathLossExponent() != null)
+        if (request.getPathLossExponent() != null) {
             device.setPathLossExponent(request.getPathLossExponent());
-        if (request.getModelUnitsPerMeter() != null)
+        }
+        if (request.getModelUnitsPerMeter() != null) {
             device.setModelUnitsPerMeter(request.getModelUnitsPerMeter());
+        }
         validateRadio(
                 device.getTxPowerDbm(),
                 device.getPathLossExponent(),
                 device.getModelUnitsPerMeter());
-        if (request.getStatus() != null) {
-            if (request.getStatus() == LocationDeviceStatus.RETIRED)
+    }
+
+    private static void updateDeviceStatus(LocationDevice device, LocationDeviceStatus status) {
+        if (status != null) {
+            if (status == LocationDeviceStatus.RETIRED) {
                 throw new BusinessException(
                         "USE_RETIRE_WORKFLOW", "Use the dedicated retirement operation");
-            device.setStatus(request.getStatus());
+            }
+            device.setStatus(status);
         }
-        return response(devices.save(device));
     }
 
     @Transactional

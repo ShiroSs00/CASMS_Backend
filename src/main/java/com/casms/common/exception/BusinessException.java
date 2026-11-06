@@ -4,14 +4,18 @@ import lombok.Getter;
 
 import org.springframework.http.HttpStatus;
 
+import java.io.Serial;
 import java.util.Map;
 
 @Getter
 public class BusinessException extends RuntimeException {
 
+    @Serial
+    private static final long serialVersionUID = 1L;
+
     private final HttpStatus status;
     private final String code;
-    private final Map<String, Object> details;
+    private final transient Map<String, Object> details;
 
     public BusinessException(String message) {
         super(message);

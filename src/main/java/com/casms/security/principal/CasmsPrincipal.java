@@ -13,6 +13,7 @@ import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 
+import java.io.Serial;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.Set;
@@ -23,8 +24,11 @@ import java.util.stream.Stream;
 @RequiredArgsConstructor
 public class CasmsPrincipal implements UserDetails {
 
-    private final User user;
-    private final RolePermissionRepository rolePermissionRepository;
+    @Serial
+    private static final long serialVersionUID = 1L;
+
+    private final transient User user;
+    private final transient RolePermissionRepository rolePermissionRepository;
 
     public UUID getUserId() {
         return user.getUserId();
@@ -32,31 +36,36 @@ public class CasmsPrincipal implements UserDetails {
 
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
-        if (user.hasRole(Role.POS))
+        if (user.hasRole(Role.POS)) {
             return Set.of(
                     new SimpleGrantedAuthority("ROLE_POS"), new SimpleGrantedAuthority("POS"));
+        }
         Set<GrantedAuthority> authorities = new HashSet<>();
-        if (user.getRoles() != null) {
-            for (Role role : user.getRoles()) {
-                authorities.add(new SimpleGrantedAuthority("ROLE_" + role.name()));
-                authorities.add(new SimpleGrantedAuthority(role.name()));
-            }
-        }
-        if (user.getRoles() != null && rolePermissionRepository != null) {
-            for (Role role : user.getRoles()) {
-                rolePermissionRepository
-                        .findByRole(role)
-                        .ifPresent(
-                                rp -> {
-                                    if (rp.getPermissions() != null) {
-                                        for (Permission p : rp.getPermissions()) {
-                                            authorities.add(new SimpleGrantedAuthority(p.name()));
-                                        }
-                                    }
-                                });
-            }
-        }
+        addRoleAuthorities(authorities);
+        addPermissionAuthorities(authorities);
         return authorities;
+    }
+
+    private void addRoleAuthorities(Set<GrantedAuthority> authorities) {
+        if (user.getRoles() == null) {
+            return;
+        }
+        for (Role role : user.getRoles()) {
+            authorities.add(new SimpleGrantedAuthority("ROLE_" + role.name()));
+            authorities.add(new SimpleGrantedAuthority(role.name()));
+        }
+    }
+
+    private void addPermissionAuthorities(Set<GrantedAuthority> authorities) {
+        if (user.getRoles() == null || rolePermissionRepository == null) {
+            return;
+        }
+        for (Role role : user.getRoles()) {
+            rolePermissionRepository
+                    .findByRole(role)
+                    .map(com.casms.identity.entity.RolePermission::getPermissions)
+                    .ifPresent(perms -> perms.forEach(p -> authorities.add(new SimpleGrantedAuthority(p.name()))));
+        }
     }
 
     @Override

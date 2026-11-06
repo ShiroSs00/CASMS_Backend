@@ -31,6 +31,12 @@ import java.util.UUID;
 @RequiredArgsConstructor
 @Transactional
 public class ActivityService {
+
+    private static final String ENTITY_ACTIVITY = "Activity";
+    private static final String ENTITY_REGISTRATION = "Registration";
+    private static final String ENTITY_EXCURSION = "Excursion";
+    private static final String FIELD_PATH = "fieldPath";
+
     private final OnboardActivityRepository activities;
     private final RegistrationRepository registrations;
     private final ParticipationRepository participations;
@@ -54,33 +60,52 @@ public class ActivityService {
 
     @Transactional(readOnly = true)
     public OnboardActivity activity(UUID id) {
-        return activities.findById(id).orElseThrow(() -> missing("Activity", id));
+        return findActivityOrThrow(id);
+    }
+
+    private OnboardActivity findActivityOrThrow(UUID id) {
+        return activities.findById(id).orElseThrow(() -> missing(ENTITY_ACTIVITY, id));
     }
 
     @Transactional(readOnly = true)
     public int availableSeats(UUID id) {
-        OnboardActivity a = activity(id);
-        if (a.getStatus() != OnboardActivityStatus.OPEN || !a.getEndTime().isAfter(Instant.now()))
+        OnboardActivity a = findActivityOrThrow(id);
+        if (a.getStatus() != OnboardActivityStatus.OPEN || !a.getEndTime().isAfter(Instant.now())) {
             return 0;
+        }
         return (int) Math.max(0, a.getCapacity() - occupied(id));
     }
 
-    @Transactional(readOnly=true)
-    public List<OnboardActivity> catalog() { return activities.findByCatalogEntryTrue(); }
+    @Transactional(readOnly = true)
+    public List<OnboardActivity> catalog() {
+        return activities.findByCatalogEntryTrue();
+    }
 
     public OnboardActivity saveCatalog(UUID id, OnboardActivity input) {
         OnboardActivity a = id == null ? new OnboardActivity()
-                : activities.lockActivity(id).orElseThrow(() -> missing("Activity", id));
-        if (id != null && !a.isCatalogEntry()) throw new IllegalArgumentException("Use the occurrence update API for scheduled activities");
-        if (id == null) a.setActivityCode(businessCodeGenerator.next("AC"));
+                : activities.lockActivity(id).orElseThrow(() -> missing(ENTITY_ACTIVITY, id));
+        if (id != null && !a.isCatalogEntry()) {
+            throw new IllegalArgumentException("Use the occurrence update API for scheduled activities");
+        }
+        if (id == null) {
+            a.setActivityCode(businessCodeGenerator.next("AC"));
+        }
         if (input.getActivityName() == null || input.getActivityName().isBlank()
-                || input.getCapacity() == null || input.getCapacity() < 1)
+                || input.getCapacity() == null || input.getCapacity() < 1) {
             throw new IllegalArgumentException("Activity name and positive capacity are required");
-        if (input.getCurrencyCode() == null) input.setCurrencyCode("USD");
+        }
+        if (input.getCurrencyCode() == null) {
+            input.setCurrencyCode("USD");
+        }
         com.casms.common.util.NewWriteCurrency.requireUsd(input.getCurrencyCode());
-        if (input.getPrice() != null && input.getPrice().signum() < 0) throw new IllegalArgumentException("Price must be non-negative");
-        a.setCatalogEntry(true); a.setActivityName(input.getActivityName()); a.setDescription(input.getDescription());
-        a.setCategory(input.getCategory()); a.setCapacity(input.getCapacity());
+        if (input.getPrice() != null && input.getPrice().signum() < 0) {
+            throw new IllegalArgumentException("Price must be non-negative");
+        }
+        a.setCatalogEntry(true);
+        a.setActivityName(input.getActivityName());
+        a.setDescription(input.getDescription());
+        a.setCategory(input.getCategory());
+        a.setCapacity(input.getCapacity());
         a.setPrice(input.getPrice() == null ? BigDecimal.ZERO : input.getPrice());
         a.setCurrencyCode(input.getCurrencyCode() == null ? "USD" : input.getCurrencyCode());
         a.setStatus(OnboardActivityStatus.PLANNED);
@@ -89,32 +114,46 @@ public class ActivityService {
 
     public OnboardActivity scheduleCatalog(UUID cruiseId,
             com.casms.activity.controller.ActivityController.ActivityScheduleRequest input) {
-        var source = activities.lockActivity(input.sourceActivityId()).orElseThrow(() -> missing("Activity", input.sourceActivityId()));
-        if (!source.isCatalogEntry() || source.getStatus() != OnboardActivityStatus.PLANNED)
+        var source = activities.lockActivity(input.sourceActivityId())
+                .orElseThrow(() -> missing(ENTITY_ACTIVITY, input.sourceActivityId()));
+        if (!source.isCatalogEntry() || source.getStatus() != OnboardActivityStatus.PLANNED) {
             throw new IllegalArgumentException("Select an active independent activity catalog entry");
+        }
         var a = new OnboardActivity();
         a.setSourceActivityId(source.getOnboardActivityId());
-        a.setActivityName(source.getActivityName()); a.setDescription(source.getDescription());
-        a.setCategory(source.getCategory()); a.setPrice(source.getPrice()); a.setCurrencyCode(source.getCurrencyCode());
+        a.setActivityName(source.getActivityName());
+        a.setDescription(source.getDescription());
+        a.setCategory(source.getCategory());
+        a.setPrice(source.getPrice());
+        a.setCurrencyCode(source.getCurrencyCode());
         a.setCapacity(input.capacity() == null ? source.getCapacity() : input.capacity());
-        a.setStartTime(input.startTime()); a.setEndTime(input.endTime()); a.setLocation(input.location());
-        return createActivity(a, cruiseId, input.deckId(), input.cabinId());
+        a.setStartTime(input.startTime());
+        a.setEndTime(input.endTime());
+        a.setLocation(input.location());
+        return doCreateActivity(a, cruiseId, input.deckId(), input.cabinId());
     }
 
     /** Reusable content; no invented date, venue, capacity or component price. */
     public OnboardActivity createDefinition(String name, String description) {
-        var a=new OnboardActivity();
+        var a = new OnboardActivity();
         a.setActivityCode(businessCodeGenerator.next("AC"));
         a.setCatalogEntry(true);
-        a.setActivityName(name.trim());a.setDescription(description);
+        a.setActivityName(name.trim());
+        a.setDescription(description);
         a.setStatus(OnboardActivityStatus.PLANNED);
         return activities.save(a);
     }
+
     public OnboardActivity createActivity(OnboardActivity a, UUID cruiseId) {
-        return createActivity(a, cruiseId, null, null);
+        return doCreateActivity(a, cruiseId, null, null);
     }
 
     public OnboardActivity createActivity(
+            OnboardActivity a, UUID cruiseId, UUID deckId, UUID cabinId) {
+        return doCreateActivity(a, cruiseId, deckId, cabinId);
+    }
+
+    private OnboardActivity doCreateActivity(
             OnboardActivity a, UUID cruiseId, UUID deckId, UUID cabinId) {
         com.casms.common.util.NewWriteCurrency.requireUsd(a.getCurrencyCode());
         a.setCruise(cruises.findById(cruiseId).orElseThrow(() -> missing("Cruise", cruiseId)));
@@ -132,7 +171,7 @@ public class ActivityService {
     }
 
     public OnboardActivity updateActivity(UUID id, OnboardActivity input) {
-        return updateActivity(
+        return doUpdateActivity(
                 id,
                 input,
                 input.getDeck() != null ? input.getDeck().getDeckId() : null,
@@ -141,18 +180,27 @@ public class ActivityService {
 
     public OnboardActivity updateActivity(
             UUID id, OnboardActivity input, UUID deckId, UUID cabinId) {
+        return doUpdateActivity(id, input, deckId, cabinId);
+    }
+
+    private OnboardActivity doUpdateActivity(
+            UUID id, OnboardActivity input, UUID deckId, UUID cabinId) {
         com.casms.common.util.NewWriteCurrency.requireUsd(input.getCurrencyCode());
-        OnboardActivity a = activities.lockActivity(id).orElseThrow(() -> missing("Activity", id));
-        if (a.isCatalogEntry()) throw new IllegalArgumentException("Use PUT /activities/catalog/{id} to edit catalog metadata");
-        if (a.getStatus() != OnboardActivityStatus.PLANNED)
+        OnboardActivity a = activities.lockActivity(id).orElseThrow(() -> missing(ENTITY_ACTIVITY, id));
+        if (a.isCatalogEntry()) {
+            throw new IllegalArgumentException("Use PUT /activities/catalog/{id} to edit catalog metadata");
+        }
+        if (a.getStatus() != OnboardActivityStatus.PLANNED) {
             throw new IllegalStateException("Only planned activities can be edited");
+        }
         long allocated = occupied(id);
-        if (input.getCapacity() != null && input.getCapacity() < allocated)
+        if (input.getCapacity() != null && input.getCapacity() < allocated) {
             throw new com.casms.common.exception.BusinessException(
                     org.springframework.http.HttpStatus.UNPROCESSABLE_ENTITY,
                     "CAPACITY_BELOW_ALLOCATED",
                     "Activity capacity cannot be below reserved participants",
-                    java.util.Map.of("fieldPath", "capacity", "allocatedParticipants", allocated));
+                    java.util.Map.of(FIELD_PATH, "capacity", "allocatedParticipants", allocated));
+        }
         OnboardActivity venue = new OnboardActivity();
         venue.setCruise(a.getCruise());
         resolveDeckAndCabin(venue, deckId, cabinId);
@@ -171,46 +219,53 @@ public class ActivityService {
     }
 
     private void resolveDeckAndCabin(OnboardActivity a, UUID deckId, UUID cabinId) {
-        UUID shipId =
-                a.getCruise() != null && a.getCruise().getShip() != null
-                        ? a.getCruise().getShip().getShipId()
-                        : null;
-        if (deckId != null) {
-            Deck deck =
-                    deckRepository
-                            .findById(deckId)
-                            .orElseThrow(
-                                    () -> new EntityNotFoundException("Deck not found: " + deckId));
-            if (shipId == null
-                    || deck.getShip() == null
-                    || !shipId.equals(deck.getShip().getShipId())) throw venueMismatch("deckId");
-            a.setDeck(deck);
-        } else {
-            a.setDeck(null);
+        UUID shipId = extractShipId(a);
+        Deck deck = resolveDeck(shipId, deckId);
+        Cabin cabin = resolveCabin(shipId, deckId, cabinId);
+        a.setDeck(deck != null ? deck : (cabin != null ? cabin.getDeck() : null));
+        a.setCabin(cabin);
+    }
+
+    private static UUID extractShipId(OnboardActivity a) {
+        if (a.getCruise() != null && a.getCruise().getShip() != null) {
+            return a.getCruise().getShip().getShipId();
         }
-        if (cabinId != null) {
-            Cabin cabin =
-                    cabinRepository
-                            .findById(cabinId)
-                            .orElseThrow(
-                                    () ->
-                                            new EntityNotFoundException(
-                                                    "Cabin not found: " + cabinId));
-            if (shipId == null
-                    || cabin.getShip() == null
-                    || !shipId.equals(cabin.getShip().getShipId())
-                    || cabin.getDeck() == null
-                    || cabin.getDeck().getShip() == null
-                    || !shipId.equals(cabin.getDeck().getShip().getShipId())
-                    || deckId != null && !deckId.equals(cabin.getDeck().getDeckId()))
-                throw venueMismatch("cabinId");
-            a.setCabin(cabin);
-            if (a.getDeck() == null && cabin.getDeck() != null) {
-                a.setDeck(cabin.getDeck());
-            }
-        } else {
-            a.setCabin(null);
+        return null;
+    }
+
+    private Deck resolveDeck(UUID shipId, UUID deckId) {
+        if (deckId == null) {
+            return null;
         }
+        Deck deck = deckRepository.findById(deckId)
+                .orElseThrow(() -> new EntityNotFoundException("Deck not found: " + deckId));
+        if (shipId == null || deck.getShip() == null || !shipId.equals(deck.getShip().getShipId())) {
+            throw venueMismatch("deckId");
+        }
+        return deck;
+    }
+
+    private Cabin resolveCabin(UUID shipId, UUID deckId, UUID cabinId) {
+        if (cabinId == null) {
+            return null;
+        }
+        Cabin cabin = cabinRepository.findById(cabinId)
+                .orElseThrow(() -> new EntityNotFoundException("Cabin not found: " + cabinId));
+        if (!isCabinValidForShipAndDeck(cabin, shipId, deckId)) {
+            throw venueMismatch("cabinId");
+        }
+        return cabin;
+    }
+
+    private static boolean isCabinValidForShipAndDeck(Cabin cabin, UUID shipId, UUID deckId) {
+        if (shipId == null || cabin.getShip() == null || !shipId.equals(cabin.getShip().getShipId())) {
+            return false;
+        }
+        if (cabin.getDeck() == null || cabin.getDeck().getShip() == null
+                || !shipId.equals(cabin.getDeck().getShip().getShipId())) {
+            return false;
+        }
+        return deckId == null || deckId.equals(cabin.getDeck().getDeckId());
     }
 
     private static com.casms.common.exception.BusinessException venueMismatch(String field) {
@@ -218,116 +273,145 @@ public class ActivityService {
                 org.springframework.http.HttpStatus.UNPROCESSABLE_ENTITY,
                 "ACTIVITY_VENUE_MISMATCH",
                 "Activity venue must belong to the assigned ship and selected deck",
-                java.util.Map.of("fieldPath", field));
+                java.util.Map.of(FIELD_PATH, field));
     }
 
     public void deleteActivity(UUID id) {
-        OnboardActivity a = activity(id);
+        OnboardActivity a = findActivityOrThrow(id);
         if (a.getStatus() != OnboardActivityStatus.PLANNED
                 || registrations.existsByOnboardActivity_OnboardActivityId(id)
                 || packageActivities.existsByOnboardActivity_OnboardActivityId(id)
-                || activities.isReferencedSource(id))
+                || activities.isReferencedSource(id)) {
             throw new IllegalStateException("Only an unused planned activity can be deleted");
+        }
         activities.delete(a);
     }
 
     public OnboardActivity lifecycle(UUID id, String action) {
-        OnboardActivity a = activity(id);
-        if (a.isCatalogEntry()) throw new IllegalArgumentException("Schedule the catalog activity on a cruise before lifecycle actions");
+        OnboardActivity a = findActivityOrThrow(id);
+        if (a.isCatalogEntry()) {
+            throw new IllegalArgumentException("Schedule the catalog activity on a cruise before lifecycle actions");
+        }
         switch (action) {
-            case "open" -> {
-                if (a.getStatus() != OnboardActivityStatus.PLANNED) invalid();
-                validateActivity(a, id);
-                a.setStatus(OnboardActivityStatus.OPEN);
-            }
-            case "close" ->
-                    throw new UnsupportedOperationException(
-                            "OnboardActivity has no CLOSED status; closing registrations cannot be"
-                                + " represented without changing the approved schema");
-            case "start" -> {
-                if (a.getStatus() != OnboardActivityStatus.OPEN
-                        && a.getStatus() != OnboardActivityStatus.FULL) invalid();
-                if (a.getStartTime().isAfter(Instant.now())) invalid();
-                a.setStatus(OnboardActivityStatus.IN_PROGRESS);
-            }
-            case "complete" -> {
-                if (a.getStatus() != OnboardActivityStatus.IN_PROGRESS) invalid();
-                a.setStatus(OnboardActivityStatus.COMPLETED);
-            }
-            case "cancel" -> {
-                if (a.getStatus() == OnboardActivityStatus.COMPLETED
-                        || a.getStatus() == OnboardActivityStatus.CANCELLED) invalid();
-                a.setStatus(OnboardActivityStatus.CANCELLED);
-            }
+            case "open" -> handleOpenLifecycle(a, id);
+            case "close" -> throw new UnsupportedOperationException(
+                    "OnboardActivity has no CLOSED status; closing registrations cannot be represented without changing the approved schema");
+            case "start" -> handleStartLifecycle(a);
+            case "complete" -> handleCompleteLifecycle(a);
+            case "cancel" -> handleCancelLifecycle(a);
             default -> throw new IllegalArgumentException("Unsupported activity action");
         }
         return a;
     }
 
+    private void handleOpenLifecycle(OnboardActivity a, UUID id) {
+        if (a.getStatus() != OnboardActivityStatus.PLANNED) {
+            invalid();
+        }
+        validateActivity(a, id);
+        a.setStatus(OnboardActivityStatus.OPEN);
+    }
+
+    private static void handleStartLifecycle(OnboardActivity a) {
+        if (a.getStatus() != OnboardActivityStatus.OPEN && a.getStatus() != OnboardActivityStatus.FULL) {
+            invalid();
+        }
+        if (a.getStartTime().isAfter(Instant.now())) {
+            invalid();
+        }
+        a.setStatus(OnboardActivityStatus.IN_PROGRESS);
+    }
+
+    private static void handleCompleteLifecycle(OnboardActivity a) {
+        if (a.getStatus() != OnboardActivityStatus.IN_PROGRESS) {
+            invalid();
+        }
+        a.setStatus(OnboardActivityStatus.COMPLETED);
+    }
+
+    private static void handleCancelLifecycle(OnboardActivity a) {
+        if (a.getStatus() == OnboardActivityStatus.COMPLETED || a.getStatus() == OnboardActivityStatus.CANCELLED) {
+            invalid();
+        }
+        a.setStatus(OnboardActivityStatus.CANCELLED);
+    }
+
     public void validateActivity(OnboardActivity a, UUID exclude) {
-        if (a.getActivityCode() == null
-                || a.getActivityCode().isBlank()
-                || a.getActivityName() == null
-                || a.getActivityName().isBlank())
+        validateActivityBasicInfo(a);
+        validateActivitySchedule(a);
+        validateActivityPricing(a);
+        validateUniqueActivityCode(a.getActivityCode(), exclude);
+        validateLocationConflicts(a, exclude);
+    }
+
+    private static void validateActivityBasicInfo(OnboardActivity a) {
+        if (a.getActivityCode() == null || a.getActivityCode().isBlank()
+                || a.getActivityName() == null || a.getActivityName().isBlank()) {
             throw new IllegalArgumentException("Activity code and name are required");
-        if (a.getStartTime() == null
-                || a.getEndTime() == null
-                || !a.getEndTime().isAfter(a.getStartTime()))
+        }
+        if (a.getCapacity() == null || a.getCapacity() < 1) {
+            throw new IllegalArgumentException("Capacity must be positive");
+        }
+    }
+
+    private static void validateActivitySchedule(OnboardActivity a) {
+        if (a.getStartTime() == null || a.getEndTime() == null || !a.getEndTime().isAfter(a.getStartTime())) {
             throw new IllegalArgumentException("Activity end must be after start");
+        }
         if (a.getCruise() != null) {
             var departure = a.getCruise().getDepartureDatetime();
             var end = a.getCruise().getReturnDatetime();
-            if (departure == null
-                    || end == null
-                    || a.getStartTime().isBefore(departure)
-                    || a.getEndTime().isAfter(end))
+            if (departure == null || end == null || a.getStartTime().isBefore(departure) || a.getEndTime().isAfter(end)) {
+                String errorField = (departure == null || a.getStartTime().isBefore(departure)) ? "startTime" : "endTime";
                 throw new com.casms.common.exception.BusinessException(
                         org.springframework.http.HttpStatus.UNPROCESSABLE_ENTITY,
                         "ACTIVITY_OUTSIDE_CRUISE",
                         "Activity must fit the Cruise schedule",
-                        java.util.Map.of(
-                                "fieldPath",
-                                departure == null || a.getStartTime().isBefore(departure)
-                                        ? "startTime"
-                                        : "endTime"));
+                        java.util.Map.of(FIELD_PATH, errorField));
+            }
         }
-        if (a.getCapacity() == null || a.getCapacity() < 1)
-            throw new IllegalArgumentException("Capacity must be positive");
-        if (a.getPrice() != null
-                && (a.getPrice().signum() < 0
-                        || a.getCurrencyCode() == null
-                        || a.getCurrencyCode().isBlank()))
+    }
+
+    private static void validateActivityPricing(OnboardActivity a) {
+        if (a.getPrice() != null && (a.getPrice().signum() < 0 || a.getCurrencyCode() == null || a.getCurrencyCode().isBlank())) {
             throw new IllegalArgumentException("A non-negative price requires a currency");
-        activities
-                .findByActivityCode(a.getActivityCode())
+        }
+    }
+
+    private void validateUniqueActivityCode(String activityCode, UUID exclude) {
+        activities.findByActivityCode(activityCode)
                 .filter(x -> !x.getOnboardActivityId().equals(exclude))
-                .ifPresent(
-                        x -> {
-                            throw new IllegalArgumentException("Activity code already exists");
-                        });
-        if (a.getCruise() != null
-                && a.getLocation() != null
-                && !a.getLocation().isBlank()
-                && activities.countScheduleConflicts(
-                                a.getCruise().getCruiseId(),
-                                a.getLocation(),
-                                a.getStartTime(),
-                                a.getEndTime(),
-                                List.of(
-                                        OnboardActivityStatus.PLANNED,
-                                        OnboardActivityStatus.OPEN,
-                                        OnboardActivityStatus.FULL,
-                                        OnboardActivityStatus.IN_PROGRESS),
-                                exclude)
-                        > 0)
-            throw new IllegalArgumentException(
-                    "Activity schedule conflicts at the same location on this cruise");
+                .ifPresent(x -> {
+                    throw new IllegalArgumentException("Activity code already exists");
+                });
+    }
+
+    private void validateLocationConflicts(OnboardActivity a, UUID exclude) {
+        if (a.getCruise() == null || a.getLocation() == null || a.getLocation().isBlank()) {
+            return;
+        }
+        long conflicts = activities.countScheduleConflicts(
+                a.getCruise().getCruiseId(),
+                a.getLocation(),
+                a.getStartTime(),
+                a.getEndTime(),
+                List.of(
+                        OnboardActivityStatus.PLANNED,
+                        OnboardActivityStatus.OPEN,
+                        OnboardActivityStatus.FULL,
+                        OnboardActivityStatus.IN_PROGRESS),
+                exclude);
+        if (conflicts > 0) {
+            throw new IllegalArgumentException("Activity schedule conflicts at the same location on this cruise");
+        }
     }
 
     @Transactional(readOnly = true)
     public long scheduleConflicts(UUID id) {
-        OnboardActivity a = activity(id);
-        if (a.getCruise() == null || a.getLocation() == null || a.getLocation().isBlank()) return 0;
+        OnboardActivity a = findActivityOrThrow(id);
+        if (a.getCruise() == null || a.getLocation() == null || a.getLocation().isBlank()) {
+            return 0;
+        }
         return activities.countScheduleConflicts(
                 a.getCruise().getCruiseId(),
                 a.getLocation(),
@@ -343,6 +427,10 @@ public class ActivityService {
 
     @Transactional(readOnly = true)
     public List<Registration> listRegistrations(UUID activityId) {
+        return findRegistrationsByActivity(activityId);
+    }
+
+    private List<Registration> findRegistrationsByActivity(UUID activityId) {
         return activityId == null
                 ? registrations.findAll()
                 : registrations.findByOnboardActivity_OnboardActivityId(activityId);
@@ -350,71 +438,83 @@ public class ActivityService {
 
     @Transactional(readOnly = true)
     public List<Registration> listRegistrations(UUID activityId, UUID userId, boolean staff) {
-        if (staff) return listRegistrations(activityId);
-        if (activityId == null)
+        if (staff) {
+            return findRegistrationsByActivity(activityId);
+        }
+        if (activityId == null) {
             return registrations.findByBookingPassenger_Passenger_User_UserId(userId);
+        }
         return registrations.findByBookingPassenger_Passenger_User_UserId(userId).stream()
-                .filter(
-                        r ->
-                                r.getOnboardActivity() != null
-                                        && r.getOnboardActivity()
-                                                .getOnboardActivityId()
-                                                .equals(activityId))
+                .filter(r -> r.getOnboardActivity() != null
+                        && r.getOnboardActivity().getOnboardActivityId().equals(activityId))
                 .toList();
     }
 
     @Transactional(readOnly = true)
     public Registration registration(UUID id) {
-        return registrations.findById(id).orElseThrow(() -> missing("Registration", id));
+        return findRegistrationOrThrow(id);
+    }
+
+    private Registration findRegistrationOrThrow(UUID id) {
+        return registrations.findById(id).orElseThrow(() -> missing(ENTITY_REGISTRATION, id));
     }
 
     public Registration updatePending(
             UUID id, Integer quantity, String notes, UUID userId, boolean staff) {
-        Registration r = registrations.lockById(id).orElseThrow(() -> missing("Registration", id));
+        Registration r = registrations.lockById(id).orElseThrow(() -> missing(ENTITY_REGISTRATION, id));
         assertRegistrationOwner(r, userId, staff);
-        if (r.getStatus() != RegistrationStatus.PENDING) invalid();
-        if (quantity == null || quantity < 1)
+        if (r.getStatus() != RegistrationStatus.PENDING) {
+            invalid();
+        }
+        if (quantity == null || quantity < 1) {
             throw new IllegalArgumentException("Quantity must be positive");
+        }
         if (r.getOnboardActivity() != null) {
-            OnboardActivity a =
-                    activities
-                            .lockActivity(r.getOnboardActivity().getOnboardActivityId())
-                            .orElseThrow(
-                                    () ->
-                                            missing(
-                                                    "Activity",
-                                                    r.getOnboardActivity().getOnboardActivityId()));
-            long other = occupied(a.getOnboardActivityId()) - r.getQuantity();
-            if (other + quantity > a.getCapacity())
-                throw new IllegalStateException("Activity capacity exceeded");
-            r.setQuantity(quantity);
-            r.setNotes(notes);
-            if (other + quantity >= a.getCapacity()) a.setStatus(OnboardActivityStatus.FULL);
-            else if (a.getStatus() == OnboardActivityStatus.FULL)
-                a.setStatus(OnboardActivityStatus.OPEN);
+            updatePendingOnboardActivity(r, quantity, notes);
         } else if (r.getShoreExcursion() != null) {
-            var e =
-                    excursions
-                            .lockById(r.getShoreExcursion().getShoreExcursionId())
-                            .orElseThrow(
-                                    () ->
-                                            missing(
-                                                    "Excursion",
-                                                    r.getShoreExcursion().getShoreExcursionId()));
-            long other = occupiedExcursion(e.getShoreExcursionId()) - r.getQuantity();
-            if (other + quantity > e.getMaximumCapacity())
-                throw new IllegalStateException("Excursion capacity exceeded");
-            r.setQuantity(quantity);
-            r.setNotes(notes);
-            if (other + quantity >= e.getMaximumCapacity()) e.setStatus(ShoreExcursionStatus.FULL);
-            else if (e.getStatus() == ShoreExcursionStatus.FULL)
-                e.setStatus(ShoreExcursionStatus.OPEN);
-        } else throw new IllegalStateException("Registration has no supported target");
+            updatePendingShoreExcursion(r, quantity, notes);
+        } else {
+            throw new IllegalStateException("Registration has no supported target");
+        }
         return r;
     }
 
+    private void updatePendingOnboardActivity(Registration r, int quantity, String notes) {
+        UUID activityId = r.getOnboardActivity().getOnboardActivityId();
+        OnboardActivity a = activities.lockActivity(activityId)
+                .orElseThrow(() -> missing(ENTITY_ACTIVITY, activityId));
+        long other = occupied(activityId) - r.getQuantity();
+        if (other + quantity > a.getCapacity()) {
+            throw new IllegalStateException("Activity capacity exceeded");
+        }
+        r.setQuantity(quantity);
+        r.setNotes(notes);
+        if (other + quantity >= a.getCapacity()) {
+            a.setStatus(OnboardActivityStatus.FULL);
+        } else if (a.getStatus() == OnboardActivityStatus.FULL) {
+            a.setStatus(OnboardActivityStatus.OPEN);
+        }
+    }
+
+    private void updatePendingShoreExcursion(Registration r, int quantity, String notes) {
+        UUID excursionId = r.getShoreExcursion().getShoreExcursionId();
+        ShoreExcursion e = excursions.lockById(excursionId)
+                .orElseThrow(() -> missing(ENTITY_EXCURSION, excursionId));
+        long other = occupiedExcursion(excursionId) - r.getQuantity();
+        if (other + quantity > e.getMaximumCapacity()) {
+            throw new IllegalStateException("Excursion capacity exceeded");
+        }
+        r.setQuantity(quantity);
+        r.setNotes(notes);
+        if (other + quantity >= e.getMaximumCapacity()) {
+            e.setStatus(ShoreExcursionStatus.FULL);
+        } else if (e.getStatus() == ShoreExcursionStatus.FULL) {
+            e.setStatus(ShoreExcursionStatus.OPEN);
+        }
+    }
+
     public Registration getRegistration(UUID id, UUID userId, boolean staff) {
-        Registration r = registration(id);
+        Registration r = findRegistrationOrThrow(id);
         assertRegistrationOwner(r, userId, staff);
         return r;
     }
@@ -425,33 +525,32 @@ public class ActivityService {
             Integer quantity,
             UUID userId,
             boolean staff) {
-        BookingPassenger bp =
-                bookingPassengers
-                        .findById(bookingPassengerId)
-                        .orElseThrow(() -> missing("Booking passenger", bookingPassengerId));
+        BookingPassenger bp = bookingPassengers.findById(bookingPassengerId)
+                .orElseThrow(() -> missing("Booking passenger", bookingPassengerId));
         int effectiveQuantity = (quantity == null || quantity < 1) ? 1 : quantity;
         assertBookingPassengerOwner(bp, userId, staff);
-        if (bp.getBooking().getBookingStatus() != BookingStatus.Confirmed)
+        if (bp.getBooking().getBookingStatus() != BookingStatus.Confirmed) {
             throw new IllegalStateException("Booking is not confirmed");
-        OnboardActivity a =
-                activities
-                        .lockActivity(activityId)
-                        .orElseThrow(() -> missing("Activity", activityId));
+        }
+        OnboardActivity a = activities.lockActivity(activityId)
+                .orElseThrow(() -> missing(ENTITY_ACTIVITY, activityId));
         if (a.getCruise() == null
                 || bp.getBooking().getCruise() == null
-                || !bp.getBooking().getCruise().getCruiseId().equals(a.getCruise().getCruiseId()))
-            throw new IllegalStateException(
-                    "Activity does not belong to the passenger's booking cruise");
-        if (a.getStatus() != OnboardActivityStatus.OPEN || !a.getEndTime().isAfter(Instant.now()))
+                || !bp.getBooking().getCruise().getCruiseId().equals(a.getCruise().getCruiseId())) {
+            throw new IllegalStateException("Activity does not belong to the passenger's booking cruise");
+        }
+        if (a.getStatus() != OnboardActivityStatus.OPEN || !a.getEndTime().isAfter(Instant.now())) {
             throw new IllegalStateException("Activity is not open for registration");
-        if (registrations
-                .existsByBookingPassenger_BookingPassengerIdAndOnboardActivity_OnboardActivityIdAndStatusIn(
-                        bookingPassengerId,
-                        activityId,
-                        List.of(RegistrationStatus.PENDING, RegistrationStatus.CONFIRMED)))
+        }
+        if (registrations.existsByBookingPassenger_BookingPassengerIdAndOnboardActivity_OnboardActivityIdAndStatusIn(
+                bookingPassengerId,
+                activityId,
+                List.of(RegistrationStatus.PENDING, RegistrationStatus.CONFIRMED))) {
             throw new IllegalStateException("Passenger is already registered");
-        if (occupied(activityId) + effectiveQuantity > a.getCapacity())
+        }
+        if (occupied(activityId) + effectiveQuantity > a.getCapacity()) {
             throw new IllegalStateException("Activity capacity exceeded");
+        }
         Registration r = new Registration();
         r.setPassenger(bp.getPassenger());
         r.setBookingPassenger(bp);
@@ -460,7 +559,9 @@ public class ActivityService {
         r.setQuantity(effectiveQuantity);
         r.setStatus(RegistrationStatus.PENDING);
         Registration saved = registrations.save(r);
-        if (occupied(activityId) >= a.getCapacity()) a.setStatus(OnboardActivityStatus.FULL);
+        if (occupied(activityId) >= a.getCapacity()) {
+            a.setStatus(OnboardActivityStatus.FULL);
+        }
         return saved;
     }
 
@@ -470,35 +571,30 @@ public class ActivityService {
             Integer quantity,
             UUID userId,
             boolean staff) {
-        BookingPassenger bp =
-                bookingPassengers
-                        .findById(bookingPassengerId)
-                        .orElseThrow(() -> missing("Booking passenger", bookingPassengerId));
+        BookingPassenger bp = bookingPassengers.findById(bookingPassengerId)
+                .orElseThrow(() -> missing("Booking passenger", bookingPassengerId));
         assertBookingPassengerOwner(bp, userId, staff);
-        if (bp.getBooking().getBookingStatus() != BookingStatus.Confirmed)
+        if (bp.getBooking().getBookingStatus() != BookingStatus.Confirmed) {
             throw new IllegalStateException("Booking is not confirmed");
+        }
         int effectiveQuantity = (quantity == null || quantity < 1) ? 1 : quantity;
-        var e =
-                excursions
-                        .lockById(excursionId)
-                        .orElseThrow(() -> missing("Excursion", excursionId));
-        if (!bp.getBooking()
-                .getCruise()
-                .getCruiseId()
-                .equals(e.getCruiseStop().getItinerary().getCruise().getCruiseId()))
-            throw new IllegalStateException(
-                    "Excursion does not belong to the passenger's booking cruise");
-        if (e.getStatus() != ShoreExcursionStatus.OPEN
-                || !e.getPlannedReturnTime().isAfter(Instant.now()))
+        var e = excursions.lockById(excursionId)
+                .orElseThrow(() -> missing(ENTITY_EXCURSION, excursionId));
+        if (!bp.getBooking().getCruise().getCruiseId().equals(e.getCruiseStop().getItinerary().getCruise().getCruiseId())) {
+            throw new IllegalStateException("Excursion does not belong to the passenger's booking cruise");
+        }
+        if (e.getStatus() != ShoreExcursionStatus.OPEN || !e.getPlannedReturnTime().isAfter(Instant.now())) {
             throw new IllegalStateException("Excursion is not open for registration");
-        if (registrations
-                .existsByBookingPassenger_BookingPassengerIdAndShoreExcursion_ShoreExcursionIdAndStatusIn(
-                        bookingPassengerId,
-                        excursionId,
-                        List.of(RegistrationStatus.PENDING, RegistrationStatus.CONFIRMED)))
+        }
+        if (registrations.existsByBookingPassenger_BookingPassengerIdAndShoreExcursion_ShoreExcursionIdAndStatusIn(
+                bookingPassengerId,
+                excursionId,
+                List.of(RegistrationStatus.PENDING, RegistrationStatus.CONFIRMED))) {
             throw new IllegalStateException("Passenger is already registered");
-        if (occupiedExcursion(excursionId) + effectiveQuantity > e.getMaximumCapacity())
+        }
+        if (occupiedExcursion(excursionId) + effectiveQuantity > e.getMaximumCapacity()) {
             throw new IllegalStateException("Excursion capacity exceeded");
+        }
         Registration r = new Registration();
         r.setPassenger(bp.getPassenger());
         r.setBookingPassenger(bp);
@@ -507,40 +603,63 @@ public class ActivityService {
         r.setQuantity(effectiveQuantity);
         r.setStatus(RegistrationStatus.PENDING);
         Registration saved = registrations.save(r);
-        if (occupiedExcursion(excursionId) >= e.getMaximumCapacity())
+        if (occupiedExcursion(excursionId) >= e.getMaximumCapacity()) {
             e.setStatus(ShoreExcursionStatus.FULL);
+        }
         return saved;
     }
 
     public Registration confirmRegistration(UUID id, UUID userId, boolean staff) {
-        Registration r = registrations.lockById(id).orElseThrow(() -> missing("Registration", id));
+        Registration r = registrations.lockById(id).orElseThrow(() -> missing(ENTITY_REGISTRATION, id));
         assertRegistrationOwner(r, userId, staff);
-        if (r.getStatus() != RegistrationStatus.PENDING) invalid();
+        if (r.getStatus() != RegistrationStatus.PENDING) {
+            invalid();
+        }
         OnboardActivity a = r.getOnboardActivity();
-        var excursion = r.getShoreExcursion();
+        ShoreExcursion excursion = r.getShoreExcursion();
         if (a != null) {
-            UUID targetId = a.getOnboardActivityId();
-            a = activities.lockActivity(targetId).orElseThrow(() -> missing("Activity", targetId));
-            if (a.getStatus() != OnboardActivityStatus.OPEN
-                    && a.getStatus() != OnboardActivityStatus.FULL)
-                throw new IllegalStateException("Activity is not open for confirmation");
-            if (!a.getEndTime().isAfter(Instant.now()))
-                throw new IllegalStateException("Activity has ended");
-            if (occupied(a.getOnboardActivityId()) > a.getCapacity())
-                throw new IllegalStateException("Activity capacity exceeded");
+            a = lockAndValidateActivityForConfirmation(a.getOnboardActivityId());
         } else if (excursion != null) {
-            UUID targetId = excursion.getShoreExcursionId();
-            excursion =
-                    excursions.lockById(targetId).orElseThrow(() -> missing("Excursion", targetId));
-            if (excursion.getStatus() != ShoreExcursionStatus.OPEN
-                    && excursion.getStatus() != ShoreExcursionStatus.FULL)
-                throw new IllegalStateException("Excursion is not open for confirmation");
-            if (!excursion.getPlannedReturnTime().isAfter(Instant.now()))
-                throw new IllegalStateException("Excursion has ended");
-            if (occupiedExcursion(targetId) > excursion.getMaximumCapacity())
-                throw new IllegalStateException("Excursion capacity exceeded");
-        } else throw new IllegalStateException("Registration has no supported target");
+            excursion = lockAndValidateExcursionForConfirmation(excursion.getShoreExcursionId());
+        } else {
+            throw new IllegalStateException("Registration has no supported target");
+        }
         r.setStatus(RegistrationStatus.CONFIRMED);
+        ensureParticipationRegistered(r, a, excursion, id);
+        return r;
+    }
+
+    private OnboardActivity lockAndValidateActivityForConfirmation(UUID activityId) {
+        OnboardActivity a = activities.lockActivity(activityId)
+                .orElseThrow(() -> missing(ENTITY_ACTIVITY, activityId));
+        if (a.getStatus() != OnboardActivityStatus.OPEN && a.getStatus() != OnboardActivityStatus.FULL) {
+            throw new IllegalStateException("Activity is not open for confirmation");
+        }
+        if (!a.getEndTime().isAfter(Instant.now())) {
+            throw new IllegalStateException("Activity has ended");
+        }
+        if (occupied(activityId) > a.getCapacity()) {
+            throw new IllegalStateException("Activity capacity exceeded");
+        }
+        return a;
+    }
+
+    private ShoreExcursion lockAndValidateExcursionForConfirmation(UUID excursionId) {
+        ShoreExcursion e = excursions.lockById(excursionId)
+                .orElseThrow(() -> missing(ENTITY_EXCURSION, excursionId));
+        if (e.getStatus() != ShoreExcursionStatus.OPEN && e.getStatus() != ShoreExcursionStatus.FULL) {
+            throw new IllegalStateException("Excursion is not open for confirmation");
+        }
+        if (!e.getPlannedReturnTime().isAfter(Instant.now())) {
+            throw new IllegalStateException("Excursion has ended");
+        }
+        if (occupiedExcursion(excursionId) > e.getMaximumCapacity()) {
+            throw new IllegalStateException("Excursion capacity exceeded");
+        }
+        return e;
+    }
+
+    private void ensureParticipationRegistered(Registration r, OnboardActivity a, ShoreExcursion excursion, UUID id) {
         if (participations.findByRegistration_RegistrationId(id).isEmpty()) {
             Participation p = new Participation();
             p.setRegistration(r);
@@ -550,36 +669,46 @@ public class ActivityService {
             p.setStatus(ParticipationStatus.REGISTERED);
             participations.save(p);
         }
-        return r;
     }
 
     public Registration cancelRegistration(UUID id, String reason, UUID userId, boolean staff) {
-        Registration r = registrations.lockById(id).orElseThrow(() -> missing("Registration", id));
+        Registration r = registrations.lockById(id).orElseThrow(() -> missing(ENTITY_REGISTRATION, id));
         assertRegistrationOwner(r, userId, staff);
-        if (r.getStatus() != RegistrationStatus.PENDING
-                && r.getStatus() != RegistrationStatus.CONFIRMED) invalid();
-        if (r.getOnboardActivity() != null
-                && !r.getOnboardActivity().getStartTime().isAfter(Instant.now()))
-            throw new IllegalStateException("Activity has started");
-        if (r.getShoreExcursion() != null
-                && !r.getShoreExcursion().getStartTime().isAfter(Instant.now()))
-            throw new IllegalStateException("Excursion has started");
+        if (r.getStatus() != RegistrationStatus.PENDING && r.getStatus() != RegistrationStatus.CONFIRMED) {
+            invalid();
+        }
+        validateNotStartedBeforeCancellation(r);
         r.setStatus(RegistrationStatus.CANCELLED);
         r.setCancellationReason(reason);
-        participations
-                .findByRegistration_RegistrationId(id)
+        participations.findByRegistration_RegistrationId(id)
                 .ifPresent(p -> p.setStatus(ParticipationStatus.CANCELLED));
-        if (r.getOnboardActivity() != null
-                && r.getOnboardActivity().getStatus() == OnboardActivityStatus.FULL
-                && occupied(r.getOnboardActivity().getOnboardActivityId())
-                        < r.getOnboardActivity().getCapacity())
-            r.getOnboardActivity().setStatus(OnboardActivityStatus.OPEN);
-        if (r.getShoreExcursion() != null
-                && r.getShoreExcursion().getStatus() == ShoreExcursionStatus.FULL
-                && occupiedExcursion(r.getShoreExcursion().getShoreExcursionId())
-                        < r.getShoreExcursion().getMaximumCapacity())
-            r.getShoreExcursion().setStatus(ShoreExcursionStatus.OPEN);
+        reopenTargetIfCapacityBecameAvailable(r);
         return r;
+    }
+
+    private static void validateNotStartedBeforeCancellation(Registration r) {
+        Instant now = Instant.now();
+        if (r.getOnboardActivity() != null && !r.getOnboardActivity().getStartTime().isAfter(now)) {
+            throw new IllegalStateException("Activity has started");
+        }
+        if (r.getShoreExcursion() != null && !r.getShoreExcursion().getStartTime().isAfter(now)) {
+            throw new IllegalStateException("Excursion has started");
+        }
+    }
+
+    private void reopenTargetIfCapacityBecameAvailable(Registration r) {
+        if (r.getOnboardActivity() != null) {
+            var a = r.getOnboardActivity();
+            if (a.getStatus() == OnboardActivityStatus.FULL && occupied(a.getOnboardActivityId()) < a.getCapacity()) {
+                a.setStatus(OnboardActivityStatus.OPEN);
+            }
+        }
+        if (r.getShoreExcursion() != null) {
+            var e = r.getShoreExcursion();
+            if (e.getStatus() == ShoreExcursionStatus.FULL && occupiedExcursion(e.getShoreExcursionId()) < e.getMaximumCapacity()) {
+                e.setStatus(ShoreExcursionStatus.OPEN);
+            }
+        }
     }
 
     @Transactional(readOnly = true)
@@ -593,46 +722,57 @@ public class ActivityService {
     }
 
     public Participation attendance(UUID id, String action) {
-        Participation p =
-                participations.lockById(id).orElseThrow(() -> missing("Participation", id));
+        Participation p = participations.lockById(id).orElseThrow(() -> missing("Participation", id));
         Instant now = Instant.now();
         switch (action) {
-            case "check-in" -> {
-                if (p.getStatus() != ParticipationStatus.REGISTERED
-                        || p.getRegistration().getStatus() != RegistrationStatus.CONFIRMED)
-                    invalid();
-                if (p.getOnboardActivity() != null
-                        && p.getOnboardActivity().getStatus() != OnboardActivityStatus.IN_PROGRESS)
-                    invalid();
-                if (p.getShoreExcursion() != null
-                        && p.getShoreExcursion().getStatus() != ShoreExcursionStatus.IN_PROGRESS)
-                    invalid();
-                p.setStatus(ParticipationStatus.CHECKED_IN);
-                p.setCheckInTime(now);
-            }
-            case "checkout" -> {
-                if (p.getStatus() != ParticipationStatus.CHECKED_IN) invalid();
-                p.setStatus(ParticipationStatus.IN_PROGRESS);
-                p.setCheckOutTime(now);
-            }
-            case "complete" -> {
-                if (p.getStatus() != ParticipationStatus.IN_PROGRESS) invalid();
-                p.setStatus(ParticipationStatus.COMPLETED);
-                p.getRegistration().setStatus(RegistrationStatus.COMPLETED);
-            }
-            case "no-show" -> {
-                if (p.getStatus() != ParticipationStatus.REGISTERED
-                        || (p.getOnboardActivity() != null
-                                && p.getOnboardActivity().getEndTime().isAfter(now))
-                        || (p.getShoreExcursion() != null
-                                && p.getShoreExcursion().getPlannedReturnTime().isAfter(now)))
-                    invalid();
-                p.setStatus(ParticipationStatus.NO_SHOW);
-                p.getRegistration().setStatus(RegistrationStatus.COMPLETED);
-            }
+            case "check-in" -> handleCheckIn(p, now);
+            case "checkout" -> handleCheckOut(p, now);
+            case "complete" -> handleCompleteAttendance(p);
+            case "no-show" -> handleNoShow(p, now);
             default -> throw new IllegalArgumentException("Unsupported participation action");
         }
         return p;
+    }
+
+    private static void handleCheckIn(Participation p, Instant now) {
+        if (p.getStatus() != ParticipationStatus.REGISTERED
+                || p.getRegistration().getStatus() != RegistrationStatus.CONFIRMED) {
+            invalid();
+        }
+        if (p.getOnboardActivity() != null && p.getOnboardActivity().getStatus() != OnboardActivityStatus.IN_PROGRESS) {
+            invalid();
+        }
+        if (p.getShoreExcursion() != null && p.getShoreExcursion().getStatus() != ShoreExcursionStatus.IN_PROGRESS) {
+            invalid();
+        }
+        p.setStatus(ParticipationStatus.CHECKED_IN);
+        p.setCheckInTime(now);
+    }
+
+    private static void handleCheckOut(Participation p, Instant now) {
+        if (p.getStatus() != ParticipationStatus.CHECKED_IN) {
+            invalid();
+        }
+        p.setStatus(ParticipationStatus.IN_PROGRESS);
+        p.setCheckOutTime(now);
+    }
+
+    private static void handleCompleteAttendance(Participation p) {
+        if (p.getStatus() != ParticipationStatus.IN_PROGRESS) {
+            invalid();
+        }
+        p.setStatus(ParticipationStatus.COMPLETED);
+        p.getRegistration().setStatus(RegistrationStatus.COMPLETED);
+    }
+
+    private static void handleNoShow(Participation p, Instant now) {
+        if (p.getStatus() != ParticipationStatus.REGISTERED
+                || (p.getOnboardActivity() != null && p.getOnboardActivity().getEndTime().isAfter(now))
+                || (p.getShoreExcursion() != null && p.getShoreExcursion().getPlannedReturnTime().isAfter(now))) {
+            invalid();
+        }
+        p.setStatus(ParticipationStatus.NO_SHOW);
+        p.getRegistration().setStatus(RegistrationStatus.COMPLETED);
     }
 
     private long occupied(UUID id) {
@@ -647,19 +787,16 @@ public class ActivityService {
 
     private void assertRegistrationOwner(Registration r, UUID userId, boolean staff) {
         assertBookingPassengerOwner(r.getBookingPassenger(), userId, staff);
-        if (!r.getPassenger()
-                .getPassengerId()
-                .equals(r.getBookingPassenger().getPassenger().getPassengerId()))
-            throw new IllegalStateException(
-                    "Registration passenger does not match booking passenger");
+        if (!r.getPassenger().getPassengerId().equals(r.getBookingPassenger().getPassenger().getPassengerId())) {
+            throw new IllegalStateException("Registration passenger does not match booking passenger");
+        }
     }
 
     private void assertBookingPassengerOwner(BookingPassenger bp, UUID userId, boolean staff) {
-        if (!staff
-                && (bp.getPassenger().getUser() == null
-                        || !bp.getPassenger().getUser().getUserId().equals(userId)))
+        if (!staff && (bp.getPassenger().getUser() == null || !bp.getPassenger().getUser().getUserId().equals(userId))) {
             throw new org.springframework.security.access.AccessDeniedException(
                     "Booking passenger belongs to another passenger");
+        }
     }
 
     private static void invalid() {
