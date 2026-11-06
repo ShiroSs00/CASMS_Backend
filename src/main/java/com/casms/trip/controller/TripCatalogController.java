@@ -167,12 +167,12 @@ public class TripCatalogController {
             @Parameter(description = "Từ khóa tìm kiếm theo tên hoặc mã hoạt động")
                     @RequestParam(required = false)
                     String keyword) {
-        List<OnboardActivity> activities = onboardActivityRepository.findAll();
+        List<OnboardActivity> activities = onboardActivityRepository.findByCatalogEntryTrue();
         String kw = keyword != null ? keyword.trim().toLowerCase() : null;
 
         List<PlanningSourceActivityResponse> result =
                 activities.stream()
-                        .filter(a -> a.getStatus() != OnboardActivityStatus.CANCELLED)
+                        .filter(a -> a.getCruise() == null && a.getStatus() != OnboardActivityStatus.CANCELLED)
                         .filter(a -> category == null || a.getCategory() == category)
                         .filter(
                                 a ->

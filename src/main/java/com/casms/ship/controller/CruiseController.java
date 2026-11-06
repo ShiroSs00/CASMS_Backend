@@ -741,9 +741,10 @@ public class CruiseController {
     public ApiResponse<CruiseSaleReadinessResponse> getSaleReadiness(
             @PathVariable UUID cruiseId,
             @RequestParam(defaultValue = "WHOLE_CRUISE") String saleScope,
-            @RequestParam(required = false) java.util.Set<UUID> selectedPackageIds) {
+            @RequestParam(required = false) java.util.Set<UUID> selectedPackageIds,
+            @RequestParam(required = false) java.util.Set<UUID> selectedCruisePackageOfferIds) {
         return ApiResponse.success(
-                service.validateSaleReadiness(cruiseId, saleScope, selectedPackageIds));
+                service.validateSaleReadiness(cruiseId, saleScope, selectedPackageIds, selectedCruisePackageOfferIds));
     }
 
     @Operation(

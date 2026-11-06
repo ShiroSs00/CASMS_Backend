@@ -39,7 +39,7 @@ public class DepartureSaleTermsService {
     public record Write(@NotNull Long expectedRevision, @NotNull @Valid Terms terms) {}
     public record Review(@NotNull Long expectedRevision, String reason) {}
     public record View(long revision, String status, Terms terms, String submittedHash,
-                       UUID submittedBy, OffsetDateTime submittedAt, UUID reviewedBy, OffsetDateTime reviewedAt) {}
+                       UUID submittedBy, OffsetDateTime submittedAt, UUID reviewedBy, OffsetDateTime reviewedAt, String planStatus) {}
 
     public View read(UUID id) {
         requirePackage(id);
@@ -47,13 +47,15 @@ public class DepartureSaleTermsService {
     }
 
     private View current(UUID id) {
+        String planStatus = jdbc.query("SELECT status FROM \"CruisePlanReview\" WHERE cruise_id=?",
+                (row,n) -> row.getString(1), id).stream().findFirst().orElse("DRAFT");
         return jdbc.query("""
             SELECT revision,status,terms,submitted_hash,submitted_by,submitted_at,reviewed_by,reviewed_at
             FROM "DepartureSaleTerms" WHERE cruise_id=?
             """, (r,n) -> new View(r.getLong(1),r.getString(2),decode(r.getString(3)),r.getString(4),
                 r.getObject(5,UUID.class),r.getObject(6,OffsetDateTime.class),
-                r.getObject(7,UUID.class),r.getObject(8,OffsetDateTime.class)), id)
-                .stream().findFirst().orElse(new View(0,"MISSING",null,null,null,null,null,null));
+                r.getObject(7,UUID.class),r.getObject(8,OffsetDateTime.class),planStatus), id)
+                .stream().findFirst().orElse(new View(0,"MISSING",null,null,null,null,null,null,planStatus));
     }
 
     static final String PACKAGE_MANAGED_SQL = """
@@ -95,6 +97,10 @@ public class DepartureSaleTermsService {
     @Transactional
     public View save(UUID id, Write input, UUID actor) {
         View before = lock(id,input.expectedRevision());
+        if (Boolean.TRUE.equals(jdbc.queryForObject("""
+                SELECT EXISTS(SELECT 1 FROM "CruisePlanReview"
+                WHERE cruise_id=? AND status IN ('SUBMITTED','APPROVED'))
+                """, Boolean.class, id))) throw conflict("PLAN_FROZEN");
         if ("PENDING_APPROVAL".equals(before.status())) throw conflict("SALE_TERMS_PENDING");
         validate(input.terms().tax(),true);
         validate(input.terms().portFee(),false);
@@ -136,6 +142,16 @@ public class DepartureSaleTermsService {
         return record(id,actor,action.toUpperCase(java.util.Locale.ROOT),input.reason());
     }
 
+    @Transactional
+    void recallForPlan(UUID id, UUID actor, String reason) {
+        if (!"PENDING_APPROVAL".equals(current(id).status())) return;
+        jdbc.update("""
+                UPDATE "DepartureSaleTerms" SET status='RETURNED',revision=revision+1
+                WHERE cruise_id=? AND status='PENDING_APPROVAL'
+                """, id);
+        record(id, actor, "RETURN_WITH_PLAN", reason);
+    }
+
     public String approvedFingerprint(UUID id) {
         View row = current(id);
         if (!"APPROVED".equals(row.status()) || row.submittedBy()==null || row.submittedAt()==null
@@ -159,7 +175,7 @@ public class DepartureSaleTermsService {
 
     private void validate(Charge charge, boolean tax) {
         boolean valid = charge.applicability()==Applicability.APPLICABLE
-                ? charge.value()!=null && charge.value().signum()>=0 && (!tax || charge.value().compareTo(BigDecimal.ONE)<=0)
+                ? charge.value()!=null && charge.evidence()!=null && !charge.evidence().isBlank() && charge.value().signum()>=0 && (!tax || charge.value().compareTo(BigDecimal.ONE)<=0)
                 : charge.applicability()==Applicability.NOT_APPLICABLE && charge.value()==null
                     && charge.reason()!=null && !charge.reason().isBlank();
         if (!valid) throw new BusinessException(HttpStatus.UNPROCESSABLE_ENTITY,

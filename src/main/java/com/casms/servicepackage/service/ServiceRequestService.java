@@ -3,6 +3,7 @@ package com.casms.servicepackage.service;
 import com.casms.booking.entity.BookingPassenger;
 import com.casms.booking.enums.BookingStatus;
 import com.casms.booking.repository.BookingPassengerRepository;
+import com.casms.common.exception.BusinessException;
 import com.casms.identity.entity.Passenger;
 import com.casms.identity.entity.User;
 import com.casms.identity.repository.PassengerRepository;
@@ -20,6 +21,7 @@ import jakarta.persistence.EntityNotFoundException;
 
 import lombok.RequiredArgsConstructor;
 
+import org.springframework.http.HttpStatus;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -56,6 +58,15 @@ public class ServiceRequestService {
         return r;
     }
 
+    public ServiceRequest byOperationKey(String key, UUID userId) {
+        if (key == null || key.isBlank() || key.length() > 100)
+            throw new IllegalArgumentException("Operation key must contain 1 to 100 characters");
+        var request = requests.findByIdempotencyKey(key)
+                .orElseThrow(() -> new EntityNotFoundException("Service request operation not found"));
+        assertOwner(request, userId, false);
+        return request;
+    }
+
     public ServiceRequest create(
             UUID userId, UUID serviceId, UUID bookingPassengerId, Integer quantity, String note) {
         return create(userId, serviceId, bookingPassengerId, null, quantity, note, null);
@@ -69,26 +80,8 @@ public class ServiceRequestService {
             Integer quantity,
             String note,
             String idempotencyKey) {
-        if (idempotencyKey != null && !idempotencyKey.isBlank()) {
-            var existing = requests.findByIdempotencyKey(idempotencyKey);
-            if (existing.isPresent()) {
-                ServiceRequest request = existing.get();
-                assertOwner(request, userId, false);
-                if (!request.getService().getServiceId().equals(serviceId)
-                        || bookingPassengerId != null && (request.getBookingPassenger() == null
-                            || !bookingPassengerId.equals(request.getBookingPassenger().getBookingPassengerId()))
-                        || !Objects.equals(
-                                request.getServiceSchedule() == null
-                                        ? null
-                                        : request.getServiceSchedule().getServiceScheduleId(),
-                                scheduleId)
-                        || request.getQuantity() != (quantity == null ? 1 : quantity)) {
-                    throw new IllegalArgumentException(
-                            "Idempotency key was already used for a different service request");
-                }
-                return request;
-            }
-        }
+        var replay = replayRequest(userId, serviceId, bookingPassengerId, scheduleId, quantity, note, idempotencyKey);
+        if (replay != null) return replay;
         Passenger passenger =
                 passengers
                         .findByUser_UserId(userId)
@@ -104,6 +97,57 @@ public class ServiceRequestService {
                 quantity,
                 note,
                 idempotencyKey, false);
+    }
+
+    private ServiceRequest replayRequest(UUID userId, UUID serviceId, UUID bookingPassengerId,
+            UUID scheduleId, Integer quantity, String note, String idempotencyKey) {
+        if (idempotencyKey != null && !idempotencyKey.isBlank()) {
+            var existing = requests.findByIdempotencyKey(idempotencyKey);
+            if (existing.isPresent()) {
+                ServiceRequest request = existing.get();
+                assertOwner(request, userId, false);
+                var savedHash = requests.findCreateHash(userId, idempotencyKey, request.getServiceRequestId());
+                if (savedHash.isPresent()) {
+                    if (!savedHash.get().equals(createHash(serviceId, bookingPassengerId, scheduleId, quantity, note)))
+                        throw replayConflict();
+                    return request;
+                }
+
+                if (!request.getService().getServiceId().equals(serviceId)
+                        || bookingPassengerId != null && (request.getBookingPassenger() == null
+                            || !bookingPassengerId.equals(request.getBookingPassenger().getBookingPassengerId()))
+                        || !Objects.equals(
+                                request.getServiceSchedule() == null
+                                        ? null
+                                        : request.getServiceSchedule().getServiceScheduleId(),
+                                scheduleId)
+                        || request.getQuantity() != (quantity == null ? 1 : quantity)
+                        || !Objects.equals(request.getNote(), note)) {
+                    throw replayConflict();
+                }
+                return request;
+            }
+        }
+        return null;
+    }
+
+    private static BusinessException replayConflict() {
+        return new BusinessException(HttpStatus.CONFLICT, "IDEMPOTENCY_CONFLICT",
+                "Idempotency key was already used for a different service request");
+    }
+
+    private static String createHash(UUID serviceId, UUID bookingPassengerId, UUID scheduleId,
+                                     Integer quantity, String note) {
+        // Fixed-width IDs and scalar fields precede the final, nullable free-text field.
+        String canonical = serviceId + "|" + bookingPassengerId + "|" + scheduleId + "|"
+                + (quantity == null ? 1 : quantity) + "|" + (note == null ? "N" : "S" + note);
+        try {
+            var digest = java.security.MessageDigest.getInstance("SHA-256");
+            return java.util.HexFormat.of().formatHex(
+                    digest.digest(canonical.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+        } catch (java.security.NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 unavailable", e);
+        }
     }
 
     /**
@@ -132,6 +176,12 @@ public class ServiceRequestService {
         var s =
                 services.findByIdForUpdate(serviceId)
                         .orElseThrow(() -> missing("Service", serviceId));
+        if (idempotencyKey != null && !idempotencyKey.isBlank()) {
+            // The initial lookup can miss a request committed while this transaction waits for the service lock.
+            var replay = replayRequest(passenger.getUser().getUserId(), serviceId, bookingPassengerId,
+                    scheduleId, quantity, note, idempotencyKey);
+            if (replay != null) return replay;
+        }
         if (s.getStatus() != ServiceStatus.ACTIVE)
             throw new IllegalStateException("Service is not available");
         if (s.getCurrencyCode() != null && !s.getCurrencyCode().isBlank())
@@ -245,7 +295,13 @@ public class ServiceRequestService {
         r.setStatus(ServiceRequestStatus.REQUESTED);
         requireLegacyPrepaid(r);
         usageQuotas.requireAvailable(r, schedule == null ? now : schedule.getStartsAt());
-        return requests.save(r);
+        if (r.getIdempotencyKey() == null) return requests.save(r);
+        // Commit the globally unique request and its original payload identity together.
+        var saved = requests.saveAndFlush(r);
+        requests.recordCreateHash(passenger.getUser().getUserId(), r.getIdempotencyKey(),
+                createHash(serviceId, bookingPassengerId, scheduleId, quantity, note),
+                saved.getServiceRequestId());
+        return saved;
     }
 
     public ServiceRequest updatePending(
@@ -300,9 +356,23 @@ public class ServiceRequestService {
     }
 
     public ServiceRequest transition(UUID id, UUID userId, String action) {
+        return transition(id, userId, action, false, false, null, null);
+    }
+
+    public ServiceRequest transitionFromRequestApi(UUID id, UUID userId, boolean staff, String action,
+            Integer fulfilledQuantity, String unitCode) {
+        return transition(id, userId, action, true, staff, fulfilledQuantity, unitCode);
+    }
+
+    private ServiceRequest transition(UUID id, UUID userId, String action, boolean requestApi,
+            boolean staff, Integer fulfilledQuantity, String unitCode) {
         ServiceRequest r = requests.lockById(id).orElseThrow(() -> missing("Service request", id));
+        if (requestApi && "complete".equals(action)) assertOwner(r, userId, staff);
         if ("complete".equals(action) && r.getStatus() == ServiceRequestStatus.COMPLETED
-                && r.getAssignedUser() != null && r.getAssignedUser().getUserId().equals(userId)) return r;
+                && r.getAssignedUser() != null && r.getAssignedUser().getUserId().equals(userId)) {
+            if (requestApi) validateFareFulfillment(r, fulfilledQuantity, unitCode);
+            return r;
+        }
         switch (action) {
             case "assign" -> {
                 if (r.getStatus() != ServiceRequestStatus.REQUESTED) invalid();
@@ -327,6 +397,9 @@ public class ServiceRequestService {
                 if (r.getStatus() != ServiceRequestStatus.IN_PROGRESS
                         || r.getAssignedUser() == null
                         || !r.getAssignedUser().getUserId().equals(userId)) invalid();
+                var serviceId = r.getService().getServiceId();
+                services.findByIdForUpdate(serviceId).orElseThrow(() -> missing("Service", serviceId));
+                if (requestApi) validateFareFulfillment(r, fulfilledQuantity, unitCode);
                 recordUsage(r, userId);
                 r.setStatus(ServiceRequestStatus.COMPLETED);
                 r.setCompletedAt(Instant.now());
@@ -344,6 +417,16 @@ public class ServiceRequestService {
         return r;
     }
 
+    private static void validateFareFulfillment(ServiceRequest request, Integer fulfilledQuantity, String unitCode) {
+        if (request.getFareBenefitSnapshotId() != null
+                && (fulfilledQuantity == null || unitCode == null
+                        || !Objects.equals(fulfilledQuantity, request.getQuantity())
+                        || !Objects.equals(unitCode, request.getFareFulfillmentUnitCode()))) {
+            throw new BusinessException("BENEFIT_FULFILLMENT_QUANTITY_INVALID",
+                    "Cần xác nhận đã phục vụ toàn bộ số lượng yêu cầu và đúng đơn vị.");
+        }
+    }
+
     private void requireLegacyPrepaid(ServiceRequest request) {
         if ("PRE_CRUISE".equals(request.getUsageMode()) && request.getFareBenefitSnapshotId() == null
                 && request.getUnitPriceSnapshot() != null && request.getUnitPriceSnapshot().signum() > 0)
@@ -351,7 +434,6 @@ public class ServiceRequestService {
     }
 
     private void recordUsage(ServiceRequest r, UUID userId) {
-        services.findByIdForUpdate(r.getService().getServiceId()).orElseThrow(() -> missing("Service", r.getService().getServiceId()));
         if (r.getBooking() == null || r.getBooking().getBookingStatus() != BookingStatus.Confirmed
                 || r.getBooking().getCruise().getStatus() != com.casms.ship.enums.CruiseStatus.IN_PROGRESS)
             throw new IllegalStateException("Usage can only be recorded on an in-progress confirmed cruise");

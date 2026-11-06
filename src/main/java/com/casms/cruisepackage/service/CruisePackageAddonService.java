@@ -31,7 +31,7 @@ public class CruisePackageAddonService {
             @NotNull @DecimalMin("0") @Digits(integer=15,fraction=4) BigDecimal amount,
             @NotEmpty List<@NotNull @Valid Window> windows,@NotBlank @Size(max=4000) String eligibility) {}
     public record Candidate(CruisePackageContracts.ResourceType resourceType, UUID resourceId,
-            String name, String unitCode, Instant cutoffLimit, boolean eligible, String blocker) {}
+            String name, String unitCode, Instant cutoffLimit, boolean eligible, String blocker, List<Stage> allowedStages) {}
     public record Configuration(UUID cruiseId, UUID shipId, boolean canCreate, String reason,
             Instant departureAt, Instant returnAt, Instant bookingOpensAt, Instant bookingClosesAt,
             List<Candidate> candidates) {}
@@ -54,10 +54,10 @@ public class CruisePackageAddonService {
                 try {
                     var resource = resource(type, id, cruiseId, shipId);
                     candidates.add(new Candidate(type, id, (String) resource.get("name"),
-                            (String) resource.get("unit_code"), instant(resource.get("cutoff_limit")), true, null));
+                            (String) resource.get("unit_code"), instant(resource.get("cutoff_limit")), true, null, allowedStages(resource)));
                 } catch (BusinessException blocked) {
                     candidates.add(new Candidate(type, id, (String) source.get("name"), null, null,
-                            false, blocked.getCode() + ": " + blocked.getMessage()));
+                            false, blocked.getCode() + ": " + blocked.getMessage(), List.of()));
                 }
             }
         }
@@ -90,7 +90,6 @@ public class CruisePackageAddonService {
         UUID actor=maker();plans.lockOperational(cruiseId);var offer=repository.find(CruisePackageAddonOffer.class,id,true);
         if(offer==null||!offer.getCruiseId().equals(cruiseId))throw error("ADDON_OFFER_NOT_FOUND","Không tìm thấy Add-on của chuyến.");
         if(expected==null||expected!=offer.getRevision())throw error("STALE_REVISION","Revision Add-on đã thay đổi.");
-        if(offer.getPublishedAt()!=null)return offer;
         UUID ship=jdbc.queryForObject("SELECT ship_id FROM \"Cruise\" WHERE cruise_id=?",UUID.class,cruiseId);
         if(!offer.getShipId().equals(ship))throw error("SHIP_CHANGED","Tàu đã đổi; không tự chuyển Add-on.");
         var type=offer.getServiceId()!=null?CruisePackageContracts.ResourceType.SERVICE:offer.getOnboardActivityId()!=null?CruisePackageContracts.ResourceType.ACTIVITY:CruisePackageContracts.ResourceType.EXCURSION;
@@ -98,13 +97,14 @@ public class CruisePackageAddonService {
         var resource=resource(type,resourceId,cruiseId,ship);
         if(type==CruisePackageContracts.ResourceType.SERVICE&&!Objects.equals(offer.getServiceUnitCode(),resource.get("unit_code")))throw error("BENEFIT_USAGE_UNIT_UNSUPPORTED","Đơn vị dịch vụ đã thay đổi; không tự quy đổi.");
         validateWindows(cruiseId,offer.getSalesWindows().stream().map(w->new Window(Stage.valueOf(w.get("stage")),Instant.parse(w.get("startsAt")),Instant.parse(w.get("endsAt")),Instant.parse(w.get("operationalCutoff")))).toList(),resource);
+        if(offer.getPublishedAt()!=null)return offer;
         offer.setPublishedBy(actor);offer.setPublishedAt(Instant.now());repository.flush();return offer;
     }
     private Map<String,Object> resource(CruisePackageContracts.ResourceType type,UUID id,UUID cruiseId,UUID shipId){
         String sql=switch(type){
             case ACTIVITY->"SELECT a.activity_name AS name,a.price,a.currency_code,a.end_time AS cutoff_limit,NULL::text AS unit_code FROM \"OnboardActivity\" a WHERE a.onboard_activity_id=? AND a.cruise_id=? AND a.status IN ('PLANNED','OPEN','FULL')";
             case EXCURSION->"SELECT e.excursion_name AS name,e.price,e.currency_code,e.planned_return_time AS cutoff_limit,NULL::text AS unit_code FROM \"ShoreExcursion\" e JOIN \"CruiseStop\" p USING(cruise_stop_id) JOIN \"Itinerary\" i USING(itinerary_id) JOIN \"Supplier\" s USING(supplier_id) WHERE e.shore_excursion_id=? AND i.cruise_id=? AND e.status IN ('PLANNED','OPEN','FULL') AND s.status='ACTIVE' AND s.verification_status='VERIFIED'";
-            case SERVICE->"SELECT s.service_name AS name,s.price,s.currency_code,CASE WHEN s.requires_schedule THEN (SELECT max(w.ends_at) FROM \"ServiceSchedule\" w WHERE w.service_id=s.service_id AND w.cruise_id=c.cruise_id AND w.status='OPEN') ELSE c.return_datetime END AS cutoff_limit,s.unit_code FROM \"Service\" s JOIN \"Cruise\" c ON c.cruise_id=? WHERE s.service_id=? AND s.status='ACTIVE' AND EXISTS(SELECT 1 FROM \"DeckServiceAssignment\" a JOIN \"Deck\" d USING(deck_id) WHERE a.service_id=s.service_id AND d.ship_id=c.ship_id)";
+            case SERVICE->"SELECT s.service_name AS name,s.price,s.currency_code,s.can_buy_pre_cruise,s.can_buy_onboard,CASE WHEN s.requires_schedule THEN (SELECT max(w.ends_at) FROM \"ServiceSchedule\" w WHERE w.service_id=s.service_id AND w.cruise_id=c.cruise_id AND w.status='OPEN') ELSE c.return_datetime END AS cutoff_limit,s.unit_code FROM \"Service\" s JOIN \"Cruise\" c ON c.cruise_id=? WHERE s.service_id=? AND s.status='ACTIVE' AND EXISTS(SELECT 1 FROM \"DeckServiceAssignment\" a JOIN \"Deck\" d USING(deck_id) WHERE a.service_id=s.service_id AND d.ship_id=c.ship_id)";
         };
         var rows=type==CruisePackageContracts.ResourceType.SERVICE?jdbc.queryForList(sql,cruiseId,id):jdbc.queryForList(sql,id,cruiseId);
         if(rows.size()!=1)throw error("ADDON_RESOURCE_INVALID","Add-on phải tham chiếu đúng hoạt động/tour/dịch vụ hợp lệ của chuyến và tàu hiện tại.");
@@ -113,11 +113,26 @@ public class CruisePackageAddonService {
         if(type==CruisePackageContracts.ResourceType.SERVICE&&(row.get("unit_code")==null||row.get("unit_code").toString().isBlank()))throw error("BENEFIT_USAGE_UNIT_UNSUPPORTED","Dịch vụ chưa có unitCode authoritative.");
         return row;
     }
+    private List<Stage> allowedStages(Map<String,Object> resource) {
+        if (!resource.containsKey("can_buy_pre_cruise")) return List.of(Stage.values());
+        var stages = new ArrayList<Stage>();
+        if (Boolean.TRUE.equals(resource.get("can_buy_pre_cruise")))
+            stages.addAll(List.of(Stage.BOOKING, Stage.PRE_DEPARTURE));
+        if (Boolean.TRUE.equals(resource.get("can_buy_onboard"))) stages.add(Stage.ONBOARD);
+        return List.copyOf(stages);
+    }
+
     private void validateWindows(UUID cruiseId,List<Window> windows,Map<String,Object> resource){
         Set<Stage> stages=new HashSet<>();Instant limit=((java.sql.Timestamp)resource.get("cutoff_limit")).toInstant();
         var cruise=jdbc.queryForMap("SELECT departure_datetime,return_datetime,booking_opens_at,booking_closes_at FROM \"Cruise\" WHERE cruise_id=?",cruiseId);
         Instant departure=((java.sql.Timestamp)cruise.get("departure_datetime")).toInstant(),returnAt=((java.sql.Timestamp)cruise.get("return_datetime")).toInstant();
         for(var w:windows){
+            if (resource.containsKey("can_buy_pre_cruise")) {
+                boolean allowed = Boolean.TRUE.equals(resource.get(w.stage()==Stage.ONBOARD
+                        ? "can_buy_onboard" : "can_buy_pre_cruise"));
+                if (!allowed) throw error("ADDON_SERVICE_STAGE_DISABLED",
+                        "Dịch vụ chưa cho phép bán trong giai đoạn đã chọn.");
+            }
             if(w.stage()==Stage.PRE_DEPARTURE&&w.endsAt().isAfter(departure)||w.stage()==Stage.ONBOARD&&(w.startsAt().isBefore(departure)||w.endsAt().isAfter(returnAt)))
                 throw error("ADDON_SALES_WINDOW_INVALID","Thời hạn giai đoạn không phù hợp ngày khởi hành/trở về thực tế.");
             if(w.stage()==Stage.BOOKING){
