@@ -1,0 +1,43 @@
+{
+  "$schema": "https://aka.ms/codetour-schema",
+  "title": "[CASMS] 03. Cổng Thanh toán VietQR SePay & Xử lý Webhook Idempotency",
+  "description": "Walkthrough quy trình thanh toán chuyển khoản ngân hàng qua cổng VietQR SePay, cơ chế chữ ký an toàn, bóc tách mã giao dịch và xử lý Idempotency chống trừ trùng lặp.",
+  "steps": [
+    {
+      "file": "src/main/java/com/casms/payment/controller/SepayController.java",
+      "line": 66,
+      "description": "### 1. Khởi tạo Giao dịch Thanh toán (Checkout Session)\n\nEndpoint `POST /api/v1/payment/sepay/checkout`:\n- Nhận thông tin mã đơn đặt vé (`bookingId`), phương thức thanh toán, số tiền chuyển khoản.\n- Tạo bản ghi `Payment` với trạng thái ban đầu là `Pending`.\n- Sinh mã chuyển khoản duy nhất và đường dẫn mã VietQR động chuẩn NAPAS để khách hàng quét trên ứng dụng Mobile Banking."
+    },
+    {
+      "file": "src/main/java/com/casms/payment/controller/SepayController.java",
+      "line": 116,
+      "description": "### 2. Tiếp nhận Webhook Biến động Số dư từ SePay\n\nEndpoint công khai `POST /api/v1/payment/sepay/webhook`:\n- Nhận payload JSON từ hệ thống cổng thanh toán SePay khi có biến động tài khoản ngân hàng.\n- Đọc Header `Authorization` chứa token chữ ký của SePay.\n- Chuyển tiếp payload cho `sepayService.processWebhook(payload, authHeader)` xử lý bất đồng bộ an toàn."
+    },
+    {
+      "file": "src/main/java/com/casms/payment/service/SepayService.java",
+      "line": 698,
+      "description": "### 3. Xác thực Chữ ký & API Key Header\n\nLớp phòng thủ an ninh đầu tiên:\n- So khớp Header `Authorization` với API Key bí mật được cấu hình trong `application.yml` (`sepay.api-key`).\n- Nếu chuỗi xác thực không khớp, hệ thống lập tức từ chối và ném ngoại lệ `BusinessException(HttpStatus.UNAUTHORIZED, \"INVALID_SEPAY_API_KEY\")`, ngăn chặn mọi hành vi giả mạo Webhook để gian lận tiền vé."
+    },
+    {
+      "file": "src/main/java/com/casms/payment/service/SepayService.java",
+      "line": 712,
+      "description": "### 4. Lọc Chiều Biến động Dòng tiền\n\nKiểm tra trường `transferType`:\n- Hệ thống chỉ xử lý giao dịch tiền vào tài khoản (`transferType == 'in'`).\n- Mọi giao dịch tiền ra (rút tiền, trả phí) đều được bỏ qua một cách an toàn mà không làm gián đoạn luồng xử lý."
+    },
+    {
+      "file": "src/main/java/com/casms/payment/service/SepayService.java",
+      "line": 722,
+      "description": "### 5. Cơ chế Idempotency Chống Trùng lặp Giao dịch\n\nĐoạn mã cốt lõi:\n```java\nif (payload.getId() != null && sepayTransactionRepository.existsBySepayId(payload.getId())) {\n    log.info(\"SePay transaction id {} has already been processed\", payload.getId());\n    return SepayWebhookResponse.builder().success(true).message(\"Transaction already processed\").build();\n}\n```\n**Ý nghĩa kỹ thuật**: Khi mạng Internet gặp sự cố chập chờn, SePay có thể gửi lại (retry) cùng một webhook nhiều lần. Việc kiểm tra `existsBySepayId` đảm bảo giao dịch chỉ được ghi nhận đúng một lần duy nhất, tránh tuyệt đối lỗi cộng tiền hoặc thanh toán lặp."
+    },
+    {
+      "file": "src/main/java/com/casms/payment/service/SepayService.java",
+      "line": 732,
+      "description": "### 6. Bóc tách Mã Đơn thông minh từ Nội dung Chuyển khoản\n\nThuật toán trích xuất nội dung:\n- Ghép nối trường `content` và `description` của biến động số dư thành chuỗi `fullMemo`.\n- Dùng Regex tìm kiếm mã thanh toán (`CASMS-PAY-XXXX`) hoặc mã đơn đặt phòng (`BK-XXXX`).\n- Khi tìm thấy đơn khớp, hệ thống cập nhật trạng thái giao dịch sang `Completed` và lưu lại thông tin ngân hàng đối soát."
+    },
+    {
+      "file": "src/main/java/com/casms/booking/service/BookingService.java",
+      "line": 1163,
+      "description": "### 7. Tự động Kích hoạt Xác nhận Đơn Đặt chỗ (Auto-Confirm Booking)\n\nSau khi kiểm tra số tiền đã thanh toán đủ 100% (hoặc đủ theo đợt thanh toán hợp đồng):\n- Phương thức `confirmInternal(bookingId)` được gọi với giao dịch riêng biệt.\n- Chuyển trạng thái Booking từ `Draft` sang `Confirmed`.\n- Cập nhật trạng thái tham gia của tất cả hành khách sang `Confirmed`.\n- Phát hành vé điện tử chính thức và gửi thông báo qua hệ thống Notification."
+    }
+  ]
+}
+

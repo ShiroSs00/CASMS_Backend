@@ -1,0 +1,48 @@
+{
+  "$schema": "https://aka.ms/codetour-schema",
+  "title": "[CASMS] 02. Đặt phòng, Khóa giữ chỗ 15p & Chống Race Condition",
+  "description": "Walkthrough luồng nghiệp vụ xương sống: Đặt vé, Báo giá, Khóa giữ chỗ phòng (Hold TTL 15 phút), giải thuật sắp xếp ID chống Deadlock và khóa bi quan (Pessimistic Lock).",
+  "steps": [
+    {
+      "file": "src/main/java/com/casms/booking/controller/BookingController.java",
+      "line": 55,
+      "description": "### 1. API Tìm kiếm Phòng trống (Available Cabins)\n\nKhách hàng hoặc Đại lý gọi `GET /api/v1/bookings/available-cabins` để tra cứu phòng trống:\n- Hỗ trợ lọc theo chuyến đi (`cruiseId`), tầng boong (`deckId`), loại phòng (`cabinType`), và sức chứa tối thiểu.\n- Tính toán giá tiền theo thời gian thực: Nhân giá cơ bản (`baseFare`) với hệ số giá tầng boong (`priceMultiplier`)."
+    },
+    {
+      "file": "src/main/java/com/casms/booking/controller/BookingController.java",
+      "line": 131,
+      "description": "### 2. Tiếp nhận Đơn đặt phòng mới\n\nEndpoint `POST /api/v1/bookings` nhận yêu cầu đặt vé:\n- Xác thực dữ liệu đầu vào bằng `@Valid @RequestBody BookingCreateRequest request`.\n- Nhận thông tin danh tính người đặt thông qua `@AuthenticationPrincipal CasmsPrincipal principal` (hỗ trợ cả khách vãng lai Guest booking).\n- Ủy quyền xử lý giao dịch cho `bookingService.createBooking(...)`."
+    },
+    {
+      "file": "src/main/java/com/casms/booking/service/BookingService.java",
+      "line": 340,
+      "description": "### 3. Tự động Giải phóng Phòng giữ chỗ Quá hạn (Hold TTL 15 phút)\n\nPhương thức `releaseExpiredHolds()`:\n- Quét các đơn đặt phòng ở trạng thái `Draft` có thời gian giữ chỗ vượt quá 15 phút và chưa có giao dịch thanh toán xác nhận.\n- Cập nhật trạng thái đơn thành `Cancelled` với lý do `HOLD_EXPIRED`.\n- Đóng bản ghi gán phòng bằng cách set `validTo = Instant.now()`, trả lại sức chứa trống cho hệ thống bán vé ngay tức khắc."
+    },
+    {
+      "file": "src/main/java/com/casms/booking/service/BookingService.java",
+      "line": 452,
+      "description": "### 4. Khóa Chuyến hải trình bằng Khóa bi quan (Pessimistic Write Lock)\n\nĐoạn mã: `Cruise cruise = cruiseRepository.findByIdForUpdate(request.getCruiseId())`:\n- Thực thi câu lệnh `SELECT ... FOR UPDATE` trực tiếp tại PostgreSQL.\n- Khóa độc quyền bản ghi chuyến hải trình nhằm đảm bảo việc kiểm tra trạng thái mở bán (`OPEN_FOR_SALE`) và tổng sức chứa tàu không bị tranh chấp bởi các tiến trình đồng thời khác."
+    },
+    {
+      "file": "src/main/java/com/casms/booking/service/BookingService.java",
+      "line": 518,
+      "description": "### 5. Giải thuật Sắp xếp ID để Triệt tiêu Hoàn toàn Deadlock\n\nĐoạn mã then chốt:\n```java\nList<UUID> sortedCabinIds = cabinPassengersMap.keySet().stream().sorted().toList();\nfor (UUID cabinId : sortedCabinIds) {\n    Cabin cabin = cabinRepository.findByIdForUpdate(cabinId)...;\n}\n```\n**Ý nghĩa khoa học**: Khi 2 giao dịch đồng thời khóa nhiều phòng (ví dụ: giao dịch 1 khóa phòng A và B, giao dịch 2 khóa phòng B và A), sẽ dẫn tới hiện tượng Deadlock.\nBằng cách sắp xếp các ID theo thứ tự tăng dần, hệ thống ép buộc mọi giao dịch đều phải xin khóa tài nguyên theo một trật tự cố định duy nhất, loại bỏ hoàn toàn khả năng xảy ra chu trình chờ khóa (Deadlock-free)."
+    },
+    {
+      "file": "src/main/java/com/casms/ship/repository/CabinRepository.java",
+      "line": 23,
+      "description": "### 6. Định nghĩa Khóa Bi quan trên Spring Data JPA\n\nTại `CabinRepository`:\n```java\n@Lock(LockModeType.PESSIMISTIC_WRITE)\n@Query(\"select c from Cabin c where c.cabinId = :cabinId\")\nOptional<Cabin> findByIdForUpdate(@Param(\"cabinId\") UUID cabinId);\n```\nSử dụng `@Lock(LockModeType.PESSIMISTIC_WRITE)` yêu cầu Hibernate phát sinh câu lệnh SQL `SELECT ... FOR UPDATE`, ngăn chặn triệt để tình trạng hai khách hàng đặt trùng một phòng cùng một lúc (Double-booking / Over-selling)."
+    },
+    {
+      "file": "src/main/java/com/casms/booking/entity/CabinAssignment.java",
+      "line": 34,
+      "description": "### 7. Mô hình Hiệu lực theo Thời gian (Temporal Validity / SCD Type 2)\n\nThực thể `CabinAssignment` quản lý lịch sử phòng bằng cặp trường `validFrom` và `validTo`:\n- Phòng đang được giữ chỗ hoặc đang sử dụng khi: `validTo IS NULL`.\n- Khi khách hàng hủy đơn, đổi phòng hoặc hết hạn giữ chỗ: set `validTo = now` và lý do `changeReason`.\n- Mô hình này lưu lại toàn bộ dòng lịch sử gán phòng, phục vụ xuất sắc cho việc tra cứu và kiểm toán nghiệp vụ."
+    },
+    {
+      "file": "src/main/java/com/casms/booking/service/BookingCabinResourceGuard.java",
+      "line": 67,
+      "description": "### 8. Lớp Bảo vệ Tài nguyên Cabin bằng Spring AOP Aspect\n\n`BookingCabinResourceGuard` sử dụng `@Around` chặn trước mọi lời gọi cập nhật hoặc xóa cabin (`CabinService.update`, `deleteUnused`, `blockCabin`):\n- Khóa bản ghi Cabin bằng JDBC `SELECT ... FOR UPDATE`.\n- Kiểm tra xem cabin này có đang thuộc chuyến tàu nào đã mở bán thương mại hoặc có đơn đặt chỗ đang hoạt động hay không.\n- Chặn đứng mọi thao tác sửa đổi cấu hình vật lý khi phòng đang trong luồng vận hành kinh doanh."
+    }
+  ]
+}
+

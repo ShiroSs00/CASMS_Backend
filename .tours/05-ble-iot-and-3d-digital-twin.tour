@@ -1,0 +1,33 @@
+{
+  "$schema": "https://aka.ms/codetour-schema",
+  "title": "[CASMS] 05. Định vị Hành khách BLE (IoT) & Bản sao Kỹ thuật số 3D (Digital Twin)",
+  "description": "Walkthrough mô hình công nghệ cao: Thu thập dữ liệu sóng Bluetooth BLE từ trạm Anchor, thuật toán định vị không gian thực trên boong tàu và tích hợp mô hình 3D Digital Twin.",
+  "steps": [
+    {
+      "file": "src/main/java/com/casms/ship/service/BleRuntimeService.java",
+      "line": 52,
+      "description": "### 1. Thu nạp Tín hiệu Bluetooth Thời gian thực (Ingest BLE Readings)\n\nPhương thức `ingest(...)`:\n- Nhận các gói tin RSSI (Received Signal Strength Indicator) được gửi liên tục từ các thiết bị thu phát Bluetooth (BLE Anchors) gắn trên trần các tầng boong.\n- Lưu trữ các chỉ số sóng thô cùng với thời điểm ghi nhận để đưa vào bộ lọc giảm nhiễu."
+    },
+    {
+      "file": "src/main/java/com/casms/ship/service/BleRuntimeService.java",
+      "line": 187,
+      "description": "### 2. Thuật toán Ước tính Khoảng cách Vật lý (Log-Distance Path Loss Model)\n\nPhương thức `calculateProximityDistance(...)`:\n- Áp dụng công thức vật lý suy hao sóng vô tuyến:\n  $$d = 10^{\\frac{TxPower - RSSI}{10 \\cdot n}}$$\n  Trong đó: `TxPower` là cường độ phát chuẩn tại 1 mét, `RSSI` là cường độ thu được, và `n` là hệ số suy hao môi trường vật cản trên tàu biển.\n- Sử dụng giá trị trung vị (`median RSSI`) để lọc bỏ nhiễu tín hiệu do kim loại và hành khách di chuyển, xác định chính xác khoảng cách giữa hành khách và trạm Anchor."
+    },
+    {
+      "file": "src/main/java/com/casms/ship/service/BleRuntimeService.java",
+      "line": 210,
+      "description": "### 3. Bản đồ Nhiệt & Bức tranh Phân bố Hành khách (Passenger Overview)\n\nPhương thức `passengerOverview(cruiseId)`:\n- Tổng hợp vị trí hiện tại của tất cả hành khách trên các tầng boong (Deck) và các khu vực dịch vụ (Nhà hàng, Bể bơi, Sòng bạc, Rạp hát).\n- Cảnh báo tức thời nguy cơ tụ tập quá đông người (Overcrowding Alert) vượt quá tải trọng cho phép của từng khu vực boong tàu."
+    },
+    {
+      "file": "src/main/java/com/casms/ship/entity/ShipModelObject.java",
+      "line": 20,
+      "description": "### 4. Ánh xạ Đối tượng 3D với Thực thể Nghiệp vụ (3D Digital Twin Mapping)\n\nThực thể `ShipModelObject` đóng vai trò cầu nối giữa thế giới đồ họa 3D và cơ sở dữ liệu quan hệ:\n- `nodeKey`: Tên định danh của Mesh / Khối 3D trong file mô hình CAD/GLB.\n- `cabinId`: Liên kết tới phòng thực tế trong cơ sở dữ liệu.\n- `deckId`: Liên kết tới tầng boong tàu.\n- `positionX, positionY, positionZ`: Tọa độ 3 chiều trong không gian tàu, cho phép Frontend hiển thị bản đồ số tương tác 3D chân thực."
+    },
+    {
+      "file": "src/main/java/com/casms/ship/service/ShipModelImportService.java",
+      "line": 44,
+      "description": "### 5. Xử lý & Bóc tách File Mô hình Tàu 3D (Model Import Service)\n\nPhương thức `importModel(shipId, modelId, requestedBy)`:\n- Đọc file 3D GLTF/GLB được tải lên.\n- Quét cây cấu trúc Scene Graph, bóc tách toàn bộ danh sách Mesh Nodes.\n- Tự động nhận diện quy tắc đặt tên phòng (ví dụ: `Node_Deck03_Cabin301`) để liên kết tự động với danh mục phòng hiện có trên tàu, tiết kiệm hàng trăm giờ thao tác thủ công."
+    }
+  ]
+}
+

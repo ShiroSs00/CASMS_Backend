@@ -1,0 +1,38 @@
+{
+  "$schema": "https://aka.ms/codetour-schema",
+  "title": "[CASMS] 04. Check-in Hành khách, Cổng Cầu tàu (Gangway) & An toàn Hàng hải SOLAS",
+  "description": "Walkthrough quy trình làm thủ tục lên tàu của hành khách: Bắt đầu check-in, kiểm tra giấy tờ xuất nhập cảnh, giám sát qua cổng Gangway và phổ cập an toàn hàng hải bắt buộc.",
+  "steps": [
+    {
+      "file": "src/main/java/com/casms/checkin/controller/CheckinController.java",
+      "line": 36,
+      "description": "### 1. API Bắt đầu Thủ tục Check-in (Start Check-in)\n\nEndpoint `POST /api/v1/checkin/passengers/{passengerId}/start`:\n- Nhân viên tại quầy cảng tiếp nhận hành khách.\n- Xác định danh tính hành khách thông qua mã `passengerId`.\n- Khởi tạo tiến trình Check-in đa bước (Multi-step Check-in Workflow)."
+    },
+    {
+      "file": "src/main/java/com/casms/checkin/service/CheckinService.java",
+      "line": 33,
+      "description": "### 2. Xác thực Điều kiện Hành khách Lên tàu\n\nPhương thức `startCheckin(...)`:\n- Kiểm tra tình trạng đơn đặt chỗ: Đơn bắt buộc phải ở trạng thái `Confirmed` (đã thanh toán đầy đủ).\n- Kiểm tra trạng thái hành khách: Không nằm trong danh sách cấm bay/cấm đi biển (No-sail list).\n- Khởi tạo bản ghi `CruiseCheckin` và tạo ra các bước kiểm tra thành phần: Giấy tờ tùy thân (Passport/CCCD), Khai báo y tế, Cấp thẻ lên tàu (Boarding pass / RFID Wristband)."
+    },
+    {
+      "file": "src/main/java/com/casms/checkin/service/CheckinService.java",
+      "line": 76,
+      "description": "### 3. Hoàn tất Thủ tục Check-in & Cấp phát Thẻ thông minh\n\nPhương thức `completeCheckin(...)`:\n- Xác minh tất cả các bước con trong `CheckinStep` đã đạt trạng thái `Completed`.\n- Kích hoạt mã định danh hành khách `PassengerIdentifier` (chuẩn thẻ RFID / Vòng đeo tay thông minh BLE Wristband).\n- Cập nhật trạng thái check-in sang `CheckedIn`, hành khách đủ điều kiện di chuyển qua cổng cầu tàu."
+    },
+    {
+      "file": "src/main/java/com/casms/checkin/entity/GangwayEvent.java",
+      "line": 18,
+      "description": "### 4. Kiểm soát Cổng Cầu tàu (Gangway Security Event)\n\nThực thể `GangwayEvent` ghi nhận nhật ký kiểm soát an ninh tại lối lên/xuống tàu:\n- `eventType`: Loại sự kiện `EMBARK` (lên tàu) hoặc `DISEMBARK` (xuống tàu tại cảng ghé).\n- `eventResult`: Kết quả quét thẻ (`ALLOWED` hoặc `DENIED`).\n- Thiết bị phần cứng tại cổng quét thẻ sẽ gọi API này để xác thực tức thời, ngăn chặn người không có phận sự đột nhập lên tàu và giám sát quân số hành khách có mặt trên tàu trước khi nhổ neo."
+    },
+    {
+      "file": "src/main/java/com/casms/checkin/controller/GuidanceSessionController.java",
+      "line": 46,
+      "description": "### 5. API Tổ chức Diễn tập An toàn Hàng hải Bắt buộc (Safety Drill Session)\n\nTheo Công ước quốc tế về an toàn sinh mạng trên biển (SOLAS - Safety of Life at Sea):\n- Trước khi tàu rời cảng, tất cả hành khách bắt buộc phải tham gia buổi phổ cập an toàn cứu sinh (Muster Drill).\n- Endpoint này cho phép Thuyền phó / Quản lý an toàn tạo các phiên diễn tập theo từng khu vực trạm tập trung (Muster Station)."
+    },
+    {
+      "file": "src/main/java/com/casms/checkin/service/GuidanceSessionService.java",
+      "line": 45,
+      "description": "### 6. Quản lý Phiên Điểm danh & Chứng nhận An toàn\n\n`GuidanceSessionService` quản lý quy trình:\n- Tự động phân bổ hành khách vào trạm tập trung cứu sinh tương ứng với vị trí cabin của họ.\n- Ghi nhận điểm danh tham dự (`recordAttendance`) qua quét mã vòng đeo tay.\n- Xuất báo cáo chứng nhận an toàn (Safety Compliance Report) nộp cho Cảng vụ hàng hải trước khi được cấp phép rời bến."
+    }
+  ]
+}
+

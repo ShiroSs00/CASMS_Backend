@@ -1,0 +1,39 @@
+{
+  "$schema": "https://aka.ms/codetour-schema",
+  "title": "[CASMS] 01. Kiến trúc Hệ thống, Stateless JWT & Phân quyền RBAC",
+  "description": "Walkthrough toàn diện về tầng bảo mật, xác thực JWT không trạng thái, cấu trúc Principal và cơ chế phân quyền động dựa trên quyền hạn (Permission Evaluator).",
+  "isPrimary": true,
+  "steps": [
+    {
+      "file": "src/main/java/com/casms/config/SecurityConfig.java",
+      "line": 36,
+      "description": "### 1. Cấu hình Spring Security 6 & Filter Chain\n\nĐây là cổng kiểm soát an ninh toàn bộ hệ thống:\n- **Stateless Session**: Sử dụng `SessionCreationPolicy.STATELESS` vì hệ thống xác thực qua Bearer JWT Token.\n- **Tích hợp Filter**: Chèn `JwtAuthenticationFilter` vào trước `UsernamePasswordAuthenticationFilter`.\n- **Quy tắc phân quyền URL**: Cho phép các Endpoint công khai (Swagger `/swagger-ui/**`, webhook SePay `/api/v1/payment/sepay/webhook`, tra cứu hải trình công khai), tất cả các endpoint còn lại bắt buộc phải xác thực (`anyRequest().authenticated()`)."
+    },
+    {
+      "file": "src/main/java/com/casms/security/jwt/JwtAuthenticationFilter.java",
+      "line": 30,
+      "description": "### 2. Đánh chặn HTTP Request & Xác thực Chữ ký JWT\n\nPhương thức `doFilterInternal(...)` chạy trên mọi Request gửi tới server:\n1. Bóc tách Bearer token từ Header `Authorization`.\n2. Kiểm tra tính toàn vẹn của chữ ký mật mã (HMAC-SHA256) và hạn sử dụng của Token qua `jwtService.isValid(token)`.\n3. Khởi tạo đối tượng `CasmsPrincipal` chứa danh tính và quyền hạn, sau đó nạp vào `SecurityContextHolder.getContext().setAuthentication(auth)`.\n4. Request tiếp tục được chuyển giao an toàn cho DispatcherServlet."
+    },
+    {
+      "file": "src/main/java/com/casms/security/principal/CasmsPrincipal.java",
+      "line": 35,
+      "description": "### 3. Đối tượng Danh tính Người dùng (CasmsPrincipal)\n\n`CasmsPrincipal` implement `UserDetails` của Spring Security nhưng được mở rộng để phục vụ hệ thống quản lý tàu:\n- Lưu trữ định danh người dùng (`userId`), tên đăng nhập, email, và họ tên.\n- Cung cấp các phương thức kiểm tra quyền nhanh: `hasRole(...)`, `hasPermission(...)`, `hasAnyPermission(...)`.\n- Tích hợp nạp quyền động từ `RolePermissionRepository` để đảm bảo quyền hạn luôn được cập nhật chính xác."
+    },
+    {
+      "file": "src/main/java/com/casms/security/authorization/CasmsPermissionEvaluator.java",
+      "line": 24,
+      "description": "### 4. Đánh giá Phân quyền Tinh gọn (Permission Evaluator)\n\n`CasmsPermissionEvaluator` cho phép kiểm soát quyền theo cấp độ hạt mịn (Fine-grained Authorization):\n- Thay vì chỉ hardcode vai trò cố định (`hasRole('ROLE_ADMIN')`), controller có thể sử dụng `@PreAuthorize(\"hasPermission(null, 'BOOKING_CREATE')\")`.\n- Phương thức `hasPermission(...)` ép kiểu Principal về `CasmsPrincipal` và đối chiếu với tập quyền hạn `Permission` của người dùng, mang lại tính linh hoạt tuyệt đối cho phân quyền doanh nghiệp."
+    },
+    {
+      "file": "src/main/java/com/casms/common/response/ApiResponse.java",
+      "line": 15,
+      "description": "### 5. Chuẩn hóa Định dạng Phản hồi (ApiResponse Wrapper)\n\nTất cả Controller trong CASMS đều trả về `ApiResponse<T>` nhằm đảm bảo tính nhất quán của API RESTful:\n- `success`: Cờ boolean báo hiệu thành công hay thất bại.\n- `code`: Mã lỗi nghiệp vụ chuẩn hoá (ví dụ: `CABIN_NOT_AVAILABLE`, `INVALID_CRUISE_STATUS`).\n- `message`: Thông báo thân thiện cho người dùng.\n- `data`: Payload dữ liệu kiểu Generic `T`.\n- `timestamp`: Thời điểm phản hồi theo chuẩn ISO-8601."
+    },
+    {
+      "file": "src/main/java/com/casms/common/exception/GlobalExceptionHandler.java",
+      "line": 35,
+      "description": "### 6. Xử lý Ngoại lệ Toàn cục (Global Exception Handler)\n\nLớp `@RestControllerAdvice` chịu trách nhiệm thu gom mọi ngoại lệ phát sinh trong toàn bộ ứng dụng:\n- Bắt `BusinessException`: Chuyển đổi mã lỗi nghiệp vụ thành HTTP Status Code tương ứng (400, 404, 409, 422) kèm payload JSON chuẩn hóa.\n- Bắt `AccessDeniedException`: Trả về mã lỗi 403 Forbidden bảo mật.\n- Bắt lỗi xác thực dữ liệu `@Valid` (`MethodArgumentNotValidException`): Trích xuất chi tiết từng trường vi phạm (fieldPath, reason) giúp Frontend hiển thị form validation trực quan."
+    }
+  ]
+}
+
