@@ -319,8 +319,12 @@ public class ServicepackageController {
             Integer capacity,
             Integer remainingCapacity,
             String status,
-            UUID cruiseId, UUID responsibleUserId) {
+            UUID cruiseId, UUID responsibleUserId,
+            String cruiseName, String shipName, UUID cruiseStopId, String portName, String timeZoneId) {
         static ServiceScheduleView of(ServiceSchedule s, int remaining) {
+            var cruise = s.getCruise();
+            var stop = s.getCruiseStop();
+            var port = stop == null ? null : stop.getPort();
             return new ServiceScheduleView(
                     s.getServiceScheduleId(),
                     s.getScheduleCode(),
@@ -331,7 +335,13 @@ public class ServicepackageController {
                     s.getCapacity(),
                     remaining,
                     s.getStatus(),
-                    s.getCruise() == null ? null : s.getCruise().getCruiseId(), s.getResponsibleUserId());
+                    cruise == null ? null : cruise.getCruiseId(),
+                    s.getResponsibleUserId(),
+                    cruise == null ? null : cruise.getCruiseName(),
+                    cruise == null || cruise.getShip() == null ? null : cruise.getShip().getShipName(),
+                    stop == null ? null : stop.getCruiseStopId(),
+                    port == null ? null : port.getPortName(),
+                    port == null ? null : port.getTimeZoneId());
         }
     }
 
@@ -646,6 +656,16 @@ public class ServicepackageController {
     }
 
     @PreAuthorize("hasAuthority('SERVICE_REQUEST_CREATE')")
+    @GetMapping("/requests/by-operation-key")
+    public ApiResponse<ServiceRequestView> requestByOperationKey(
+            @RequestParam @jakarta.validation.constraints.NotBlank
+                    @jakarta.validation.constraints.Size(max = 100) String key, Authentication auth) {
+        var principal = (CasmsPrincipal) auth.getPrincipal();
+        return ApiResponse.success(ServiceRequestView.of(
+                serviceRequests.byOperationKey(key, principal.getUserId())));
+    }
+
+    @PreAuthorize("hasAuthority('SERVICE_REQUEST_CREATE')")
     @PostMapping("/requests")
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<ServiceRequestView> createRequest(
@@ -682,19 +702,11 @@ public class ServicepackageController {
             @PathVariable UUID id, @PathVariable String action, Authentication auth,
             @Valid @RequestBody(required = false) ServiceFulfillmentDto fulfillment) {
         var p = (CasmsPrincipal) auth.getPrincipal();
-        if ("complete".equals(action)) {
-            var request = serviceRequests.get(id, p.getUserId(), p.isStaff());
-            if (request.getFareBenefitSnapshotId() != null
-                    && (fulfillment == null
-                            || !Objects.equals(fulfillment.fulfilledQuantity(), request.getQuantity())
-                            || !Objects.equals(fulfillment.unitCode(), request.getFareFulfillmentUnitCode()))) {
-                throw new com.casms.common.exception.BusinessException(
-                        "BENEFIT_FULFILLMENT_QUANTITY_INVALID",
-                        "Luồng hoàn thành hiện tại phục vụ toàn bộ yêu cầu. Cần xác nhận số lượng thực tế và đúng đơn vị; không tự lấy số lượng yêu cầu làm số lượng đã phục vụ.");
-            }
-        }
         return ApiResponse.success(
-                ServiceRequestView.of(serviceRequests.transition(id, p.getUserId(), action)));
+                ServiceRequestView.of(serviceRequests.transitionFromRequestApi(
+                        id, p.getUserId(), p.isStaff(), action,
+                        fulfillment == null ? null : fulfillment.fulfilledQuantity(),
+                        fulfillment == null ? null : fulfillment.unitCode())));
     }
 
     @PreAuthorize("hasAuthority('SERVICE_REQUEST_CREATE')")

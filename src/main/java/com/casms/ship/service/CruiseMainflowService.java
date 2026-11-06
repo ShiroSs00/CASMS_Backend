@@ -37,6 +37,28 @@ public class CruiseMainflowService {
     private org.springframework.beans.factory.ObjectProvider<CruisePreparationService>
             preparationServices;
 
+    @org.springframework.beans.factory.annotation.Autowired
+    private org.springframework.beans.factory.ObjectProvider<CruisePlanPackageSelectionService> packageSelections;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    private org.springframework.beans.factory.ObjectProvider<DepartureSaleTermsService> saleTermsServices;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    private org.springframework.beans.factory.ObjectProvider<com.casms.cruisepackage.service.CruisePackageCabinMappingService> cabinMappings;
+
+    public boolean usesUnifiedPackages(UUID id) {
+        return Boolean.TRUE.equals(jdbc.queryForObject("""
+                SELECT EXISTS(SELECT 1 FROM "Cruise" c LEFT JOIN "CruisePlanReview" r USING(cruise_id)
+                WHERE c.cruise_id=? AND (
+                    (r.snapshot IS NOT NULL AND jsonb_exists(r.snapshot,'packageEvidence'))
+                    OR (r.submitted_revision IS NULL AND c.status='DRAFT' AND (
+                        c.source_version_id IS NOT NULL
+                        OR EXISTS(SELECT 1 FROM "DepartureFarePackage" f WHERE f.cruise_id=c.cruise_id)
+                    ))
+                ))
+                """, Boolean.class, id));
+    }
+
     public record Action(
             Long expectedRevision,
             String reason,
@@ -97,7 +119,8 @@ public class CruiseMainflowService {
             List<String> allowedActions,
             Windows windows,
             List<ProgramIssue> programIssues,
-            List<com.casms.ship.dto.PortWindowContract.Check> portWindowChecks) {}
+            List<com.casms.ship.dto.PortWindowContract.Check> portWindowChecks,
+            boolean cruisePackagePricing, boolean unifiedPackageReview) {}
 
     public record ProgramIssue(
             String code,
@@ -286,6 +309,33 @@ public class CruiseMainflowService {
                                     + " USING(cruise_stop_id) JOIN \"Itinerary\" i"
                                     + " USING(itinerary_id) WHERE i.cruise_id=?)",
                                 id)));
+        if (usesUnifiedPackages(id)) {
+            for (String legacy : List.of("policy", "packages", "TourPackageService", "TourPackageActivity", "TourPackageExcursion"))
+                out.remove(legacy);
+            out.put("packageEvidence", json(aggregate("""
+                    SELECT jsonb_build_object(
+                        'offer',to_jsonb(f)-ARRAY['status','revision','published_at','published_by','sale_enabled','sale_requested'],
+                        'price',to_jsonb(p)-ARRAY['status','revision','reviewed_at','reviewed_by','review_reason'],
+                        'template',to_jsonb(t)-ARRAY['status','revision','superseded_at'],
+                        'benefits',COALESCE((SELECT jsonb_agg(to_jsonb(b) ORDER BY b.benefit_id)
+                            FROM "FarePackageBenefit" b WHERE b.template_version_id=t.template_version_id),'[]'::jsonb),
+                        'bindings',COALESCE((SELECT jsonb_agg(to_jsonb(b) ORDER BY to_jsonb(b)::text)
+                            FROM "DepartureFarePackageBenefit" b WHERE b.offer_id=f.offer_id),'[]'::jsonb))
+                    FROM "CruisePlanPackageSelectionItem" x
+                    JOIN "DepartureFarePackage" f ON f.offer_id=x.offer_id AND f.cruise_id=x.cruise_id
+                    JOIN "DepartureFarePackagePrice" p ON p.price_revision_id=x.price_revision_id
+                    JOIN "FarePackageTemplateVersion" t ON t.template_version_id=x.template_version_id
+                    WHERE x.cruise_id=?
+                    """, id)));
+            var terms = saleTermsServices.getObject().read(id);
+            out.put("saleTerms", terms.terms());
+            out.put("saleTermsMakerIds", json(jdbc.queryForObject("""
+                    SELECT COALESCE((SELECT to_jsonb(maker_ids) FROM "DepartureSaleTerms"
+                        WHERE cruise_id=?),'[]'::jsonb)::text
+                    """, String.class, id)));
+            UUID shipId = (UUID) cruise(id, false).get("ship_id");
+            out.put("cabinMappingEvidence", shipId == null ? "NONE" : cabinMappings.getObject().evidence(shipId));
+        }
         try {
             return mapper.writeValueAsString(out);
         } catch (Exception ex) {
@@ -416,7 +466,12 @@ public class CruiseMainflowService {
                             + " d.date<>i.start_date+d.day_number-1)))",
                         Boolean.class,
                         id))) b.add("ITINERARY_DAY_DATE_MISMATCH");
-        if (Boolean.FALSE.equals(
+        if (usesUnifiedPackages(id)) {
+            b.addAll(packageSelections.getObject().blockers(id));
+            var terms = saleTermsServices.getObject().read(id);
+            if (!Set.of("DRAFT", "PENDING_APPROVAL", "APPROVED").contains(terms.status()))
+                b.add("SALE_TERMS_REQUIRED");
+        } else if (Boolean.FALSE.equals(
                 jdbc.queryForObject(
                         "SELECT EXISTS(SELECT 1 FROM \"CruisePricingPolicy\" WHERE cruise_id=?)",
                         Boolean.class,
@@ -522,6 +577,7 @@ SELECT EXISTS(SELECT 1 FROM "CruisePricingPolicy" p JOIN "Cruise" c USING(cruise
         List<String> planIssues = planBlockers(id, c, issues);
         List<String> b = new ArrayList<>(planIssues);
         if (!approved(id, r)) b.add("PLAN_APPROVAL_REQUIRED");
+        if (usesUnifiedPackages(id)) b.addAll(commercialBlockers(id));
         Integer confirmed =
                 jdbc.queryForObject(
                         "SELECT count(*) FROM \"CruisePreparationSection\" WHERE cruise_id=? AND"
@@ -575,7 +631,7 @@ SELECT EXISTS(SELECT 1 FROM "CruisePricingPolicy" p JOIN "Cruise" c USING(cruise
                 && Objects.equals(r.get("fingerprint"), hash(planSnapshot(id)))
                 && preparationSubmissionPending(id)) actions.add("SUBMIT");
         if (!planIssues.isEmpty()) actions.remove("APPROVE");
-        if ("APPROVED".equals(status(r)) && (!b.isEmpty() || pricingReturned(id)))
+        if ("APPROVED".equals(status(r)) && (usesUnifiedPackages(id) || !b.isEmpty() || pricingReturned(id)))
             actions.add("REQUEST_REVISION");
         if (b.isEmpty()) actions.add("SET_READY");
         List<String> submitterNames =
@@ -612,7 +668,9 @@ SELECT EXISTS(SELECT 1 FROM "CruisePricingPolicy" p JOIN "Cruise" c USING(cruise
                         time(c.get("guidance_opens_at")),
                         time(c.get("guidance_closes_at"))),
                 issues,
-                portWindowEvaluator.cruise(id));
+                portWindowEvaluator.cruise(id),
+                usesUnifiedPackages(id),
+                usesUnifiedPackages(id));
     }
 
     public List<View> queue() {
@@ -715,6 +773,10 @@ SELECT EXISTS(SELECT 1 FROM "CruisePricingPolicy" p JOIN "Cruise" c USING(cruise
         expected(r, request.expectedRevision());
         String before = status(r), after;
         String snapshot = planSnapshot(id);
+        boolean unified = usesUnifiedPackages(id);
+        if (unified && !Objects.equals(request.fingerprint(), readinessFingerprint(id)))
+            throw new BusinessException(HttpStatus.CONFLICT, "READINESS_FINGERPRINT_STALE",
+                    "Hồ sơ đã thay đổi. Tải lại để đối chiếu trước khi quyết định.");
         switch (action) {
             case "SUBMIT" -> {
                 if (Set.of("SUBMITTED", "APPROVED").contains(before)) {
@@ -742,20 +804,27 @@ SELECT EXISTS(SELECT 1 FROM "CruisePricingPolicy" p JOIN "Cruise" c USING(cruise
                             "PLAN_INCOMPLETE",
                             "Plan configuration incomplete",
                             Map.of("blockers", blockers));
-                var pricing = pricingServices.getObject();
-                var policy = pricing.getPricingPolicy(id);
-                if ("DRAFT".equals(policy.getStatus().name()))
-                    pricing.review(
-                            id,
-                            "submit",
-                            new CruisePricingPolicyService.Review(policy.getRevision(), null),
-                            actor);
-                else if (!Set.of("PENDING_APPROVAL", "APPROVED")
-                        .contains(policy.getStatus().name()))
-                    throw new BusinessException(
-                            HttpStatus.UNPROCESSABLE_ENTITY,
-                            "PRICING_POLICY_CONFIGURATION_REQUIRED",
-                            "Save pricing draft before submitting plan");
+                if (unified) {
+                    var terms = saleTermsServices.getObject();
+                    var view = terms.read(id);
+                    if ("DRAFT".equals(view.status()))
+                        terms.review(id, "submit", new DepartureSaleTermsService.Review(view.revision(), null), actor);
+                } else {
+                    var pricing = pricingServices.getObject();
+                    var policy = pricing.getPricingPolicy(id);
+                    if ("DRAFT".equals(policy.getStatus().name()))
+                        pricing.review(
+                                id,
+                                "submit",
+                                new CruisePricingPolicyService.Review(policy.getRevision(), null),
+                                actor);
+                    else if (!Set.of("PENDING_APPROVAL", "APPROVED")
+                            .contains(policy.getStatus().name()))
+                        throw new BusinessException(
+                                HttpStatus.UNPROCESSABLE_ENTITY,
+                                "PRICING_POLICY_CONFIGURATION_REQUIRED",
+                                "Save pricing draft before submitting plan");
+                }
                 preparationServices
                         .getObject()
                         .submitDossier(
@@ -767,7 +836,11 @@ SELECT EXISTS(SELECT 1 FROM "CruisePricingPolicy" p JOIN "Cruise" c USING(cruise
             }
             case "WITHDRAW" -> {
                 if (!"SUBMITTED".equals(before)) throw conflict();
-                pricingServices.getObject().recallForPlan(id, actor, false);
+                if (unified) {
+                    saleTermsServices.getObject().recallForPlan(id, actor, request.reason());
+                    packageSelections.getObject().recall(id, actor, request.reason());
+                }
+                else pricingServices.getObject().recallForPlan(id, actor, false);
                 after = "WITHDRAWN";
             }
             case "APPROVE", "REJECT", "REQUEST_REVISION" -> {
@@ -775,14 +848,15 @@ SELECT EXISTS(SELECT 1 FROM "CruisePricingPolicy" p JOIN "Cruise" c USING(cruise
                 boolean reopening =
                         "REQUEST_REVISION".equals(action)
                                 && "APPROVED".equals(before)
-                                && (!get(id).readyBlockers().isEmpty() || pricingReturned(id));
+                                && (unified || !get(id).readyBlockers().isEmpty() || pricingReturned(id));
                 if (!"SUBMITTED".equals(before) && !reopening) throw conflict();
                 if (Objects.equals(actor, r.get("submitted_by")))
                     throw new BusinessException(
                             HttpStatus.FORBIDDEN,
                             "SELF_APPROVAL_FORBIDDEN",
                             "Submitter cannot review its own plan");
-                if (!reopening && !Objects.equals(r.get("fingerprint"), hash(snapshot)))
+                if (!reopening && (!unified || "APPROVE".equals(action))
+                        && !Objects.equals(r.get("fingerprint"), hash(snapshot)))
                     throw new BusinessException(
                             HttpStatus.CONFLICT, "PLAN_SNAPSHOT_STALE", "Submitted source changed");
                 if (!"APPROVE".equals(action)
@@ -801,6 +875,16 @@ SELECT EXISTS(SELECT 1 FROM "CruisePricingPolicy" p JOIN "Cruise" c USING(cruise
                                 "PLAN_APPROVAL_CHECK_FAILED",
                                 "Plan approval checks incomplete",
                                 Map.of("blockers", blockers));
+                    if (unified) {
+                        packageSelections.getObject().approve(id, actor);
+                        var terms = saleTermsServices.getObject();
+                        var view = terms.read(id);
+                        if (!"APPROVED".equals(view.status()))
+                            terms.review(id, "approve", new DepartureSaleTermsService.Review(view.revision(), null), actor);
+                    }
+                } else if (unified) {
+                    saleTermsServices.getObject().recallForPlan(id, actor, request.reason());
+                    packageSelections.getObject().recall(id, actor, request.reason());
                 } else {
                     pricingServices.getObject().recallForPlan(id, actor, true);
                 }
@@ -922,6 +1006,23 @@ SELECT EXISTS(SELECT 1 FROM "CruisePricingPolicy" p JOIN "Cruise" c USING(cruise
      * auto-approval.
      */
     public List<String> commercialBlockers(UUID id) {
+        if (usesUnifiedPackages(id)) {
+            var blockers = new ArrayList<String>();
+            if (saleTermsServices.getObject().approvedFingerprint(id) == null)
+                blockers.add("SALE_TERMS_APPROVAL_REQUIRED");
+            if (!Boolean.TRUE.equals(jdbc.queryForObject("""
+                    SELECT EXISTS(SELECT 1 FROM "CruisePlanPackageSelectionItem" WHERE cruise_id=?)
+                    AND NOT EXISTS(
+                        SELECT 1 FROM "CruisePlanPackageSelectionItem" x
+                        JOIN "DepartureFarePackage" f ON f.offer_id=x.offer_id
+                        JOIN "DepartureFarePackagePrice" p ON p.price_revision_id=x.price_revision_id
+                        WHERE x.cruise_id=? AND (p.status<>'APPROVED' OR f.status<>'PUBLISHED'
+                            OR f.template_version_id<>x.template_version_id
+                            OR f.commercial_revision<>x.commercial_revision)
+                    )
+                    """, Boolean.class, id, id))) blockers.add("FARE_PLAN_PRICE_APPROVAL_REQUIRED");
+            return blockers;
+        }
         Boolean approved =
                 jdbc.queryForObject(
                         "SELECT EXISTS(SELECT 1 FROM \"CruisePricingPolicy\" p WHERE cruise_id=?"
@@ -940,6 +1041,9 @@ SELECT EXISTS(SELECT 1 FROM "CruisePricingPolicy" p JOIN "Cruise" c USING(cruise
     public void requireBookable(UUID id) {
         Map<String, Object> c = cruise(id, false);
         requireReady(id);
+        if (usesUnifiedPackages(id))
+            throw new BusinessException(HttpStatus.CONFLICT, "FARE_BOOKING_INTEGRATION_REQUIRED",
+                    "Báo giá và đặt chỗ chưa được nối với sản phẩm gói du thuyền đã mở bán.");
         if (!commercialBlockers(id).isEmpty())
             throw new BusinessException(
                     HttpStatus.CONFLICT,
@@ -959,6 +1063,14 @@ SELECT EXISTS(SELECT 1 FROM "CruisePricingPolicy" p JOIN "Cruise" c USING(cruise
                     HttpStatus.UNPROCESSABLE_ENTITY,
                     "CRUISE_NOT_OPEN_FOR_SALE",
                     "Cruise is not currently bookable");
+    }
+
+    public Set<UUID> approvedOfferIds(UUID id) {
+        if (!usesUnifiedPackages(id) || !isPlanApproved(id) || !commercialBlockers(id).isEmpty())
+            return Set.of();
+        return packageSelections.getObject().selections(id).stream()
+                .map(CruisePlanPackageSelectionService.Choice::offerId)
+                .collect(java.util.stream.Collectors.toUnmodifiableSet());
     }
 
     public boolean isReady(UUID id) {

@@ -206,6 +206,12 @@ public class PosService {
 
     public ServiceRequestView action(
             String token, CasmsPrincipal user, UUID request, String action) {
+        return action(token, user, request, action, null);
+    }
+
+    public ServiceRequestView action(
+            String token, CasmsPrincipal user, UUID request, String action,
+            com.casms.servicepackage.controller.ServicepackageController.ServiceFulfillmentDto fulfillment) {
         var a = access(token, user);
         PosPermission permission =
                 switch (action) {
@@ -226,7 +232,10 @@ public class PosService {
                 || r.getBooking().getCruise().getShip() == null
                 || !a.area().shipId().equals(r.getBooking().getCruise().getShip().getShipId()))
             throw denied("Request is outside this POS ship");
-        return requestView(serviceRequests.transition(request, user.getUserId(), action));
+        return requestView(serviceRequests.transitionFromRequestApi(
+                request, user.getUserId(), true, action,
+                fulfillment == null ? null : fulfillment.fulfilledQuantity(),
+                fulfillment == null ? null : fulfillment.unitCode()));
     }
 
     public PosDtos.Sale sell(String token, CasmsPrincipal user, PosDtos.SaleInput input) {

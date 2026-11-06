@@ -40,14 +40,17 @@ public class CruisePackageService {
         String status=rows.isEmpty()?"DRAFT":(String)rows.getFirst().get("status");
         boolean planning=Boolean.TRUE.equals(jdbc.queryForObject("SELECT status IN ('DRAFT','PUBLISHED') FROM \"Cruise\" WHERE cruise_id=?",Boolean.class,cruiseId));
         boolean maker=hasActor(Role.ACTIVITY_SERVICE_MANAGER,"TOUR_PACKAGE_MANAGE");
-        return new CruisePackageContext(cruiseId,shipId,status,shipId!=null&&planning&&maker,
-                planning&&maker,planning&&hasActor(Role.OPERATIONS_MANAGER,"CRUISE_PRICING_APPROVE"));
+        boolean unified = plans.usesUnifiedPackages(cruiseId);
+        boolean editable = !unified || Set.of("DRAFT","WITHDRAWN","REVISION_REQUESTED").contains(status);
+        return new CruisePackageContext(cruiseId,shipId,status,shipId!=null&&planning&&editable&&maker,
+                planning&&editable&&maker,planning&&!unified&&hasActor(Role.OPERATIONS_MANAGER,"CRUISE_PRICING_APPROVE"),
+                unified);
     }
     public List<ResourceOption> resources(ResourceType type,UUID cruiseId) {
         requireRead();
         return switch(type) {
             case ACTIVITY -> cruiseId==null
-                    ? jdbc.query("SELECT onboard_activity_id,activity_name FROM \"OnboardActivity\" WHERE cruise_id IS NULL AND deck_id IS NULL AND cabin_id IS NULL ORDER BY activity_name,onboard_activity_id",(r,n)->new ResourceOption(r.getObject(1,UUID.class),r.getString(2)))
+                    ? jdbc.query("SELECT onboard_activity_id,activity_name FROM \"OnboardActivity\" WHERE catalog_entry AND status<>'CANCELLED' AND cruise_id IS NULL ORDER BY activity_name,onboard_activity_id",(r,n)->new ResourceOption(r.getObject(1,UUID.class),r.getString(2)))
                     : jdbc.query("SELECT onboard_activity_id,activity_name FROM \"OnboardActivity\" WHERE cruise_id=? ORDER BY activity_name,onboard_activity_id",(r,n)->new ResourceOption(r.getObject(1,UUID.class),r.getString(2)),cruiseId);
             case EXCURSION -> cruiseId==null
                     ? jdbc.query("SELECT shore_excursion_id,excursion_name FROM \"ShoreExcursion\" WHERE cruise_stop_id IS NULL ORDER BY excursion_name,shore_excursion_id",(r,n)->new ResourceOption(r.getObject(1,UUID.class),r.getString(2)))
@@ -204,7 +207,11 @@ public class CruisePackageService {
     @Transactional
     public OfferView reviewPrice(UUID cruiseId, UUID offerId, UUID priceId, String action, ReviewPrice input) {
         UUID actor="submit".equals(action)?maker():checker();
-        lockPricingCruise(cruiseId); var offer=offer(cruiseId,offerId,true);
+        lockPricingCruise(cruiseId);
+        if (!"submit".equals(action) && plans.usesUnifiedPackages(cruiseId))
+            fail("FARE_PRICE_REVIEW_IN_PLAN", "Xét duyệt phiên bản giá cùng hồ sơ chuyến khởi hành.");
+        if ("submit".equals(action) && plans.usesUnifiedPackages(cruiseId)) plans.assertEditable(cruiseId);
+        var offer=offer(cruiseId,offerId,true);
         var price=require(DepartureCruisePackagePrice.class,priceId,true);
         if(!price.getOfferId().equals(offerId)) fail("FARE_PRICE_OFFER_MISMATCH","Revision giá không thuộc gói vé của chuyến.");
         revision(price.getRevision(),input.expectedRevision());
@@ -249,6 +256,11 @@ public class CruisePackageService {
     }
 
     private Eligibility eligibility(DepartureCruisePackage offer,boolean publishing,boolean checkFreeCabinInventory) {
+        return eligibility(offer, publishing, checkFreeCabinInventory, true);
+    }
+
+    private Eligibility eligibility(DepartureCruisePackage offer, boolean publishing,
+            boolean checkFreeCabinInventory, boolean requireApprovedPrice) {
         var blockers=new ArrayList<Blocker>(); var version=require(CruisePackageTemplateVersion.class,offer.getTemplateVersionId(),false);
         if(!publishing&&!"PUBLISHED".equals(offer.getStatus())) blockers.add(new Blocker("OFFER_NOT_PUBLISHED","Gói vé của chuyến chưa được phát hành.",offer.getId()));
         if(!List.of("PUBLISHED","SUPERSEDED").contains(version.getStatus()))
@@ -259,7 +271,7 @@ public class CruisePackageService {
         blockers.addAll(mapping.blockers());
         if(checkFreeCabinInventory&&mapping.blockers().isEmpty()&&!cabinMappings.hasInventory(offer.getCruiseId(),mapping.cabinIds()))
             blockers.add(new Blocker("CABIN_MAPPING_INVENTORY_UNAVAILABLE","Mapping hợp lệ nhưng chưa chứng minh cabin vật lý còn khả dụng cho hạng thương mại này.",offer.getLogicalCategoryId()));
-        if(currentApprovedPrice(offer)==null) blockers.add(new Blocker("PRICE_NOT_APPROVED","Chưa có revision giá được duyệt cho phiên bản mẫu này.",offer.getId()));
+        if(requireApprovedPrice&&currentApprovedPrice(offer)==null) blockers.add(new Blocker("PRICE_NOT_APPROVED","Chưa có revision giá được duyệt cho phiên bản mẫu này.",offer.getId()));
         Instant now=Instant.now();
         if((!publishing&&now.isBefore(offer.getSalesStart()))||!now.isBefore(offer.getSalesEnd()))
             blockers.add(new Blocker("OUTSIDE_SALES_WINDOW","Gói vé nằm ngoài thời gian bán đã cấu hình.",offer.getId()));
@@ -281,6 +293,78 @@ public class CruisePackageService {
                 blockers.add(new Blocker("INCLUDED_BENEFIT_UNAVAILABLE","Không còn lần phục vụ khả dụng cho quyền lợi đã bao gồm. Mua gói vé không tự giữ chỗ phục vụ.",benefit.getId()));
         }
         return new Eligibility(blockers.isEmpty(),List.copyOf(blockers));
+    }
+
+    public record PlanCandidate(OfferView product, UUID eligiblePriceRevisionId, Eligibility planEligibility) {}
+
+    public List<PlanCandidate> planCandidates(UUID cruiseId) {
+        return repository.offers(cruiseId).stream().map(offer -> {
+            var price = planPrice(offer);
+            var assessment = planEligibility(offer, price);
+            return new PlanCandidate(offerView(offer), price == null ? null : price.getId(), assessment);
+        }).toList();
+    }
+
+    private DepartureCruisePackagePrice planPrice(DepartureCruisePackage offer) {
+        return repository.prices(offer.getId()).stream()
+                .filter(p -> "SUBMITTED".equals(p.getStatus()) && p.getSubmittedBy() != null
+                        && offer.getTemplateVersionId().equals(p.getTemplateVersionId())
+                        && offer.getCommercialRevision() == p.getOfferCommercialRevision()
+                        && "USD".equals(p.getCurrencyCode()) && "PERSON".equals(p.getPriceUnit()))
+                .findFirst().orElseGet(() -> currentApprovedPrice(offer));
+    }
+
+    private Eligibility planEligibility(DepartureCruisePackage offer, DepartureCruisePackagePrice price) {
+        var blockers = new ArrayList<>(eligibility(offer, true, false, false).blockers());
+        if (price == null) blockers.add(new Blocker("FARE_PRICE_SUBMISSION_REQUIRED",
+                "ASM cần gửi phiên bản giá cho gói.", offer.getId()));
+        if (!Set.of("DRAFT", "PUBLISHED").contains(offer.getStatus()))
+            blockers.add(new Blocker("FARE_OFFER_STATE_INVALID", "Gói không còn dùng được.", offer.getId()));
+        return new Eligibility(blockers.isEmpty(), List.copyOf(blockers));
+    }
+
+    public boolean validPlanChoice(UUID cruiseId, UUID offerId, UUID priceId) {
+        var offer = repository.find(DepartureCruisePackage.class, offerId, false);
+        if (offer == null || !cruiseId.equals(offer.getCruiseId())) return false;
+        var price = planPrice(offer);
+        return price != null && priceId.equals(price.getId()) && planEligibility(offer, price).eligible();
+    }
+
+    @Transactional
+    public void recallPriceForPlan(UUID cruiseId, UUID offerId, UUID priceId, UUID actor, String reason) {
+        offer(cruiseId, offerId, true);
+        var price = require(DepartureCruisePackagePrice.class, priceId, true);
+        if (!offerId.equals(price.getOfferId())) fail("FARE_PRICE_OFFER_MISMATCH", "Giá không thuộc gói.");
+        if ("SUBMITTED".equals(price.getStatus())) {
+            price.setStatus("RETURNED");
+            price.setReviewedBy(actor);
+            price.setReviewedAt(Instant.now());
+            price.setReviewReason(reason);
+        }
+        repository.flush();
+    }
+
+    /** Called by whole-plan review after the Cruise row is locked and the snapshot is checked. */
+    @Transactional
+    public void approveForPlan(UUID cruiseId, UUID offerId, UUID priceId, UUID reviewer) {
+        if (!checker().equals(reviewer) || !validPlanChoice(cruiseId, offerId, priceId))
+            fail("FARE_PLAN_SELECTION_STALE", "Gói hoặc phiên bản giá trong hồ sơ đã thay đổi.");
+        var offer = offer(cruiseId, offerId, true);
+        var price = require(DepartureCruisePackagePrice.class, priceId, true);
+        if (reviewer.equals(price.getCreatedBy()) || reviewer.equals(price.getSubmittedBy()))
+            throw new BusinessException(HttpStatus.FORBIDDEN, "MAKER_CHECKER_VIOLATION",
+                    "Người lập hoặc gửi giá không được duyệt giá trong hồ sơ.");
+        if ("SUBMITTED".equals(price.getStatus())) {
+            price.setStatus("APPROVED");
+            price.setReviewedBy(reviewer);
+            price.setReviewedAt(Instant.now());
+        }
+        if ("DRAFT".equals(offer.getStatus())) {
+            offer.setStatus("PUBLISHED");
+            offer.setPublishedBy(reviewer);
+            offer.setPublishedAt(Instant.now());
+        }
+        repository.flush();
     }
 
     public List<UUID> eligibleOfferIds(UUID cruiseId) {
@@ -387,7 +471,10 @@ public class CruisePackageService {
         plans.lockOperational(cruiseId);
         if(requestedIds==null||requestedIds.isEmpty()||requestedIds.stream().anyMatch(Objects::isNull))
             fail("FARE_SALE_SCOPE_REQUIRED","Chọn ít nhất một gói vé Fare Package để mở bán.");
-        var requested=new TreeSet<>(requestedIds); List<DepartureCruisePackage> eligible=new ArrayList<>();
+        var requested=new TreeSet<>(requestedIds);
+        if(plans.usesUnifiedPackages(cruiseId)&&!plans.approvedOfferIds(cruiseId).containsAll(requested))
+            fail("FARE_SALE_SCOPE_INELIGIBLE","Chỉ mở bán gói và phiên bản giá trong hồ sơ đã duyệt.");
+        List<DepartureCruisePackage> eligible=new ArrayList<>();
         Map<UUID,Eligibility> assessments=new LinkedHashMap<>();
         for(UUID id:requested) {
             var offer=offer(cruiseId,id,true); var assessment=eligibility(offer); assessments.put(id,assessment);
@@ -453,6 +540,7 @@ public class CruisePackageService {
     private void lockEditableCruise(UUID cruiseId) { lockPricingCruise(cruiseId); }
     private void lockPricingCruise(UUID cruiseId) {
         plans.lockOperational(cruiseId);
+        if(plans.usesUnifiedPackages(cruiseId)) plans.assertEditable(cruiseId);
         if(!Boolean.TRUE.equals(jdbc.queryForObject("SELECT status IN ('DRAFT','PUBLISHED') FROM \"Cruise\" WHERE cruise_id=?",Boolean.class,cruiseId)))
             fail("FARE_PRICING_CRUISE_STATE_INVALID","Trạng thái chuyến khởi hành không cho phép lập hoặc xét duyệt giá mới.");
     }
@@ -484,7 +572,7 @@ public class CruisePackageService {
     }
     private void requireSharedReference(ResourceType type,UUID id) {
         boolean operational=switch(type) {
-            case ACTIVITY -> Boolean.TRUE.equals(jdbc.queryForObject("SELECT EXISTS(SELECT 1 FROM \"OnboardActivity\" WHERE onboard_activity_id=? AND (cruise_id IS NOT NULL OR deck_id IS NOT NULL OR cabin_id IS NOT NULL))",Boolean.class,id));
+            case ACTIVITY -> Boolean.TRUE.equals(jdbc.queryForObject("SELECT EXISTS(SELECT 1 FROM \"OnboardActivity\" WHERE onboard_activity_id=? AND (NOT catalog_entry OR status='CANCELLED' OR cruise_id IS NOT NULL OR deck_id IS NOT NULL OR cabin_id IS NOT NULL))",Boolean.class,id));
             case EXCURSION -> Boolean.TRUE.equals(jdbc.queryForObject("SELECT EXISTS(SELECT 1 FROM \"ShoreExcursion\" WHERE shore_excursion_id=? AND cruise_stop_id IS NOT NULL)",Boolean.class,id));
             case SERVICE -> false;
         };

@@ -2140,6 +2140,14 @@ public class CruiseService {
                 .build();
     }
 
+    @org.springframework.beans.factory.annotation.Autowired
+    private org.springframework.beans.factory.ObjectProvider<com.casms.cruisepackage.service.CruisePackageService>
+            commercialPackages;
+
+    private com.casms.cruisepackage.service.CruisePackageService cruisePackageCommercialService() {
+        return commercialPackages.getObject();
+    }
+
     @Transactional(readOnly = true, noRollbackFor = Exception.class)
     public CruiseSaleReadinessResponse validateSaleReadiness(UUID cruiseId) {
         return validateSaleReadiness(cruiseId, "WHOLE_CRUISE", null);
@@ -2148,7 +2156,16 @@ public class CruiseService {
     @Transactional(readOnly = true, noRollbackFor = Exception.class)
     public CruiseSaleReadinessResponse validateSaleReadiness(
             UUID cruiseId, String saleScope, Set<UUID> requestedPackageIds) {
+        return validateSaleReadiness(cruiseId, saleScope, requestedPackageIds, null);
+    }
+
+    @Transactional(readOnly = true, noRollbackFor = Exception.class)
+    public CruiseSaleReadinessResponse validateSaleReadiness(
+            UUID cruiseId, String saleScope, Set<UUID> requestedPackageIds, Set<UUID> requestedOfferIds) {
         Cruise cruise = getCruiseById(cruiseId);
+        boolean unified = mainflow.usesUnifiedPackages(cruiseId);
+        Set<UUID> fareScope = !unified ? Set.of() : requestedOfferIds != null ? requestedOfferIds
+                : cruisePackageCommercialService().requestedSaleOfferIds(cruiseId);
         List<String> blockers = new ArrayList<>();
         List<String> warnings = new ArrayList<>();
         List<String> issues = new ArrayList<>();
@@ -2354,7 +2371,15 @@ public class CruiseService {
         List<CruiseTourPackage> targetPackages;
         boolean cabinOnlySalePermitted = false;
 
-        if ("CABIN_ONLY".equals(effectiveScope)) {
+        if (unified) {
+            targetPackages = List.of();
+            if (!"WHOLE_CRUISE".equals(effectiveScope) || requestedPackageIds != null && !requestedPackageIds.isEmpty())
+                blockers.add("FARE_SALE_SCOPE_INVALID");
+            if (fareScope.isEmpty()) blockers.add("FARE_SALE_SCOPE_REQUIRED");
+            if (!mainflow.approvedOfferIds(cruiseId).containsAll(fareScope)
+                    || !cruisePackageCommercialService().eligibleOfferIds(cruiseId).containsAll(fareScope))
+                blockers.add("FARE_SALE_SCOPE_INELIGIBLE");
+        } else if ("CABIN_ONLY".equals(effectiveScope)) {
             targetPackages = Collections.emptyList();
             cabinOnlySalePermitted = true;
             warnings.add(
@@ -2393,7 +2418,7 @@ public class CruiseService {
             }
         }
 
-        long activePackages = targetPackages.size();
+        long activePackages = unified ? fareScope.size() : targetPackages.size();
         boolean packagesConfigured = activePackages > 0 || "CABIN_ONLY".equals(effectiveScope);
 
         // Pricing check on targetPackages (packages not in targetPackages are NOT evaluated and do
@@ -2501,7 +2526,11 @@ public class CruiseService {
         String pricingPolicyVersion = null;
         boolean policyConfiguredAndApproved = true;
 
-        if (policyOpt.isEmpty()) {
+        if (unified) {
+            policyConfiguredAndApproved = mainflow.commercialBlockers(cruiseId).isEmpty();
+            packageDigest.append(fareScope.stream().sorted().toList())
+                    .append(cruisePackageCommercialService().saleStateFingerprint(cruiseId));
+        } else if (policyOpt.isEmpty()) {
             policyConfiguredAndApproved = false;
             blockers.add("PRICING_POLICY_MISSING");
             issues.add("Chuyến khởi hành chưa được cấu hình chính sách giá (Pricing Policy)");
@@ -3218,6 +3247,17 @@ public class CruiseService {
                     "fingerprint là bắt buộc khi mở bán");
         }
 
+        boolean unified = mainflow.usesUnifiedPackages(cruiseId);
+        List<UUID> requestedOffers = request.getFarePackageOfferIds();
+        if (unified && (requestedOffers == null || requestedOffers.isEmpty()
+                || requestedOffers.stream().anyMatch(Objects::isNull)
+                || new HashSet<>(requestedOffers).size() != requestedOffers.size()
+                || request.getPackageIds() != null && !request.getPackageIds().isEmpty()))
+            throw new BusinessException("FARE_SALE_SCOPE_REQUIRED", "Chọn các gói du thuyền trong hồ sơ đã duyệt.");
+        if (unified && !"WHOLE_CRUISE".equals(scope))
+            throw new BusinessException("FARE_SALE_SCOPE_INVALID", "Chọn phạm vi bán theo gói du thuyền.");
+        Set<UUID> fareScope = unified ? Set.copyOf(requestedOffers) : null;
+
         Set<UUID> requestedPackageIds = Collections.emptySet();
         if ("SELECTED_PACKAGES".equals(scope)) {
             if (request.getPackageIds() == null || request.getPackageIds().isEmpty()) {
@@ -3241,7 +3281,8 @@ public class CruiseService {
                         : "EVT-SALE-" + cruise.getCruiseCode() + "-" + System.currentTimeMillis();
 
         if (alreadyOpen && eventIdentity.equals(cruise.getSaleEventIdentity())) {
-            if (scope.equalsIgnoreCase(cruise.getSaleScope())) {
+            if (scope.equalsIgnoreCase(cruise.getSaleScope())
+                    && (!unified || fareScope.equals(cruisePackageCommercialService().requestedSaleOfferIds(cruiseId)))) {
                 return mapToResponse(cruise); // Idempotent on same payload
             }
             throw new BusinessException(
@@ -3257,7 +3298,7 @@ public class CruiseService {
         // Validation gate: validateSaleReadiness scope-aware (revalidate in transaction, do NOT
         // trust client)
         CruiseSaleReadinessResponse saleReadiness =
-                validateSaleReadiness(cruiseId, scope, requestedPackageIds);
+                validateSaleReadiness(cruiseId, scope, requestedPackageIds, fareScope);
         if (!saleReadiness.isReady()) {
             throw new BusinessException(
                     HttpStatus.UNPROCESSABLE_ENTITY,
@@ -3278,7 +3319,9 @@ public class CruiseService {
         List<CruiseTourPackage> allAssigned =
                 cruiseTourPackageRepository.findByCruise_CruiseId(cruiseId);
 
-        if ("CABIN_ONLY".equals(scope)) {
+        if (unified) {
+            cruisePackageCommercialService().activateSaleScope(cruiseId, requestedOffers);
+        } else if ("CABIN_ONLY".equals(scope)) {
             // Cabin-only: deactivate all packages for this cruise
             for (CruiseTourPackage ctp : allAssigned) {
                 if (ctp.isActive()) {
@@ -3704,13 +3747,20 @@ public class CruiseService {
                         .findByCruise_CruiseId(cruiseId)
                         .filter(p -> p.getStatus() == PricingPolicyStatus.APPROVED);
 
+        boolean unified = mainflow.usesUnifiedPackages(cruiseId);
+        boolean hasCommercialScope = unified
+                ? !cruisePackageCommercialService().requestedSaleOfferIds(cruiseId).isEmpty()
+                : policyOpt.isPresent();
+        if (unified && hasCommercialScope)
+            hasInventory = !cruisePackageCommercialService().sellableCabinIds(cruiseId).isEmpty();
+
         boolean sellable =
                 isPublished
                         && isItineraryOpen
                         && !isStopped
                         && isDepartureFuture
                         && hasInventory
-                        && policyOpt.isPresent()
+                        && hasCommercialScope
                         && cruise.getOpenedForSaleAt() != null
                         && mainflow.isReady(cruiseId)
                         && mainflow.isBookingWindowOpen(cruiseId)
@@ -3726,7 +3776,7 @@ public class CruiseService {
         } else if (isStopped) {
             saleState = "STOPPED";
         } else if (!isItineraryOpen
-                || policyOpt.isEmpty()
+                || !hasCommercialScope
                 || cruise.getOpenedForSaleAt() == null
                 || !mainflow.isReady(cruiseId)
                 || !mainflow.isBookingWindowOpen(cruiseId)
@@ -3738,8 +3788,8 @@ public class CruiseService {
             saleState = "OPEN_FOR_SALE";
         }
 
-        CruisePricingPolicy policy = policyOpt.orElse(null);
-        String currency = policy != null ? policy.getCurrency() : null;
+        CruisePricingPolicy policy = unified ? null : policyOpt.orElse(null);
+        String currency = unified ? "USD" : policy != null ? policy.getCurrency() : null;
         String policyVersion = policy != null ? policy.getPolicyVersion() : null;
 
         BigDecimal depositPercentage = policy != null ? policy.getDepositPercentage() : null;
@@ -3777,7 +3827,7 @@ public class CruiseService {
 
         List<PackageSellabilityItem> packageItems = new ArrayList<>();
         List<CruiseTourPackage> ctpList =
-                cruiseTourPackageRepository.findByCruise_CruiseId(cruiseId);
+                unified ? List.of() : cruiseTourPackageRepository.findByCruise_CruiseId(cruiseId);
         for (CruiseTourPackage ctp : ctpList) {
             TourPackage pkg = ctp.getTourPackage();
             if (pkg == null) continue;
@@ -3802,6 +3852,11 @@ public class CruiseService {
                 .departureDatetime(cruise.getDepartureDatetime())
                 .returnDatetime(cruise.getReturnDatetime())
                 .sellable(sellable)
+                .transactionReady(sellable && !unified)
+                .publicDisplayEligible(sellable)
+                .publicSaleState(saleState)
+                .openedForSaleAt(cruise.getOpenedForSaleAt())
+                .evaluatedAt(Instant.now())
                 .saleState(saleState)
                 .stopReason(cruise.getStopReason())
                 .stoppedAt(cruise.getStoppedAt())
@@ -3812,7 +3867,7 @@ public class CruiseService {
                 .pricingPolicyVersion(policyVersion)
                 .currency(currency)
                 .depositPercentage(depositPercentage)
-                .finalPaymentCutoffDays(policy != null ? policy.getFullPaymentCutoffDays() : 0)
+                .finalPaymentCutoffDays(policy != null ? policy.getFullPaymentCutoffDays() : null)
                 .cabinTypes(cabinItems)
                 .availablePackages(packageItems)
                 .build();

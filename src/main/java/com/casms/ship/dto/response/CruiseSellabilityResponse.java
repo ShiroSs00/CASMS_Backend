@@ -51,6 +51,12 @@ public class CruiseSellabilityResponse {
                         + " DEPARTED, SOLD_OUT, DRAFT, CANCELLED)")
     private String saleState;
 
+    private boolean transactionReady;
+    private boolean publicDisplayEligible;
+    private String publicSaleState;
+    private Instant openedForSaleAt;
+    private Instant evaluatedAt;
+
     @Schema(description = "Lý do tạm dừng mở bán (nếu có)")
     private String stopReason;
 

@@ -787,6 +787,21 @@ public class TripScheduleVersionService {
         List<TripPlanEntry> updatedEntries = new ArrayList<>(preservedLegacy);
         for (TripPlanEntryDraftDto entryDto : entryDtos) {
             TripPlanEntry entry = existingEntryMap.get(entryDto.getClientKey());
+            UUID sourceActivityId = entryDto.getSourceActivityId();
+            if (sourceActivityId != null && (entry == null
+                    || !sourceActivityId.equals(entry.getSourceActivityId())
+                    || entryDto.getKind() != entry.getKind())) {
+                boolean eligible = onboardActivityRepository.findById(sourceActivityId)
+                        .filter(activity -> activity.isCatalogEntry() && activity.getCruise() == null
+                                && activity.getStatus() != OnboardActivityStatus.CANCELLED)
+                        .isPresent();
+                if (!eligible) {
+                    throw new BusinessException(HttpStatus.UNPROCESSABLE_ENTITY,
+                            "SOURCE_ACTIVITY_NOT_CATALOG",
+                            "Chọn hoạt động dùng chung từ danh mục cho lịch trình mẫu.",
+                            Map.of("clientKey", entryDto.getClientKey(), "field", "sourceActivityId"));
+                }
+            }
             if (entry == null) {
                 entry = new TripPlanEntry();
                 entry.setVersion(version);

@@ -192,8 +192,10 @@ public class PosController {
             @PathVariable UUID requestId,
             @PathVariable String action,
             @RequestHeader("X-POS-Session") String session,
+            @Valid @RequestBody(required = false)
+                    com.casms.servicepackage.controller.ServicepackageController.ServiceFulfillmentDto fulfillment,
             @AuthenticationPrincipal CasmsPrincipal employee) {
-        return ApiResponse.success(service.action(session, employee, requestId, action));
+        return ApiResponse.success(service.action(session, employee, requestId, action, fulfillment));
     }
 
     @Operation(
