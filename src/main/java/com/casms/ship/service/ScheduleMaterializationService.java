@@ -42,6 +42,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -776,6 +777,8 @@ public class ScheduleMaterializationService {
         // BE-04 / G06: Giờ cơ sở tàu (Ship Base Timezone) luôn là Asia/Ho_Chi_Minh
         ZoneId shipZone = PortTimeZoneHelper.SHIP_TIME_ZONE;
         LocalDate day1Date = departureDatetime.atZone(shipZone).toLocalDate();
+        Duration departureOffset = PortTimeZoneHelper.departureOffset(
+                departureDay == null ? null : departureDay.getPlannedDepartureTime(), departureDatetime);
 
         // Validate Country Scope cho tất cả các cảng trong lịch trình
         for (TripPlanStop stop : planStops) {
@@ -837,14 +840,14 @@ public class ScheduleMaterializationService {
                     stop.getPlannedArrivalTime() != null
                             ? PortTimeZoneHelper.strictLocalInstant(
                                     LocalDateTime.of(arrDate, stop.getPlannedArrivalTime()),
-                                    portZone)
+                                    portZone).plus(departureOffset)
                             : departureDatetime;
 
             Instant plannedDep =
                     stop.getPlannedDepartureTime() != null
                             ? PortTimeZoneHelper.strictLocalInstant(
                                     LocalDateTime.of(depDate, stop.getPlannedDepartureTime()),
-                                    portZone)
+                                    portZone).plus(departureOffset)
                             : plannedArr.plusSeconds(3600);
 
             if (plannedDep.isBefore(plannedArr) || plannedDep.equals(plannedArr)) {
@@ -865,7 +868,7 @@ public class ScheduleMaterializationService {
                                                                     : depDayNum)
                                                             - 1),
                                             stop.getAllAboardTime()),
-                                    portZone)
+                                    portZone).plus(departureOffset)
                             : plannedDep;
 
             if (allAboard.isBefore(plannedArr) || allAboard.isAfter(plannedDep))
@@ -1043,12 +1046,12 @@ public class ScheduleMaterializationService {
                     entry.getPlannedStartTime() != null
                             ? PortTimeZoneHelper.strictLocalInstant(
                                     LocalDateTime.of(startCal, entry.getPlannedStartTime()),
-                                    entryZone)
+                                    entryZone).plus(departureOffset)
                             : null;
             Instant endInst =
                     entry.getPlannedEndTime() != null
                             ? PortTimeZoneHelper.strictLocalInstant(
-                                    LocalDateTime.of(endCal, entry.getPlannedEndTime()), entryZone)
+                                    LocalDateTime.of(endCal, entry.getPlannedEndTime()), entryZone).plus(departureOffset)
                             : null;
 
             if (entry.getKind() == TripPlanEntryKind.ONBOARD_ACTIVITY

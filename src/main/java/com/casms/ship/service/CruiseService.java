@@ -1616,7 +1616,8 @@ public class CruiseService {
 
     @Transactional
     public CruiseResponse start(UUID cruiseId, UUID actorId) {
-        Cruise cruise = getCruiseById(cruiseId);
+        Cruise cruise = cruiseRepository.findByIdForUpdate(cruiseId)
+                .orElseThrow(() -> new ResourceNotFoundException("Cruise", cruiseId));
 
         if (cruise.getStatus() != CruiseStatus.PUBLISHED) {
             throw new BusinessException(
@@ -4086,7 +4087,7 @@ public class CruiseService {
     }
 
     // Helper: Đồng bộ dời thời gian của ItineraryDay, CruiseStop, OnboardActivity, ShoreExcursion
-    private void shiftScheduleAndPrograms(Cruise cruise, Instant oldDep, Instant newDep) {
+    void shiftScheduleAndPrograms(Cruise cruise, Instant oldDep, Instant newDep) {
         itineraryRepository
                 .findByCruiseCruiseId(cruise.getCruiseId())
                 .ifPresent(

@@ -48,6 +48,12 @@ public final class PortTimeZoneHelper {
 
     public static final ZoneId SHIP_TIME_ZONE = ZoneId.of(SHIP_TIME_ZONE_ID);
 
+    public static java.time.Duration departureOffset(java.time.LocalTime templateTime, Instant departure) {
+        if (templateTime == null) return java.time.Duration.ZERO;
+        var templateDateTime = departure.atZone(SHIP_TIME_ZONE).toLocalDate().atTime(templateTime);
+        return java.time.Duration.between(strictLocalInstant(templateDateTime, SHIP_TIME_ZONE), departure);
+    }
+
     /**
      * Bản đồ ánh xạ mặc định mã quốc gia (ISO 3166-1 alpha-2) sang múi giờ IANA chuẩn. Áp dụng cho
      * các tuyến du thuyền quốc tế chính (Châu Á, Châu Âu/Địa Trung Hải, Châu Mỹ/Caribbean, Châu Đại

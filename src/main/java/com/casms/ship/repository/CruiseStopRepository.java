@@ -1,9 +1,11 @@
 package com.casms.ship.repository;
 
 import com.casms.ship.entity.CruiseStop;
+import jakarta.persistence.LockModeType;
 
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -16,6 +18,10 @@ import java.util.UUID;
 
 @Repository
 public interface CruiseStopRepository extends JpaRepository<CruiseStop, UUID> {
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select s from CruiseStop s where s.cruiseStopId = :id")
+    Optional<CruiseStop> findByIdForUpdate(@Param("id") UUID id);
 
     @EntityGraph(
             attributePaths = {

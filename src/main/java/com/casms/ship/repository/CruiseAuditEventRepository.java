@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 @Repository
@@ -17,6 +18,8 @@ public interface CruiseAuditEventRepository extends JpaRepository<CruiseAuditEve
             UUID cruiseId, String eventType);
 
     boolean existsByEventIdentity(String eventIdentity);
+    Optional<CruiseAuditEvent> findByCruise_CruiseIdAndEventTypeAndEventIdentity(
+            UUID cruiseId, String eventType, String eventIdentity);
 
     long countByCruise_CruiseId(UUID cruiseId);
 }

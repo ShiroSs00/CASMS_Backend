@@ -145,6 +145,10 @@ public class OperationalProgramMappingService {
         ZoneId shipZone = PortTimeZoneHelper.SHIP_TIME_ZONE;
 
         LocalDate baseDate = cruise.getDepartureDatetime().atZone(shipZone).toLocalDate();
+        LocalTime templateDeparture = sourceVersion.getDays() == null ? null : sourceVersion.getDays().stream()
+                .filter(day -> Integer.valueOf(1).equals(day.getDayNumber()))
+                .findFirst().map(day -> day.getPlannedDepartureTime()).orElse(null);
+        var departureOffset = PortTimeZoneHelper.departureOffset(templateDeparture, cruise.getDepartureDatetime());
 
         // Resolve ship info safely to avoid LazyInitializationException on detached proxies
         Ship assignedShip = null;
@@ -191,12 +195,12 @@ public class OperationalProgramMappingService {
             Instant startTime =
                     startDate != null && startTimeVal != null
                             ? PortTimeZoneHelper.strictLocalInstant(
-                                    startDate.atTime(startTimeVal), shipZone)
+                                    startDate.atTime(startTimeVal), shipZone).plus(departureOffset)
                             : null;
             Instant endTime =
                     endDate != null && endTimeVal != null
                             ? PortTimeZoneHelper.strictLocalInstant(
-                                    endDate.atTime(endTimeVal), shipZone)
+                                    endDate.atTime(endTimeVal), shipZone).plus(departureOffset)
                             : null;
 
             if (entry.getKind() == TripPlanEntryKind.ONBOARD_ACTIVITY
@@ -574,10 +578,10 @@ public class OperationalProgramMappingService {
                                     PortTimeZoneHelper.resolveZone(stopPort.getTimeZoneId());
                             startTime =
                                     PortTimeZoneHelper.strictLocalInstant(
-                                            startDate.atTime(startTimeVal), excursionZone);
+                                            startDate.atTime(startTimeVal), excursionZone).plus(departureOffset);
                             endTime =
                                     PortTimeZoneHelper.strictLocalInstant(
-                                            endDate.atTime(endTimeVal), excursionZone);
+                                            endDate.atTime(endTimeVal), excursionZone).plus(departureOffset);
                         }
                     }
 

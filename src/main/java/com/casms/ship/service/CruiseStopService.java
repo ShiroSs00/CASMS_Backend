@@ -529,7 +529,8 @@ public class CruiseStopService {
 
     @Transactional
     public CruiseStopResponse recordActualDeparture(UUID cruiseStopId, Instant actualDeparture) {
-        CruiseStop stop = getStopById(cruiseStopId);
+        CruiseStop stop = cruiseStopRepository.findByIdForUpdate(cruiseStopId)
+                .orElseThrow(() -> new ResourceNotFoundException("CruiseStop", cruiseStopId));
         stop.setActualDeparture(actualDeparture);
         stop = cruiseStopRepository.save(stop);
         return mapToResponse(stop);
