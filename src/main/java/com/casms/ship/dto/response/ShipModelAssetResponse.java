@@ -6,8 +6,6 @@ import java.util.UUID;
 public record ShipModelAssetResponse(
         UUID id,
         String modelKey,
-        String revision,
-        String assetVersion,
         String status,
         String baseUrl,
         String manifestUrl,

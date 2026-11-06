@@ -22,7 +22,7 @@ class StoredModelCatalogTest {
                 new com.fasterxml.jackson.databind.ObjectMapper()
                         .readTree(
                                 "{\"name\":\"Conquest\",\"passengerCapacity\":3000,\"decks\":[],\"cabins\":[]}");
-        when(assets.previewStoredBundle("conquest", "v10")).thenReturn(manifest);
+        when(assets.previewStoredBundle("conquest")).thenReturn(manifest);
         var mvc =
                 standaloneSetup(
                                 new ShipModelController(
@@ -30,12 +30,12 @@ class StoredModelCatalogTest {
                                         assets,
                                         mock(ShipModelImportService.class)))
                         .build();
-        mvc.perform(get("/ship-model-assets/conquest/v10/preview"))
+        mvc.perform(get("/ship-model-assets/conquest/preview"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.name").value("Conquest"))
                 .andExpect(jsonPath("$.data.passengerCapacity").value(3000));
-        verify(assets).previewStoredBundle("conquest", "v10");
+        verify(assets).previewStoredBundle("conquest");
         verifyNoMoreInteractions(assets);
     }
 
@@ -46,7 +46,7 @@ class StoredModelCatalogTest {
                 .thenReturn(
                         List.of(
                                 new ShipModelAssetStore.StoredBundle(
-                                        "conquest", "v10", Instant.parse("2026-10-25T00:00:00Z"))));
+                                        "conquest", Instant.parse("2026-10-25T00:00:00Z"))));
         var mvc =
                 standaloneSetup(
                                 new ShipModelController(
@@ -58,7 +58,7 @@ class StoredModelCatalogTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data[0].modelKey").value("conquest"))
-                .andExpect(jsonPath("$.data[0].assetVersion").value("v10"))
+                .andExpect(jsonPath("$.data[0].assetVersion").doesNotExist())
                 .andExpect(jsonPath("$.data[0].uploadedAt").exists());
         assertEquals(
                 "hasAuthority('SHIP_MODEL_CREATE') and hasAuthority('SHIP_CREATE')",

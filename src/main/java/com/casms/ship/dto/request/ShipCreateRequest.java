@@ -47,20 +47,10 @@ public class ShipCreateRequest {
 
     @Schema(
             description =
-                    "Mô hình đã tải lên để tạo tàu; dùng cùng assetVersion. Không tải lại file.")
+                    "Mã mô hình đã tải lên. Hệ thống dùng gói hiện tại của mã này.")
     @Size(max = 80)
     @Pattern(regexp = "[a-z0-9-]+")
     private String modelKey;
-
-    @Size(max = 80)
-    @Pattern(regexp = "[a-zA-Z0-9._-]+")
-    private String assetVersion;
-
-    @AssertTrue(message = "modelKey and assetVersion must be supplied together")
-    @JsonIgnore
-    public boolean isModelReferenceComplete() {
-        return (modelKey == null) == (assetVersion == null);
-    }
 
     @AssertTrue(
             message =

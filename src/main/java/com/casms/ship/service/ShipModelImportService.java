@@ -45,6 +45,25 @@ public class ShipModelImportService {
             org.springframework.security.core.Authentication authentication) {
         if (bundle == null || bundle.isEmpty() || bundle.getSize() > 2L * 1024 * 1024 * 1024)
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A non-empty ZIP up to 2 GiB is required");
+        return upsertByCode(shipId, modelKey, authentication, () -> {
+            try {
+                return assets.storeImportZip(modelKey, bundle);
+            } catch (java.io.IOException ex) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Cannot read the uploaded model ZIP", ex);
+            }
+        });
+    }
+
+    @Transactional
+    public ModelImportJobResponse importStoredByCode(UUID shipId, String modelKey,
+            org.springframework.security.core.Authentication authentication) {
+        return upsertByCode(shipId, modelKey, authentication, () -> assets.latestVersion(modelKey));
+    }
+
+    private ModelImportJobResponse upsertByCode(UUID shipId, String modelKey,
+            org.springframework.security.core.Authentication authentication,
+            java.util.function.Supplier<String> resolveVersion) {
         models.lockShip(shipId).orElseThrow(() -> new ResourceNotFoundException("Ship", shipId));
         List<ShipModel> matches = models.findByShipShipIdOrderByCreatedAtDesc(shipId).stream()
                 .filter(model -> modelKey.equals(model.getModelKey())).toList();
@@ -54,19 +73,15 @@ public class ShipModelImportService {
         if (existing == null && !matches.isEmpty())
             throw new ResponseStatusException(HttpStatus.CONFLICT, "No editable model with this code");
         if (existing == null) requireAuthority(authentication, "SHIP_MODEL_CREATE");
-        else if (existing.getStatus() == ShipModelStatus.READY)
-            requireAuthority(authentication, "SHIP_MODEL_PUBLISH");
-
-        String version;
-        try {
-            version = assets.storeImportZip(modelKey, bundle);
-        } catch (java.io.IOException ex) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Cannot read the uploaded model ZIP", ex);
+        else {
+            requireAuthority(authentication, "SHIP_MODEL_UPDATE");
+            if (existing.getStatus() == ShipModelStatus.READY)
+                requireAuthority(authentication, "SHIP_MODEL_PUBLISH");
         }
+        String version = resolveVersion.get();
         ShipModel model;
         if (existing == null) {
-            UUID id = assetService.register(shipId,
-                    new com.casms.ship.dto.request.ShipModelAssetRegisterRequest(modelKey, version));
+            UUID id = assetService.register(shipId, modelKey, version);
             model = model(shipId, id);
         } else {
             model = existing;
@@ -131,7 +146,7 @@ public class ShipModelImportService {
         JsonNode manifest = assets.manifest(model.getModelKey(), model.getAssetVersion());
         if (!Objects.equals(model.getAssetRevision(), manifest.path("revision").asText())) {
             throw new ResponseStatusException(
-                    HttpStatus.CONFLICT, "Manifest revision changed; register a new asset version");
+                    HttpStatus.CONFLICT, "Stored model metadata changed; import again by model code");
         }
         String glbPath = manifest.path("assets").path("full").asText();
         JsonNode glb = assets.glbDocument(model.getModelKey(), model.getAssetVersion(), glbPath);

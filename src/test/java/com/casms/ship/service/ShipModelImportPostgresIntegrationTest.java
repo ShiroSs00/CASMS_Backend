@@ -36,7 +36,6 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
-import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 
 import java.io.*;
 import java.nio.ByteBuffer;
@@ -61,6 +60,7 @@ class ShipModelImportPostgresIntegrationTest {
     private static final String ASSET_PREFIX = "model-assets/";
 
     @Autowired MockMvc mockMvc;
+    @Autowired ShipModelAssetService assetService;
     @Autowired ObjectMapper mapper;
     @Autowired JdbcTemplate jdbc;
     @Autowired ShipRepository ships;
@@ -77,6 +77,7 @@ class ShipModelImportPostgresIntegrationTest {
     private final List<UUID> testShipIds = new ArrayList<>();
     private final List<UUID> testUserIds = new ArrayList<>();
     private final Set<String> uploadedBundles = Collections.synchronizedSet(new LinkedHashSet<>());
+    private final Map<String, String> storedVersions = new java.util.concurrent.ConcurrentHashMap<>();
     private final List<Path> tempArchives = new ArrayList<>();
     private final List<UUID> testServiceIds = new ArrayList<>();
 
@@ -105,8 +106,13 @@ class ShipModelImportPostgresIntegrationTest {
                 assignment, lounge.getShipModelObjectId(), serviceId);
         try {
             Path changed = bundleWithPhysicalAreas(key, "v2", "moved");
-            JsonNode updated = importByCode(shipId, key, changed, admin, 200).path("data");
-            assertEquals(modelId.toString(), updated.path("modelId").asText());
+            upload(key, "v2", changed, admin);
+            mockMvc.perform(post("/ships/{shipId}/models", shipId)
+                            .header("Authorization", "Bearer " + admin)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(mapper.writeValueAsBytes(Map.of("modelKey", key))))
+                    .andExpect(status().isCreated())
+                    .andExpect(jsonPath("$.data.id").value(modelId.toString()));
             assertEquals(ShipModelStatus.READY, models.findById(modelId).orElseThrow().getStatus());
             assertEquals(1, models.findByShipShipIdOrderByCreatedAtDesc(shipId).size());
             assertEquals(lounge.getShipModelObjectId(), objects.findByShipModelShipModelIdAndNodeKey(
@@ -1009,9 +1015,7 @@ class ShipModelImportPostgresIntegrationTest {
         MvcResult firstResult =
                 mockMvc.perform(
                                 post(
-                                                "/ship-model-assets/{modelKey}/{assetVersion}/register",
-                                                key,
-                                                "v1")
+                                                "/ship-model-assets/{modelKey}/register", key)
                                         .header("Authorization", "Bearer " + token))
                         .andExpect(status().isCreated())
                         .andReturn();
@@ -1098,9 +1102,7 @@ class ShipModelImportPostgresIntegrationTest {
         MvcResult registration =
                 mockMvc.perform(
                                 post(
-                                                "/ship-model-assets/{modelKey}/{assetVersion}/register",
-                                                key,
-                                                "v1")
+                                                "/ship-model-assets/{modelKey}/register", key)
                                         .header("Authorization", "Bearer " + token))
                         .andExpect(status().isCreated())
                         .andReturn();
@@ -1182,9 +1184,7 @@ class ShipModelImportPostgresIntegrationTest {
                         java.sql.Timestamp.class,
                         key);
         JsonNode first =
-                createUsingModel(
-                        key,
-                        "v1",
+                createUsingModel(key,
                         Map.of(
                                 "shipName",
                                 "Ignored override",
@@ -1195,7 +1195,7 @@ class ShipModelImportPostgresIntegrationTest {
                         token,
                         201);
         JsonNode second =
-                createUsingModel(key, "v1", Map.of("commissionDate", "2020-01-02"), token, 201);
+                createUsingModel(key, Map.of("commissionDate", "2020-01-02"), token, 201);
         assertNotEquals(first.path("shipId").asText(), second.path("shipId").asText());
         assertNotEquals(first.path("shipCode").asText(), second.path("shipCode").asText());
         assertEquals("Mini Ship", first.path("shipName").asText());
@@ -1234,12 +1234,10 @@ class ShipModelImportPostgresIntegrationTest {
                         Set.of("name", "passengerCapacity", "deckCount", "length", "beam"));
         upload(key, "v1", partial, token);
         long before = ships.count();
-        createUsingModel(key, "v1", Map.of(), token, 400);
+        createUsingModel(key, Map.of(), token, 400);
         assertEquals(before, ships.count());
         JsonNode ship =
-                createUsingModel(
-                        key,
-                        "v1",
+                createUsingModel(key,
                         Map.of(
                                 "shipName",
                                 "Supplemented ship",
@@ -1257,7 +1255,7 @@ class ShipModelImportPostgresIntegrationTest {
         assertTrue(ship.path("commissionDate").isNull());
         var result =
                 mockMvc.perform(
-                                post("/ship-model-assets/{key}/{version}/register", key, "v1")
+                                post("/ship-model-assets/{key}/register", key)
                                         .header("Authorization", "Bearer " + token)
                                         .contentType(MediaType.APPLICATION_JSON)
                                         .content(
@@ -1296,8 +1294,9 @@ class ShipModelImportPostgresIntegrationTest {
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content(
                                         mapper.writeValueAsBytes(
-                                                Map.of("modelKey", key, "assetVersion", "v1"))))
-                .andExpect(status().isConflict());
+                                                Map.of("modelKey", key))))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.id").value(a.toString()));
     }
 
     @Test
@@ -1319,13 +1318,13 @@ class ShipModelImportPostgresIntegrationTest {
                 0,
                 jdbc.queryForObject(
                         "SELECT count(*) FROM \"ShipModelAssetBlob\" WHERE model_key=? AND"
-                            + " asset_version='v2'",
+                            + " asset_version=?",
                         Integer.class,
-                        first));
+                        first, storedVersions.get(first + "|v2")));
         assertEquals(
                 objectsBefore,
                 jdbc.queryForObject("SELECT count(*) FROM pg_largeobject_metadata", Long.class));
-        for (int i = 0; i < 3; i++) createUsingModel(first, "v1", Map.of(), token, 201);
+        for (int i = 0; i < 3; i++) createUsingModel(first, Map.of(), token, 201);
         upload(first, "v3", smallBundle(first, "v3", "SUITE", "M-COPY", true), token);
     }
 
@@ -1397,16 +1396,10 @@ class ShipModelImportPostgresIntegrationTest {
                 passenger = token(Role.PASSENGER);
         upload(key, "v1", smallBundle(key, "v1", "OCEAN_VIEW", "M-ACCESS", true), token);
         long before = ships.count();
+        createUsingModel(uniqueKey("missing-model"), Map.of(), token, 404);
+        createUsingModel(key, Map.of(), passenger, 403);
         mockMvc.perform(
-                        post("/ships")
-                                .header("Authorization", "Bearer " + token)
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content(mapper.writeValueAsBytes(Map.of("modelKey", key))))
-                .andExpect(status().isBadRequest());
-        createUsingModel(key, "missing", Map.of(), token, 404);
-        createUsingModel(key, "v1", Map.of(), passenger, 403);
-        mockMvc.perform(
-                        post("/ship-model-assets/{key}/{version}/register", key, "v1")
+                        post("/ship-model-assets/{key}/register", key)
                                 .header("Authorization", "Bearer " + passenger))
                 .andExpect(status().isForbidden());
         mockMvc.perform(
@@ -1419,11 +1412,10 @@ class ShipModelImportPostgresIntegrationTest {
     }
 
     private JsonNode createUsingModel(
-            String key, String version, Map<String, Object> supplements, String token, int expected)
+            String key, Map<String, Object> supplements, String token, int expected)
             throws Exception {
         Map<String, Object> body = new LinkedHashMap<>(supplements);
         body.put("modelKey", key);
-        body.put("assetVersion", version);
         var result =
                 mockMvc.perform(
                                 post("/ships")
@@ -1439,12 +1431,13 @@ class ShipModelImportPostgresIntegrationTest {
 
     private int uploadStatus(String key, String version, Path archive, String token)
             throws Exception {
-        uploadedBundles.add(key + "|" + version);
+        String identity = "zip-" + sha256(Files.readAllBytes(archive));
+        uploadedBundles.add(key + "|" + identity);
+        storedVersions.put(key + "|" + version, identity);
         return mockMvc.perform(
                         multipart("/ship-model-assets")
                                 .file(new FileBackedMultipartFile("bundle", archive))
                                 .param("modelKey", key)
-                                .param("assetVersion", version)
                                 .header("Authorization", "Bearer " + token))
                 .andReturn()
                 .getResponse()
@@ -1571,26 +1564,9 @@ class ShipModelImportPostgresIntegrationTest {
         return jwt.generateToken(saved.getUsername(), saved.getUserId());
     }
 
-    private UUID register(UUID shipId, String key, String version, String token) throws Exception {
-        MvcResult result =
-                mockMvc.perform(
-                                post("/ships/{shipId}/models", shipId)
-                                        .header("Authorization", "Bearer " + token)
-                                        .contentType(MediaType.APPLICATION_JSON)
-                                        .content(
-                                                mapper.writeValueAsBytes(
-                                                        Map.of(
-                                                                "modelKey",
-                                                                key,
-                                                                "assetVersion",
-                                                                version))))
-                        .andExpect(status().isCreated())
-                        .andReturn();
-        return UUID.fromString(
-                mapper.readTree(result.getResponse().getContentAsByteArray())
-                        .path("data")
-                        .path("id")
-                        .asText());
+    private UUID register(UUID shipId, String key, String version, String token) {
+        // Legacy draft-import tests need a registered model before running the partial importer.
+        return assetService.register(shipId, key, storedVersions.get(key + "|" + version));
     }
 
     private JsonNode importJob(UUID shipId, UUID modelId, String token) throws Exception {
@@ -1616,9 +1592,7 @@ class ShipModelImportPostgresIntegrationTest {
             MvcResult result =
                     mockMvc.perform(
                                     post(
-                                                    "/ship-model-assets/{modelKey}/{assetVersion}/register",
-                                                    key,
-                                                    version)
+                                                    "/ship-model-assets/{modelKey}/register", key)
                                             .header("Authorization", "Bearer " + token))
                             .andExpect(status().isCreated())
                             .andReturn();
@@ -1629,15 +1603,7 @@ class ShipModelImportPostgresIntegrationTest {
     }
 
     private void upload(String key, String version, Path zip, String token) throws Exception {
-        uploadedBundles.add(key + "|" + version);
-        FileBackedMultipartFile bundle = new FileBackedMultipartFile("bundle", zip);
-        MockHttpServletRequestBuilder request =
-                multipart("/ship-model-assets")
-                        .file(bundle)
-                        .param("modelKey", key)
-                        .param("assetVersion", version)
-                        .header("Authorization", "Bearer " + token);
-        mockMvc.perform(request).andExpect(status().isCreated());
+        assertEquals(201, uploadStatus(key, version, zip, token));
     }
 
     private Path committedBundle(String version) throws IOException {

@@ -3,7 +3,6 @@ package com.casms.ship.service;
 import com.casms.common.exception.ResourceNotFoundException;
 import com.casms.common.service.BusinessCodeGenerator;
 import com.casms.ship.dto.request.ShipCreateRequest;
-import com.casms.ship.dto.request.ShipModelAssetRegisterRequest;
 import com.casms.ship.dto.request.ShipModelCabinMappingRequest;
 import com.casms.ship.dto.request.ShipModelDeckMappingRequest;
 import com.casms.ship.dto.response.ShipModelAssetResponse;
@@ -59,11 +58,14 @@ public class ShipModelAssetService {
     private final BusinessCodeGenerator businessCodes;
 
     @Transactional(readOnly = true)
-    public JsonNode previewStoredBundle(String modelKey, String assetVersion) {
-        if (!assets.bundleExists(modelKey, assetVersion))
-            throw new ResponseStatusException(
-                    HttpStatus.NOT_FOUND, "Model asset bundle is not uploaded to the database");
-        return assets.manifest(modelKey, assetVersion);
+    public JsonNode previewStoredBundle(String modelKey) {
+        return manifestForClient(assets.manifest(modelKey, assets.latestVersion(modelKey)));
+    }
+
+    private static JsonNode manifestForClient(JsonNode manifest) {
+        var preview = (com.fasterxml.jackson.databind.node.ObjectNode) manifest.deepCopy();
+        preview.remove("revision");
+        return preview;
     }
 
     @Transactional(readOnly = true)
@@ -73,18 +75,17 @@ public class ShipModelAssetService {
 
     @Transactional
     public ShipModelAssetUploadResponse uploadBundle(
-            String modelKey, String assetVersion, MultipartFile bundle) {
+            String modelKey, MultipartFile bundle) {
         if (bundle == null || bundle.isEmpty() || bundle.getSize() > 2L * 1024 * 1024 * 1024) {
             throw bad("A non-empty ZIP up to 2 GiB is required");
         }
-        try (InputStream input = bundle.getInputStream()) {
-            ShipModelAssetStore.UploadResult result =
-                    assets.storeZip(modelKey, assetVersion, input);
-            return new ShipModelAssetUploadResponse(
-                    modelKey, assetVersion, result.files(), result.bytes());
+        try {
+            String version = assets.storeImportZip(modelKey, bundle);
+            var result = assets.bundleStats(modelKey, version);
+            return new ShipModelAssetUploadResponse(modelKey, result.files(), result.bytes());
         } catch (DataIntegrityViolationException ex) {
             throw new ResponseStatusException(
-                    HttpStatus.CONFLICT, "This model asset version is already stored", ex);
+                    HttpStatus.CONFLICT, "Model asset bundle could not be stored", ex);
         } catch (IOException ex) {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST, "Cannot read the uploaded model ZIP", ex);
@@ -92,15 +93,15 @@ public class ShipModelAssetService {
     }
 
     @Transactional
-    public UUID register(UUID shipId, ShipModelAssetRegisterRequest request) {
-        if (!assets.bundleExists(request.modelKey(), request.assetVersion())) {
+    public UUID register(UUID shipId, String modelKey, String assetVersion) {
+        if (!assets.bundleExists(modelKey, assetVersion)) {
             throw new ResponseStatusException(
                     HttpStatus.NOT_FOUND, "Model asset bundle is not uploaded to the database");
         }
-        JsonNode manifest = assets.manifest(request.modelKey(), request.assetVersion());
+        JsonNode manifest = assets.manifest(modelKey, assetVersion);
         lockShip(shipId);
         if (models.existsByShipShipIdAndModelKeyAndAssetVersion(
-                shipId, request.modelKey(), request.assetVersion())) {
+                shipId, modelKey, assetVersion)) {
             throw new ResponseStatusException(
                     HttpStatus.CONFLICT, "Model asset version is already registered on this ship");
         }
@@ -111,7 +112,7 @@ public class ShipModelAssetService {
         syncShipFromManifest(ship, manifest, false);
         ShipModel model = new ShipModel();
         model.setShip(ship);
-        configureBundle(model, request.modelKey(), request.assetVersion(), manifest);
+        configureBundle(model, modelKey, assetVersion, manifest);
         model.setStatus(ShipModelStatus.DRAFT);
         try {
             return models.save(model).getShipModelId();
@@ -152,27 +153,17 @@ public class ShipModelAssetService {
     /** Create an independent physical ship; a manifest is a reusable source template. */
     @Transactional
     public ShipModelManifestRegistrationResponse registerFromManifest(
-            String modelKey, String assetVersion, Authentication authentication) {
-        return registerFromManifest(modelKey, assetVersion, null, authentication);
-    }
-
-    @Transactional
-    public ShipModelManifestRegistrationResponse registerFromManifest(
             String modelKey,
-            String assetVersion,
             ShipCreateRequest supplements,
             Authentication authentication) {
         requireAuthority(authentication, "SHIP_CREATE");
-        return createShipFromManifest(modelKey, assetVersion, supplements);
+        return createShipFromManifest(modelKey, supplements);
     }
 
     @Transactional
     public ShipModelManifestRegistrationResponse createShipFromManifest(
-            String modelKey, String assetVersion, ShipCreateRequest supplements) {
-        if (!assets.bundleExists(modelKey, assetVersion)) {
-            throw new ResponseStatusException(
-                    HttpStatus.NOT_FOUND, "Model asset bundle is not uploaded to the database");
-        }
+            String modelKey, ShipCreateRequest supplements) {
+        String assetVersion = assets.latestVersion(modelKey);
         JsonNode manifest = assets.manifest(modelKey, assetVersion);
         Ship ship = new Ship();
         ship.setShipCode(businessCodes.next("SH"));
@@ -191,9 +182,7 @@ public class ShipModelAssetService {
         syncShipFromManifest(ship, manifest, true);
         ship = ships.saveAndFlush(ship);
         UUID shipModelId =
-                register(
-                        ship.getShipId(),
-                        new ShipModelAssetRegisterRequest(modelKey, assetVersion));
+                register(ship.getShipId(), modelKey, assetVersion);
         return new ShipModelManifestRegistrationResponse(ship.getShipId(), shipModelId, true);
     }
 
@@ -349,8 +338,6 @@ public class ShipModelAssetService {
         return new ShipModelAssetResponse(
                 modelId,
                 model.getModelKey(),
-                model.getAssetRevision(),
-                model.getAssetVersion(),
                 apiStatus(model),
                 base,
                 base + "manifest.json",
@@ -398,7 +385,7 @@ public class ShipModelAssetService {
         return new com.casms.ship.dto.response.PublicShipModelResponse(
                 shipId,
                 model.getShipModelId(),
-                manifest(model),
+                manifestForClient(manifest(model)),
                 cabinMappings(shipId, model.getShipModelId()));
     }
 
@@ -713,7 +700,7 @@ public class ShipModelAssetService {
         JsonNode manifest = assets.manifest(model.getModelKey(), model.getAssetVersion());
         if (!Objects.equals(model.getAssetRevision(), manifest.path("revision").asText())) {
             throw new ResponseStatusException(
-                    HttpStatus.CONFLICT, "Manifest revision changed; register a new asset version");
+                    HttpStatus.CONFLICT, "Stored model metadata changed; import again by model code");
         }
         return manifest;
     }

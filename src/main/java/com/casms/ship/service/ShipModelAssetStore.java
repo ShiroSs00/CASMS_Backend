@@ -52,19 +52,34 @@ public class ShipModelAssetStore {
     }
 
     public record StoredBundle(
-            String modelKey, String assetVersion, java.time.Instant uploadedAt) {}
+            String modelKey, java.time.Instant uploadedAt) {}
 
     public java.util.List<StoredBundle> listBundles() {
         return jdbc.query(
-                "SELECT model_key,asset_version,created_at FROM "
-                        + TABLE
-                        + " WHERE asset_path='manifest.json' ORDER BY created_at"
-                        + " DESC,model_key,asset_version",
+                "SELECT model_key,created_at FROM (SELECT DISTINCT ON (model_key) model_key,created_at"
+                        + " FROM " + TABLE + " WHERE asset_path='manifest.json'"
+                        + " ORDER BY model_key,created_at DESC,asset_version DESC) latest"
+                        + " ORDER BY created_at DESC,model_key",
                 (r, n) ->
                         new StoredBundle(
                                 r.getString("model_key"),
-                                r.getString("asset_version"),
                                 r.getTimestamp("created_at").toInstant()));
+    }
+
+    String latestVersion(String modelKey) {
+        return jdbc.query("SELECT asset_version FROM " + TABLE
+                        + " WHERE model_key=? AND asset_path='manifest.json'"
+                        + " ORDER BY created_at DESC,asset_version DESC LIMIT 1",
+                (rs, row) -> rs.getString("asset_version"), modelKey).stream().findFirst()
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Model code is not uploaded to the database"));
+    }
+
+    UploadResult bundleStats(String modelKey, String version) {
+        return jdbc.queryForObject("SELECT count(*) AS files, COALESCE(sum(byte_size),0) AS bytes FROM "
+                        + TABLE + " WHERE model_key=? AND asset_version=?",
+                (rs, row) -> new UploadResult(rs.getInt("files"), rs.getLong("bytes")),
+                modelKey, version);
     }
 
     public UploadResult storeZip(String modelKey, String assetVersion, InputStream archive) {
@@ -82,12 +97,15 @@ public class ShipModelAssetStore {
         String version = "zip-" + HexFormat.of().formatHex(digest.digest());
         validateBundleKey(modelKey, version);
         jdbc.query("SELECT pg_advisory_xact_lock(hashtextextended(?, 0))",
-                rs -> {}, "ship-model-import:" + modelKey + ":" + version);
+                rs -> {}, "ship-model-import:" + modelKey);
         if (!bundleExists(modelKey, version)) {
             try (var input = bundle.getInputStream()) {
                 storeZip(modelKey, version, input, true);
             }
         }
+        jdbc.update("UPDATE " + TABLE + " SET created_at=clock_timestamp()"
+                + " WHERE model_key=? AND asset_version=? AND asset_path='manifest.json'",
+                modelKey, version);
         return version;
     }
 

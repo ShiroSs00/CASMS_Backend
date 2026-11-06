@@ -42,13 +42,9 @@ public class ShipModelService {
         validateAssetReference(
                 request.getFileUri(), request.getFileFormat(), request.getChecksumSha256());
         validateScale(request.getModelUnitsPerMeter());
-        if (models.existsByShipShipIdAndVersion(shipId, request.getVersion().trim())) {
-            throw new BusinessException(
-                    "DUPLICATE_SHIP_MODEL_VERSION", "This ship model version already exists");
-        }
         ShipModel model = new ShipModel();
         model.setShip(ship);
-        model.setVersion(request.getVersion().trim());
+        model.setVersion("ref-" + UUID.randomUUID());
         model.setFileUri(request.getFileUri().trim());
         model.setFileFormat(request.getFileFormat().trim().toLowerCase(Locale.ROOT));
         model.setChecksumSha256(normalizeChecksum(request.getChecksumSha256()));
@@ -77,16 +73,12 @@ public class ShipModelService {
     @Transactional
     public ShipModelResponse update(UUID shipId, UUID modelId, ShipModelCreateRequest request) {
         ShipModel model = getEditableModel(shipId, modelId);
+        if (model.getModelKey() != null)
+            throw new BusinessException("SHIP_MODEL_IMPORT_REQUIRED",
+                    "Update uploaded models through the model-code import API.");
         validateAssetReference(
                 request.getFileUri(), request.getFileFormat(), request.getChecksumSha256());
         validateScale(request.getModelUnitsPerMeter());
-        String version = request.getVersion().trim();
-        if (!model.getVersion().equals(version)
-                && models.existsByShipShipIdAndVersion(shipId, version)) {
-            throw new BusinessException(
-                    "DUPLICATE_SHIP_MODEL_VERSION", "This ship model version already exists");
-        }
-        model.setVersion(version);
         model.setFileUri(request.getFileUri().trim());
         model.setFileFormat(request.getFileFormat().trim().toLowerCase(Locale.ROOT));
         model.setChecksumSha256(normalizeChecksum(request.getChecksumSha256()));
@@ -459,13 +451,13 @@ public class ShipModelService {
                 ship.getShipId(),
                 ship.getShipCode(),
                 ship.getShipName(),
-                model.getVersion() + ":" + configurationUpdatedAt.toEpochMilli(),
+                model.getShipModelId() + ":" + configurationUpdatedAt.toEpochMilli(),
                 configurationUpdatedAt,
                 new Ship3dConfigurationResponse.Model(
                         model.getShipModelId(),
-                        model.getFileUri(),
+                        modelAssetUrl(model),
                         model.getFileFormat(),
-                        model.getVersion(),
+                        model.getModelKey(),
                         model.getCoordinateSystem(),
                         model.getCoordinateUnit(),
                         model.getModelUnitsPerMeter()),
@@ -626,7 +618,7 @@ public class ShipModelService {
         if (m.getStatus() == ShipModelStatus.READY || m.getStatus() == ShipModelStatus.ARCHIVED) {
             throw new BusinessException(
                     "SHIP_MODEL_IMMUTABLE",
-                    "Ready or archived models are immutable; create a new version to change"
+                    "Ready or archived model references cannot be edited"
                         + " configuration");
         }
         return m;
@@ -775,8 +767,8 @@ public class ShipModelService {
         return new ShipModelResponse(
                 m.getShipModelId(),
                 m.getShip().getShipId(),
-                m.getVersion(),
-                m.getFileUri(),
+                m.getModelKey(),
+                modelAssetUrl(m),
                 m.getFileFormat(),
                 m.getChecksumSha256(),
                 m.getCoordinateSystem(),
@@ -787,6 +779,12 @@ public class ShipModelService {
                 m.getUpdatedAt(),
                 m.getShipManufacturerName(),
                 m.getModelProvider());
+    }
+
+    private static String modelAssetUrl(ShipModel model) {
+        if (model.getModelKey() == null) return model.getFileUri();
+        return "/api/ships/" + model.getShip().getShipId() + "/models/"
+                + model.getShipModelId() + "/assets/manifest.json";
     }
 
     private static ShipModelObjectResponse objectResponse(ShipModelObject o) {

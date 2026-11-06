@@ -19,7 +19,7 @@ public record Ship3dConfigurationResponse(
             UUID modelId,
             String assetUrl,
             String format,
-            String version,
+            String modelKey,
             String coordinateSystem,
             String unit,
             Double modelUnitsPerMeter) {}

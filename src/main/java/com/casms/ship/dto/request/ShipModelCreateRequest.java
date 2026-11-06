@@ -10,10 +10,6 @@ import lombok.Data;
 @Data
 public class ShipModelCreateRequest {
     @NotBlank
-    @Size(max = 50)
-    private String version;
-
-    @NotBlank
     @Size(max = 1000)
     private String fileUri;
 

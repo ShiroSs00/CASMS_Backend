@@ -49,14 +49,8 @@ public class ShipService {
 
     @Transactional
     public ShipResponse create(ShipCreateRequest request) {
-        if (request.getModelKey() != null || request.getAssetVersion() != null) {
-            if (!request.isModelReferenceComplete())
-                throw new BusinessException(
-                        "INVALID_MODEL_REFERENCE",
-                        "modelKey and assetVersion must be supplied together");
-            var registered =
-                    modelAssets.createShipFromManifest(
-                            request.getModelKey(), request.getAssetVersion(), request);
+        if (request.getModelKey() != null) {
+            var registered = modelAssets.createShipFromManifest(request.getModelKey(), request);
             return mapToResponse(getShipById(registered.shipId()));
         }
         if (request.getShipName() == null || request.getShipName().isBlank())

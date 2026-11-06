@@ -8,7 +8,7 @@ import java.util.UUID;
 public record ShipModelResponse(
         UUID shipModelId,
         UUID shipId,
-        String version,
+        String modelKey,
         String assetUrl,
         String fileFormat,
         String checksumSha256,
