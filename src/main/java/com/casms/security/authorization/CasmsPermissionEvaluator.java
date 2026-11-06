@@ -4,19 +4,20 @@ import com.casms.identity.enums.Permission;
 import com.casms.identity.repository.RolePermissionRepository;
 import com.casms.security.principal.CasmsPrincipal;
 
+import org.springframework.security.access.PermissionEvaluator;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Component;
 
 import java.io.Serializable;
 
 @Component("casmsPermissionEvaluator")
-public class CasmsPermissionEvaluator
-        implements org.springframework.security.access.PermissionEvaluator {
+public class CasmsPermissionEvaluator implements PermissionEvaluator {
 
-    private final RolePermissionRepository rolePermissionRepository;
+    public CasmsPermissionEvaluator() {
+    }
 
     public CasmsPermissionEvaluator(RolePermissionRepository rolePermissionRepository) {
-        this.rolePermissionRepository = rolePermissionRepository;
+        // Constructor maintained for backward compatibility with SecurityConfig
     }
 
     @Override

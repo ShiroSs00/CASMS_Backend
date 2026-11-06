@@ -193,7 +193,7 @@ public class TripService {
                 durationGroup);
 
         if (auditService != null) {
-            auditService.record(
+            auditService.recordAudit(
                     actorId,
                     "CREATE_TRIP",
                     "Trip",
@@ -497,7 +497,7 @@ public class TripService {
         tripRepository.flush();
 
         if (auditService != null) {
-            auditService.record(
+            auditService.recordAudit(
                     actorId,
                     "PATCH_DRAFT",
                     "Trip",
@@ -664,7 +664,7 @@ public class TripService {
             tripRepository.flush();
 
             if (auditService != null) {
-                auditService.record(
+                auditService.recordAudit(
                         actorId,
                         "MANAGE_DAYS_ADD",
                         "Trip",
@@ -678,7 +678,7 @@ public class TripService {
                                 + versionId
                                 + ")");
                 for (TripScheduleVersion draftVer : draftVersions) {
-                    auditService.record(
+                    auditService.recordAudit(
                             actorId,
                             "MANAGE_DAYS_ADD",
                             "TripScheduleVersion",
@@ -841,7 +841,7 @@ public class TripService {
             tripRepository.flush();
 
             if (auditService != null) {
-                auditService.record(
+                auditService.recordAudit(
                         actorId,
                         "MANAGE_DAYS_REMOVE",
                         "Trip",
@@ -855,7 +855,7 @@ public class TripService {
                                 + versionId
                                 + ")");
                 for (TripScheduleVersion draftVer : draftVersions) {
-                    auditService.record(
+                    auditService.recordAudit(
                             actorId,
                             "MANAGE_DAYS_REMOVE",
                             "TripScheduleVersion",
@@ -1042,7 +1042,7 @@ public class TripService {
         newTrip.getVersions().add(newVer);
 
         if (auditService != null) {
-            auditService.record(
+            auditService.recordAudit(
                     actorId,
                     "CLONE_TRIP",
                     "Trip",
@@ -1222,7 +1222,7 @@ public class TripService {
                 .filter(d -> d.getDayRole().isEnding())
                 .forEach(d -> d.setDayType(ItineraryDayType.PORT_DAY));
         newVer = versionRepository.save(newVer);
-        auditService.record(
+        auditService.recordAudit(
                 actorId,
                 "CREATE_SCHEDULE_VERSION",
                 "TripScheduleVersion",
@@ -1327,7 +1327,7 @@ public class TripService {
                                             && !request.getReason().isBlank()
                                     ? ". Lý do: " + request.getReason().trim()
                                     : "");
-            auditService.record(actorId, "ARCHIVE_TRIP", "Trip", tripId, "SUCCESS", detail);
+            auditService.recordAudit(actorId, "ARCHIVE_TRIP", "Trip", tripId, "SUCCESS", detail);
         }
         return mapToDetailResponse(trip);
     }

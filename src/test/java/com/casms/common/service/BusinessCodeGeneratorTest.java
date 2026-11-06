@@ -17,9 +17,9 @@ class BusinessCodeGeneratorTest {
     @Test
     void formatsSequenceValuesAndKeepsPrefixesIndependent() {
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
-        when(jdbc.queryForObject("SELECT nextval('casms_ship_code_seq')", Long.class))
+        when(jdbc.queryForObject("SELECT nextval(?)", Long.class, "casms_ship_code_seq"))
                 .thenReturn(1L);
-        when(jdbc.queryForObject("SELECT nextval('casms_cruise_code_seq')", Long.class))
+        when(jdbc.queryForObject("SELECT nextval(?)", Long.class, "casms_cruise_code_seq"))
                 .thenReturn(42L);
 
         BusinessCodeGenerator generator = new BusinessCodeGenerator(jdbc);
@@ -32,14 +32,15 @@ class BusinessCodeGeneratorTest {
     void reportsSequenceExhaustionClearly() {
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
         SQLException exhausted = new SQLException("maximum value reached", "2200H");
-        when(jdbc.queryForObject("SELECT nextval('casms_ship_code_seq')", Long.class))
+        when(jdbc.queryForObject("SELECT nextval(?)", Long.class, "casms_ship_code_seq"))
                 .thenThrow(
                         new org.springframework.jdbc.UncategorizedSQLException(
                                 "nextval", "sequence", exhausted));
 
+        BusinessCodeGenerator generator = new BusinessCodeGenerator(jdbc);
         BusinessException error =
                 assertThrows(
-                        BusinessException.class, () -> new BusinessCodeGenerator(jdbc).next("SH"));
+                        BusinessException.class, () -> generator.next("SH"));
         assertEquals("BUSINESS_CODE_EXHAUSTED", error.getCode());
     }
 }

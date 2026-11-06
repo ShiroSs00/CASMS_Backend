@@ -1,9 +1,7 @@
 package com.casms.servicepackage.controller;
 
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 
 import com.casms.servicepackage.entity.TourPackage;
 import com.casms.servicepackage.enums.TourPackageStatus;
@@ -27,6 +25,7 @@ class ServicepackageControllerTest {
     @Mock ServiceCatalogReadService catalogReads;
     @Mock ServiceScheduleManagementService scheduleManagement;
     @Mock com.casms.servicepackage.repository.ServiceCategoryRepository categoryRepository;
+    @Mock com.casms.cruisepackage.service.CruisePackageEntitlementService fareEntitlements;
 
     @Test
     void packageBenefits_doesNotExposeDraftPackageToPublic() {
@@ -41,7 +40,8 @@ class ServicepackageControllerTest {
                         serviceRequests,
                         catalogReads,
                         scheduleManagement,
-                        categoryRepository);
+                        categoryRepository,
+                        fareEntitlements);
 
         assertThrows(
                 AccessDeniedException.class, () -> controller.packageBenefits(packageId, null));

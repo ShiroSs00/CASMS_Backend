@@ -52,6 +52,7 @@ class CheckinServiceTest {
         when(bookingPassengerRepository.findById(bookingPassenger.getBookingPassengerId()))
                 .thenReturn(Optional.of(bookingPassenger));
 
+        UUID callerId = UUID.randomUUID();
         assertThrows(
                 AccessDeniedException.class,
                 () ->
@@ -59,7 +60,7 @@ class CheckinServiceTest {
                                 bookingPassenger.getBookingPassengerId(),
                                 null,
                                 null,
-                                UUID.randomUUID(),
+                                callerId,
                                 false));
         verify(checkinRepository, never()).save(any());
     }
@@ -68,14 +69,14 @@ class CheckinServiceTest {
     void authorizedStaffCanReadAnotherPassengersCheckin() {
         UUID userId = UUID.randomUUID();
         BookingPassenger bookingPassenger = bookingPassenger(UUID.randomUUID());
-        CruiseCheckin record = new CruiseCheckin();
-        record.setBookingPassenger(bookingPassenger);
+        CruiseCheckin checkinRecord = new CruiseCheckin();
+        checkinRecord.setBookingPassenger(bookingPassenger);
         when(checkinRepository.findByBookingPassenger_BookingPassengerId(
                         bookingPassenger.getBookingPassengerId()))
-                .thenReturn(Optional.of(record));
+                .thenReturn(Optional.of(checkinRecord));
 
         assertSame(
-                record, service.getStatus(bookingPassenger.getBookingPassengerId(), userId, true));
+                checkinRecord, service.getStatus(bookingPassenger.getBookingPassengerId(), userId, true));
     }
 
     private BookingPassenger bookingPassenger(UUID ownerId) {

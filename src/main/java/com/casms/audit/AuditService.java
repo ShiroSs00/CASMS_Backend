@@ -1,5 +1,8 @@
 package com.casms.audit;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
@@ -8,7 +11,17 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @Slf4j
 @Service
@@ -16,27 +29,25 @@ import java.util.UUID;
 public class AuditService {
 
     private final AuditRepository auditRepository;
-
-    @org.springframework.beans.factory.annotation.Autowired
-    private com.fasterxml.jackson.databind.ObjectMapper objectMapper;
+    private final ObjectMapper objectMapper;
 
     @Async
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void record(
+    public void recordAudit(
             UUID actorUserId,
             String action,
             String entityType,
             UUID entityId,
             String result,
             String detail) {
-        AuditLog log = new AuditLog();
-        log.setActorUserId(actorUserId);
-        log.setAction(action);
-        log.setEntityType(entityType);
-        log.setEntityId(entityId);
-        log.setResult(result);
-        log.setDetail(detail);
-        auditRepository.save(log);
+        AuditLog auditLog = new AuditLog();
+        auditLog.setActorUserId(actorUserId);
+        auditLog.setAction(action);
+        auditLog.setEntityType(entityType);
+        auditLog.setEntityId(entityId);
+        auditLog.setResult(result);
+        auditLog.setDetail(detail);
+        auditRepository.save(auditLog);
     }
 
     /**
@@ -45,8 +56,8 @@ public class AuditService {
      */
     @Transactional(propagation = Propagation.MANDATORY)
     public void recordDirectoryMutation(String entityType, UUID entityId, String operation) {
-        recordDirectoryMutation(
-                entityType, entityId, operation, java.util.Map.of(), java.util.Map.of());
+        doRecordDirectoryMutation(
+                entityType, entityId, operation, Map.of(), Map.of());
     }
 
     @Transactional(propagation = Propagation.MANDATORY)
@@ -54,8 +65,17 @@ public class AuditService {
             String entityType,
             UUID entityId,
             String operation,
-            java.util.Map<String, Object> before,
-            java.util.Map<String, Object> after) {
+            Map<String, Object> before,
+            Map<String, Object> after) {
+        doRecordDirectoryMutation(entityType, entityId, operation, before, after);
+    }
+
+    private void doRecordDirectoryMutation(
+            String entityType,
+            UUID entityId,
+            String operation,
+            Map<String, Object> before,
+            Map<String, Object> after) {
         var authentication =
                 org.springframework.security.core.context.SecurityContextHolder.getContext()
                         .getAuthentication();
@@ -70,7 +90,7 @@ public class AuditService {
         String permission =
                 (entityType.startsWith("PortCallWindow")
                                 ? "PORT_CALL_WINDOW"
-                                : entityType.toUpperCase(java.util.Locale.ROOT))
+                                : entityType.toUpperCase(Locale.ROOT))
                         + "_"
                         + operation;
         if (!actor.hasRole(com.casms.identity.enums.Role.OPERATIONS_MANAGER)
@@ -84,15 +104,14 @@ public class AuditService {
         event.setActorUserId(actor.getUserId());
         event.setEntityType(entityType);
         event.setEntityId(entityId);
-        event.setAction(operation + "_" + entityType.toUpperCase(java.util.Locale.ROOT));
+        event.setAction(operation + "_" + entityType.toUpperCase(Locale.ROOT));
         event.setResult("SUCCESS");
-        java.util.Set<String> changedFields = new java.util.LinkedHashSet<>();
-        java.util.Set<String> fields = new java.util.LinkedHashSet<>(before.keySet());
-        fields.addAll(after.keySet());
-        for (String field : fields)
-            if (!java.util.Objects.equals(before.get(field), after.get(field)))
-                changedFields.add(field);
-        java.util.Map<String, Object> detail = new java.util.LinkedHashMap<>();
+
+        Set<String> changedFields = Stream.concat(before.keySet().stream(), after.keySet().stream())
+                .filter(field -> !Objects.equals(before.get(field), after.get(field)))
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+
+        Map<String, Object> detail = new LinkedHashMap<>();
         detail.put("actorUserId", actor.getUserId());
         detail.put(
                 "actorRoles",
@@ -100,13 +119,13 @@ public class AuditService {
                         .map(a -> a.getAuthority())
                         .filter(a -> a.startsWith("ROLE_"))
                         .toList());
-        detail.put("recordedAt", java.time.Instant.now());
+        detail.put("recordedAt", Instant.now());
         detail.put("changedFields", changedFields);
         detail.put("before", before);
         detail.put("after", after);
         try {
             event.setDetail(objectMapper.writeValueAsString(detail));
-        } catch (com.fasterxml.jackson.core.JsonProcessingException ex) {
+        } catch (JsonProcessingException ex) {
             throw new com.casms.common.exception.BusinessException(
                     org.springframework.http.HttpStatus.INTERNAL_SERVER_ERROR,
                     "DIRECTORY_AUDIT_FAILED",
@@ -121,28 +140,29 @@ public class AuditService {
      */
     @Transactional(propagation = Propagation.MANDATORY)
     public void recordPortWindowEvaluation(
-            UUID cruiseId, java.util.List<com.casms.ship.dto.PortWindowContract.Check> checks) {
+            UUID cruiseId, List<com.casms.ship.dto.PortWindowContract.Check> checks) {
         var auth =
                 org.springframework.security.core.context.SecurityContextHolder.getContext()
                         .getAuthentication();
         if (auth == null
                 || !(auth.getPrincipal()
-                        instanceof com.casms.security.principal.CasmsPrincipal actor))
+                        instanceof com.casms.security.principal.CasmsPrincipal actor)) {
             throw new com.casms.common.exception.BusinessException(
                     org.springframework.http.HttpStatus.UNAUTHORIZED,
                     "AUTH_REQUIRED",
                     "Yêu cầu đăng nhập.");
-        AuditLog log = new AuditLog();
-        log.setActorUserId(actor.getUserId());
-        log.setEntityType("Cruise");
-        log.setEntityId(cruiseId);
-        log.setAction("PORT_WINDOW_REVALIDATE");
-        log.setResult("SUCCESS");
+        }
+        AuditLog auditLog = new AuditLog();
+        auditLog.setActorUserId(actor.getUserId());
+        auditLog.setEntityType("Cruise");
+        auditLog.setEntityId(cruiseId);
+        auditLog.setAction("PORT_WINDOW_REVALIDATE");
+        auditLog.setResult("SUCCESS");
         try {
-            log.setDetail(objectMapper.writeValueAsString(checks));
-        } catch (com.fasterxml.jackson.core.JsonProcessingException ex) {
+            auditLog.setDetail(objectMapper.writeValueAsString(checks));
+        } catch (JsonProcessingException ex) {
             throw new IllegalStateException("Cannot capture Port window evidence", ex);
         }
-        auditRepository.saveAndFlush(log);
+        auditRepository.saveAndFlush(auditLog);
     }
 }
