@@ -50,7 +50,7 @@ public class TripPlanStopDraftDto {
     @Schema(
             type = "string",
             pattern = "^(0[0-9]|1[0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]$",
-            description = "Giờ cập cảng dự kiến tương đối",
+            description = "Giờ cập cảng bắt buộc, theo ngày cập cảng",
             example = "08:00:00")
     private LocalTime plannedArrivalTime;
 
@@ -62,7 +62,7 @@ public class TripPlanStopDraftDto {
     @Schema(
             type = "string",
             pattern = "^(0[0-9]|1[0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]$",
-            description = "Giờ rời cảng dự kiến tương đối",
+            description = "Giờ rời cảng bắt buộc, theo ngày rời cảng",
             example = "18:00:00")
     private LocalTime plannedDepartureTime;
 
@@ -88,6 +88,6 @@ public class TripPlanStopDraftDto {
     @Schema(description = "Đánh dấu là cảng đón khách (Embarkation)", example = "true")
     private Boolean isEmbarkation = false;
 
-    @Schema(description = "Đánh dấu là cảng trả khách (Disembarkation)", example = "false")
+    @Schema(description = "Chỉ bật cho lượt ghé cuối kết thúc hành trình. Lượt ghé trước cùng cảng phải là false", example = "false")
     private Boolean isDisembarkation = false;
 }

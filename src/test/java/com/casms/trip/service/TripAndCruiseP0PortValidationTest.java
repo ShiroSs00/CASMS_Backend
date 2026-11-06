@@ -860,6 +860,29 @@ public class TripAndCruiseP0PortValidationTest {
     }
 
     @Test
+    void removeDraftRejectsJoiningTwoVisitsToTheSamePort() {
+        Itinerary itinerary = new Itinerary();
+        itinerary.setItineraryId(UUID.randomUUID());
+        itinerary.setStatus(ItineraryStatus.DRAFT);
+        var stops = new ArrayList<CruiseStop>();
+        for (int i = 1; i <= 3; i++) {
+            var stop = new CruiseStop();
+            stop.setCruiseStopId(UUID.randomUUID());
+            stop.setItinerary(itinerary);
+            stop.setStopOrder(i);
+            stop.setPort(i == 2 ? portVN2 : portVN1);
+            stops.add(stop);
+        }
+        UUID intermediate = stops.get(1).getCruiseStopId();
+        when(cruiseStopRepository.findById(intermediate)).thenReturn(Optional.of(stops.get(1)));
+        when(cruiseStopRepository.findByItineraryItineraryIdOrderByStopOrderAsc(itinerary.getItineraryId()))
+                .thenReturn(stops);
+        assertEquals("CONSECUTIVE_SAME_PORT", assertThrows(BusinessException.class,
+                () -> cruiseStopService.removeDraft(intermediate)).getCode());
+        verify(cruiseStopRepository, never()).delete(any());
+    }
+
+    @Test
     @DisplayName("E43: validateVersion catches overlap and sequence issues")
     void test_E43_validatePlan_catchesAllTimeInvariants() {
         UUID versionId = UUID.randomUUID();

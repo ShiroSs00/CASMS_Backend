@@ -175,6 +175,9 @@ public class CruiseSchedulePreviewResponse {
         @Schema(description = "Thứ tự ghé cảng", example = "1")
         private Integer stopOrder;
 
+        @Schema(description = "Chỉ true cho lượt ghé cuối kết thúc chuyến")
+        private Boolean isDisembarkation;
+
         @Schema(description = "ID cảng ghé")
         private UUID portId;
 

@@ -187,6 +187,7 @@ class ScheduleMaterializationServiceTest {
         assertEquals(LocalDate.of(2026, 11, 1), day1.getCalendarDate());
         assertEquals(1, day1.getStops().size());
         assertEquals("VN-HPH", day1.getStops().get(0).getPortCode());
+        assertFalse(day1.getStops().getFirst().getIsDisembarkation());
 
         // Ngày 2 là sea day
         CruiseSchedulePreviewResponse.ProjectedDayDto day2 = res.getDays().get(1);
@@ -200,10 +201,38 @@ class ScheduleMaterializationServiceTest {
         assertEquals(LocalDate.of(2026, 11, 3), day3.getCalendarDate());
         assertEquals(1, day3.getStops().size());
         assertEquals("VN-DAN", day3.getStops().get(0).getPortCode());
+        assertTrue(day3.getStops().getFirst().getIsDisembarkation());
 
         // DB không bị ghi
         verify(itineraryRepository, never()).save(any());
         verify(cruiseStopRepository, never()).save(any());
+    }
+
+    @Test
+    void previewLabelsOnlyTheLastVisitWhenReturningToAnEarlierPort() {
+        TripPlanStop intermediate = new TripPlanStop();
+        intermediate.setStopId(UUID.randomUUID());
+        intermediate.setStopOrder(2);
+        intermediate.setPort(portDan);
+        intermediate.setArrivalDayNumber(2);
+        intermediate.setDepartureDayNumber(2);
+        intermediate.setPlannedArrivalTime(LocalTime.of(9, 0));
+        intermediate.setPlannedDepartureTime(LocalTime.of(18, 0));
+        var finalCall = testVersion.getStops().getLast();
+        finalCall.setStopOrder(3);
+        finalCall.setPort(portHph);
+        finalCall.setIsDisembarkation(true);
+        testVersion.getStops().add(1, intermediate);
+        testVersion.getDays().get(1).setDayType(ItineraryDayType.PORT_DAY);
+        when(tripScheduleVersionRepository.findById(testVersion.getVersionId()))
+                .thenReturn(Optional.of(testVersion));
+
+        var result = materializationService.previewSchedule(testVersion.getVersionId(), departureTime);
+        var calls = result.getDays().stream().flatMap(day -> day.getStops().stream()).toList();
+        assertEquals(List.of(false, false, true), calls.stream()
+                .map(CruiseSchedulePreviewResponse.ProjectedStopDto::getIsDisembarkation).toList());
+        assertEquals(calls.getFirst().getPortId(), calls.getLast().getPortId());
+        assertEquals(calls.getLast().getPortId(), result.getReturnPortId());
     }
 
     @Test

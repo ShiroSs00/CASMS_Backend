@@ -13,6 +13,6 @@ public record PublicCruiseItineraryResponse(
                       List<PortCall> portCalls) {}
     public record PortCall(Integer sequence, String portName, String countryCode,
                            String portTimeZoneId, Instant arrival, Instant departure,
-                           List<Visit> destinationVisits) {}
+                           List<Visit> destinationVisits, Boolean isDisembarkation) {}
     public record Visit(Integer sequence, String destinationName) {}
 }

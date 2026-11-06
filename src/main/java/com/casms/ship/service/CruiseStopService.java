@@ -427,6 +427,11 @@ public class CruiseStopService {
                             + ". Only DRAFT itineraries can be modified.");
         }
 
+        var remainingCalls = cruiseStopRepository.findByItineraryItineraryIdOrderByStopOrderAsc(
+                        itinerary.getItineraryId()).stream()
+                .filter(existing -> !cruiseStopId.equals(existing.getCruiseStopId()))
+                .map(CruiseStopService::routeCall).toList();
+        requireDistinctConsecutivePorts(remainingCalls);
         cruiseStopRepository.delete(stop);
         markItineraryContentModified(itinerary);
         log.info("Removed draft cruise stop: {}", cruiseStopId);
@@ -1000,6 +1005,11 @@ public class CruiseStopService {
             Instant arrival,
             Instant departure,
             List<CruiseStop> existingStops) {
+        var calls = new java.util.ArrayList<>(existingStops.stream()
+                .filter(stop -> currentStopId == null || !currentStopId.equals(stop.getCruiseStopId()))
+                .map(CruiseStopService::routeCall).toList());
+        calls.add(new PortCallSequenceRules.Call(null, stopOrder, portId, false));
+        requireDistinctConsecutivePorts(calls);
         if (arrival == null || departure == null) {
             return;
         }
@@ -1078,6 +1088,19 @@ public class CruiseStopService {
                                             : "Unknown"));
                 }
             }
+        }
+    }
+
+    private static PortCallSequenceRules.Call routeCall(CruiseStop stop) {
+        return new PortCallSequenceRules.Call(null, stop.getStopOrder(),
+                stop.getPort() == null ? null : stop.getPort().getPortId(), false);
+    }
+
+    private static void requireDistinctConsecutivePorts(List<PortCallSequenceRules.Call> calls) {
+        var violations = PortCallSequenceRules.validate(calls);
+        if (!violations.isEmpty()) {
+            var violation = violations.getFirst();
+            throw new BusinessException(violation.code(), violation.message());
         }
     }
 

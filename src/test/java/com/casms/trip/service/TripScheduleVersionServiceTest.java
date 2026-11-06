@@ -749,25 +749,104 @@ class TripScheduleVersionServiceTest {
 
     @Test
     void departurePortMetadataIsIndependentOfShoreCalls() {
+        trip.setDurationGroup(com.casms.trip.enums.TripDurationGroup.SHORT);
         version.getDays().getFirst().setDayType(ItineraryDayType.PORT_DAY);
         version.getDays().getFirst().setDeparturePort(samplePort);
         version.getDays().getFirst().setPlannedDepartureTime(LocalTime.of(8, 15));
         version.getDays().getLast().setDayType(ItineraryDayType.PORT_DAY);
-        for (int number = 1; number <= 2; number++) {
+        var intermediatePort = new Port();
+        intermediatePort.setPortId(UUID.randomUUID());
+        intermediatePort.setPortName("Cảng ghé giữa chuyến");
+        for (int number = 1; number <= 3; number++) {
             TripPlanStop stop = new TripPlanStop();
             stop.setClientKey("call-" + number);
             stop.setVersion(version);
-            stop.setPort(samplePort);
+            stop.setPort(number == 2 ? intermediatePort : samplePort);
             stop.setStopOrder(number);
-            stop.setArrivalDayNumber(number);
-            stop.setDepartureDayNumber(number);
-            stop.setPlannedArrivalTime(LocalTime.of(9, 0));
-            stop.setPlannedDepartureTime(LocalTime.of(10, 0));
-            stop.setIsDisembarkation(number == 2);
+            stop.setArrivalDayNumber(number == 3 ? 2 : 1);
+            stop.setDepartureDayNumber(number == 3 ? 2 : 1);
+            stop.setPlannedArrivalTime(LocalTime.of(number == 2 ? 12 : 9, 0));
+            stop.setPlannedDepartureTime(LocalTime.of(number == 2 ? 13 : 10, 0));
+            stop.setIsDisembarkation(number == 3);
             version.getStops().add(stop);
         }
         assertTrue(versionService.validateVersionInternal(version).isEmpty());
         versionService.syncTripTypeFromStops(version);
         assertEquals(com.casms.ship.enums.ItineraryType.ROUND_TRIP, trip.getTripType());
+    }
+
+    @Test
+    void draftRejectsConsecutiveIdenticalPortsAndDuplicateTerminalCalls() {
+        var secondPort = new Port();
+        secondPort.setPortId(UUID.randomUUID());
+        secondPort.setStatus(PortStatus.ACTIVE);
+        when(versionRepository.findById(version.getVersionId())).thenReturn(Optional.of(version));
+        when(portRepository.findById(samplePort.getPortId())).thenReturn(Optional.of(samplePort));
+        var first = draftCall(1, samplePort.getPortId(), 1, LocalTime.of(9, 0), LocalTime.of(10, 0));
+        var last = draftCall(2, samplePort.getPortId(), 2, LocalTime.of(9, 0), LocalTime.of(10, 0));
+        last.setIsDisembarkation(true);
+        var request = routeDraft(last, first); // Payload order is not route order.
+        assertEquals("CONSECUTIVE_SAME_PORT", assertThrows(BusinessException.class,
+                () -> versionService.saveDraftById(version.getVersionId(), request, creatorId)).getCode());
+        when(portRepository.findById(secondPort.getPortId())).thenReturn(Optional.of(secondPort));
+        last.setPortId(secondPort.getPortId());
+        first.setIsDisembarkation(true);
+        assertEquals("DUPLICATE_DISEMBARKATION", assertThrows(BusinessException.class,
+                () -> versionService.saveDraftById(version.getVersionId(), request, creatorId)).getCode());
+        last.setIsDisembarkation(false);
+        assertEquals("DISEMBARKATION_MUST_BE_FINAL_STOP", assertThrows(BusinessException.class,
+                () -> versionService.saveDraftById(version.getVersionId(), request, creatorId)).getCode());
+        verify(versionRepository, never()).save(any());
+    }
+
+    @Test
+    void draftRejectsMissingClockTimeAndOvernightOverlapAtSecondPrecision() {
+        var secondPort = new Port();
+        secondPort.setPortId(UUID.randomUUID());
+        secondPort.setStatus(PortStatus.ACTIVE);
+        when(versionRepository.findById(version.getVersionId())).thenReturn(Optional.of(version));
+        when(portRepository.findById(samplePort.getPortId())).thenReturn(Optional.of(samplePort));
+        when(portRepository.findById(secondPort.getPortId())).thenReturn(Optional.of(secondPort));
+        var first = draftCall(1, samplePort.getPortId(), 1, LocalTime.of(23, 0), LocalTime.of(8, 0, 20));
+        first.setDepartureDayNumber(2);
+        var last = draftCall(2, secondPort.getPortId(), 2, null, LocalTime.of(10, 0));
+        last.setIsDisembarkation(true);
+        var request = routeDraft(first, last);
+        assertEquals("PORT_CALL_TIME_REQUIRED", assertThrows(BusinessException.class,
+                () -> versionService.saveDraftById(version.getVersionId(), request, creatorId)).getCode());
+        last.setPlannedArrivalTime(LocalTime.of(8, 0, 19));
+        assertEquals("PORT_CALL_OVERLAP", assertThrows(BusinessException.class,
+                () -> versionService.saveDraftById(version.getVersionId(), request, creatorId)).getCode());
+        last.setPlannedArrivalTime(LocalTime.of(8, 0, 20));
+        assertEquals("NON_POSITIVE_TRANSIT_TIME", assertThrows(BusinessException.class,
+                () -> versionService.saveDraftById(version.getVersionId(), request, creatorId)).getCode());
+        verify(versionRepository, never()).save(any());
+    }
+
+    private static TripPlanStopDraftDto draftCall(int order, UUID portId, int day,
+            LocalTime arrival, LocalTime departure) {
+        var call = new TripPlanStopDraftDto();
+        call.setClientKey("call-" + order);
+        call.setPortId(portId);
+        call.setStopOrder(order);
+        call.setArrivalDayNumber(day);
+        call.setDepartureDayNumber(day);
+        call.setPlannedArrivalTime(arrival);
+        call.setPlannedDepartureTime(departure);
+        return call;
+    }
+
+    private static ScheduleDraftSaveRequest routeDraft(TripPlanStopDraftDto... calls) {
+        var request = new ScheduleDraftSaveRequest();
+        request.setExpectedRevision(1L);
+        var first = new TripPlanDayDraftDto();
+        first.setDayNumber(1);
+        first.setDayType(ItineraryDayType.PORT_DAY);
+        var last = new TripPlanDayDraftDto();
+        last.setDayNumber(2);
+        last.setDayType(ItineraryDayType.PORT_DAY);
+        request.setDays(List.of(first, last));
+        request.setStops(List.of(calls));
+        return request;
     }
 }

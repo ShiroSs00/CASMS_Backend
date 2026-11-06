@@ -439,6 +439,11 @@ public class ScheduleMaterializationService {
                 cruiseStopRepository.findByItineraryItineraryIdOrderByStopOrderAsc(
                         itinerary.getItineraryId());
 
+        CruiseStop finalCall = stops.isEmpty() ? null : stops.getLast();
+        UUID disembarkationStopId = finalCall != null && finalCall.getPort() != null
+                        && cruise.getReturnPort() != null
+                        && Objects.equals(finalCall.getPort().getPortId(), cruise.getReturnPort().getPortId())
+                ? finalCall.getCruiseStopId() : null;
         Map<UUID, List<CruiseStop>> dayStopsMap = new HashMap<>();
         for (CruiseStop stop : stops) {
             UUID dayId =
@@ -481,6 +486,8 @@ public class ScheduleMaterializationService {
                                         return CruiseSchedulePreviewResponse.ProjectedStopDto
                                                 .builder()
                                                 .cruiseStopId(s.getCruiseStopId())
+                                                .isDisembarkation(disembarkationStopId != null
+                                                        && disembarkationStopId.equals(s.getCruiseStopId()))
                                                 .sourceStopId(sourceStopId)
                                                 .stopOrder(s.getStopOrder())
                                                 .portId(p != null ? p.getPortId() : null)
@@ -778,6 +785,16 @@ public class ScheduleMaterializationService {
             }
         }
 
+        var routeViolations = PortCallSequenceRules.validate(planStops.stream()
+                .map(stop -> new PortCallSequenceRules.Call(stop.getClientKey(), stop.getStopOrder(),
+                        stop.getPort() == null ? null : stop.getPort().getPortId(),
+                        Boolean.TRUE.equals(stop.getIsDisembarkation())))
+                .toList());
+        if (!routeViolations.isEmpty()) {
+            var violation = routeViolations.getFirst();
+            throw new BusinessException(violation.code(), violation.message());
+        }
+
         // Tính toán các lần cập cảng (Stops)
         List<CruiseSchedulePreviewResponse.ProjectedStopDto> projectedStops = new ArrayList<>();
         Set<Integer> stopOrders = new HashSet<>();
@@ -858,6 +875,7 @@ public class ScheduleMaterializationService {
             CruiseSchedulePreviewResponse.ProjectedStopDto stopDto =
                     CruiseSchedulePreviewResponse.ProjectedStopDto.builder()
                             .sourceStopId(stop.getStopId())
+                            .isDisembarkation(stop == lastStop)
                             .stopOrder(stop.getStopOrder())
                             .portId(port.getPortId())
                             .portCode(port.getPortCode())

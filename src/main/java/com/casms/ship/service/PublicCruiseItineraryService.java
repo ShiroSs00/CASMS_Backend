@@ -30,7 +30,7 @@ public class PublicCruiseItineraryService {
                                 stop.getCountryCode(), stop.getPortTimeZoneId(), stop.getPlannedArrival(),
                                 stop.getPlannedDeparture(), stop.getVisits().stream().map(visit ->
                                 new PublicCruiseItineraryResponse.Visit(visit.sequence(), visit.destinationName()))
-                                .toList())).toList())).toList();
+                                .toList(), stop.getIsDisembarkation())).toList())).toList();
         return new PublicCruiseItineraryResponse(cruiseId, schedule.getDepartureDatetime(),
                 schedule.getReturnDatetime(), schedule.getDurationDays(), schedule.getDurationNights(), days);
     }

@@ -11,6 +11,7 @@ import com.casms.common.exception.BusinessException;
 import com.casms.common.exception.ResourceNotFoundException;
 import com.casms.identity.entity.User;
 import com.casms.identity.repository.UserRepository;
+import com.casms.ship.service.PortCallSequenceRules;
 import com.casms.ship.entity.Destination;
 import com.casms.ship.entity.Port;
 import com.casms.ship.enums.CruiseStopArrivalMethod;
@@ -398,19 +399,38 @@ public class TripScheduleVersionService {
             }
         }
 
+        var routeViolations = PortCallSequenceRules.validate(stopDtos.stream()
+                .map(stop -> new PortCallSequenceRules.Call(stop.getClientKey(), stop.getStopOrder(),
+                        stop.getPortId(), Boolean.TRUE.equals(stop.getIsDisembarkation())))
+                .toList());
+        if (!routeViolations.isEmpty()) {
+            var violation = routeViolations.getFirst();
+            throw new BusinessException(HttpStatus.BAD_REQUEST, violation.code(), violation.message(),
+                    Map.of("clientKey", violation.call().key(), "field", violation.field()));
+        }
+        for (TripPlanStopDraftDto stop : stopDtos) {
+            if (stop.getPlannedArrivalTime() == null || stop.getPlannedDepartureTime() == null) {
+                String field = stop.getPlannedArrivalTime() == null
+                        ? "plannedArrivalTime" : "plannedDepartureTime";
+                throw new BusinessException(HttpStatus.BAD_REQUEST, "PORT_CALL_TIME_REQUIRED",
+                        "Mỗi lượt ghé phải có giờ cập và giờ rời cảng cụ thể.",
+                        Map.of("clientKey", stop.getClientKey(), "field", field));
+            }
+        }
+
         // BE-12: Port Call Timeline, Overlap, and Transit Time Invariants
         for (int i = 0; i < stopDtos.size(); i++) {
             TripPlanStopDraftDto stopA = stopDtos.get(i);
             Port portA = portCache.get(stopA.getPortId());
-            long arrMinA =
-                    toTimelineMinutes(
+            long arrivalSecondA =
+                    toTimelineSeconds(
                             stopA.getArrivalDayNumber(), stopA.getPlannedArrivalTime(), false);
-            long depMinA =
-                    toTimelineMinutes(
+            long departureSecondA =
+                    toTimelineSeconds(
                             stopA.getDepartureDayNumber(), stopA.getPlannedDepartureTime(), true);
 
             // Invariant: departure must be strictly after arrival
-            if (depMinA <= arrMinA) {
+            if (departureSecondA <= arrivalSecondA) {
                 throw new BusinessException(
                         HttpStatus.BAD_REQUEST,
                         "INVALID_PORT_CALL_TIMES",
@@ -436,17 +456,17 @@ public class TripScheduleVersionService {
             for (int j = i + 1; j < stopDtos.size(); j++) {
                 TripPlanStopDraftDto stopB = stopDtos.get(j);
                 Port portB = portCache.get(stopB.getPortId());
-                long arrMinB =
-                        toTimelineMinutes(
+                long arrivalSecondB =
+                        toTimelineSeconds(
                                 stopB.getArrivalDayNumber(), stopB.getPlannedArrivalTime(), false);
-                long depMinB =
-                        toTimelineMinutes(
+                long departureSecondB =
+                        toTimelineSeconds(
                                 stopB.getDepartureDayNumber(),
                                 stopB.getPlannedDepartureTime(),
                                 true);
 
                 // Invariant: Overlap check arrA < depB && arrB < depA
-                if (arrMinA < depMinB && arrMinB < depMinA) {
+                if (arrivalSecondA < departureSecondB && arrivalSecondB < departureSecondA) {
                     throw new BusinessException(
                             HttpStatus.BAD_REQUEST,
                             "PORT_CALL_OVERLAP",
@@ -474,7 +494,7 @@ public class TripScheduleVersionService {
                 }
 
                 // Invariant: Non-positive transit time between two distinct ports on boundary
-                if (depMinA == arrMinB || depMinB == arrMinA) {
+                if (departureSecondA == arrivalSecondB || departureSecondB == arrivalSecondA) {
                     if (!stopA.getPortId().equals(stopB.getPortId())) {
                         throw new BusinessException(
                                 HttpStatus.BAD_REQUEST,
@@ -494,7 +514,7 @@ public class TripScheduleVersionService {
 
                 // Invariant: stopOrder chronological sequence
                 if (stopA.getStopOrder() != null && stopB.getStopOrder() != null) {
-                    if (stopA.getStopOrder() < stopB.getStopOrder() && depMinA > arrMinB) {
+                    if (stopA.getStopOrder() < stopB.getStopOrder() && departureSecondA > arrivalSecondB) {
                         throw new BusinessException(
                                 HttpStatus.BAD_REQUEST,
                                 "INVALID_STOP_SEQUENCE_TIME",
@@ -511,7 +531,7 @@ public class TripScheduleVersionService {
                                                 ? portB.getPortName()
                                                 : stopB.getClientKey())
                                         + " cập).");
-                    } else if (stopB.getStopOrder() < stopA.getStopOrder() && depMinB > arrMinA) {
+                    } else if (stopB.getStopOrder() < stopA.getStopOrder() && departureSecondB > arrivalSecondA) {
                         throw new BusinessException(
                                 HttpStatus.BAD_REQUEST,
                                 "INVALID_STOP_SEQUENCE_TIME",
@@ -693,12 +713,12 @@ public class TripScheduleVersionService {
                         entryDto.getEndDayNumber() != null
                                 ? entryDto.getEndDayNumber()
                                 : excStartDay;
-                long excStartMin =
-                        toTimelineMinutes(excStartDay, entryDto.getPlannedStartTime(), false);
-                long excEndMin = toTimelineMinutes(excEndDay, entryDto.getPlannedEndTime(), true);
+                long excStartSecond =
+                        toTimelineSeconds(excStartDay, entryDto.getPlannedStartTime(), false);
+                long excEndSecond = toTimelineSeconds(excEndDay, entryDto.getPlannedEndTime(), true);
 
-                long stopArrMin =
-                        toTimelineMinutes(
+                long stopArrivalSecond =
+                        toTimelineSeconds(
                                 stop.getArrivalDayNumber(), stop.getPlannedArrivalTime(), false);
                 int deadlineDay =
                         stop.getAllAboardDayNumber() != null
@@ -708,9 +728,9 @@ public class TripScheduleVersionService {
                         stop.getAllAboardTime() != null
                                 ? stop.getAllAboardTime()
                                 : stop.getPlannedDepartureTime();
-                long deadlineMin = toTimelineMinutes(deadlineDay, deadlineTime, true);
+                long deadlineSecond = toTimelineSeconds(deadlineDay, deadlineTime, true);
 
-                if (excStartMin < stopArrMin) {
+                if (excStartSecond < stopArrivalSecond) {
                     throw new BusinessException(
                             HttpStatus.BAD_REQUEST,
                             "SHORE_EXCURSION_OUTSIDE_PORT_WINDOW",
@@ -730,7 +750,7 @@ public class TripScheduleVersionService {
                                     + stop.getPlannedArrivalTime()
                                     + ").");
                 }
-                if (excEndMin > deadlineMin) {
+                if (excEndSecond > deadlineSecond) {
                     throw new BusinessException(
                             HttpStatus.BAD_REQUEST,
                             "SHORE_EXCURSION_OUTSIDE_PORT_WINDOW",
@@ -1722,6 +1742,18 @@ public class TripScheduleVersionService {
             stopsByDay.put(i, new ArrayList<>());
         }
 
+        for (var violation : PortCallSequenceRules.validate(stops.stream()
+                .map(stop -> new PortCallSequenceRules.Call(stop.getClientKey(), stop.getStopOrder(),
+                        stop.getPort() == null ? null : stop.getPort().getPortId(),
+                        Boolean.TRUE.equals(stop.getIsDisembarkation())))
+                .toList())) {
+            violations.add(PlanViolation.builder()
+                    .code(violation.code()).severity("ERROR").entityType("STOP")
+                    .clientKey(violation.call().key()).field(violation.field())
+                    .fieldPath("stops[clientKey=" + violation.call().key() + "]." + violation.field())
+                    .message(violation.message()).build());
+        }
+
         boolean hasEmbarkation = false;
         boolean hasDisembarkation = false;
 
@@ -1808,14 +1840,24 @@ public class TripScheduleVersionService {
                 hasDisembarkation = true;
             }
 
+            if (stop.getPlannedArrivalTime() == null || stop.getPlannedDepartureTime() == null) {
+                String field = stop.getPlannedArrivalTime() == null
+                        ? "plannedArrivalTime" : "plannedDepartureTime";
+                violations.add(PlanViolation.builder().code("PORT_CALL_TIME_REQUIRED")
+                        .severity("ERROR").entityType("STOP").clientKey(stop.getClientKey())
+                        .dayNumber(stop.getArrivalDayNumber()).field(field)
+                        .fieldPath("stops[clientKey=" + stop.getClientKey() + "]." + field)
+                        .message("Mỗi lượt ghé phải có giờ cập và giờ rời cảng cụ thể.").build());
+            }
+
             // Time logic for port call (both same day and cross day)
-            long stopArrMin =
-                    toTimelineMinutes(
+            long stopArrivalSecond =
+                    toTimelineSeconds(
                             stop.getArrivalDayNumber(), stop.getPlannedArrivalTime(), false);
-            long stopDepMin =
-                    toTimelineMinutes(
+            long stopDepartureSecond =
+                    toTimelineSeconds(
                             stop.getDepartureDayNumber(), stop.getPlannedDepartureTime(), true);
-            if (stopDepMin <= stopArrMin) {
+            if (stopDepartureSecond <= stopArrivalSecond) {
                 violations.add(
                         PlanViolation.builder()
                                 .code("INVALID_PORT_CALL_TIMES")
@@ -1917,19 +1959,19 @@ public class TripScheduleVersionService {
         for (int i = 0; i < stops.size(); i++) {
             TripPlanStop stopA = stops.get(i);
             long arrA =
-                    toTimelineMinutes(
+                    toTimelineSeconds(
                             stopA.getArrivalDayNumber(), stopA.getPlannedArrivalTime(), false);
             long depA =
-                    toTimelineMinutes(
+                    toTimelineSeconds(
                             stopA.getDepartureDayNumber(), stopA.getPlannedDepartureTime(), true);
 
             for (int j = i + 1; j < stops.size(); j++) {
                 TripPlanStop stopB = stops.get(j);
                 long arrB =
-                        toTimelineMinutes(
+                        toTimelineSeconds(
                                 stopB.getArrivalDayNumber(), stopB.getPlannedArrivalTime(), false);
                 long depB =
-                        toTimelineMinutes(
+                        toTimelineSeconds(
                                 stopB.getDepartureDayNumber(),
                                 stopB.getPlannedDepartureTime(),
                                 true);
@@ -2116,7 +2158,7 @@ public class TripScheduleVersionService {
                             .fieldPath("stops")
                             .actionHint("ADD_DISEMBARKATION_STOP")
                             .message(
-                                    "Lịch trình bắt buộc phải có ít nhất một điểm trả khách"
+                                    "Lịch trình bắt buộc phải có đúng một lượt ghé kết thúc"
                                         + " (isDisembarkation = true) tại Ngày cuối cùng ("
                                             + trip.getDurationDays()
                                             + ").")
@@ -2271,8 +2313,8 @@ public class TripScheduleVersionService {
                     && entry.getEndDayNumber() != null
                     && entry.getPlannedStartTime() != null
                     && entry.getPlannedEndTime() != null
-                    && toTimelineMinutes(entry.getEndDayNumber(), entry.getPlannedEndTime(), true)
-                            <= toTimelineMinutes(
+                    && toTimelineSeconds(entry.getEndDayNumber(), entry.getPlannedEndTime(), true)
+                            <= toTimelineSeconds(
                                     entry.getStartDayNumber(),
                                     entry.getPlannedStartTime(),
                                     false)) {
@@ -2983,12 +3025,12 @@ public class TripScheduleVersionService {
         }
     }
 
-    public static long toTimelineMinutes(int dayNumber, LocalTime time, boolean isEnd) {
-        long base = (dayNumber - 1) * 1440L;
+    private static long toTimelineSeconds(int dayNumber, LocalTime time, boolean isEnd) {
+        long base = (dayNumber - 1) * 86400L;
         if (time != null) {
-            return base + (time.toSecondOfDay() / 60);
+            return base + time.toSecondOfDay();
         }
-        return isEnd ? base + 1440L : base;
+        return isEnd ? base + 86400L : base;
     }
 
     @Transactional(readOnly = true)
