@@ -1,5 +1,11 @@
 # Audit hồ sơ tàu CASMS
 
+## Phạm vi triển khai đã chốt
+
+Hồ sơ tàu chỉ bổ sung bốn trường tùy chọn: đơn vị đóng tàu (`manufacturerName`), nơi xuất xứ (`origin`), năm đóng (`productionYear`) và loại động cơ (`engineType`). Các trường lưu trực tiếp trên `Ship` và có thể nhập khi tạo hoặc cập nhật tàu. Nhập lại mô hình 3D giữ nguyên bốn giá trị này.
+
+Các phần dưới ghi lại kết quả audit và phương án khảo sát ban đầu. Phạm vi triển khai hiện tại nằm trong mục trên.
+
 ## A. Đồng bộ Git
 
 Nhánh trước và sau: `feature/CASMS-86-3d-ship-model-import`. Sau `git fetch --all`, HEAD, nhánh feature trên origin và `origin/main` đều ở `a629211539d4f2e1641d12c6249ce8dc4862c5ed`. `git merge --no-commit --no-ff origin/main` trả về `Already up to date`. Không có commit mới hoặc xung đột. Các tệp untracked có từ đầu gồm `.github/`, `AGENTS.md`, `artifacts/` và `scripts/__pycache__/`.

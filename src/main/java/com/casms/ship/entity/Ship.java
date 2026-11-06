@@ -7,6 +7,8 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
 
+import org.hibernate.annotations.DynamicUpdate;
+
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.UUID;
@@ -14,6 +16,7 @@ import java.util.UUID;
 @Getter
 @Setter
 @Entity
+@DynamicUpdate
 @Table(name = "\"Ship\"")
 public class Ship {
 
@@ -54,6 +57,18 @@ public class Ship {
 
     @Column(name = "commission_date")
     private LocalDate commissionDate;
+
+    @Column(name = "manufacturer_name", length = 150)
+    private String manufacturerName;
+
+    @Column(name = "origin", length = 100)
+    private String origin;
+
+    @Column(name = "production_year")
+    private Integer productionYear;
+
+    @Column(name = "engine_type", length = 100)
+    private String engineType;
 
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;

@@ -6,6 +6,7 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 import jakarta.validation.constraints.AssertTrue;
+import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.PastOrPresent;
 import jakarta.validation.constraints.Pattern;
@@ -44,6 +45,23 @@ public class ShipCreateRequest {
     @Schema(description = "Ngày đưa vào hoạt động / hạ thủy", example = "2024-01-15")
     @PastOrPresent
     private LocalDate commissionDate;
+
+    @Schema(description = "Nhà máy hoặc đơn vị đóng tàu")
+    @Size(max = 150)
+    private String manufacturerName;
+
+    @Schema(description = "Nơi xuất xứ của tàu")
+    @Size(max = 100)
+    private String origin;
+
+    @Schema(description = "Năm đóng tàu")
+    @Min(1)
+    @Max(9999)
+    private Integer productionYear;
+
+    @Schema(description = "Loại động cơ")
+    @Size(max = 100)
+    private String engineType;
 
     @Schema(
             description =

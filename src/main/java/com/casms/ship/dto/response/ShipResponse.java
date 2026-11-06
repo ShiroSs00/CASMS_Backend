@@ -45,6 +45,18 @@ public class ShipResponse {
     @Schema(description = "Ngày hạ thủy", example = "2024-01-15")
     private LocalDate commissionDate;
 
+    @Schema(description = "Nhà máy hoặc đơn vị đóng tàu")
+    private String manufacturerName;
+
+    @Schema(description = "Nơi xuất xứ của tàu")
+    private String origin;
+
+    @Schema(description = "Năm đóng tàu")
+    private Integer productionYear;
+
+    @Schema(description = "Loại động cơ")
+    private String engineType;
+
     @Schema(description = "Thời điểm tạo")
     private Instant createdAt;
 

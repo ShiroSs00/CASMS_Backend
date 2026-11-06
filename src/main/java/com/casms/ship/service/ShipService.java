@@ -73,6 +73,10 @@ public class ShipService {
         ship.setLengthMeters(request.getLengthMeters());
         ship.setBeamMeters(request.getBeamMeters());
         ship.setCommissionDate(request.getCommissionDate());
+        ship.setManufacturerName(request.getManufacturerName());
+        ship.setOrigin(request.getOrigin());
+        ship.setProductionYear(request.getProductionYear());
+        ship.setEngineType(request.getEngineType());
 
         ship = shipRepository.save(ship);
         return mapToResponse(ship);
@@ -140,6 +144,19 @@ public class ShipService {
         }
         if (request.getLengthMeters() != null) ship.setLengthMeters(request.getLengthMeters());
         if (request.getBeamMeters() != null) ship.setBeamMeters(request.getBeamMeters());
+
+        if (request.getManufacturerName() != null) {
+            ship.setManufacturerName(request.getManufacturerName());
+        }
+        if (request.getOrigin() != null) {
+            ship.setOrigin(request.getOrigin());
+        }
+        if (request.getProductionYear() != null) {
+            ship.setProductionYear(request.getProductionYear());
+        }
+        if (request.getEngineType() != null) {
+            ship.setEngineType(request.getEngineType());
+        }
 
         ship = shipRepository.save(ship);
         return mapToResponse(ship);
@@ -366,6 +383,10 @@ public class ShipService {
         res.setLengthMeters(ship.getLengthMeters());
         res.setBeamMeters(ship.getBeamMeters());
         res.setCommissionDate(ship.getCommissionDate());
+        res.setManufacturerName(ship.getManufacturerName());
+        res.setOrigin(ship.getOrigin());
+        res.setProductionYear(ship.getProductionYear());
+        res.setEngineType(ship.getEngineType());
         res.setCreatedAt(ship.getCreatedAt());
         res.setUpdatedAt(ship.getUpdatedAt());
         return res;

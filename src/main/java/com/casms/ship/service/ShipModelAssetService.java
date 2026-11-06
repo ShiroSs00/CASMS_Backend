@@ -178,6 +178,10 @@ public class ShipModelAssetService {
             ship.setLengthMeters(supplements.getLengthMeters());
             ship.setBeamMeters(supplements.getBeamMeters());
             ship.setCommissionDate(supplements.getCommissionDate());
+            ship.setManufacturerName(supplements.getManufacturerName());
+            ship.setOrigin(supplements.getOrigin());
+            ship.setProductionYear(supplements.getProductionYear());
+            ship.setEngineType(supplements.getEngineType());
         }
         syncShipFromManifest(ship, manifest, true);
         ship = ships.saveAndFlush(ship);

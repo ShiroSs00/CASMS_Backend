@@ -1195,7 +1195,16 @@ class ShipModelImportPostgresIntegrationTest {
                         token,
                         201);
         JsonNode second =
-                createUsingModel(key, Map.of("commissionDate", "2020-01-02"), token, 201);
+                createUsingModel(
+                        key,
+                        Map.of(
+                                "commissionDate", "2020-01-02",
+                                "manufacturerName", "Example Shipyard",
+                                "origin", "Vietnam",
+                                "productionYear", 2019,
+                                "engineType", "Diesel"),
+                        token,
+                        201);
         assertNotEquals(first.path("shipId").asText(), second.path("shipId").asText());
         assertNotEquals(first.path("shipCode").asText(), second.path("shipCode").asText());
         assertEquals("Mini Ship", first.path("shipName").asText());
@@ -1217,6 +1226,29 @@ class ShipModelImportPostgresIntegrationTest {
                         key));
         UUID firstId = UUID.fromString(first.path("shipId").asText()),
                 secondId = UUID.fromString(second.path("shipId").asText());
+        assertEquals("Example Shipyard", second.path("manufacturerName").asText());
+        assertEquals("Vietnam", second.path("origin").asText());
+        assertEquals(2019, second.path("productionYear").asInt());
+        assertEquals("Diesel", second.path("engineType").asText());
+        mockMvc.perform(
+                        org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                                .patch("/ships/{shipId}", secondId)
+                                .header("Authorization", "Bearer " + token)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"productionYear\":0}"))
+                .andExpect(status().isBadRequest());
+        mockMvc.perform(
+                        org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                                .patch("/ships/{shipId}", secondId)
+                                .header("Authorization", "Bearer " + token)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"engineType\":\"Hybrid\"}"))
+                .andExpect(status().isOk());
+        Ship saved = ships.findById(secondId).orElseThrow();
+        assertEquals("Example Shipyard", saved.getManufacturerName());
+        assertEquals("Vietnam", saved.getOrigin());
+        assertEquals(2019, saved.getProductionYear());
+        assertEquals("Hybrid", saved.getEngineType());
         assertEquals(1, models.findByShipShipIdOrderByCreatedAtDesc(firstId).size());
         assertEquals(1, models.findByShipShipIdOrderByCreatedAtDesc(secondId).size());
     }

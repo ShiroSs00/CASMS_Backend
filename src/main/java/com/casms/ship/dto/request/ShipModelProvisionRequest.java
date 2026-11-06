@@ -19,7 +19,11 @@ public record ShipModelProvisionRequest(
         @Min(1) Integer totalDecks,
         @Positive Double lengthMeters,
         @Positive Double beamMeters,
-        @PastOrPresent LocalDate commissionDate) {
+        @PastOrPresent LocalDate commissionDate,
+        @Size(max = 150) String manufacturerName,
+        @Size(max = 100) String origin,
+        @Min(1) @Max(9999) Integer productionYear,
+        @Size(max = 100) String engineType) {
     public ShipCreateRequest supplements() {
         var request = new ShipCreateRequest();
         request.setShipName(shipName);
@@ -29,6 +33,10 @@ public record ShipModelProvisionRequest(
         request.setLengthMeters(lengthMeters);
         request.setBeamMeters(beamMeters);
         request.setCommissionDate(commissionDate);
+        request.setManufacturerName(manufacturerName);
+        request.setOrigin(origin);
+        request.setProductionYear(productionYear);
+        request.setEngineType(engineType);
         return request;
     }
 }
