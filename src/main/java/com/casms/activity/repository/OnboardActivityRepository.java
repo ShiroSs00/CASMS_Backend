@@ -19,6 +19,12 @@ import java.util.UUID;
 
 @Repository
 public interface OnboardActivityRepository extends JpaRepository<OnboardActivity, UUID> {
+    @Query(value="SELECT EXISTS(SELECT 1 FROM \"TripPlanEntry\" WHERE source_activity_id=:id) OR EXISTS(SELECT 1 FROM \"OnboardActivity\" WHERE source_activity_id=:id)", nativeQuery=true)
+    boolean isReferencedSource(@Param("id") UUID id);
+
+    List<OnboardActivity> findByCatalogEntryTrue();
+    List<OnboardActivity> findByCatalogEntryFalse();
+
     Optional<OnboardActivity> findByActivityCode(String activityCode);
 
     boolean existsByActivityCode(String activityCode);

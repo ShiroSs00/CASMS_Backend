@@ -69,6 +69,44 @@ public class ActivityController {
                     String currencyCode,
             @Schema(description = "ID chuyến du thuyền") @NotNull UUID cruiseId) {}
 
+    @Schema(description="Independent activity catalog; schedule and staff are assigned on the cruise occurrence")
+    public record ActivityCatalogRequest(
+            @NotBlank @Size(max=200) String activityName,
+            @Size(max=1000) String description,
+            com.casms.activity.enums.OnboardActivityCategory category,
+            @NotNull @Positive Integer capacity,
+            @DecimalMin("0.0") BigDecimal price,
+            @Size(min=3,max=3) String currencyCode,
+            @Null(message="Set startTime on the cruise schedule, not the catalog") Instant startTime,
+            @Null(message="Set endTime on the cruise schedule, not the catalog") Instant endTime,
+            @Null UUID cruiseId, @Null UUID deckId, @Null UUID cabinId, @Null String location,
+            @Null UUID responsibleUserId) {}
+
+    public record ActivityScheduleRequest(
+            @NotNull UUID sourceActivityId,
+            @NotNull Instant startTime, @NotNull Instant endTime,
+            @NotBlank @Size(max=250) String location,
+            UUID deckId, UUID cabinId, @Positive Integer capacity) {}
+
+    @GetMapping("/catalog")
+    @PreAuthorize("hasAuthority('ACTIVITY_READ') or (hasRole('CRUISE_MANAGER') and hasAuthority('CRUISE_UPDATE_DRAFT'))")
+    public ApiResponse<List<ActivityView>> catalog() {
+        return ApiResponse.success(service.catalog().stream().map(ActivityView::of).toList());
+    }
+
+    @PutMapping("/catalog/{id}")
+    @PreAuthorize("hasAuthority('ACTIVITY_UPDATE')")
+    public ApiResponse<ActivityView> updateCatalog(@PathVariable UUID id, @Valid @RequestBody ActivityCatalogRequest r) {
+        return ApiResponse.success(ActivityView.of(service.saveCatalog(id, catalogEntity(r))));
+    }
+
+    private static OnboardActivity catalogEntity(ActivityCatalogRequest r) {
+        var a = new OnboardActivity();
+        a.setActivityName(r.activityName()); a.setDescription(r.description()); a.setCategory(r.category());
+        a.setCapacity(r.capacity()); a.setPrice(r.price()); a.setCurrencyCode(r.currencyCode());
+        return a;
+    }
+
     @Schema(
             name = "ActivityRegistrationRequest",
             description = "Thông tin đăng ký hoạt động hoặc tour tham quan")
@@ -102,7 +140,8 @@ public class ActivityController {
             BigDecimal price,
             String currencyCode,
             String status,
-            UUID cruiseId) {
+            UUID cruiseId, boolean catalogEntry, UUID sourceActivityId,
+            com.casms.activity.enums.OnboardActivityCategory category, UUID responsibleUserId) {
         public static ActivityView of(OnboardActivity a) {
             return new ActivityView(
                     a.getOnboardActivityId(),
@@ -121,7 +160,7 @@ public class ActivityController {
                     a.getPrice(),
                     a.getCurrencyCode(),
                     a.getStatus().name(),
-                    a.getCruise() != null ? a.getCruise().getCruiseId() : null);
+                    a.getCruise() != null ? a.getCruise().getCruiseId() : null, a.isCatalogEntry(), a.getSourceActivityId(), a.getCategory(), a.getResponsibleUserId());
         }
     }
 
@@ -217,15 +256,12 @@ public class ActivityController {
         return ApiResponse.success(new ActivityScheduleCheckView(id, conflicts == 0, conflicts));
     }
 
-    @Operation(summary = "Tạo hoạt động", description = "Tạo hoạt động mới trên chuyến du thuyền")
+    @Operation(summary = "Tạo hoạt động", description = "Tạo danh mục hoạt động độc lập; gắn lịch và người phụ trách trong chuyến sau")
     @PreAuthorize("hasAuthority('ACTIVITY_CREATE')")
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    public ApiResponse<ActivityView> create(@Valid @RequestBody ActivityRequest r) {
-        OnboardActivity a = new OnboardActivity();
-        apply(a, r);
-        return ApiResponse.success(
-                ActivityView.of(service.createActivity(a, r.cruiseId(), r.deckId(), r.cabinId())));
+    public ApiResponse<ActivityView> create(@Valid @RequestBody ActivityCatalogRequest r) {
+        return ApiResponse.success(ActivityView.of(service.saveCatalog(null, catalogEntity(r))));
     }
 
     @Operation(summary = "Cập nhật hoạt động", description = "Cập nhật thông tin hoạt động theo ID")

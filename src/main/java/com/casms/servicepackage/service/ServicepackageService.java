@@ -63,6 +63,18 @@ public class ServicepackageService {
     }
 
     public Service saveService(Service s) {
+        if (!s.isCanBuyPreCruise() && !s.isCanBuyOnboard())
+            throw new IllegalArgumentException("At least one service purchase stage is required");
+        if (s.getPreCruiseUsagePolicy() == null)
+            throw new IllegalArgumentException("Service usage policy is required");
+        if (s.getPreCruiseUsagePolicy() == ServiceUsagePolicy.UNLIMITED) {
+            if (s.getPreCruiseUsageLimit() != null) throw new IllegalArgumentException("UNLIMITED must not have a usage limit");
+        } else if (s.getPreCruiseUsageLimit() == null || s.getPreCruiseUsageLimit() < 1)
+            throw new IllegalArgumentException("Limited services require a positive usage limit");
+        if (s.getPreCruiseUsagePolicy() == ServiceUsagePolicy.PER_DAY && !s.isRequiresSchedule())
+            throw new IllegalArgumentException("PER_DAY prepaid services require scheduled reservations");
+        try { java.time.ZoneId.of(s.getUsageTimeZone()); }
+        catch (RuntimeException e) { throw new IllegalArgumentException("Invalid usage time zone"); }
         if (s.getServiceId() == null) s.setServiceCode(businessCodeGenerator.next("SV"));
         if (s.getServiceName() == null || s.getServiceName().isBlank())
             throw new IllegalArgumentException("Service code and name are required");

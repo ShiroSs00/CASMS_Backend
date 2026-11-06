@@ -41,6 +41,17 @@ public class ShipServiceAvailability {
         requireServices(cruiseId, List.of(serviceId));
     }
 
+    /** Request caller already holds Service lock, which also serializes deck unlink/status writes. */
+    public void requireServiceForRequest(UUID cruiseId, UUID serviceId) {
+        boolean available = Boolean.TRUE.equals(jdbc.queryForObject("""
+                SELECT EXISTS(SELECT 1 FROM "Cruise" c JOIN "Deck" d USING(ship_id)
+                  JOIN "DeckServiceAssignment" a USING(deck_id) JOIN "Service" s USING(service_id)
+                  WHERE c.cruise_id=? AND s.service_id=? AND s.status='ACTIVE')
+                """, Boolean.class, cruiseId, serviceId));
+        if (!available) throw new BusinessException(HttpStatus.UNPROCESSABLE_ENTITY,
+                "SERVICE_NOT_AVAILABLE_ON_SHIP", "Service must be assigned to the cruise ship before registration");
+    }
+
     public void requireServiceForPackage(UUID packageId, UUID serviceId) {
         // Both cruise-owned drafts and catalogue packages already attached to cruises must be
         // checked.

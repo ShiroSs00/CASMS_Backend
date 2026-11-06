@@ -35,13 +35,28 @@ class ServiceRequestServiceTest {
     @Mock UserRepository users;
     @Mock ServiceScheduleRepository schedules;
     @Mock com.casms.pos.PosLedgerService posLedger;
+    @Mock ServiceUsageQuotaService usageQuotas;
+    @Mock com.casms.servicepackage.repository.ServiceUsageRepository usages;
+    @Mock com.casms.cruisepackage.service.CruisePackageEntitlementService fareEntitlements;
+    @Mock ShipServiceAvailability shipServices;
     @InjectMocks ServiceRequestService service;
 
     @Test
-    void lifecycle_assignStartComplete_setsCompletionTimeAndRejectsRepeat() {
+    void lifecycle_assignStartComplete_recordsUsageAndMakesRetryIdempotent() {
         UUID id = UUID.randomUUID(), staffId = UUID.randomUUID();
         ServiceRequest r = new ServiceRequest();
         r.setStatus(ServiceRequestStatus.REQUESTED);
+        r.setServiceRequestId(id);
+        var catalog = new Service(); catalog.setServiceId(UUID.randomUUID()); r.setService(catalog);
+        r.setQuantity(1);
+        var cruise = new com.casms.ship.entity.Cruise();
+        cruise.setStatus(com.casms.ship.enums.CruiseStatus.IN_PROGRESS);
+        cruise.setDepartureDatetime(java.time.Instant.now().minusSeconds(3600));
+        cruise.setReturnDatetime(java.time.Instant.now().plusSeconds(3600));
+        var booking = new com.casms.booking.entity.Booking();
+        booking.setBookingStatus(com.casms.booking.enums.BookingStatus.Confirmed); booking.setCruise(cruise); r.setBooking(booking);
+        when(services.findByIdForUpdate(catalog.getServiceId())).thenReturn(Optional.of(catalog));
+        when(usages.findByOperationIdentity(any())).thenReturn(Optional.empty());
         User staff = new User();
         staff.setUserId(staffId);
         when(requests.lockById(id)).thenReturn(Optional.of(r));
@@ -52,8 +67,8 @@ class ServiceRequestServiceTest {
         service.transition(id, staffId, "complete");
         assertEquals(ServiceRequestStatus.COMPLETED, r.getStatus());
         assertNotNull(r.getCompletedAt());
-        assertThrows(
-                IllegalStateException.class, () -> service.transition(id, staffId, "complete"));
+        assertSame(r, service.transition(id, staffId, "complete"));
+        verify(usages, times(1)).save(any());
     }
 
     @Test

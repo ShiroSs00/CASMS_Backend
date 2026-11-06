@@ -27,5 +27,7 @@ Thumbs.db
 # Large ship model assets are deployed separately
 /model-assets/
 
-# Local documentation is not versioned
-/docs/
+# Keep local reports unversioned, but API change documentation is required with code.
+/docs/*
+!/docs/sequence-diagrams/
+!/docs/SERVICE-ACTIVITY-API-CHANGE.md

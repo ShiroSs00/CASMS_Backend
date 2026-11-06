@@ -42,6 +42,10 @@ class UxScheduledRequestTest {
     @Mock UserRepository users;
     @Mock ServiceScheduleRepository schedules;
     @Mock PosLedgerService posLedger;
+    @Mock ServiceUsageQuotaService usageQuotas;
+    @Mock com.casms.servicepackage.repository.ServiceUsageRepository usages;
+    @Mock com.casms.cruisepackage.service.CruisePackageEntitlementService fareEntitlements;
+    @Mock ShipServiceAvailability shipServices;
     @InjectMocks ServiceRequestService service;
     final UUID userId = UUID.randomUUID(),
             serviceId = UUID.randomUUID(),
@@ -147,6 +151,8 @@ class UxScheduledRequestTest {
         prepareCreate();
         prepareSchedule();
         when(bookingPassengers.findById(bpId)).thenReturn(Optional.of(bp));
+        bp.setFareOfferId(UUID.randomUUID());
+        when(fareEntitlements.reserve(eq(bp), any(), eq(serviceId), eq(2))).thenReturn(UUID.randomUUID());
         when(requests.save(any())).thenAnswer(i -> i.getArgument(0));
         var saved = service.create(userId, serviceId, bpId, scheduleId, 2, "note", null);
         assertSame(schedule, saved.getServiceSchedule());
@@ -155,6 +161,27 @@ class UxScheduledRequestTest {
         assertEquals(new BigDecimal("12.3456"), saved.getUnitPriceSnapshot());
         assertEquals("USD", saved.getCurrencySnapshot());
         assertEquals(BookingStatus.Confirmed, booking.getBookingStatus());
+    }
+
+    @Test
+    void preCruiseDisabledRejectsPassengerRegistration() {
+        prepareCreate(); prepareSchedule();
+        item.setCanBuyPreCruise(false);
+        when(bookingPassengers.findById(bpId)).thenReturn(Optional.of(bp));
+        assertEquals("SERVICE_NOT_PRE_CRUISE", assertThrows(BusinessException.class,
+                () -> service.create(userId, serviceId, bpId, scheduleId, 1, null, null)).getCode());
+        verify(requests, never()).save(any());
+    }
+
+    @Test
+    void onboardSaleRejectsMultipleUsesInOneOperation() {
+        when(services.findByIdForUpdate(serviceId)).thenReturn(Optional.of(item));
+        prepareSchedule();
+        booking.getCruise().setStatus(com.casms.ship.enums.CruiseStatus.IN_PROGRESS);
+        when(bookingPassengers.findById(bpId)).thenReturn(Optional.of(bp));
+        assertThrows(IllegalArgumentException.class,
+                () -> service.createForPos(bpId, serviceId, scheduleId, 2));
+        verify(requests, never()).save(any());
     }
 
     ServiceRequest prepareUpdate() {

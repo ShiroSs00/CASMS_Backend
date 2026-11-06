@@ -50,6 +50,46 @@ public class CruiseScopedProgramsController {
     private final EntityManager em;
     private final com.casms.servicepackage.service.ServiceScheduleManagementService schedules;
 
+    public record ResponsibleUserInput(UUID userId) {}
+
+    @PostMapping("/activities/from-catalog")
+    public ApiResponse<ActivityView> scheduleCatalogActivity(@PathVariable UUID cruiseId,
+            @RequestHeader("If-Match") Long expected,
+            @Valid @RequestBody com.casms.activity.controller.ActivityController.ActivityScheduleRequest input) {
+        start(cruiseId, expected);
+        var saved = activities.scheduleCatalog(cruiseId, input);
+        finish(cruiseId);
+        return ApiResponse.success(ActivityView.of(saved));
+    }
+
+    @PutMapping("/activities/{id}/responsible-user")
+    public ApiResponse<Void> assignActivityResponsible(@PathVariable UUID cruiseId, @PathVariable UUID id,
+            @RequestHeader("If-Match") Long expected, @Valid @RequestBody ResponsibleUserInput input) {
+        start(cruiseId, expected);
+        requireResponsibleStaff(cruiseId, input.userId());
+        scope(jdbc.update("UPDATE \"OnboardActivity\" SET responsible_user_id=?,updated_at=now() WHERE onboard_activity_id=? AND cruise_id=? AND NOT catalog_entry",
+                input.userId(), id, cruiseId) == 1);
+        finish(cruiseId);
+        return ApiResponse.success(null);
+    }
+
+    @PutMapping("/serving-windows/{id}/responsible-user")
+    public ApiResponse<Void> assignServiceResponsible(@PathVariable UUID cruiseId, @PathVariable UUID id,
+            @RequestHeader("If-Match") Long expected, @Valid @RequestBody ResponsibleUserInput input) {
+        start(cruiseId, expected);
+        requireResponsibleStaff(cruiseId, input.userId());
+        scope(jdbc.update("UPDATE \"ServiceSchedule\" SET responsible_user_id=?,updated_at=now() WHERE service_schedule_id=? AND cruise_id=?",
+                input.userId(), id, cruiseId) == 1);
+        finish(cruiseId);
+        return ApiResponse.success(null);
+    }
+
+    private void requireResponsibleStaff(UUID cruiseId, UUID userId) {
+        if (userId == null) return;
+        if (!Boolean.TRUE.equals(jdbc.queryForObject("SELECT EXISTS(SELECT 1 FROM \"CruiseStaff\" cs JOIN \"User\" u USING(user_id) WHERE cs.cruise_id=? AND cs.user_id=? AND cs.status='ACTIVE' AND u.status='ACTIVE')", Boolean.class, cruiseId, userId)))
+            throw new BusinessException(HttpStatus.UNPROCESSABLE_ENTITY, "RESPONSIBLE_STAFF_NOT_IN_CRUISE", "Responsible user must be active staff assigned to this cruise");
+    }
+
     public record ServingInput(
             @NotNull UUID serviceId,
             UUID cruiseStopId,
@@ -120,7 +160,7 @@ public class CruiseScopedProgramsController {
                         "SELECT s.service_schedule_id AS id,s.service_id AS"
                             + " \"serviceId\",s.cruise_stop_id AS \"cruiseStopId\",s.supplier_id AS"
                             + " \"supplierId\",v.service_name AS name,s.starts_at AS"
-                            + " \"startsAt\",s.ends_at AS \"endsAt\",s.capacity,s.location FROM"
+                            + " \"startsAt\",s.ends_at AS \"endsAt\",s.capacity,s.location,s.responsible_user_id AS \"responsibleUserId\" FROM"
                             + " \"ServiceSchedule\" s JOIN \"Service\" v USING(service_id) WHERE"
                             + " cruise_id=? ORDER BY starts_at",
                         cruiseId));
@@ -622,7 +662,8 @@ public class CruiseScopedProgramsController {
         start(cruiseId, expected);
         price(input.price(), input.currencyCode());
         scope(cruiseId.equals(input.cruiseId()));
-        scope(cruiseId.equals(activities.activity(id).getCruise().getCruiseId()));
+        var occurrence = activities.activity(id);
+        scope(occurrence.getCruise() != null && cruiseId.equals(occurrence.getCruise().getCruiseId()));
         ActivityView result =
                 ActivityView.of(
                         activities.updateActivity(
@@ -637,7 +678,8 @@ public class CruiseScopedProgramsController {
             @PathVariable UUID id,
             @RequestHeader("If-Match") Long expected) {
         start(cruiseId, expected);
-        scope(cruiseId.equals(activities.activity(id).getCruise().getCruiseId()));
+        var occurrence = activities.activity(id);
+        scope(occurrence.getCruise() != null && cruiseId.equals(occurrence.getCruise().getCruiseId()));
         activities.deleteActivity(id);
         finish(cruiseId);
         return ApiResponse.success(null);
@@ -780,12 +822,8 @@ public class CruiseScopedProgramsController {
             case "services" ->
                     packages.addPackageService(id, input.referenceId(), input.benefitType());
             case "activities" -> {
-                scope(
-                        cruiseId.equals(
-                                activities
-                                        .activity(input.referenceId())
-                                        .getCruise()
-                                        .getCruiseId()));
+                var occurrence = activities.activity(input.referenceId());
+                scope(occurrence.getCruise() != null && cruiseId.equals(occurrence.getCruise().getCruiseId()));
                 packages.addPackageActivity(id, input.referenceId(), input.benefitType());
             }
             case "excursions" -> {

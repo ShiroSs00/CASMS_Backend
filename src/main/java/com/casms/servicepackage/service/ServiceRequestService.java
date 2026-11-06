@@ -40,6 +40,11 @@ public class ServiceRequestService {
     private final ServiceScheduleRepository schedules;
     private final com.casms.pos.PosLedgerService posLedger;
 
+    private final ServiceUsageQuotaService usageQuotas;
+    private final com.casms.servicepackage.repository.ServiceUsageRepository usages;
+    private final com.casms.cruisepackage.service.CruisePackageEntitlementService fareEntitlements;
+    private final ShipServiceAvailability shipServices;
+
     public List<ServiceRequest> list(UUID passengerId, boolean staff) {
         if (!staff) return requests.findByPassenger_User_UserId(passengerId);
         return requests.findAll();
@@ -70,6 +75,8 @@ public class ServiceRequestService {
                 ServiceRequest request = existing.get();
                 assertOwner(request, userId, false);
                 if (!request.getService().getServiceId().equals(serviceId)
+                        || bookingPassengerId != null && (request.getBookingPassenger() == null
+                            || !bookingPassengerId.equals(request.getBookingPassenger().getBookingPassengerId()))
                         || !Objects.equals(
                                 request.getServiceSchedule() == null
                                         ? null
@@ -96,7 +103,7 @@ public class ServiceRequestService {
                 scheduleId,
                 quantity,
                 note,
-                idempotencyKey);
+                idempotencyKey, false);
     }
 
     /**
@@ -109,7 +116,7 @@ public class ServiceRequestService {
                         .findById(bookingPassengerId)
                         .orElseThrow(() -> missing("Booking passenger", bookingPassengerId));
         return reserve(
-                bp.getPassenger(), serviceId, bookingPassengerId, scheduleId, quantity, null, null);
+                bp.getPassenger(), serviceId, bookingPassengerId, scheduleId, quantity, null, null, true);
     }
 
     private ServiceRequest reserve(
@@ -119,7 +126,7 @@ public class ServiceRequestService {
             UUID scheduleId,
             Integer quantity,
             String note,
-            String idempotencyKey) {
+            String idempotencyKey, boolean onboardSale) {
         // Serialize capacity checks for this service to prevent concurrent reservations exceeding
         // capacity.
         var s =
@@ -191,7 +198,38 @@ public class ServiceRequestService {
                     "SERVICE_SCHEDULE_CRUISE_MISMATCH",
                     "Lịch phục vụ không thuộc chuyến khởi hành của hành khách.");
         }
+        if (bp == null || bp.getBooking().getCruise() == null)
+            throw new com.casms.common.exception.BusinessException("SERVICE_BOOKING_REQUIRED", "Select a confirmed booking passenger for the service");
+        var cruise = bp.getBooking().getCruise();
+        var now = Instant.now();
+        if (cruise.getStatus() == com.casms.ship.enums.CruiseStatus.CANCELLED
+                || cruise.getStatus() == com.casms.ship.enums.CruiseStatus.COMPLETED)
+            throw new IllegalStateException("Service booking cruise is no longer active");
+        shipServices.requireServiceForRequest(cruise.getCruiseId(), serviceId);
+        if (onboardSale) {
+            if (!s.isCanBuyOnboard() || !s.isCanSellIndependently()
+                    || cruise.getStatus() != com.casms.ship.enums.CruiseStatus.IN_PROGRESS)
+                throw new com.casms.common.exception.BusinessException("SERVICE_NOT_RETAIL_ONBOARD", "Service cannot be sold onboard this cruise");
+            if (effectiveQuantity != 1)
+                throw new IllegalArgumentException("Each onboard service sale records exactly one use");
+        } else if (cruise.getDepartureDatetime() == null || now.isBefore(cruise.getDepartureDatetime())) {
+            if (!s.isCanBuyPreCruise())
+                throw new com.casms.common.exception.BusinessException("SERVICE_NOT_PRE_CRUISE", "Service does not allow pre-cruise registration");
+        } else if (cruise.getStatus() != com.casms.ship.enums.CruiseStatus.IN_PROGRESS) {
+            throw new IllegalStateException("Cruise is not accepting service requests");
+        }
+        if (!onboardSale && s.getPreCruiseUsagePolicy() == com.casms.servicepackage.enums.ServiceUsagePolicy.PER_DAY && schedule == null)
+            throw new IllegalArgumentException("PER_DAY prepaid services require a schedule to identify the usage day");
         ServiceRequest r = new ServiceRequest();
+        r.setUsageMode(onboardSale ? "ONBOARD" : "PRE_CRUISE");
+        r.setUsagePolicySnapshot(onboardSale ? com.casms.servicepackage.enums.ServiceUsagePolicy.UNLIMITED : s.getPreCruiseUsagePolicy());
+        r.setUsageLimitSnapshot(onboardSale ? null : s.getPreCruiseUsageLimit());
+        r.setUsageTimeZoneSnapshot(s.getUsageTimeZone());
+        if (!onboardSale && bp.getFareOfferId() != null) {
+            r.setFareBenefitSnapshotId(fareEntitlements.reserve(bp,
+                    com.casms.cruisepackage.dto.CruisePackageContracts.ResourceType.SERVICE, serviceId, effectiveQuantity));
+            if (schedule != null) fareEntitlements.validateServiceWindow(r.getFareBenefitSnapshotId(), schedule);
+        }
         r.setPassenger(passenger);
         r.setService(s);
         r.setServiceSchedule(schedule);
@@ -205,6 +243,8 @@ public class ServiceRequestService {
         r.setNote(note);
         r.setRequestTime(Instant.now());
         r.setStatus(ServiceRequestStatus.REQUESTED);
+        requireLegacyPrepaid(r);
+        usageQuotas.requireAvailable(r, schedule == null ? now : schedule.getStartsAt());
         return requests.save(r);
     }
 
@@ -251,12 +291,18 @@ public class ServiceRequestService {
                         "Requested quantity exceeds remaining schedule capacity");
         }
         r.setQuantity(quantity);
+        requireLegacyPrepaid(r);
+        usageQuotas.requireAvailable(r, r.getServiceSchedule() == null ? r.getRequestTime() : r.getServiceSchedule().getStartsAt());
+        if (r.getFareBenefitSnapshotId() != null)
+            fareEntitlements.validateServiceReservation(r.getFareBenefitSnapshotId(), r.getBookingPassenger(), service.getServiceId(), quantity, id);
         r.setNote(note);
         return r;
     }
 
     public ServiceRequest transition(UUID id, UUID userId, String action) {
         ServiceRequest r = requests.lockById(id).orElseThrow(() -> missing("Service request", id));
+        if ("complete".equals(action) && r.getStatus() == ServiceRequestStatus.COMPLETED
+                && r.getAssignedUser() != null && r.getAssignedUser().getUserId().equals(userId)) return r;
         switch (action) {
             case "assign" -> {
                 if (r.getStatus() != ServiceRequestStatus.REQUESTED) invalid();
@@ -281,6 +327,7 @@ public class ServiceRequestService {
                 if (r.getStatus() != ServiceRequestStatus.IN_PROGRESS
                         || r.getAssignedUser() == null
                         || !r.getAssignedUser().getUserId().equals(userId)) invalid();
+                recordUsage(r, userId);
                 r.setStatus(ServiceRequestStatus.COMPLETED);
                 r.setCompletedAt(Instant.now());
             }
@@ -295,6 +342,42 @@ public class ServiceRequestService {
                 || r.getStatus() == ServiceRequestStatus.CANCELLED)
             posLedger.reverseForRequest(id, userId);
         return r;
+    }
+
+    private void requireLegacyPrepaid(ServiceRequest request) {
+        if ("PRE_CRUISE".equals(request.getUsageMode()) && request.getFareBenefitSnapshotId() == null
+                && request.getUnitPriceSnapshot() != null && request.getUnitPriceSnapshot().signum() > 0)
+            usageQuotas.requireLegacyPrepaid(request);
+    }
+
+    private void recordUsage(ServiceRequest r, UUID userId) {
+        services.findByIdForUpdate(r.getService().getServiceId()).orElseThrow(() -> missing("Service", r.getService().getServiceId()));
+        if (r.getBooking() == null || r.getBooking().getBookingStatus() != BookingStatus.Confirmed
+                || r.getBooking().getCruise().getStatus() != com.casms.ship.enums.CruiseStatus.IN_PROGRESS)
+            throw new IllegalStateException("Usage can only be recorded on an in-progress confirmed cruise");
+        Instant now = Instant.now();
+        if (now.isBefore(r.getBooking().getCruise().getDepartureDatetime())
+                || !now.isBefore(r.getBooking().getCruise().getReturnDatetime()))
+            throw new IllegalStateException("Usage must be within the cruise dates");
+        if (r.getServiceSchedule() != null && (now.isBefore(r.getServiceSchedule().getStartsAt())
+                || now.isAfter(r.getServiceSchedule().getEndsAt())))
+            throw new IllegalStateException("Usage must be within the service schedule window");
+        String operation = "SERVICE_COMPLETE:" + r.getServiceRequestId();
+        if (usages.findByOperationIdentity(operation).isPresent()) return;
+        requireLegacyPrepaid(r);
+        usageQuotas.requireAvailable(r, now);
+        if (r.getFareBenefitSnapshotId() != null) {
+            fareEntitlements.validateServiceWindow(r.getFareBenefitSnapshotId(), r.getServiceSchedule());
+            fareEntitlements.fulfill(r.getFareBenefitSnapshotId(), r.getBookingPassenger(),
+                    com.casms.cruisepackage.dto.CruisePackageContracts.ResourceType.SERVICE,
+                    r.getService().getServiceId(), r.getQuantity(), r.getService().getUnitCode(), now);
+        }
+        var usage = new com.casms.servicepackage.entity.ServiceUsage();
+        usage.setServiceRequest(r); usage.setQuantity(r.getQuantity()); usage.setUsedAt(now);
+        usage.setRecordedBy(users.findById(userId).orElseThrow(() -> missing("User", userId)));
+        usage.setFareBenefitSnapshotId(r.getFareBenefitSnapshotId());
+        usage.setOperationIdentity(operation); usage.setUnitCodeSnapshot(r.getService().getUnitCode());
+        usages.save(usage); r.getUsageRecords().add(usage);
     }
 
     public void assertOwner(ServiceRequest r, UUID userId, boolean staff) {

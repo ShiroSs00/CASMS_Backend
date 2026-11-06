@@ -44,7 +44,7 @@ public class ActivityService {
 
     @Transactional(readOnly = true)
     public List<OnboardActivity> listActivities() {
-        return activities.findAll();
+        return activities.findByCatalogEntryFalse();
     }
 
     @Transactional(readOnly = true)
@@ -63,6 +63,42 @@ public class ActivityService {
         if (a.getStatus() != OnboardActivityStatus.OPEN || !a.getEndTime().isAfter(Instant.now()))
             return 0;
         return (int) Math.max(0, a.getCapacity() - occupied(id));
+    }
+
+    @Transactional(readOnly=true)
+    public List<OnboardActivity> catalog() { return activities.findByCatalogEntryTrue(); }
+
+    public OnboardActivity saveCatalog(UUID id, OnboardActivity input) {
+        OnboardActivity a = id == null ? new OnboardActivity()
+                : activities.lockActivity(id).orElseThrow(() -> missing("Activity", id));
+        if (id != null && !a.isCatalogEntry()) throw new IllegalArgumentException("Use the occurrence update API for scheduled activities");
+        if (id == null) a.setActivityCode(businessCodeGenerator.next("AC"));
+        if (input.getActivityName() == null || input.getActivityName().isBlank()
+                || input.getCapacity() == null || input.getCapacity() < 1)
+            throw new IllegalArgumentException("Activity name and positive capacity are required");
+        if (input.getCurrencyCode() == null) input.setCurrencyCode("USD");
+        com.casms.common.util.NewWriteCurrency.requireUsd(input.getCurrencyCode());
+        if (input.getPrice() != null && input.getPrice().signum() < 0) throw new IllegalArgumentException("Price must be non-negative");
+        a.setCatalogEntry(true); a.setActivityName(input.getActivityName()); a.setDescription(input.getDescription());
+        a.setCategory(input.getCategory()); a.setCapacity(input.getCapacity());
+        a.setPrice(input.getPrice() == null ? BigDecimal.ZERO : input.getPrice());
+        a.setCurrencyCode(input.getCurrencyCode() == null ? "USD" : input.getCurrencyCode());
+        a.setStatus(OnboardActivityStatus.PLANNED);
+        return activities.save(a);
+    }
+
+    public OnboardActivity scheduleCatalog(UUID cruiseId,
+            com.casms.activity.controller.ActivityController.ActivityScheduleRequest input) {
+        var source = activities.lockActivity(input.sourceActivityId()).orElseThrow(() -> missing("Activity", input.sourceActivityId()));
+        if (!source.isCatalogEntry() || source.getStatus() != OnboardActivityStatus.PLANNED)
+            throw new IllegalArgumentException("Select an active independent activity catalog entry");
+        var a = new OnboardActivity();
+        a.setSourceActivityId(source.getOnboardActivityId());
+        a.setActivityName(source.getActivityName()); a.setDescription(source.getDescription());
+        a.setCategory(source.getCategory()); a.setPrice(source.getPrice()); a.setCurrencyCode(source.getCurrencyCode());
+        a.setCapacity(input.capacity() == null ? source.getCapacity() : input.capacity());
+        a.setStartTime(input.startTime()); a.setEndTime(input.endTime()); a.setLocation(input.location());
+        return createActivity(a, cruiseId, input.deckId(), input.cabinId());
     }
 
     public OnboardActivity createActivity(OnboardActivity a, UUID cruiseId) {
@@ -98,6 +134,7 @@ public class ActivityService {
             UUID id, OnboardActivity input, UUID deckId, UUID cabinId) {
         com.casms.common.util.NewWriteCurrency.requireUsd(input.getCurrencyCode());
         OnboardActivity a = activities.lockActivity(id).orElseThrow(() -> missing("Activity", id));
+        if (a.isCatalogEntry()) throw new IllegalArgumentException("Use PUT /activities/catalog/{id} to edit catalog metadata");
         if (a.getStatus() != OnboardActivityStatus.PLANNED)
             throw new IllegalStateException("Only planned activities can be edited");
         long allocated = occupied(id);
@@ -179,13 +216,15 @@ public class ActivityService {
         OnboardActivity a = activity(id);
         if (a.getStatus() != OnboardActivityStatus.PLANNED
                 || registrations.existsByOnboardActivity_OnboardActivityId(id)
-                || packageActivities.existsByOnboardActivity_OnboardActivityId(id))
+                || packageActivities.existsByOnboardActivity_OnboardActivityId(id)
+                || activities.isReferencedSource(id))
             throw new IllegalStateException("Only an unused planned activity can be deleted");
         activities.delete(a);
     }
 
     public OnboardActivity lifecycle(UUID id, String action) {
         OnboardActivity a = activity(id);
+        if (a.isCatalogEntry()) throw new IllegalArgumentException("Schedule the catalog activity on a cruise before lifecycle actions");
         switch (action) {
             case "open" -> {
                 if (a.getStatus() != OnboardActivityStatus.PLANNED) invalid();

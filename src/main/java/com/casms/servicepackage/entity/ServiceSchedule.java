@@ -17,6 +17,9 @@ import java.util.UUID;
 @Entity
 @Table(name = "\"ServiceSchedule\"")
 public class ServiceSchedule {
+    @Column(name = "responsible_user_id")
+    private UUID responsibleUserId;
+
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     @Column(name = "service_schedule_id")

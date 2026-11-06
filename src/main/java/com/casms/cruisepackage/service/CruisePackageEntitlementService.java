@@ -64,6 +64,7 @@ public class CruisePackageEntitlementService {
             throw business("ENTITLEMENT_PASSENGER_MAPPING_REQUIRED","Mỗi hành khách đăng ký quyền lợi của chính mình; không dùng quantity đăng ký để cấp quyền cho người khác.");
         requireQuantity(grant,type==ResourceType.SERVICE?quantity:1);
         requireOperationalTime(grant,type,resourceId,false,null);
+        if (type == ResourceType.SERVICE) requirePendingServiceQuantity(grant, quantity, null);
         return grant.getId();
     }
 
@@ -90,6 +91,20 @@ public class CruisePackageEntitlementService {
         if(type!=ResourceType.SERVICE&&quantity!=1)throw business("ENTITLEMENT_PASSENGER_MAPPING_REQUIRED","Đăng ký phải ánh xạ riêng cho từng hành khách.");
         requireQuantity(grant,type==ResourceType.SERVICE?quantity:1);
         requireOperationalTime(grant,type,resourceId,false,null);
+    }
+
+    @Transactional
+    public void validateServiceReservation(UUID grantId, BookingPassenger passenger, UUID serviceId, int quantity, UUID excludeRequestId) {
+        var grant = require(grantId, passenger.getBookingPassengerId(), ResourceType.SERVICE, serviceId, true);
+        requireQuantity(grant, quantity);
+        requirePendingServiceQuantity(grant, quantity, excludeRequestId);
+    }
+
+    private void requirePendingServiceQuantity(BookingCruisePackageBenefitSnapshot grant, int quantity, UUID excludeRequestId) {
+        if (!"LIMITED_INCLUDED".equals(grant.getInclusion())) return;
+        Long pending = jdbc.queryForObject("SELECT COALESCE(sum(quantity),0) FROM \"ServiceRequest\" WHERE fare_benefit_snapshot_id=? AND status IN ('REQUESTED','ACCEPTED','IN_PROGRESS') AND (?::uuid IS NULL OR service_request_id<>?::uuid)", Long.class, grant.getId(), excludeRequestId, excludeRequestId);
+        if (pending == null || pending + used(grant) + quantity > grant.getQuantityLimit())
+            throw business("ENTITLEMENT_EXHAUSTED", "Quota includes pending service reservations; cancel an unused reservation before registering more.");
     }
 
     private BookingCruisePackageBenefitSnapshot require(UUID grantId,UUID passengerId,ResourceType type,UUID resourceId,boolean lock) {

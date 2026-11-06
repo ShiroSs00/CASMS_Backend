@@ -52,7 +52,20 @@ public class ServicepackageController {
             @Size(min = 3, max = 3) String currencyCode,
             @Positive Integer capacity,
             Boolean requiresSchedule,
-            UUID categoryId) {}
+            UUID categoryId,
+            Boolean canBuyPreCruise,
+            Boolean canBuyOnboard,
+            Boolean canSellIndependently,
+            @Size(max=30) String unitCode,
+            ServiceUsagePolicy preCruiseUsagePolicy,
+            @Positive Integer preCruiseUsageLimit,
+            @Size(max=100) String usageTimeZone) {
+        public ServiceCatalogDto(String name, String description, String type, BigDecimal price,
+                String currency, Integer capacity, Boolean scheduled, UUID categoryId) {
+            this(name, description, type, price, currency, capacity, scheduled, categoryId,
+                    null, null, null, null, null, null, null);
+        }
+    }
 
     public record ProductDto(
             @NotBlank @Size(max = 200) String productName,
@@ -105,8 +118,10 @@ public class ServicepackageController {
             String status,
             UUID assignedUserId,
             Instant requestTime,
-            Instant completedAt) {
-        static ServiceRequestView of(ServiceRequest r) {
+            Instant completedAt,
+            String usageMode, ServiceUsagePolicy usagePolicySnapshot, Integer usageLimitSnapshot,
+            String usageTimeZoneSnapshot, UUID fareBenefitSnapshotId, Integer fulfilledQuantity) {
+        public static ServiceRequestView of(ServiceRequest r) {
             return new ServiceRequestView(
                     r.getServiceRequestId(),
                     r.getPassenger().getPassengerId(),
@@ -125,7 +140,9 @@ public class ServicepackageController {
                     r.getStatus().name(),
                     r.getAssignedUser() == null ? null : r.getAssignedUser().getUserId(),
                     r.getRequestTime(),
-                    r.getCompletedAt());
+                    r.getCompletedAt(), r.getUsageMode(), r.getUsagePolicySnapshot(), r.getUsageLimitSnapshot(),
+                    r.getUsageTimeZoneSnapshot(), r.getFareBenefitSnapshotId(),
+                    r.getUsageRecords().stream().mapToInt(ServiceUsage::getQuantity).sum());
         }
     }
 
@@ -190,7 +207,9 @@ public class ServicepackageController {
             UUID categoryId,
             String categoryName,
             String unitCode,
-            String applicabilityScope) {
+            String applicabilityScope,
+            boolean canBuyPreCruise, boolean canBuyOnboard, boolean canSellIndependently,
+            ServiceUsagePolicy preCruiseUsagePolicy, Integer preCruiseUsageLimit, String usageTimeZone) {
         static ServiceView of(Service s) {
             return new ServiceView(
                     s.getServiceId(),
@@ -206,7 +225,8 @@ public class ServicepackageController {
                     s.getCategory() == null ? null : s.getCategory().getServiceCategoryId(),
                     s.getCategory() == null ? null : s.getCategory().getCategoryName(),
                     s.getUnitCode(),
-                    s.getApplicabilityScope());
+                    s.getApplicabilityScope(), s.isCanBuyPreCruise(), s.isCanBuyOnboard(),
+                    s.isCanSellIndependently(), s.getPreCruiseUsagePolicy(), s.getPreCruiseUsageLimit(), s.getUsageTimeZone());
         }
     }
 
@@ -283,7 +303,7 @@ public class ServicepackageController {
             Integer capacity,
             Integer remainingCapacity,
             String status,
-            UUID cruiseId) {
+            UUID cruiseId, UUID responsibleUserId) {
         static ServiceScheduleView of(ServiceSchedule s, int remaining) {
             return new ServiceScheduleView(
                     s.getServiceScheduleId(),
@@ -295,7 +315,7 @@ public class ServicepackageController {
                     s.getCapacity(),
                     remaining,
                     s.getStatus(),
-                    s.getCruise() == null ? null : s.getCruise().getCruiseId());
+                    s.getCruise() == null ? null : s.getCruise().getCruiseId(), s.getResponsibleUserId());
         }
     }
 
@@ -845,6 +865,15 @@ public class ServicepackageController {
     // ==========================================
 
     private void apply(Service s, ServiceCatalogDto r) {
+        if (r.canBuyPreCruise() != null) s.setCanBuyPreCruise(r.canBuyPreCruise());
+        if (r.canBuyOnboard() != null) s.setCanBuyOnboard(r.canBuyOnboard());
+        if (r.canSellIndependently() != null) s.setCanSellIndependently(r.canSellIndependently());
+        if (r.unitCode() != null) s.setUnitCode(r.unitCode());
+        if (r.preCruiseUsagePolicy() != null) {
+            s.setPreCruiseUsagePolicy(r.preCruiseUsagePolicy());
+            s.setPreCruiseUsageLimit(r.preCruiseUsageLimit());
+        } else if (r.preCruiseUsageLimit() != null) s.setPreCruiseUsageLimit(r.preCruiseUsageLimit());
+        if (r.usageTimeZone() != null) s.setUsageTimeZone(r.usageTimeZone());
         s.setServiceName(r.serviceName());
         s.setDescription(r.description());
         s.setServiceType(r.serviceType());

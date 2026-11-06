@@ -321,6 +321,7 @@ public class OperationalProgramMappingService {
                             existing.setCategory(entry.getCategory());
                             existing.setDescription(entry.getNotes());
                             existing.setMeetingPoint(entry.getMeetingPoint());
+                            existing.setSourceActivityId(entry.getSourceActivityId());
                             existing.setStartTime(startTime);
                             existing.setEndTime(endTime);
                             if (entry.getLocationText() != null
@@ -367,6 +368,7 @@ public class OperationalProgramMappingService {
                         activity.setCategory(entry.getCategory());
                         activity.setDescription(entry.getNotes());
                         activity.setMeetingPoint(entry.getMeetingPoint());
+                        activity.setSourceActivityId(entry.getSourceActivityId());
                         activity.setStartTime(startTime);
                         activity.setEndTime(endTime);
                         activity.setLocation(

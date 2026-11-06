@@ -543,25 +543,7 @@ public class PosService {
     }
 
     static ServiceRequestView requestView(ServiceRequest r) {
-        return new ServiceRequestView(
-                r.getServiceRequestId(),
-                r.getPassenger().getPassengerId(),
-                r.getService().getServiceId(),
-                r.getServiceSchedule() == null
-                        ? null
-                        : r.getServiceSchedule().getServiceScheduleId(),
-                r.getBooking() == null ? null : r.getBooking().getBookingId(),
-                r.getBookingPassenger() == null
-                        ? null
-                        : r.getBookingPassenger().getBookingPassengerId(),
-                r.getQuantity(),
-                r.getUnitPriceSnapshot(),
-                r.getCurrencySnapshot(),
-                r.getNote(),
-                r.getStatus().name(),
-                r.getAssignedUser() == null ? null : r.getAssignedUser().getUserId(),
-                r.getRequestTime(),
-                r.getCompletedAt());
+        return ServiceRequestView.of(r);
     }
 
     private static String secret() {

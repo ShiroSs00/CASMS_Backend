@@ -149,7 +149,7 @@ public final class PosDtos {
             @NotNull UUID bookingPassengerId,
             @NotNull UUID onboardAccountId,
             UUID scheduleId,
-            @NotNull @Min(1) @Max(1000) Integer quantity,
+            @NotNull @Min(1) @Max(1) Integer quantity,
             @NotBlank @Size(max = 100) String idempotencyKey) {}
 
     public record Sale(

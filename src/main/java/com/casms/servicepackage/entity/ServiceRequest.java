@@ -28,6 +28,16 @@ public class ServiceRequest {
     @GeneratedValue(strategy = GenerationType.UUID)
     @Column(name = "service_request_id")
     private UUID serviceRequestId;
+    @Column(name="usage_mode", nullable=false, length=20)
+    private String usageMode = "LEGACY";
+    @Enumerated(EnumType.STRING)
+    @Column(name="usage_policy_snapshot", nullable=false, length=20)
+    private com.casms.servicepackage.enums.ServiceUsagePolicy usagePolicySnapshot = com.casms.servicepackage.enums.ServiceUsagePolicy.UNLIMITED;
+    @Column(name="usage_limit_snapshot")
+    private Integer usageLimitSnapshot;
+    @Column(name="usage_time_zone_snapshot", nullable=false, length=100)
+    private String usageTimeZoneSnapshot = "Asia/Ho_Chi_Minh";
+
     @Column(name="fare_benefit_snapshot_id")
     private UUID fareBenefitSnapshotId;
     @OneToMany(mappedBy="serviceRequest")

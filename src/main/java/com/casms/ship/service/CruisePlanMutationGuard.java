@@ -69,7 +69,7 @@ public class CruisePlanMutationGuard {
                                     "substitute")),
                     Map.entry(
                             "ActivityService",
-                            Set.of("createActivity", "updateActivity", "deleteActivity")),
+                            Set.of("createActivity", "scheduleCatalog", "updateActivity", "deleteActivity")),
                     Map.entry(
                             "ShoreExcursionService",
                             Set.of("create", "update", "updateCommercial", "deleteDraft")),
@@ -237,8 +237,8 @@ public class CruisePlanMutationGuard {
                                             args[0]);
             case "ActivityService" ->
                     id =
-                            method.equals("createActivity")
-                                    ? (UUID) args[1]
+                            method.equals("scheduleCatalog") ? (UUID) args[0]
+                                    : method.equals("createActivity") ? (UUID) args[1]
                                     : lookup(
                                             "SELECT cruise_id FROM \"OnboardActivity\" WHERE"
                                                 + " onboard_activity_id=?",
@@ -281,6 +281,10 @@ public class CruisePlanMutationGuard {
             }
             default -> throw new IllegalStateException("Unmapped material writer");
         }
+        if (id == null && type.equals("ActivityService") && method.equals("deleteActivity")
+                && Boolean.TRUE.equals(jdbc.queryForObject(
+                        "SELECT catalog_entry FROM \"OnboardActivity\" WHERE onboard_activity_id=?",
+                        Boolean.class, args[0]))) return List.of();
         if (id == null)
             throw new BusinessException(
                     HttpStatus.UNPROCESSABLE_ENTITY,
