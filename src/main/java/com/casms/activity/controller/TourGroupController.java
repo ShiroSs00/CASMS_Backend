@@ -77,6 +77,11 @@ public class TourGroupController {
         );
     }
 
+    @GetMapping("/{id}/guide-options")
+    @PreAuthorize("hasAuthority('TOUR_GROUP_GUIDE_ASSIGN')")
+    public ResponseEntity<List<TourGroupService.GuideOption>> guideOptions(@PathVariable UUID id) {
+        return ResponseEntity.ok(tourGroupService.guideOptions(id));
+    }
     // ASSIGN GUIDE
     @Operation(summary = "Phân công hướng dẫn viên", description = "Gán hoặc thay đổi hướng dẫn viên phụ trách cho nhóm tour")
     @PreAuthorize("hasAuthority('TOUR_GROUP_GUIDE_ASSIGN')")

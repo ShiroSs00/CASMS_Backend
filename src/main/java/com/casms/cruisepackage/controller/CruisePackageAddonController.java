@@ -17,6 +17,11 @@ import java.util.UUID;
 public class CruisePackageAddonController {
     private final CruisePackageAddonService service;
     @GetMapping public ApiResponse<List<CruisePackageAddonOffer>> list(@PathVariable UUID cruiseId){return ApiResponse.success(service.list(cruiseId));}
+    @GetMapping("/configuration")
+    @PreAuthorize("hasRole('ACTIVITY_SERVICE_MANAGER') and hasAuthority('TOUR_PACKAGE_MANAGE')")
+    public ApiResponse<CruisePackageAddonService.Configuration> configuration(@PathVariable UUID cruiseId) {
+        return ApiResponse.success(service.configuration(cruiseId));
+    }
     @PostMapping @PreAuthorize("hasRole('ACTIVITY_SERVICE_MANAGER') and hasAuthority('TOUR_PACKAGE_MANAGE')")
     public ApiResponse<CruisePackageAddonOffer> create(@PathVariable UUID cruiseId,@RequestBody @Valid CruisePackageAddonService.Input input){return ApiResponse.success(service.create(cruiseId,input));}
     @PostMapping("/{offerId}/publish") @PreAuthorize("hasRole('ACTIVITY_SERVICE_MANAGER') and hasAuthority('TOUR_PACKAGE_MANAGE')")

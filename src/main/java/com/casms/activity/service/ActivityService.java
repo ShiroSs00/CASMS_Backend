@@ -51,6 +51,14 @@ public class ActivityService {
     @Transactional(readOnly = true)
     public int availableSeats(UUID id){OnboardActivity a=activity(id);if(a.getStatus()!=OnboardActivityStatus.OPEN||!a.getEndTime().isAfter(Instant.now()))return 0;return (int)Math.max(0,a.getCapacity()-occupied(id));}
 
+    /** Reusable content; no invented date, venue, capacity or component price. */
+    public OnboardActivity createDefinition(String name, String description) {
+        var a=new OnboardActivity();
+        a.setActivityCode(businessCodeGenerator.next("AC"));
+        a.setActivityName(name.trim());a.setDescription(description);
+        a.setStatus(OnboardActivityStatus.PLANNED);
+        return activities.save(a);
+    }
     public OnboardActivity createActivity(OnboardActivity a, UUID cruiseId) {
         return createActivity(a, cruiseId, null, null);
     }

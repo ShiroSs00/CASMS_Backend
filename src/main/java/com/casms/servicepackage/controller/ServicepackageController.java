@@ -43,7 +43,9 @@ public class ServicepackageController {
   var principal=(CasmsPrincipal)auth.getPrincipal();var request=serviceRequests.get(id,principal.getUserId(),principal.isStaff());
   return ApiResponse.success(new com.casms.cruisepackage.service.CruisePackageEntitlementService.OperationEntitlement(id,fareEntitlements.operationGrant(request.getFareBenefitSnapshotId(),request.getBookingPassenger()==null?null:request.getBookingPassenger().getBookingPassengerId())));
  }
- public record ServiceCatalogDto(@NotBlank @Size(max=200) String serviceName,@Size(max=1000) String description,@NotBlank @Size(max=50) String serviceType,@DecimalMin("0.0") BigDecimal price,@Size(min=3,max=3) String currencyCode,@Positive Integer capacity,Boolean requiresSchedule,UUID categoryId){}
+ public record ServiceCatalogDto(@NotBlank @Size(max=200) String serviceName,@Size(max=1000) String description,@NotBlank @Size(max=50) String serviceType,@DecimalMin("0.0") BigDecimal price,@Size(min=3,max=3) String currencyCode,@Positive Integer capacity,Boolean requiresSchedule,UUID categoryId,@Size(max=30) String unitCode){
+ public ServiceCatalogDto(String serviceName,String description,String serviceType,BigDecimal price,String currencyCode,Integer capacity,Boolean requiresSchedule,UUID categoryId){this(serviceName,description,serviceType,price,currencyCode,capacity,requiresSchedule,categoryId,null);}
+ }
  public record ProductDto(@NotBlank @Size(max=200) String productName,@Size(max=1000) String description,@NotBlank @Size(max=50) String productType,@NotNull @DecimalMin("0.0") BigDecimal unitPrice,@NotBlank @Size(min=3,max=3) String currencyCode){}
  public record PackageDto(@NotBlank @Size(max=200) String packageName,@Size(max=1000) String description,@NotNull TourPackageType packageType,@NotNull @DecimalMin("0.0") BigDecimal price,@NotBlank @Size(min=3,max=3) String currencyCode,LocalDate startDate,LocalDate endDate){}
  public record ServiceRequestDto(@NotNull UUID serviceId,UUID bookingPassengerId,UUID serviceScheduleId,@Positive Integer quantity,@Size(max=500) String note,@Size(max=100) String idempotencyKey){}
@@ -111,6 +113,10 @@ public class ServicepackageController {
      s.setPrice(r.price());
      s.setCurrencyCode(r.currencyCode());
      s.setCapacity(r.capacity());
+     if(r.unitCode()!=null){
+         if(r.unitCode().isBlank())throw new com.casms.common.exception.BusinessException("BENEFIT_USAGE_UNIT_UNSUPPORTED","Đơn vị dịch vụ không được để trống khi cấu hình.");
+         s.setUnitCode(r.unitCode().trim());
+     }
      if (r.requiresSchedule() != null) {
          s.setRequiresSchedule(r.requiresSchedule());
      }

@@ -40,10 +40,10 @@ public class OnboardActivity {
     @Column(name = "description", length = 1000)
     private String description;
 
-    @Column(name = "start_time", nullable = false)
+    @Column(name = "start_time")
     private Instant startTime;
 
-    @Column(name = "end_time", nullable = false)
+    @Column(name = "end_time")
     private Instant endTime;
 
     @Column(name = "meeting_point", length = 255)

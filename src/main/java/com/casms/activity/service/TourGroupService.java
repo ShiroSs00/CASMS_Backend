@@ -41,6 +41,7 @@ public class TourGroupService {
     private final PassengerRepository passengerRepository;
     private final UserRepository userRepository;
     private final BusinessCodeGenerator businessCodeGenerator;
+    private final org.springframework.jdbc.core.JdbcTemplate jdbc;
 
     private static final List<TourGroupPassengerAssignmentStatus>
             CAPACITY_STATUSES = List.of(
@@ -213,6 +214,21 @@ public class TourGroupService {
 
     // ==================== GUIDE ====================
 
+    public record GuideOption(UUID id,String name,String roleInCruise) {}
+    private UUID groupCruise(TourGroup group) {
+        if (group.getShoreExcursion() == null || group.getShoreExcursion().getCruiseStop() == null) {
+            throw new com.casms.common.exception.BusinessException("GUIDE_NOT_AVAILABLE",
+                    "Cần chọn lần tham quan thuộc chuyến khởi hành trước khi phân công nhân viên.");
+        }
+        return jdbc.queryForObject("SELECT i.cruise_id FROM \"CruiseStop\" p JOIN \"Itinerary\" i USING(itinerary_id) WHERE p.cruise_stop_id=?",UUID.class,group.getShoreExcursion().getCruiseStop().getCruiseStopId());
+    }
+    @Transactional(readOnly=true)
+    public List<GuideOption> guideOptions(UUID groupId) {
+        var group=getById(groupId);
+        var rows=jdbc.query("SELECT u.user_id,u.username,string_agg(DISTINCT s.role_in_cruise,', ') AS duties FROM \"CruiseStaff\" s JOIN \"User\" u USING(user_id) WHERE s.cruise_id=? AND s.status='ACTIVE' AND s.ended_at IS NULL AND u.status='ACTIVE' GROUP BY u.user_id,u.username ORDER BY u.username",
+            (rs,n)->new GuideOption(rs.getObject("user_id",UUID.class),rs.getString("username"),rs.getString("duties")),groupCruise(group));
+        return rows.stream().filter(option->{try{validateGuideSchedule(group,option.id());return true;}catch(IllegalStateException conflict){return false;}}).toList();
+    }
     public TourGroupResponse assignGuide(UUID groupId, UUID guideId) {
         TourGroup group = getById(groupId);
         requireStatus(group, TourGroupStatus.PLANNED);
@@ -228,10 +244,23 @@ public class TourGroupService {
             throw new IllegalStateException("Tour guide user is not active.");
         }
 
-        validateGuideSchedule(group, guideId);
+        validateGuideAssignment(group, guideId);
 
         group.setGuideId(guideId);
         return toResponse(tourGroupRepository.save(group));
+    }
+
+    private void validateGuideAssignment(TourGroup group, UUID guideId) {
+        // Serialize assignments for the same staff account before checking overlaps.
+        var users = jdbc.queryForList("SELECT user_id FROM \"User\" WHERE user_id=? AND status='ACTIVE' FOR UPDATE", UUID.class, guideId);
+        if (users.isEmpty()) {
+            throw new com.casms.common.exception.BusinessException("GUIDE_NOT_AVAILABLE", "Tài khoản nhân viên không còn hoạt động.");
+        }
+        var assignments = jdbc.queryForList("SELECT cruise_staff_id FROM \"CruiseStaff\" WHERE cruise_id=? AND user_id=? AND status='ACTIVE' AND ended_at IS NULL FOR UPDATE", UUID.class, groupCruise(group), guideId);
+        if (assignments.isEmpty()) {
+            throw new com.casms.common.exception.BusinessException("GUIDE_NOT_AVAILABLE", "Nhân viên cần có phân công ACTIVE trên đúng chuyến khởi hành.");
+        }
+        validateGuideSchedule(group, guideId);
     }
 
     private void validateGuideSchedule(TourGroup group, UUID guideId) {
@@ -284,6 +313,12 @@ public class TourGroupService {
                         new EntityNotFoundException("Excursion not found.")
                 );
 
+        if (excursion.getCruiseStop() == null || excursion.getMaximumCapacity() == null
+                || excursion.getStartTime() == null || excursion.getPlannedReturnTime() == null) {
+            throw new com.casms.common.exception.BusinessException("EXCURSION_OCCURRENCE_REQUIRED",
+                    "Chọn lần tham quan đã có chuyến, thời gian và sức chứa; không thể phân nhóm từ nội dung dùng chung.");
+        }
+
         if (excursion.getStatus() == ShoreExcursionStatus.CANCELLED
                 || excursion.getStatus() == ShoreExcursionStatus.COMPLETED
                 || excursion.getStatus() == ShoreExcursionStatus.CLOSED) {
@@ -330,6 +365,9 @@ public class TourGroupService {
         }
 
         validateTimes(group, excursion);
+        if (group.getGuideId() != null) {
+            validateGuideAssignment(group, group.getGuideId());
+        }
         checkCapacityAgainstExcursion(group);
     }
 
@@ -554,6 +592,13 @@ public class TourGroupService {
             TourGroup group,
             TourGroupRequest request
     ) {
+        if (!java.util.Objects.equals(group.getGuideId(), request.guideId())) {
+            var authentication = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+            if (authentication == null || authentication.getAuthorities().stream()
+                    .noneMatch(authority -> "TOUR_GROUP_GUIDE_ASSIGN".equals(authority.getAuthority()))) {
+                throw new org.springframework.security.access.AccessDeniedException("Tour guide assignment permission is required.");
+            }
+        }
         ShoreExcursion excursion = shoreExcursionRepository
                 .findById(request.shoreExcursionId())
                 .orElseThrow(() ->
@@ -582,9 +627,12 @@ public class TourGroupService {
     }
 
     private TourGroupResponse toResponse(TourGroup group) {
+        var guideNames = group.getGuideId() == null ? List.<String>of()
+                : jdbc.queryForList("SELECT username FROM \"User\" WHERE user_id=?", String.class, group.getGuideId());
         return TourGroupResponse.from(
                 group,
-                countAssigned(group.getTourGroupId())
+                countAssigned(group.getTourGroupId()),
+                guideNames.isEmpty() ? null : guideNames.getFirst()
         );
     }
 
