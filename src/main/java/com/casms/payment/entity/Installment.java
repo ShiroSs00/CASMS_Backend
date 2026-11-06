@@ -1,13 +1,16 @@
 package com.casms.payment.entity;
 
-import org.hibernate.annotations.JdbcTypeCode;
-import org.hibernate.type.SqlTypes;
 import com.casms.booking.entity.Booking;
 import com.casms.payment.enums.InstallmentStatus;
 import com.casms.payment.enums.InstallmentType;
+
 import jakarta.persistence.*;
+
 import lombok.Getter;
 import lombok.Setter;
+
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -16,8 +19,9 @@ import java.util.UUID;
 @Getter
 @Setter
 @Entity
-@Table(name = "\"Installment\"",
-       uniqueConstraints = @UniqueConstraint(columnNames = {"booking_id", "sequence_no"}))
+@Table(
+        name = "\"Installment\"",
+        uniqueConstraints = @UniqueConstraint(columnNames = {"booking_id", "sequence_no"}))
 public class Installment {
 
     @Id

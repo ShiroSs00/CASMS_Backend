@@ -1,6 +1,7 @@
 package com.casms.ship.dto.response;
 
 import io.swagger.v3.oas.annotations.media.Schema;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -15,7 +16,10 @@ import java.util.UUID;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@Schema(description = "Kết quả đồng bộ chương trình vận hành (Onboard Activities, Shore Excursions) từ Trip Plan Entry")
+@Schema(
+        description =
+                "Kết quả đồng bộ chương trình vận hành (Onboard Activities, Shore Excursions) từ"
+                    + " Trip Plan Entry")
 public class OperationalProgramSyncResponse {
 
     @Schema(description = "ID chuyến khởi hành")

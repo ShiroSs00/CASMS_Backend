@@ -4,6 +4,7 @@ import com.casms.ship.enums.RegulationScope;
 import com.casms.ship.enums.RegulationStatus;
 import com.casms.ship.enums.RegulationType;
 import com.casms.ship.enums.RegulationUnit;
+
 import lombok.Builder;
 import lombok.Getter;
 

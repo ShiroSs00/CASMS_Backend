@@ -1,10 +1,12 @@
 package com.casms.servicepackage.entity;
 
 import com.casms.servicepackage.enums.BenefitType;
+
 import jakarta.persistence.*;
+
+import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.Setter;
-import lombok.EqualsAndHashCode;
 
 import java.io.Serializable;
 import java.math.BigDecimal;

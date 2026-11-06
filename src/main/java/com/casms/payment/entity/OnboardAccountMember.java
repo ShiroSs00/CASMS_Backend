@@ -4,7 +4,9 @@ import com.casms.identity.entity.Passenger;
 import com.casms.payment.enums.AccountMemberStatus;
 import com.casms.payment.enums.ChargePermission;
 import com.casms.payment.enums.MemberRole;
+
 import jakarta.persistence.*;
+
 import lombok.Getter;
 import lombok.Setter;
 
@@ -14,8 +16,9 @@ import java.util.UUID;
 @Getter
 @Setter
 @Entity
-@Table(name = "\"OnboardAccountMember\"",
-       uniqueConstraints = @UniqueConstraint(columnNames = {"onboard_account_id", "passenger_id"}))
+@Table(
+        name = "\"OnboardAccountMember\"",
+        uniqueConstraints = @UniqueConstraint(columnNames = {"onboard_account_id", "passenger_id"}))
 public class OnboardAccountMember {
 
     @Id

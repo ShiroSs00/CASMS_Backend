@@ -1,15 +1,18 @@
 package com.casms.activity.entity;
 
-import org.hibernate.annotations.JdbcTypeCode;
-import org.hibernate.type.SqlTypes;
 import com.casms.activity.enums.OnboardActivityCategory;
 import com.casms.activity.enums.OnboardActivityStatus;
 import com.casms.ship.entity.Cabin;
 import com.casms.ship.entity.Cruise;
 import com.casms.ship.entity.Deck;
+
 import jakarta.persistence.*;
+
 import lombok.Getter;
 import lombok.Setter;
+
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -21,10 +24,19 @@ import java.util.UUID;
 @Table(name = "\"OnboardActivity\"")
 public class OnboardActivity {
 
+    @Column(name = "responsible_user_id")
+    private UUID responsibleUserId;
+
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     @Column(name = "onboard_activity_id")
     private UUID onboardActivityId;
+
+    @Column(name = "catalog_entry", nullable = false)
+    private boolean catalogEntry;
+
+    @Column(name = "source_activity_id")
+    private UUID sourceActivityId;
 
     @Column(name = "activity_code", nullable = false, unique = true, length = 50)
     private String activityCode;

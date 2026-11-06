@@ -2,8 +2,11 @@ package com.casms.trip.dto.request;
 
 import com.casms.ship.enums.ItineraryDayType;
 import com.casms.trip.enums.TripDayManageAction;
+
 import io.swagger.v3.oas.annotations.media.Schema;
+
 import jakarta.validation.constraints.NotNull;
+
 import lombok.Data;
 
 @Data
@@ -22,9 +25,15 @@ public class TripDayManageRequest {
     @Schema(description = "Hành động thực hiện (ADD hoặc REMOVE)", example = "ADD")
     private TripDayManageAction action;
 
-    @Schema(description = "Loại ngày khi thêm (PORT_DAY hoặc SEA_DAY, tùy chọn)", example = "PORT_DAY")
+    @Schema(
+            description = "Loại ngày khi thêm (PORT_DAY hoặc SEA_DAY, tùy chọn)",
+            example = "PORT_DAY")
     private ItineraryDayType dayType;
 
-    @Schema(description = "Số thứ tự ngày cần xóa khi action = REMOVE (mặc định xóa ngày cuối nếu không truyền)", example = "2")
+    @Schema(
+            description =
+                    "Số thứ tự ngày cần xóa khi action = REMOVE (mặc định xóa ngày cuối nếu không"
+                        + " truyền)",
+            example = "2")
     private Integer dayNumber;
 }

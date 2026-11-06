@@ -2,9 +2,12 @@ package com.casms.ship.dto.request;
 
 import com.casms.ship.enums.PortLocationType;
 import com.casms.ship.enums.PortStatus;
+
 import io.swagger.v3.oas.annotations.media.Schema;
+
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
+
 import lombok.Data;
 
 import java.math.BigDecimal;
@@ -14,22 +17,34 @@ import java.util.UUID;
 @Schema(description = "Yêu cầu tạo mới cảng")
 public class PortCreateRequest {
 
-    @Schema(description = "Mã cảng (duy nhất)", example = "JPYOK", requiredMode = Schema.RequiredMode.REQUIRED)
+    @Schema(
+            description = "Mã cảng (duy nhất)",
+            example = "JPYOK",
+            requiredMode = Schema.RequiredMode.REQUIRED)
     @NotBlank(message = "Port code is required")
     @Size(max = 50, message = "Port code must not exceed 50 characters")
     private String portCode;
 
-    @Schema(description = "Tên cảng", example = "Cảng Yokohama", requiredMode = Schema.RequiredMode.REQUIRED)
+    @Schema(
+            description = "Tên cảng",
+            example = "Cảng Yokohama",
+            requiredMode = Schema.RequiredMode.REQUIRED)
     @NotBlank(message = "Port name is required")
     @Size(max = 200, message = "Port name must not exceed 200 characters")
     private String portName;
 
-    @Schema(description = "Mã quốc gia (ISO 3166-1 alpha-2)", example = "JP", requiredMode = Schema.RequiredMode.REQUIRED)
+    @Schema(
+            description = "Mã quốc gia (ISO 3166-1 alpha-2)",
+            example = "JP",
+            requiredMode = Schema.RequiredMode.REQUIRED)
     @NotBlank(message = "Country code is required")
     @Size(min = 2, max = 2, message = "Country code must be 2 characters")
     private String countryCode;
 
-    @Schema(description = "Múi giờ cảng IANA bắt buộc do người dùng xác nhận; không tự gán theo quốc gia", example = "Asia/Tokyo")
+    @Schema(
+            description =
+                    "Múi giờ cảng IANA bắt buộc do người dùng xác nhận; không tự gán theo quốc gia",
+            example = "Asia/Tokyo")
     @NotBlank(message = "Port time zone is required")
     @Size(max = 100, message = "Time zone ID must not exceed 100 characters")
     private String timeZoneId;
@@ -47,11 +62,14 @@ public class PortCreateRequest {
     @jakarta.validation.constraints.NotNull(message = "Latitude is required")
     private BigDecimal latitude;
 
-    @Schema(description = "Nguồn tọa độ thành phố/đảo bắt buộc khi tạo Port. provider=OPEN_METEO_GEOCODING, dataset=GEONAMES, coordinateReferenceType=GEOCODED_LOCALITY; recordedAt do server ghi.")
+    @Schema(
+            description =
+                    "Nguồn tọa độ thành phố/đảo bắt buộc khi tạo Port."
+                        + " provider=OPEN_METEO_GEOCODING, dataset=GEONAMES,"
+                        + " coordinateReferenceType=GEOCODED_LOCALITY; recordedAt do server ghi.")
     @jakarta.validation.constraints.NotNull(message = "Select a Geocoding result for a new port")
     @jakarta.validation.Valid
     private com.casms.ship.dto.PortCoordinateSource coordinateSource;
-
 
     @Schema(description = "Kinh độ", example = "139.6486")
     @jakarta.validation.constraints.DecimalMin("-180")

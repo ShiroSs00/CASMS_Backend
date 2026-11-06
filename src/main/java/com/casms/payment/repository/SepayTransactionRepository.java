@@ -1,6 +1,7 @@
 package com.casms.payment.repository;
 
 import com.casms.payment.entity.SepayTransaction;
+
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
@@ -21,4 +22,3 @@ public interface SepayTransactionRepository extends JpaRepository<SepayTransacti
 
     List<SepayTransaction> findByPaymentPaymentId(UUID paymentId);
 }
-

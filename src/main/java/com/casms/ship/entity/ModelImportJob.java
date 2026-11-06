@@ -1,7 +1,9 @@
 package com.casms.ship.entity;
 
 import com.casms.ship.enums.ModelImportStatus;
+
 import jakarta.persistence.*;
+
 import lombok.Getter;
 import lombok.Setter;
 
@@ -11,9 +13,13 @@ import java.util.UUID;
 @Getter
 @Setter
 @Entity
-@Table(name = "\"ModelImportJob\"", indexes = {
-        @Index(name = "idx_model_import_job_model_created", columnList = "ship_model_id,started_at")
-})
+@Table(
+        name = "\"ModelImportJob\"",
+        indexes = {
+            @Index(
+                    name = "idx_model_import_job_model_created",
+                    columnList = "ship_model_id,started_at")
+        })
 public class ModelImportJob {
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)

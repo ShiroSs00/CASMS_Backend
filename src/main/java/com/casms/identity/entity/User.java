@@ -2,7 +2,9 @@ package com.casms.identity.entity;
 
 import com.casms.identity.enums.Role;
 import com.casms.identity.enums.UserStatus;
+
 import jakarta.persistence.*;
+
 import lombok.Getter;
 import lombok.Setter;
 
@@ -99,9 +101,15 @@ public class User {
     }
 
     public boolean isStaff() {
-        return !hasRole(Role.POS) && hasAnyRole(Role.ADMIN, Role.CRUISE_MANAGER, Role.SHIP_MANAGER,
-                Role.OPERATIONS_MANAGER, Role.BOOKING_AGENT,
-                Role.ONBOARD_STAFF, Role.FINANCE_OFFICER,
-                Role.ACTIVITY_SERVICE_MANAGER);
+        return !hasRole(Role.POS)
+                && hasAnyRole(
+                        Role.ADMIN,
+                        Role.CRUISE_MANAGER,
+                        Role.SHIP_MANAGER,
+                        Role.OPERATIONS_MANAGER,
+                        Role.BOOKING_AGENT,
+                        Role.ONBOARD_STAFF,
+                        Role.FINANCE_OFFICER,
+                        Role.ACTIVITY_SERVICE_MANAGER);
     }
 }

@@ -1,6 +1,7 @@
 package com.casms.ship.dto.response;
 
 import io.swagger.v3.oas.annotations.media.Schema;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -14,7 +15,10 @@ import java.util.UUID;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@Schema(description = "Báo cáo tổng hợp tình trạng chuẩn bị liên phòng ban cho chuyến khởi hành (BE-07 / Mainflow S3)")
+@Schema(
+        description =
+                "Báo cáo tổng hợp tình trạng chuẩn bị liên phòng ban cho chuyến khởi hành (BE-07 /"
+                    + " Mainflow S3)")
 public class CruisePreparationResponse {
 
     @Schema(description = "ID chuyến khởi hành")
@@ -26,7 +30,9 @@ public class CruisePreparationResponse {
     @Schema(description = "Tên chuyến khởi hành")
     private String cruiseName;
 
-    @Schema(description = "Trạng thái chuyến khởi hành hiện tại (DRAFT, PUBLISHED, ...)", example = "DRAFT")
+    @Schema(
+            description = "Trạng thái chuyến khởi hành hiện tại (DRAFT, PUBLISHED, ...)",
+            example = "DRAFT")
     private String cruiseStatus;
 
     private UUID coordinatorUserId;
@@ -34,10 +40,14 @@ public class CruisePreparationResponse {
     private Long cruiseRevision;
     private boolean canAssignCoordinator;
 
-    @Schema(description = "Trạng thái chuẩn bị tổng thể (INCOMPLETE, READY_FOR_SIGNOFF, CONFIRMED)", example = "INCOMPLETE")
+    @Schema(
+            description = "Trạng thái chuẩn bị tổng thể (INCOMPLETE, READY_FOR_SIGNOFF, CONFIRMED)",
+            example = "INCOMPLETE")
     private String overallStatus;
 
-    @Schema(description = "Đã hoàn thành toàn bộ ký nhận liên phòng ban hay chưa", example = "false")
+    @Schema(
+            description = "Đã hoàn thành toàn bộ ký nhận liên phòng ban hay chưa",
+            example = "false")
     private boolean allConfirmed;
 
     @Schema(description = "Danh sách các phân hệ chuẩn bị liên phòng ban")

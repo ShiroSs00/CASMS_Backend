@@ -1,6 +1,7 @@
 package com.casms.ship.dto.response;
 
 import com.casms.ship.enums.RegulationScope;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;

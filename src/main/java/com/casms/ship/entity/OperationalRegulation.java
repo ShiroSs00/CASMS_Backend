@@ -4,7 +4,9 @@ import com.casms.ship.enums.RegulationScope;
 import com.casms.ship.enums.RegulationStatus;
 import com.casms.ship.enums.RegulationType;
 import com.casms.ship.enums.RegulationUnit;
+
 import jakarta.persistence.*;
+
 import lombok.Getter;
 import lombok.Setter;
 

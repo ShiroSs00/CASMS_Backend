@@ -2,7 +2,9 @@ package com.casms.payment.entity;
 
 import com.casms.payment.enums.OnboardAccountStatus;
 import com.casms.ship.entity.Cruise;
+
 import jakarta.persistence.*;
+
 import lombok.Getter;
 import lombok.Setter;
 

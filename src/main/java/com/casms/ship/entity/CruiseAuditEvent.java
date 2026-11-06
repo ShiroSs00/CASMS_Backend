@@ -1,6 +1,7 @@
 package com.casms.ship.entity;
 
 import jakarta.persistence.*;
+
 import lombok.*;
 
 import java.time.Instant;

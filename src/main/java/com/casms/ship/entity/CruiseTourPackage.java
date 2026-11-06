@@ -1,7 +1,9 @@
 package com.casms.ship.entity;
 
 import com.casms.servicepackage.entity.TourPackage;
+
 import jakarta.persistence.*;
+
 import lombok.Getter;
 import lombok.Setter;
 
@@ -11,8 +13,9 @@ import java.util.UUID;
 @Getter
 @Setter
 @Entity
-@Table(name = "\"CruiseTourPackage\"",
-       uniqueConstraints = @UniqueConstraint(columnNames = {"cruise_id", "tour_package_id"}))
+@Table(
+        name = "\"CruiseTourPackage\"",
+        uniqueConstraints = @UniqueConstraint(columnNames = {"cruise_id", "tour_package_id"}))
 public class CruiseTourPackage {
 
     @Id

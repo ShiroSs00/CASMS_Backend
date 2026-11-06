@@ -5,8 +5,10 @@ import com.casms.identity.entity.User;
 import com.casms.identity.enums.Role;
 import com.casms.identity.enums.UserStatus;
 import com.casms.identity.repository.UserRepository;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -25,26 +27,28 @@ public class IdentityService {
         List<User> users = userRepository.findByStatus(targetStatus);
 
         boolean isOpIssue = "OPERATIONAL_ISSUE".equalsIgnoreCase(assignableFor);
-        String capabilityLabel = isOpIssue
-                ? "Operational Issue Handler"
-                : null;
+        String capabilityLabel = isOpIssue ? "Operational Issue Handler" : null;
 
         return users.stream()
-                .filter(u -> {
-                    if ("POS".equalsIgnoreCase(assignableFor)) return u.hasRole(Role.POS);
-                    if ("ONBOARD_STAFF".equalsIgnoreCase(assignableFor))return u.isStaff() && u.hasRole(Role.ONBOARD_STAFF);
-                    if (isOpIssue) {
-                        return isEligibleOperationalHandler(u);
-                    }
-                    return u.isStaff();
-                })
-                .map(u -> UserLookupResponse.builder()
-                        .id(u.getUserId())
-                        .displayName(u.getUsername())
-                        .username(u.getUsername())
-                        .status(u.getStatus())
-                        .capabilityLabel(capabilityLabel)
-                        .build())
+                .filter(
+                        u -> {
+                            if ("POS".equalsIgnoreCase(assignableFor)) return u.hasRole(Role.POS);
+                            if ("ONBOARD_STAFF".equalsIgnoreCase(assignableFor))
+                                return u.isStaff() && u.hasRole(Role.ONBOARD_STAFF);
+                            if (isOpIssue) {
+                                return isEligibleOperationalHandler(u);
+                            }
+                            return u.isStaff();
+                        })
+                .map(
+                        u ->
+                                UserLookupResponse.builder()
+                                        .id(u.getUserId())
+                                        .displayName(u.getUsername())
+                                        .username(u.getUsername())
+                                        .status(u.getStatus())
+                                        .capabilityLabel(capabilityLabel)
+                                        .build())
                 .toList();
     }
 
@@ -58,7 +62,6 @@ public class IdentityService {
                 Role.SHIP_MANAGER,
                 Role.CRUISE_MANAGER,
                 Role.ACTIVITY_SERVICE_MANAGER,
-                Role.ONBOARD_STAFF
-        );
+                Role.ONBOARD_STAFF);
     }
 }

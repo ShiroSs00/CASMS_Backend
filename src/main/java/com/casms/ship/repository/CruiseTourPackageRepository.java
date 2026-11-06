@@ -1,6 +1,7 @@
 package com.casms.ship.repository;
 
 import com.casms.ship.entity.CruiseTourPackage;
+
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
@@ -17,11 +18,13 @@ public interface CruiseTourPackageRepository extends JpaRepository<CruiseTourPac
 
     long countByCruise_CruiseIdAndActiveTrue(UUID cruiseId);
 
-    Optional<CruiseTourPackage> findByCruise_CruiseIdAndTourPackage_TourPackageId(UUID cruiseId, UUID tourPackageId);
+    Optional<CruiseTourPackage> findByCruise_CruiseIdAndTourPackage_TourPackageId(
+            UUID cruiseId, UUID tourPackageId);
 
     boolean existsByCruise_CruiseIdAndTourPackage_TourPackageId(UUID cruiseId, UUID tourPackageId);
 
-    boolean existsByCruise_CruiseIdAndTourPackage_TourPackageIdAndActiveTrue(UUID cruiseId, UUID tourPackageId);
+    boolean existsByCruise_CruiseIdAndTourPackage_TourPackageIdAndActiveTrue(
+            UUID cruiseId, UUID tourPackageId);
 
     void deleteByCruise_CruiseIdAndTourPackage_TourPackageId(UUID cruiseId, UUID tourPackageId);
 

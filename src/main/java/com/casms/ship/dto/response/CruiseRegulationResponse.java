@@ -1,4 +1,3 @@
-
 package com.casms.ship.dto.response;
 
 import lombok.Builder;

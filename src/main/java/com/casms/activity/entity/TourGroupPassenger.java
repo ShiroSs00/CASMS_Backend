@@ -2,7 +2,9 @@ package com.casms.activity.entity;
 
 import com.casms.activity.enums.TourGroupPassengerAssignmentStatus;
 import com.casms.identity.entity.Passenger;
+
 import jakarta.persistence.*;
+
 import lombok.Getter;
 import lombok.Setter;
 

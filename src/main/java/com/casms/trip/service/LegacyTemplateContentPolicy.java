@@ -6,12 +6,13 @@ import com.casms.trip.dto.request.TripPlanEntryDraftDto;
 import com.casms.trip.entity.TripPlanEntry;
 import com.casms.trip.entity.TripScheduleVersion;
 import com.casms.trip.enums.TripPlanEntryKind;
+
 import org.springframework.http.HttpStatus;
 
-import java.util.List;
 import java.util.HashSet;
-import java.util.Set;
+import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 
 /** Keeps legacy service windows readable without allowing template writes or implicit copies. */
 final class LegacyTemplateContentPolicy {
@@ -19,27 +20,40 @@ final class LegacyTemplateContentPolicy {
 
     static List<TripPlanEntry> legacyEntries(TripScheduleVersion version) {
         return version.getEntries().stream()
-                .filter(e -> e.getKind() == TripPlanEntryKind.SERVING_WINDOW).toList();
+                .filter(e -> e.getKind() == TripPlanEntryKind.SERVING_WINDOW)
+                .toList();
     }
 
     static void rejectLegacyClone(TripScheduleVersion source) {
         if (source != null && !legacyEntries(source).isEmpty()) {
-            throw new BusinessException(HttpStatus.CONFLICT, "LEGACY_TEMPLATE_CLONE_BLOCKED",
-                    "Nguồn có khung phục vụ lịch sử. Chưa thể nhân bản khi chưa có quyết định xử lý dữ liệu này.");
+            throw new BusinessException(
+                    HttpStatus.CONFLICT,
+                    "LEGACY_TEMPLATE_CLONE_BLOCKED",
+                    "Nguồn có khung phục vụ lịch sử. Chưa thể nhân bản khi chưa có quyết định xử lý"
+                        + " dữ liệu này.");
         }
     }
 
-    static List<TripPlanEntry> protectSave(TripScheduleVersion version, ScheduleDraftSaveRequest request) {
+    static List<TripPlanEntry> protectSave(
+            TripScheduleVersion version, ScheduleDraftSaveRequest request) {
         List<TripPlanEntry> legacy = legacyEntries(version);
         Set<String> keys = new HashSet<>();
         // Run before mutating any managed entity (even queries later in reconciliation may flush).
-        for (TripPlanEntryDraftDto incoming : request.getEntries() == null
-                ? List.<TripPlanEntryDraftDto>of() : request.getEntries()) {
+        for (TripPlanEntryDraftDto incoming :
+                request.getEntries() == null
+                        ? List.<TripPlanEntryDraftDto>of()
+                        : request.getEntries()) {
             if (!keys.add(incoming.getClientKey())) {
-                throw new BusinessException(HttpStatus.BAD_REQUEST, "DUPLICATE_CLIENT_KEY", "Khóa mục kế hoạch bị trùng lặp.");
+                throw new BusinessException(
+                        HttpStatus.BAD_REQUEST,
+                        "DUPLICATE_CLIENT_KEY",
+                        "Khóa mục kế hoạch bị trùng lặp.");
             }
-            TripPlanEntry old = legacy.stream().filter(e -> Objects.equals(e.getClientKey(), incoming.getClientKey()))
-                    .findFirst().orElse(null);
+            TripPlanEntry old =
+                    legacy.stream()
+                            .filter(e -> Objects.equals(e.getClientKey(), incoming.getClientKey()))
+                            .findFirst()
+                            .orElse(null);
             if (incoming.getKind() == TripPlanEntryKind.SERVING_WINDOW) {
                 if (old == null || !snapshot(old).equals(incoming)) throw readOnly();
             } else if (old != null) {
@@ -49,9 +63,17 @@ final class LegacyTemplateContentPolicy {
             }
         }
         for (TripPlanEntry old : legacy) {
-            if (old.getStop() != null && (request.getStops() == null || request.getStops().stream()
-                    .noneMatch(s -> Objects.equals(s.getClientKey(), old.getStop().getClientKey())))) {
-                throw new BusinessException(HttpStatus.CONFLICT, "LEGACY_TEMPLATE_REFERENCE_LOCKED",
+            if (old.getStop() != null
+                    && (request.getStops() == null
+                            || request.getStops().stream()
+                                    .noneMatch(
+                                            s ->
+                                                    Objects.equals(
+                                                            s.getClientKey(),
+                                                            old.getStop().getClientKey())))) {
+                throw new BusinessException(
+                        HttpStatus.CONFLICT,
+                        "LEGACY_TEMPLATE_REFERENCE_LOCKED",
                         "Không thể xóa lần ghé cảng đang được khung phục vụ lịch sử tham chiếu.");
             }
         }
@@ -59,8 +81,11 @@ final class LegacyTemplateContentPolicy {
     }
 
     private static BusinessException readOnly() {
-        return new BusinessException(HttpStatus.UNPROCESSABLE_ENTITY, "LEGACY_SERVING_WINDOW_READ_ONLY",
-                "Khung phục vụ không được tạo hoặc sửa trong mẫu lịch trình. Dữ liệu lịch sử chỉ được đọc và giữ nguyên.");
+        return new BusinessException(
+                HttpStatus.UNPROCESSABLE_ENTITY,
+                "LEGACY_SERVING_WINDOW_READ_ONLY",
+                "Khung phục vụ không được tạo hoặc sửa trong mẫu lịch trình. Dữ liệu lịch sử chỉ"
+                    + " được đọc và giữ nguyên.");
     }
 
     private static TripPlanEntryDraftDto snapshot(TripPlanEntry old) {
@@ -74,7 +99,8 @@ final class LegacyTemplateContentPolicy {
         dto.setSourceExcursionId(old.getSourceExcursionId());
         dto.setServiceId(old.getServiceId());
         dto.setSeriesClientKey(old.getSeriesClientKey());
-        dto.setDestinationId(old.getDestination() == null ? null : old.getDestination().getDestinationId());
+        dto.setDestinationId(
+                old.getDestination() == null ? null : old.getDestination().getDestinationId());
         dto.setTitle(old.getTitle());
         dto.setStartDayNumber(old.getStartDayNumber());
         dto.setPlannedStartTime(old.getPlannedStartTime());

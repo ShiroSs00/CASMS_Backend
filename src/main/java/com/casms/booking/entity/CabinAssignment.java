@@ -2,7 +2,9 @@ package com.casms.booking.entity;
 
 import com.casms.identity.entity.User;
 import com.casms.ship.entity.Cabin;
+
 import jakarta.persistence.*;
+
 import lombok.Getter;
 import lombok.Setter;
 

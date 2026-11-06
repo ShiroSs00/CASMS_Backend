@@ -1,6 +1,7 @@
 package com.casms.ship.entity;
 
 import jakarta.persistence.*;
+
 import lombok.Getter;
 import lombok.Setter;
 
@@ -10,9 +11,9 @@ import java.util.UUID;
 @Getter
 @Setter
 @Entity
-@Table(name = "\"ModelImportIssue\"", indexes = {
-        @Index(name = "idx_model_import_issue_job", columnList = "model_import_job_id")
-})
+@Table(
+        name = "\"ModelImportIssue\"",
+        indexes = {@Index(name = "idx_model_import_issue_job", columnList = "model_import_job_id")})
 public class ModelImportIssue {
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)

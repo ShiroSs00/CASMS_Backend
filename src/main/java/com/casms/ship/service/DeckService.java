@@ -5,16 +5,18 @@ import com.casms.common.exception.ResourceNotFoundException;
 import com.casms.ship.dto.request.*;
 import com.casms.ship.dto.response.*;
 import com.casms.ship.entity.Cabin;
-import com.casms.ship.enums.CabinStatus;
 import com.casms.ship.entity.Deck;
 import com.casms.ship.entity.Ship;
+import com.casms.ship.enums.CabinStatus;
 import com.casms.ship.repository.CabinRepository;
 import com.casms.ship.repository.DeckRepository;
-import com.casms.ship.repository.ShipRepository;
-import com.casms.ship.repository.ShipModelObjectRepository;
 import com.casms.ship.repository.LocationDeviceRepository;
+import com.casms.ship.repository.ShipModelObjectRepository;
+import com.casms.ship.repository.ShipRepository;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -39,44 +41,66 @@ public class DeckService {
 
     @Transactional
     public DeckResponse create(DeckCreateRequest request) {
-        if (request.getModelPositionX() != null || request.getModelPositionY() != null || request.getModelPositionZ() != null
-                || request.getModelRotationX() != null || request.getModelRotationY() != null || request.getModelRotationZ() != null) {
-            throw new BusinessException("DECK_MODEL_FIELDS_IMMUTABLE",
-                    "Deck model transforms are managed by the registered ship model import workflow");
+        if (request.getModelPositionX() != null
+                || request.getModelPositionY() != null
+                || request.getModelPositionZ() != null
+                || request.getModelRotationX() != null
+                || request.getModelRotationY() != null
+                || request.getModelRotationZ() != null) {
+            throw new BusinessException(
+                    "DECK_MODEL_FIELDS_IMMUTABLE",
+                    "Deck model transforms are managed by the registered ship model import"
+                        + " workflow");
         }
-        Ship ship = shipRepository.findById(request.getShipId())
-                .orElseThrow(() -> new ResourceNotFoundException("Ship", request.getShipId()));
+        Ship ship =
+                shipRepository
+                        .findById(request.getShipId())
+                        .orElseThrow(
+                                () -> new ResourceNotFoundException("Ship", request.getShipId()));
 
         Integer deckNumber = request.getDeckNumber();
-        int deckNumberLimit = ship.getDeckNumberLimit() == null ? ship.getTotalDecks() : ship.getDeckNumberLimit();
+        int deckNumberLimit =
+                ship.getDeckNumberLimit() == null
+                        ? ship.getTotalDecks()
+                        : ship.getDeckNumberLimit();
         if (deckNumber == null) {
-            Set<Integer> configured = deckRepository.findByShipShipIdOrderByDeckNumber(ship.getShipId())
-                    .stream().map(Deck::getDeckNumber).collect(Collectors.toSet());
+            Set<Integer> configured =
+                    deckRepository.findByShipShipIdOrderByDeckNumber(ship.getShipId()).stream()
+                            .map(Deck::getDeckNumber)
+                            .collect(Collectors.toSet());
             deckNumber = 1;
             while (deckNumber <= deckNumberLimit && configured.contains(deckNumber)) deckNumber++;
             if (deckNumber > deckNumberLimit) {
-                throw new BusinessException("INVALID_DECK_NUMBER", "No available business deck number remains on this ship");
+                throw new BusinessException(
+                        "INVALID_DECK_NUMBER",
+                        "No available business deck number remains on this ship");
             }
         } else if (deckNumber < 1) {
             throw new BusinessException("INVALID_DECK_NUMBER", "Deck number must be at least 1");
         }
         if (deckNumber > deckNumberLimit) {
-            throw new BusinessException("INVALID_DECK_NUMBER", "Deck number cannot exceed ship's total decks limit");
+            throw new BusinessException(
+                    "INVALID_DECK_NUMBER", "Deck number cannot exceed ship's total decks limit");
         }
 
         if (deckRepository.existsByShipShipIdAndDeckNumber(ship.getShipId(), deckNumber)) {
-            throw new BusinessException("DUPLICATE_DECK", "Deck number already exists on this ship");
+            throw new BusinessException(
+                    "DUPLICATE_DECK", "Deck number already exists on this ship");
         }
 
-        String deckName = (request.getDeckName() != null && !request.getDeckName().isBlank())
-                ? request.getDeckName().trim()
-                : "Deck " + deckNumber;
+        String deckName =
+                (request.getDeckName() != null && !request.getDeckName().isBlank())
+                        ? request.getDeckName().trim()
+                        : "Deck " + deckNumber;
 
         Deck deck = new Deck();
         deck.setShip(ship);
         deck.setDeckNumber(deckNumber);
         deck.setDeckName(deckName);
-        deck.setPriceMultiplier(request.getPriceMultiplier() != null ? request.getPriceMultiplier() : BigDecimal.valueOf(1.00));
+        deck.setPriceMultiplier(
+                request.getPriceMultiplier() != null
+                        ? request.getPriceMultiplier()
+                        : BigDecimal.valueOf(1.00));
         deck = deckRepository.save(deck);
         return mapToResponse(deck);
     }
@@ -102,26 +126,42 @@ public class DeckService {
     public DeckResponse update(UUID deckId, DeckUpdateRequest request) {
         Deck deck = getDeckById(deckId);
 
-        if (request.getModelPositionX() != null || request.getModelPositionY() != null || request.getModelPositionZ() != null
-                || request.getModelRotationX() != null || request.getModelRotationY() != null || request.getModelRotationZ() != null) {
-            throw new BusinessException("DECK_MODEL_FIELDS_IMMUTABLE",
-                    "Deck model transforms are managed by the registered ship model import workflow");
+        if (request.getModelPositionX() != null
+                || request.getModelPositionY() != null
+                || request.getModelPositionZ() != null
+                || request.getModelRotationX() != null
+                || request.getModelRotationY() != null
+                || request.getModelRotationZ() != null) {
+            throw new BusinessException(
+                    "DECK_MODEL_FIELDS_IMMUTABLE",
+                    "Deck model transforms are managed by the registered ship model import"
+                        + " workflow");
         }
 
-        if (request.getDeckNumber() != null && !request.getDeckNumber().equals(deck.getDeckNumber())) {
+        if (request.getDeckNumber() != null
+                && !request.getDeckNumber().equals(deck.getDeckNumber())) {
             if (deck.isServiceLevel()) {
-                throw new BusinessException("DECK_MODEL_FIELDS_IMMUTABLE", "Service deck numbering is managed by model import");
+                throw new BusinessException(
+                        "DECK_MODEL_FIELDS_IMMUTABLE",
+                        "Service deck numbering is managed by model import");
             }
             if (request.getDeckNumber() < 1) {
-                throw new BusinessException("INVALID_DECK_NUMBER", "Deck number must be at least 1");
+                throw new BusinessException(
+                        "INVALID_DECK_NUMBER", "Deck number must be at least 1");
             }
-            int deckNumberLimit = deck.getShip().getDeckNumberLimit() == null
-                    ? deck.getShip().getTotalDecks() : deck.getShip().getDeckNumberLimit();
+            int deckNumberLimit =
+                    deck.getShip().getDeckNumberLimit() == null
+                            ? deck.getShip().getTotalDecks()
+                            : deck.getShip().getDeckNumberLimit();
             if (request.getDeckNumber() > deckNumberLimit) {
-                throw new BusinessException("INVALID_DECK_NUMBER", "Deck number cannot exceed ship's total decks limit");
+                throw new BusinessException(
+                        "INVALID_DECK_NUMBER",
+                        "Deck number cannot exceed ship's total decks limit");
             }
-            if (deckRepository.existsByShipShipIdAndDeckNumber(deck.getShip().getShipId(), request.getDeckNumber())) {
-                throw new BusinessException("DUPLICATE_DECK", "Deck number already exists on this ship");
+            if (deckRepository.existsByShipShipIdAndDeckNumber(
+                    deck.getShip().getShipId(), request.getDeckNumber())) {
+                throw new BusinessException(
+                        "DUPLICATE_DECK", "Deck number already exists on this ship");
             }
             deck.setDeckNumber(request.getDeckNumber());
         }
@@ -139,12 +179,16 @@ public class DeckService {
     @Transactional
     public void deleteUnused(UUID deckId) {
         Deck deck = getDeckById(deckId);
-        
+
         if (cabinRepository.existsByDeckDeckId(deckId)) {
-            throw new BusinessException("DECK_IN_USE", "Cannot delete deck because it contains cabins");
+            throw new BusinessException(
+                    "DECK_IN_USE", "Cannot delete deck because it contains cabins");
         }
-        if (shipModelObjectRepository.existsByDeckDeckId(deckId) || locationDeviceRepository.existsByDeckDeckId(deckId)) {
-            throw new BusinessException("DECK_IN_USE", "Cannot delete deck while a model mapping or BLE anchor references it");
+        if (shipModelObjectRepository.existsByDeckDeckId(deckId)
+                || locationDeviceRepository.existsByDeckDeckId(deckId)) {
+            throw new BusinessException(
+                    "DECK_IN_USE",
+                    "Cannot delete deck while a model mapping or BLE anchor references it");
         }
 
         deckRepository.delete(deck);
@@ -168,11 +212,14 @@ public class DeckService {
     @Transactional(readOnly = true)
     public void validateDeck(UUID deckId) {
         Deck deck = getDeckById(deckId);
-        int limit = deck.getShip().getDeckNumberLimit() == null
-                ? deck.getShip().getTotalDecks() : deck.getShip().getDeckNumberLimit();
+        int limit =
+                deck.getShip().getDeckNumberLimit() == null
+                        ? deck.getShip().getTotalDecks()
+                        : deck.getShip().getDeckNumberLimit();
         if ((!deck.isServiceLevel() && (deck.getDeckNumber() < 1 || deck.getDeckNumber() > limit))
                 || (deck.isServiceLevel() && deck.getDeckNumber() > 0)) {
-            throw new BusinessException("INVALID_DECK_NUMBER", "Deck number violates ship limit constraint");
+            throw new BusinessException(
+                    "INVALID_DECK_NUMBER", "Deck number violates ship limit constraint");
         }
     }
 
@@ -181,7 +228,8 @@ public class DeckService {
         Deck deck = getDeckById(deckId);
 
         long totalCabins = cabinRepository.countByDeckDeckId(deckId);
-        long availableCabins = cabinRepository.countByDeckDeckIdAndStatus(deckId, CabinStatus.AVAILABLE);
+        long availableCabins =
+                cabinRepository.countByDeckDeckIdAndStatus(deckId, CabinStatus.AVAILABLE);
         Long totalPassengerCapacity = cabinRepository.sumCapacityByDeckId(deckId);
 
         DeckCapacityResponse res = new DeckCapacityResponse();
@@ -196,7 +244,8 @@ public class DeckService {
     }
 
     private Deck getDeckById(UUID deckId) {
-        return deckRepository.findById(deckId)
+        return deckRepository
+                .findById(deckId)
                 .orElseThrow(() -> new ResourceNotFoundException("Deck", deckId));
     }
 
@@ -208,7 +257,10 @@ public class DeckService {
         res.setDeckName(deck.getDeckName());
         res.setServiceLevel(deck.isServiceLevel());
         res.setModelMetadataJson(deck.getModelMetadataJson());
-        res.setPriceMultiplier(deck.getPriceMultiplier() != null ? deck.getPriceMultiplier() : BigDecimal.valueOf(1.00));
+        res.setPriceMultiplier(
+                deck.getPriceMultiplier() != null
+                        ? deck.getPriceMultiplier()
+                        : BigDecimal.valueOf(1.00));
         res.setModelPositionX(deck.getModelPositionX());
         res.setModelPositionY(deck.getModelPositionY());
         res.setModelPositionZ(deck.getModelPositionZ());

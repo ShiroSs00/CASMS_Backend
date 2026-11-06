@@ -1,5 +1,9 @@
 package com.casms.checkin.service;
 
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.*;
+
 import com.casms.booking.entity.BookingPassenger;
 import com.casms.booking.repository.BookingPassengerRepository;
 import com.casms.checkin.dto.request.GuidanceAttendanceRequest;
@@ -19,6 +23,7 @@ import com.casms.identity.enums.UserStatus;
 import com.casms.identity.repository.UserRepository;
 import com.casms.ship.entity.Cruise;
 import com.casms.ship.repository.CruiseRepository;
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -32,30 +37,20 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.*;
-
 @ExtendWith(MockitoExtension.class)
 class GuidanceSessionServiceTest {
 
-    @Mock
-    private GuidanceSessionRepository sessionRepository;
+    @Mock private GuidanceSessionRepository sessionRepository;
 
-    @Mock
-    private GuidanceSessionParticipantRepository participantRepository;
+    @Mock private GuidanceSessionParticipantRepository participantRepository;
 
-    @Mock
-    private CruiseRepository cruiseRepository;
+    @Mock private CruiseRepository cruiseRepository;
 
-    @Mock
-    private UserRepository userRepository;
+    @Mock private UserRepository userRepository;
 
-    @Mock
-    private BookingPassengerRepository bookingPassengerRepository;
+    @Mock private BookingPassengerRepository bookingPassengerRepository;
 
-    @InjectMocks
-    private GuidanceSessionService guidanceSessionService;
+    @InjectMocks private GuidanceSessionService guidanceSessionService;
 
     private UUID cruiseId;
     private UUID sessionId;
@@ -125,8 +120,9 @@ class GuidanceSessionServiceTest {
         req.setEndAt(Instant.now().plusSeconds(1800)); // end < start
         req.setInstructorUserId(instructorId);
 
-        BusinessException ex = assertThrows(BusinessException.class,
-                () -> guidanceSessionService.createSession(req));
+        BusinessException ex =
+                assertThrows(
+                        BusinessException.class, () -> guidanceSessionService.createSession(req));
 
         assertEquals("INVALID_TIME_RANGE", ex.getCode());
         verify(sessionRepository, never()).save(any());
@@ -140,8 +136,11 @@ class GuidanceSessionServiceTest {
         bp.setBookingPassengerId(bpId);
 
         when(sessionRepository.findById(sessionId)).thenReturn(Optional.of(session));
-        when(bookingPassengerRepository.findActivePassengersByCruiseId(cruiseId)).thenReturn(List.of(bp));
-        when(participantRepository.existsByGuidanceSession_GuidanceSessionIdAndBookingPassenger_BookingPassengerId(sessionId, bpId))
+        when(bookingPassengerRepository.findActivePassengersByCruiseId(cruiseId))
+                .thenReturn(List.of(bp));
+        when(participantRepository
+                        .existsByGuidanceSession_GuidanceSessionIdAndBookingPassenger_BookingPassengerId(
+                                sessionId, bpId))
                 .thenReturn(false);
 
         int count = guidanceSessionService.autoPopulateParticipants(sessionId);
@@ -173,14 +172,18 @@ class GuidanceSessionServiceTest {
         req.setAttendanceStatus(GuidanceSessionParticipantAttendanceStatus.Attended);
 
         when(sessionRepository.findById(sessionId)).thenReturn(Optional.of(session));
-        when(participantRepository.findByGuidanceSession_GuidanceSessionIdAndBookingPassenger_BookingPassengerId(sessionId, bpId))
+        when(participantRepository
+                        .findByGuidanceSession_GuidanceSessionIdAndBookingPassenger_BookingPassengerId(
+                                sessionId, bpId))
                 .thenReturn(Optional.of(participant));
-        when(participantRepository.save(any(GuidanceSessionParticipant.class))).thenReturn(participant);
+        when(participantRepository.save(any(GuidanceSessionParticipant.class)))
+                .thenReturn(participant);
 
         GuidanceParticipantResponse resp = guidanceSessionService.recordAttendance(sessionId, req);
 
         assertNotNull(resp);
-        assertEquals(GuidanceSessionParticipantAttendanceStatus.Attended, resp.getAttendanceStatus());
+        assertEquals(
+                GuidanceSessionParticipantAttendanceStatus.Attended, resp.getAttendanceStatus());
         assertEquals("Nguyễn Văn An", resp.getPassengerFullName());
         verify(participantRepository).save(participant);
     }

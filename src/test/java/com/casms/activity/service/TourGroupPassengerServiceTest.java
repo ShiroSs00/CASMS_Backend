@@ -1,5 +1,8 @@
 package com.casms.activity.service;
 
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
+
 import com.casms.activity.entity.ShoreExcursion;
 import com.casms.activity.entity.TourGroup;
 import com.casms.activity.entity.TourGroupPassenger;
@@ -9,7 +12,9 @@ import com.casms.activity.repository.TourGroupPassengerRepository;
 import com.casms.activity.repository.TourGroupRepository;
 import com.casms.identity.entity.Passenger;
 import com.casms.identity.repository.PassengerRepository;
+
 import jakarta.persistence.EntityNotFoundException;
+
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -19,106 +24,72 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.Optional;
 import java.util.UUID;
 
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.*;
-
 @ExtendWith(MockitoExtension.class)
 class TourGroupPassengerServiceTest {
 
-    @Mock
-    private TourGroupPassengerRepository assignmentRepository;
+    @Mock private TourGroupPassengerRepository assignmentRepository;
 
-    @Mock
-    private TourGroupRepository tourGroupRepository;
+    @Mock private TourGroupRepository tourGroupRepository;
 
-    @Mock
-    private PassengerRepository passengerRepository;
+    @Mock private PassengerRepository passengerRepository;
 
-    @Mock
-    private RegistrationRepository registrationRepository;
+    @Mock private RegistrationRepository registrationRepository;
 
-    @InjectMocks
-    private TourGroupPassengerService service;
+    @InjectMocks private TourGroupPassengerService service;
 
     @Test
     void assign_nullRequest_throwsException() {
-        assertThrows(
-                IllegalArgumentException.class,
-                () -> service.assign(null)
-        );
+        assertThrows(IllegalArgumentException.class, () -> service.assign(null));
     }
 
     @Test
     void detail_nullId_throwsException() {
-        assertThrows(
-                IllegalArgumentException.class,
-                () -> service.detail(null)
-        );
+        assertThrows(IllegalArgumentException.class, () -> service.detail(null));
     }
 
     @Test
     void detail_missingAssignment_throwsException() {
         UUID id = UUID.randomUUID();
 
-        when(assignmentRepository.findDetailById(id))
-                .thenReturn(Optional.empty());
+        when(assignmentRepository.findDetailById(id)).thenReturn(Optional.empty());
 
-        assertThrows(
-                EntityNotFoundException.class,
-                () -> service.detail(id)
-        );
+        assertThrows(EntityNotFoundException.class, () -> service.detail(id));
     }
 
     @Test
     void move_nullTargetGroupId_throwsException() {
         UUID assignmentId = UUID.randomUUID();
 
-        when(assignmentRepository.findByIdForUpdate(assignmentId))
-                .thenReturn(Optional.empty());
+        when(assignmentRepository.findByIdForUpdate(assignmentId)).thenReturn(Optional.empty());
 
-        assertThrows(
-                EntityNotFoundException.class,
-                () -> service.move(assignmentId, null)
-        );
+        assertThrows(EntityNotFoundException.class, () -> service.move(assignmentId, null));
     }
 
     @Test
     void remove_missingAssignment_throwsException() {
         UUID id = UUID.randomUUID();
 
-        when(assignmentRepository.findByIdForUpdate(id))
-                .thenReturn(Optional.empty());
+        when(assignmentRepository.findByIdForUpdate(id)).thenReturn(Optional.empty());
 
-        assertThrows(
-                EntityNotFoundException.class,
-                () -> service.remove(id)
-        );
+        assertThrows(EntityNotFoundException.class, () -> service.remove(id));
     }
 
     @Test
     void recordDeparture_missingAssignment_throwsException() {
         UUID id = UUID.randomUUID();
 
-        when(assignmentRepository.findByIdForUpdate(id))
-                .thenReturn(Optional.empty());
+        when(assignmentRepository.findByIdForUpdate(id)).thenReturn(Optional.empty());
 
-        assertThrows(
-                EntityNotFoundException.class,
-                () -> service.recordDeparture(id)
-        );
+        assertThrows(EntityNotFoundException.class, () -> service.recordDeparture(id));
     }
 
     @Test
     void recordReturn_missingAssignment_throwsException() {
         UUID id = UUID.randomUUID();
 
-        when(assignmentRepository.findByIdForUpdate(id))
-                .thenReturn(Optional.empty());
+        when(assignmentRepository.findByIdForUpdate(id)).thenReturn(Optional.empty());
 
-        assertThrows(
-                EntityNotFoundException.class,
-                () -> service.recordReturn(id)
-        );
+        assertThrows(EntityNotFoundException.class, () -> service.recordReturn(id));
     }
 
     @Test
@@ -157,8 +128,7 @@ class TourGroupPassengerServiceTest {
         UUID groupId = UUID.randomUUID();
         when(tourGroupRepository.findById(groupId)).thenReturn(Optional.empty());
 
-        assertThrows(EntityNotFoundException.class,
-                () -> service.listEligiblePassengers(groupId));
+        assertThrows(EntityNotFoundException.class, () -> service.listEligiblePassengers(groupId));
     }
 
     @Test

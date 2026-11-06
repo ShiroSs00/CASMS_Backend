@@ -1,5 +1,9 @@
 package com.casms.ship.service;
 
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.*;
+
 import com.casms.common.exception.BusinessException;
 import com.casms.common.exception.ResourceNotFoundException;
 import com.casms.identity.entity.User;
@@ -15,6 +19,7 @@ import com.casms.ship.enums.ItineraryType;
 import com.casms.ship.repository.CruiseRepository;
 import com.casms.ship.repository.ItineraryDayRepository;
 import com.casms.ship.repository.ItineraryRepository;
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -27,27 +32,18 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.*;
-
 @ExtendWith(MockitoExtension.class)
 class ItineraryServiceTest {
 
-    @Mock
-    private ItineraryRepository itineraryRepository;
+    @Mock private ItineraryRepository itineraryRepository;
 
-    @Mock
-    private ItineraryDayRepository itineraryDayRepository;
+    @Mock private ItineraryDayRepository itineraryDayRepository;
 
-    @Mock
-    private CruiseRepository cruiseRepository;
+    @Mock private CruiseRepository cruiseRepository;
 
-    @Mock
-    private UserRepository userRepository;
+    @Mock private UserRepository userRepository;
 
-    @InjectMocks
-    private ItineraryService itineraryService;
+    @InjectMocks private ItineraryService itineraryService;
 
     private UUID cruiseId;
     private UUID creatorUserId;
@@ -85,8 +81,10 @@ class ItineraryServiceTest {
 
     @Test
     void create_nullCreatorUserId_throwsUnauthorized() {
-        BusinessException ex = assertThrows(BusinessException.class,
-                () -> itineraryService.create(createRequest, null));
+        BusinessException ex =
+                assertThrows(
+                        BusinessException.class,
+                        () -> itineraryService.create(createRequest, null));
         assertEquals("AUTH_REQUIRED", ex.getCode());
     }
 
@@ -94,7 +92,8 @@ class ItineraryServiceTest {
     void create_cruiseNotFound_throwsResourceNotFound() {
         when(cruiseRepository.findById(cruiseId)).thenReturn(Optional.empty());
 
-        assertThrows(ResourceNotFoundException.class,
+        assertThrows(
+                ResourceNotFoundException.class,
                 () -> itineraryService.create(createRequest, creatorUserId));
     }
 
@@ -103,8 +102,10 @@ class ItineraryServiceTest {
         when(cruiseRepository.findById(cruiseId)).thenReturn(Optional.of(sampleCruise));
         when(itineraryRepository.existsByCruiseCruiseId(cruiseId)).thenReturn(true);
 
-        BusinessException ex = assertThrows(BusinessException.class,
-                () -> itineraryService.create(createRequest, creatorUserId));
+        BusinessException ex =
+                assertThrows(
+                        BusinessException.class,
+                        () -> itineraryService.create(createRequest, creatorUserId));
         assertEquals("ITINERARY_ALREADY_EXISTS", ex.getCode());
     }
 
@@ -114,7 +115,8 @@ class ItineraryServiceTest {
         when(itineraryRepository.existsByCruiseCruiseId(cruiseId)).thenReturn(false);
         when(userRepository.findById(creatorUserId)).thenReturn(Optional.empty());
 
-        assertThrows(ResourceNotFoundException.class,
+        assertThrows(
+                ResourceNotFoundException.class,
                 () -> itineraryService.create(createRequest, creatorUserId));
     }
 
@@ -126,8 +128,10 @@ class ItineraryServiceTest {
 
         createRequest.setEndDate(createRequest.getStartDate()); // same day or before
 
-        BusinessException ex = assertThrows(BusinessException.class,
-                () -> itineraryService.create(createRequest, creatorUserId));
+        BusinessException ex =
+                assertThrows(
+                        BusinessException.class,
+                        () -> itineraryService.create(createRequest, creatorUserId));
         assertEquals("INVALID_DATE_RANGE", ex.getCode());
     }
 
@@ -136,11 +140,13 @@ class ItineraryServiceTest {
         when(cruiseRepository.findById(cruiseId)).thenReturn(Optional.of(sampleCruise));
         when(itineraryRepository.existsByCruiseCruiseId(cruiseId)).thenReturn(false);
         when(userRepository.findById(creatorUserId)).thenReturn(Optional.of(creatorUser));
-        when(itineraryRepository.save(any(Itinerary.class))).thenAnswer(invocation -> {
-            Itinerary it = invocation.getArgument(0);
-            it.setItineraryId(UUID.randomUUID());
-            return it;
-        });
+        when(itineraryRepository.save(any(Itinerary.class)))
+                .thenAnswer(
+                        invocation -> {
+                            Itinerary it = invocation.getArgument(0);
+                            it.setItineraryId(UUID.randomUUID());
+                            return it;
+                        });
 
         ItineraryResponse response = itineraryService.create(createRequest, creatorUserId);
 
@@ -164,8 +170,10 @@ class ItineraryServiceTest {
         ItineraryUpdateDraftRequest updateReq = new ItineraryUpdateDraftRequest();
         updateReq.setItineraryName("Updated Name");
 
-        BusinessException ex = assertThrows(BusinessException.class,
-                () -> itineraryService.updateDraft(itineraryId, updateReq));
+        BusinessException ex =
+                assertThrows(
+                        BusinessException.class,
+                        () -> itineraryService.updateDraft(itineraryId, updateReq));
         assertEquals("ITINERARY_NOT_DRAFT", ex.getCode());
     }
 
@@ -203,8 +211,10 @@ class ItineraryServiceTest {
 
         when(itineraryRepository.findById(itineraryId)).thenReturn(Optional.of(itinerary));
 
-        BusinessException ex = assertThrows(BusinessException.class,
-                () -> itineraryService.approve(itineraryId, approverUserId));
+        BusinessException ex =
+                assertThrows(
+                        BusinessException.class,
+                        () -> itineraryService.approve(itineraryId, approverUserId));
         assertEquals("INVALID_STATUS", ex.getCode());
     }
 
@@ -236,8 +246,12 @@ class ItineraryServiceTest {
 
         when(itineraryRepository.findById(itineraryId)).thenReturn(Optional.of(itinerary));
 
-        BusinessException ex = assertThrows(BusinessException.class,
-                () -> itineraryService.reject(itineraryId, approverUserId, "Budget unfeasible"));
+        BusinessException ex =
+                assertThrows(
+                        BusinessException.class,
+                        () ->
+                                itineraryService.reject(
+                                        itineraryId, approverUserId, "Budget unfeasible"));
         assertEquals("INVALID_STATUS", ex.getCode());
     }
 
@@ -252,7 +266,8 @@ class ItineraryServiceTest {
         when(userRepository.findById(approverUserId)).thenReturn(Optional.of(approverUser));
         when(itineraryRepository.save(any(Itinerary.class))).thenAnswer(i -> i.getArgument(0));
 
-        ItineraryResponse response = itineraryService.reject(itineraryId, approverUserId, "Budget unfeasible");
+        ItineraryResponse response =
+                itineraryService.reject(itineraryId, approverUserId, "Budget unfeasible");
 
         assertNotNull(response);
         assertEquals(ItineraryStatus.REJECTED, response.getStatus());
@@ -270,8 +285,10 @@ class ItineraryServiceTest {
 
         when(itineraryRepository.findById(itineraryId)).thenReturn(Optional.of(itinerary));
 
-        BusinessException ex = assertThrows(BusinessException.class,
-                () -> itineraryService.approve(itineraryId, approverUserId));
+        BusinessException ex =
+                assertThrows(
+                        BusinessException.class,
+                        () -> itineraryService.approve(itineraryId, approverUserId));
         assertEquals("SELF_APPROVAL_FORBIDDEN", ex.getCode());
     }
 
@@ -301,8 +318,10 @@ class ItineraryServiceTest {
 
         when(itineraryRepository.findById(itineraryId)).thenReturn(Optional.of(itinerary));
 
-        BusinessException ex = assertThrows(BusinessException.class,
-                () -> itineraryService.validateFeasibility(itineraryId));
+        BusinessException ex =
+                assertThrows(
+                        BusinessException.class,
+                        () -> itineraryService.validateFeasibility(itineraryId));
         assertEquals("EMPTY_ITINERARY_DAYS", ex.getCode());
     }
 
@@ -321,8 +340,10 @@ class ItineraryServiceTest {
 
         when(itineraryRepository.findById(itineraryId)).thenReturn(Optional.of(itinerary));
 
-        BusinessException ex = assertThrows(BusinessException.class,
-                () -> itineraryService.validateFeasibility(itineraryId));
+        BusinessException ex =
+                assertThrows(
+                        BusinessException.class,
+                        () -> itineraryService.validateFeasibility(itineraryId));
         assertEquals("INVALID_DAY_COUNT", ex.getCode());
     }
 }

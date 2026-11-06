@@ -1,11 +1,14 @@
 package com.casms.servicepackage.entity;
 
-import org.hibernate.annotations.JdbcTypeCode;
-import org.hibernate.type.SqlTypes;
 import com.casms.servicepackage.enums.ServiceStatus;
+
 import jakarta.persistence.*;
+
 import lombok.Getter;
 import lombok.Setter;
+
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -52,6 +55,16 @@ public class Service {
 
     @Column(name = "requires_schedule", nullable = false)
     private boolean requiresSchedule;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "pre_cruise_usage_policy", nullable = false, length = 20)
+    private com.casms.servicepackage.enums.ServiceUsagePolicy preCruiseUsagePolicy = com.casms.servicepackage.enums.ServiceUsagePolicy.UNLIMITED;
+
+    @Column(name = "pre_cruise_usage_limit")
+    private Integer preCruiseUsageLimit;
+
+    @Column(name = "usage_time_zone", nullable = false, length = 100)
+    private String usageTimeZone = "Asia/Ho_Chi_Minh";
 
     @Column(name = "has_allowance", nullable = false)
     private boolean hasAllowance;

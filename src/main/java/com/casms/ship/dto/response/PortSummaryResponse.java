@@ -1,7 +1,9 @@
 package com.casms.ship.dto.response;
 
 import com.casms.ship.enums.PortStatus;
+
 import io.swagger.v3.oas.annotations.media.Schema;
+
 import lombok.Data;
 
 import java.math.BigDecimal;
@@ -32,7 +34,9 @@ public class PortSummaryResponse {
     @Schema(description = "Chuỗi hiển thị múi giờ", example = "Asia/Tokyo (UTC+09:00)")
     private String formattedTimeZone;
 
-    @Schema(description = "Giờ địa phương hiện tại ở cảng (ISO-8601)", example = "2026-10-24T15:30:00+09:00")
+    @Schema(
+            description = "Giờ địa phương hiện tại ở cảng (ISO-8601)",
+            example = "2026-10-24T15:30:00+09:00")
     private String currentLocalTime;
 
     @Schema(description = "Vĩ độ", example = "35.4522")
@@ -49,4 +53,4 @@ public class PortSummaryResponse {
 
     @Schema(description = "Tên điểm đến liên kết", example = "Tokyo Bay & Kanto")
     private String destinationName;
-}
+}

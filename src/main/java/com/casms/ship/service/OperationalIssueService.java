@@ -21,9 +21,12 @@ import com.casms.ship.repository.CabinRepository;
 import com.casms.ship.repository.CruiseRepository;
 import com.casms.ship.repository.OperationalIssueRepository;
 import com.casms.ship.repository.ShipRepository;
+
 import jakarta.validation.Valid;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -47,8 +50,7 @@ public class OperationalIssueService {
 
     // 1. Report
     public OperationalIssueResponse report(
-            @Valid OperationalIssueRequest request,
-            UUID reporterId) {
+            @Valid OperationalIssueRequest request, UUID reporterId) {
 
         if (request.getSeverity() == null) {
             request.setSeverity(OperationalIssueSeverity.MEDIUM);
@@ -65,7 +67,8 @@ public class OperationalIssueService {
             } else if (cruise != null && cruise.getShip() != null) {
                 effectiveShipId = cruise.getShip().getShipId();
             } else {
-                throw new IllegalArgumentException("Ship ID is required when cabin or cruise is not specified.");
+                throw new IllegalArgumentException(
+                        "Ship ID is required when cabin or cruise is not specified.");
             }
         }
         Ship ship = findShip(effectiveShipId);
@@ -90,17 +93,17 @@ public class OperationalIssueService {
     // 2. List, with optional filters
     @Transactional(readOnly = true)
     public List<OperationalIssueResponse> list(
-            OperationalIssueStatus status,
-            UUID shipId,
-            UUID cruiseId) {
+            OperationalIssueStatus status, UUID shipId, UUID cruiseId) {
 
         List<OperationalIssue> issues;
 
         if (status != null && shipId != null) {
-            issues = issueRepository.findByStatusAndShip_ShipIdOrderByReportedAtDesc(status, shipId);
+            issues =
+                    issueRepository.findByStatusAndShip_ShipIdOrderByReportedAtDesc(status, shipId);
         } else if (status != null && cruiseId != null) {
-            issues = issueRepository.findByStatusAndCruise_CruiseIdOrderByReportedAtDesc(
-                    status, cruiseId);
+            issues =
+                    issueRepository.findByStatusAndCruise_CruiseIdOrderByReportedAtDesc(
+                            status, cruiseId);
         } else if (status != null) {
             issues = issueRepository.findByStatusOrderByReportedAtDesc(status);
         } else if (shipId != null) {
@@ -111,9 +114,7 @@ public class OperationalIssueService {
             issues = issueRepository.findAllByOrderByReportedAtDesc();
         }
 
-        return issues.stream()
-                .map(this::toResponse)
-                .toList();
+        return issues.stream().map(this::toResponse).toList();
     }
 
     // 3. Detail
@@ -124,8 +125,7 @@ public class OperationalIssueService {
 
     // 4. Update an OPEN issue
     public OperationalIssueResponse updateOpen(
-            UUID issueId,
-            @Valid OperationalIssueUpdateRequest request) {
+            UUID issueId, @Valid OperationalIssueUpdateRequest request) {
 
         OperationalIssue issue = findIssue(issueId);
         requireStatus(issue, OperationalIssueStatus.OPEN);
@@ -141,8 +141,7 @@ public class OperationalIssueService {
 
     // 5. Assign handler
     public OperationalIssueResponse assignHandler(
-            UUID issueId,
-            OperationalIssueAssignRequest request) {
+            UUID issueId, OperationalIssueAssignRequest request) {
 
         OperationalIssue issue = findIssue(issueId);
 
@@ -155,18 +154,14 @@ public class OperationalIssueService {
         User handler = findUser(request.getAssignedToId());
         if (handler.getStatus() != UserStatus.ACTIVE) {
             throw new BusinessException(
-                    HttpStatus.BAD_REQUEST,
-                    "HANDLER_NOT_ACTIVE",
-                    "Handler must be an ACTIVE user"
-            );
+                    HttpStatus.BAD_REQUEST, "HANDLER_NOT_ACTIVE", "Handler must be an ACTIVE user");
         }
 
         if (!IdentityService.isEligibleOperationalHandler(handler)) {
             throw new BusinessException(
                     HttpStatus.BAD_REQUEST,
                     "HANDLER_NOT_ELIGIBLE",
-                    "User is not eligible to handle operational issues"
-            );
+                    "User is not eligible to handle operational issues");
         }
 
         issue.setAssignedTo(handler);
@@ -180,8 +175,7 @@ public class OperationalIssueService {
         requireStatus(issue, OperationalIssueStatus.OPEN);
 
         if (issue.getAssignedTo() == null) {
-            throw new IllegalStateException(
-                    "Assign a handler before starting the issue");
+            throw new IllegalStateException("Assign a handler before starting the issue");
         }
 
         issue.setStatus(OperationalIssueStatus.IN_PROGRESS);
@@ -190,9 +184,7 @@ public class OperationalIssueService {
 
     // 7. Record resolution
     public OperationalIssueResponse recordResolution(
-            UUID issueId,
-            UUID resolverId,
-            @Valid OperationalIssueResolutionRequest request) {
+            UUID issueId, UUID resolverId, @Valid OperationalIssueResolutionRequest request) {
 
         OperationalIssue issue = findIssue(issueId);
         requireStatus(issue, OperationalIssueStatus.IN_PROGRESS);
@@ -211,17 +203,13 @@ public class OperationalIssueService {
     }
 
     // 8. Verify resolution
-    public OperationalIssueResponse verifyResolution(
-            UUID issueId,
-            UUID verifierId) {
+    public OperationalIssueResponse verifyResolution(UUID issueId, UUID verifierId) {
 
         OperationalIssue issue = findIssue(issueId);
         requireStatus(issue, OperationalIssueStatus.IN_PROGRESS);
 
-        if (issue.getResolution() == null
-                || issue.getResolution().isBlank()) {
-            throw new IllegalStateException(
-                    "Record a resolution before verifying the issue");
+        if (issue.getResolution() == null || issue.getResolution().isBlank()) {
+            throw new IllegalStateException("Record a resolution before verifying the issue");
         }
 
         User verifier = findUser(verifierId);
@@ -248,8 +236,7 @@ public class OperationalIssueService {
 
         if (issue.getStatus() != OperationalIssueStatus.RESOLVED
                 && issue.getStatus() != OperationalIssueStatus.CLOSED) {
-            throw new IllegalStateException(
-                    "Only RESOLVED or CLOSED issues can be reopened");
+            throw new IllegalStateException("Only RESOLVED or CLOSED issues can be reopened");
         }
 
         issue.setStatus(OperationalIssueStatus.OPEN);
@@ -275,8 +262,7 @@ public class OperationalIssueService {
             throw new IllegalStateException("Description is required");
         }
 
-        validateLocation(
-                issue.getShip(), issue.getCruise(), issue.getCabin());
+        validateLocation(issue.getShip(), issue.getCruise(), issue.getCabin());
 
         if (issue.getStatus() == OperationalIssueStatus.RESOLVED
                 || issue.getStatus() == OperationalIssueStatus.CLOSED) {
@@ -296,21 +282,24 @@ public class OperationalIssueService {
     // ---------- Private helpers ----------
 
     private OperationalIssue findIssue(UUID issueId) {
-        return issueRepository.findById(issueId)
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "Operational issue not found: " + issueId));
+        return issueRepository
+                .findById(issueId)
+                .orElseThrow(
+                        () ->
+                                new IllegalArgumentException(
+                                        "Operational issue not found: " + issueId));
     }
 
     private User findUser(UUID userId) {
-        return userRepository.findById(userId)
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "User not found: " + userId));
+        return userRepository
+                .findById(userId)
+                .orElseThrow(() -> new IllegalArgumentException("User not found: " + userId));
     }
 
     private Ship findShip(UUID shipId) {
-        return shipRepository.findById(shipId)
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "Ship not found: " + shipId));
+        return shipRepository
+                .findById(shipId)
+                .orElseThrow(() -> new IllegalArgumentException("Ship not found: " + shipId));
     }
 
     private Cruise findOptionalCruise(UUID cruiseId) {
@@ -318,9 +307,9 @@ public class OperationalIssueService {
             return null;
         }
 
-        return cruiseRepository.findById(cruiseId)
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "Cruise not found: " + cruiseId));
+        return cruiseRepository
+                .findById(cruiseId)
+                .orElseThrow(() -> new IllegalArgumentException("Cruise not found: " + cruiseId));
     }
 
     private Cabin findOptionalCabin(UUID cabinId) {
@@ -328,66 +317,59 @@ public class OperationalIssueService {
             return null;
         }
 
-        return cabinRepository.findById(cabinId)
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "Cabin not found: " + cabinId));
+        return cabinRepository
+                .findById(cabinId)
+                .orElseThrow(() -> new IllegalArgumentException("Cabin not found: " + cabinId));
     }
 
-    private void validateLocation(
-            Ship ship, Cruise cruise, Cabin cabin) {
+    private void validateLocation(Ship ship, Cruise cruise, Cabin cabin) {
 
-        if (cruise != null && cruise.getShip() != null
-                && !ship.getShipId().equals(
-                cruise.getShip().getShipId())) {
-            throw new IllegalArgumentException(
-                    "Cruise does not belong to the specified ship");
+        if (cruise != null
+                && cruise.getShip() != null
+                && !ship.getShipId().equals(cruise.getShip().getShipId())) {
+            throw new IllegalArgumentException("Cruise does not belong to the specified ship");
         }
 
-        if (cabin != null && cabin.getShip() != null
-                && !ship.getShipId().equals(
-                cabin.getShip().getShipId())) {
-            throw new IllegalArgumentException(
-                    "Cabin does not belong to the specified ship");
+        if (cabin != null
+                && cabin.getShip() != null
+                && !ship.getShipId().equals(cabin.getShip().getShipId())) {
+            throw new IllegalArgumentException("Cabin does not belong to the specified ship");
         }
     }
 
-    private void requireStatus(
-            OperationalIssue issue,
-            OperationalIssueStatus expectedStatus) {
+    private void requireStatus(OperationalIssue issue, OperationalIssueStatus expectedStatus) {
 
         if (issue.getStatus() != expectedStatus) {
             throw new IllegalStateException(
-                    "Expected status " + expectedStatus
-                            + " but current status is " + issue.getStatus());
+                    "Expected status "
+                            + expectedStatus
+                            + " but current status is "
+                            + issue.getStatus());
         }
     }
 
-    private OperationalIssueResponse toResponse(
-            OperationalIssue issue) {
+    private OperationalIssueResponse toResponse(OperationalIssue issue) {
 
         return OperationalIssueResponse.builder()
                 .issueId(issue.getIssueId())
                 .issueCode(issue.getIssueCode())
-                .cruiseId(issue.getCruise() == null
-                        ? null : issue.getCruise().getCruiseId())
-                .shipId(issue.getShip() == null
-                        ? null : issue.getShip().getShipId())
-                .cabinId(issue.getCabin() == null
-                        ? null : issue.getCabin().getCabinId())
+                .cruiseId(issue.getCruise() == null ? null : issue.getCruise().getCruiseId())
+                .shipId(issue.getShip() == null ? null : issue.getShip().getShipId())
+                .cabinId(issue.getCabin() == null ? null : issue.getCabin().getCabinId())
                 .issueType(issue.getIssueType())
                 .severity(issue.getSeverity())
                 .description(issue.getDescription())
                 .reportedAt(issue.getReportedAt())
                 .resolvedAt(issue.getResolvedAt())
                 .status(issue.getStatus())
-                .reportedById(issue.getReportedBy() == null
-                        ? null : issue.getReportedBy().getUserId())
-                .resolvedById(issue.getResolvedBy() == null
-                        ? null : issue.getResolvedBy().getUserId())
-                .assignedToId(issue.getAssignedTo() == null
-                        ? null : issue.getAssignedTo().getUserId())
-                .verifiedById(issue.getVerifiedBy() == null
-                        ? null : issue.getVerifiedBy().getUserId())
+                .reportedById(
+                        issue.getReportedBy() == null ? null : issue.getReportedBy().getUserId())
+                .resolvedById(
+                        issue.getResolvedBy() == null ? null : issue.getResolvedBy().getUserId())
+                .assignedToId(
+                        issue.getAssignedTo() == null ? null : issue.getAssignedTo().getUserId())
+                .verifiedById(
+                        issue.getVerifiedBy() == null ? null : issue.getVerifiedBy().getUserId())
                 .verifiedAt(issue.getVerifiedAt())
                 .resolution(issue.getResolution())
                 .createdAt(issue.getCreatedAt())

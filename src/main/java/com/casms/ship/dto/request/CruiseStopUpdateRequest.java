@@ -1,10 +1,13 @@
 package com.casms.ship.dto.request;
 
-import com.casms.ship.enums.CruiseStopCallType;
 import com.casms.ship.enums.CruiseStopArrivalMethod;
+import com.casms.ship.enums.CruiseStopCallType;
 import com.casms.ship.enums.CruiseStopStatus;
+
 import io.swagger.v3.oas.annotations.media.Schema;
+
 import jakarta.validation.constraints.Size;
+
 import lombok.Data;
 
 import java.time.Instant;
@@ -44,7 +47,9 @@ public class CruiseStopUpdateRequest {
     @Schema(description = "Phương pháp tiếp cận mới", example = "TENDER")
     private CruiseStopArrivalMethod arrivalMethod;
 
-    @Schema(description = "Thời gian tất cả hành khách lên tàu mới (ISO-8601)", example = "2026-01-15T18:30:00Z")
+    @Schema(
+            description = "Thời gian tất cả hành khách lên tàu mới (ISO-8601)",
+            example = "2026-01-15T18:30:00Z")
     private Instant allAboardTime;
 
     @Schema(description = "Thời gian chuyển bằng xuồng mới (phút)", example = "45")

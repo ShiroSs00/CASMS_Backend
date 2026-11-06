@@ -1,7 +1,11 @@
 package com.casms.common.exception;
 
+import static org.junit.jupiter.api.Assertions.*;
+
 import com.casms.common.response.ApiResponse;
+
 import jakarta.persistence.EntityNotFoundException;
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
@@ -10,8 +14,6 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.BadCredentialsException;
 
 import java.util.Map;
-
-import static org.junit.jupiter.api.Assertions.*;
 
 class GlobalExceptionHandlerTest {
 
@@ -24,12 +26,12 @@ class GlobalExceptionHandlerTest {
 
     @Test
     void handleBusinessException_returnsCorrectStatusAndEnvelope() {
-        BusinessException ex = new BusinessException(
-                HttpStatus.CONFLICT,
-                "OIM_INVALID_TRANSITION",
-                "Chỉ issue RESOLVED mới có thể đóng.",
-                Map.of("currentStatus", "OPEN", "requiredStatus", "RESOLVED")
-        );
+        BusinessException ex =
+                new BusinessException(
+                        HttpStatus.CONFLICT,
+                        "OIM_INVALID_TRANSITION",
+                        "Chỉ issue RESOLVED mới có thể đóng.",
+                        Map.of("currentStatus", "OPEN", "requiredStatus", "RESOLVED"));
 
         ResponseEntity<ApiResponse<Void>> response = handler.handleBusinessException(ex);
 
@@ -44,7 +46,8 @@ class GlobalExceptionHandlerTest {
 
     @Test
     void handleEntityNotFound_returns404AndMappedCode() {
-        EntityNotFoundException ex = new EntityNotFoundException("Operational issue not found: 123");
+        EntityNotFoundException ex =
+                new EntityNotFoundException("Operational issue not found: 123");
 
         ResponseEntity<ApiResponse<Void>> response = handler.handleEntityNotFound(ex);
 
@@ -56,7 +59,8 @@ class GlobalExceptionHandlerTest {
 
     @Test
     void handleIllegalArgument_duplicateCode_returns409() {
-        IllegalArgumentException ex = new IllegalArgumentException("Issue code already exists: ISS-01");
+        IllegalArgumentException ex =
+                new IllegalArgumentException("Issue code already exists: ISS-01");
 
         ResponseEntity<ApiResponse<Void>> response = handler.handleIllegalArgument(ex);
 

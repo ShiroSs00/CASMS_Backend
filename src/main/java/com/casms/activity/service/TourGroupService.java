@@ -2,7 +2,6 @@ package com.casms.activity.service;
 
 import com.casms.activity.dto.request.TourGroupRequest;
 import com.casms.activity.dto.response.TourGroupResponse;
-import com.casms.activity.entity.Registration;
 import com.casms.activity.entity.ShoreExcursion;
 import com.casms.activity.entity.TourGroup;
 import com.casms.activity.entity.TourGroupPassenger;
@@ -20,8 +19,11 @@ import com.casms.identity.entity.User;
 import com.casms.identity.enums.UserStatus;
 import com.casms.identity.repository.PassengerRepository;
 import com.casms.identity.repository.UserRepository;
+
 import jakarta.persistence.EntityNotFoundException;
+
 import lombok.RequiredArgsConstructor;
+
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -43,12 +45,11 @@ public class TourGroupService {
     private final BusinessCodeGenerator businessCodeGenerator;
     private final org.springframework.jdbc.core.JdbcTemplate jdbc;
 
-    private static final List<TourGroupPassengerAssignmentStatus>
-            CAPACITY_STATUSES = List.of(
-            TourGroupPassengerAssignmentStatus.ASSIGNED,
-            TourGroupPassengerAssignmentStatus.CHECKED_IN,
-            TourGroupPassengerAssignmentStatus.COMPLETED
-    );
+    private static final List<TourGroupPassengerAssignmentStatus> CAPACITY_STATUSES =
+            List.of(
+                    TourGroupPassengerAssignmentStatus.ASSIGNED,
+                    TourGroupPassengerAssignmentStatus.CHECKED_IN,
+                    TourGroupPassengerAssignmentStatus.COMPLETED);
 
     // ==================== CRUD ====================
 
@@ -64,26 +65,19 @@ public class TourGroupService {
     }
 
     @Transactional(readOnly = true)
-    public List<TourGroupResponse> list(
-            UUID excursionId,
-            UUID guideId,
-            TourGroupStatus status
-    ) {
+    public List<TourGroupResponse> list(UUID excursionId, UUID guideId, TourGroupStatus status) {
         List<TourGroup> groups;
 
         if (excursionId != null && guideId != null) {
-            groups = tourGroupRepository
-                    .findByShoreExcursion_ShoreExcursionIdAndGuideId(
-                            excursionId, guideId
-                    );
+            groups =
+                    tourGroupRepository.findByShoreExcursion_ShoreExcursionIdAndGuideId(
+                            excursionId, guideId);
         } else if (excursionId != null && status != null) {
-            groups = tourGroupRepository
-                    .findByShoreExcursion_ShoreExcursionIdAndStatus(
-                            excursionId, status
-                    );
+            groups =
+                    tourGroupRepository.findByShoreExcursion_ShoreExcursionIdAndStatus(
+                            excursionId, status);
         } else if (excursionId != null) {
-            groups = tourGroupRepository
-                    .findByShoreExcursion_ShoreExcursionId(excursionId);
+            groups = tourGroupRepository.findByShoreExcursion_ShoreExcursionId(excursionId);
         } else if (guideId != null) {
             groups = tourGroupRepository.findByGuideId(guideId);
         } else if (status != null) {
@@ -94,8 +88,7 @@ public class TourGroupService {
 
         return groups.stream()
                 .filter(g -> status == null || g.getStatus() == status)
-                .filter(g -> guideId == null
-                        || guideId.equals(g.getGuideId()))
+                .filter(g -> guideId == null || guideId.equals(g.getGuideId()))
                 .map(this::toResponse)
                 .toList();
     }
@@ -105,16 +98,11 @@ public class TourGroupService {
         return toResponse(getById(id));
     }
 
-    public TourGroupResponse update(
-            UUID id,
-            TourGroupRequest request
-    ) {
+    public TourGroupResponse update(UUID id, TourGroupRequest request) {
         TourGroup group = getById(id);
 
         if (group.getStatus() != TourGroupStatus.PLANNED) {
-            throw new IllegalStateException(
-                    "Only PLANNED groups can be updated."
-            );
+            throw new IllegalStateException("Only PLANNED groups can be updated.");
         }
 
         applyRequest(group, request);
@@ -125,46 +113,32 @@ public class TourGroupService {
 
     // ==================== PASSENGER ASSIGNMENT ====================
 
-    public TourGroupResponse assignPassenger(
-            UUID groupId,
-            UUID passengerId
-    ) {
+    public TourGroupResponse assignPassenger(UUID groupId, UUID passengerId) {
         TourGroup group = getById(groupId);
         requireStatus(group, TourGroupStatus.PLANNED);
 
-        Passenger passenger = passengerRepository.findById(passengerId)
-                .orElseThrow(() ->
-                        new EntityNotFoundException("Passenger not found.")
-                );
+        Passenger passenger =
+                passengerRepository
+                        .findById(passengerId)
+                        .orElseThrow(() -> new EntityNotFoundException("Passenger not found."));
 
-        UUID excursionId = group.getShoreExcursion()
-                .getShoreExcursionId();
+        UUID excursionId = group.getShoreExcursion().getShoreExcursionId();
 
         boolean hasConfirmedRegistration =
                 registrationRepository
                         .existsByPassenger_PassengerIdAndShoreExcursion_ShoreExcursionIdAndStatus(
-                                passengerId,
-                                excursionId,
-                                RegistrationStatus.CONFIRMED
-                        );
+                                passengerId, excursionId, RegistrationStatus.CONFIRMED);
 
         if (!hasConfirmedRegistration) {
             throw new IllegalStateException(
-                    "Passenger must have a CONFIRMED registration "
-                            + "for this shore excursion."
-            );
+                    "Passenger must have a CONFIRMED registration " + "for this shore excursion.");
         }
 
         if (passengerAssignmentRepository
                 .existsByPassenger_PassengerIdAndTourGroup_ShoreExcursion_ShoreExcursionIdAndAssignmentStatusIn(
-                        passengerId,
-                        excursionId,
-                        CAPACITY_STATUSES
-                )) {
+                        passengerId, excursionId, CAPACITY_STATUSES)) {
             throw new IllegalStateException(
-                    "Passenger is already assigned to a group "
-                            + "for this excursion."
-            );
+                    "Passenger is already assigned to a group " + "for this excursion.");
         }
 
         checkCapacity(groupId);
@@ -172,9 +146,7 @@ public class TourGroupService {
         TourGroupPassenger assignment = new TourGroupPassenger();
         assignment.setTourGroup(group);
         assignment.setPassenger(passenger);
-        assignment.setAssignmentStatus(
-                TourGroupPassengerAssignmentStatus.ASSIGNED
-        );
+        assignment.setAssignmentStatus(TourGroupPassengerAssignmentStatus.ASSIGNED);
         assignment.setAssignedAt(Instant.now());
 
         passengerAssignmentRepository.save(assignment);
@@ -182,31 +154,24 @@ public class TourGroupService {
         return toResponse(group);
     }
 
-    public TourGroupResponse removePassenger(
-            UUID groupId,
-            UUID passengerId
-    ) {
+    public TourGroupResponse removePassenger(UUID groupId, UUID passengerId) {
         TourGroup group = getById(groupId);
         requireStatus(group, TourGroupStatus.PLANNED);
 
         TourGroupPassenger assignment =
-                passengerAssignmentRepository.findByTourGroup_TourGroupId(
-                                groupId
-                        ).stream()
-                        .filter(a -> a.getPassenger().getPassengerId()
-                                .equals(passengerId))
-                        .filter(a -> a.getAssignmentStatus()
-                                != TourGroupPassengerAssignmentStatus.CANCELLED)
+                passengerAssignmentRepository.findByTourGroup_TourGroupId(groupId).stream()
+                        .filter(a -> a.getPassenger().getPassengerId().equals(passengerId))
+                        .filter(
+                                a ->
+                                        a.getAssignmentStatus()
+                                                != TourGroupPassengerAssignmentStatus.CANCELLED)
                         .findFirst()
-                        .orElseThrow(() ->
-                                new EntityNotFoundException(
-                                        "Passenger assignment not found."
-                                )
-                        );
+                        .orElseThrow(
+                                () ->
+                                        new EntityNotFoundException(
+                                                "Passenger assignment not found."));
 
-        assignment.setAssignmentStatus(
-                TourGroupPassengerAssignmentStatus.CANCELLED
-        );
+        assignment.setAssignmentStatus(TourGroupPassengerAssignmentStatus.CANCELLED);
 
         passengerAssignmentRepository.save(assignment);
         return toResponse(group);
@@ -238,8 +203,13 @@ public class TourGroupService {
         }
 
         // Verify that the guide exists as an active user
-        User guide = userRepository.findById(guideId)
-                .orElseThrow(() -> new EntityNotFoundException("Tour guide user not found with ID: " + guideId));
+        User guide =
+                userRepository
+                        .findById(guideId)
+                        .orElseThrow(
+                                () ->
+                                        new EntityNotFoundException(
+                                                "Tour guide user not found with ID: " + guideId));
         if (guide.getStatus() != UserStatus.ACTIVE) {
             throw new IllegalStateException("Tour guide user is not active.");
         }
@@ -264,33 +234,30 @@ public class TourGroupService {
     }
 
     private void validateGuideSchedule(TourGroup group, UUID guideId) {
-        if (group.getPlannedDepartureTime() == null
-                || group.getPlannedReturnTime() == null) {
+        if (group.getPlannedDepartureTime() == null || group.getPlannedReturnTime() == null) {
             return;
         }
 
-        List<TourGroup> existingGroups =
-                tourGroupRepository.findByGuideId(guideId);
+        List<TourGroup> existingGroups = tourGroupRepository.findByGuideId(guideId);
 
-        boolean conflict = existingGroups.stream()
-                .filter(other -> !other.getTourGroupId()
-                        .equals(group.getTourGroupId()))
-                .filter(other -> other.getStatus()
-                        != TourGroupStatus.CANCELLED
-                        && other.getStatus() != TourGroupStatus.RETURNED)
-                .anyMatch(other ->
-                        other.getPlannedDepartureTime() != null
-                                && other.getPlannedReturnTime() != null
-                                && group.getPlannedDepartureTime()
-                                .isBefore(other.getPlannedReturnTime())
-                                && group.getPlannedReturnTime()
-                                .isAfter(other.getPlannedDepartureTime())
-                );
+        boolean conflict =
+                existingGroups.stream()
+                        .filter(other -> !other.getTourGroupId().equals(group.getTourGroupId()))
+                        .filter(
+                                other ->
+                                        other.getStatus() != TourGroupStatus.CANCELLED
+                                                && other.getStatus() != TourGroupStatus.RETURNED)
+                        .anyMatch(
+                                other ->
+                                        other.getPlannedDepartureTime() != null
+                                                && other.getPlannedReturnTime() != null
+                                                && group.getPlannedDepartureTime()
+                                                        .isBefore(other.getPlannedReturnTime())
+                                                && group.getPlannedReturnTime()
+                                                        .isAfter(other.getPlannedDepartureTime()));
 
         if (conflict) {
-            throw new IllegalStateException(
-                    "Guide has another group scheduled during this time."
-            );
+            throw new IllegalStateException("Guide has another group scheduled during this time.");
         }
     }
 
@@ -306,12 +273,10 @@ public class TourGroupService {
             throw new IllegalArgumentException("Shore excursion is required.");
         }
 
-        ShoreExcursion excursion = shoreExcursionRepository
-                .findById(group.getShoreExcursion()
-                        .getShoreExcursionId())
-                .orElseThrow(() ->
-                        new EntityNotFoundException("Excursion not found.")
-                );
+        ShoreExcursion excursion =
+                shoreExcursionRepository
+                        .findById(group.getShoreExcursion().getShoreExcursionId())
+                        .orElseThrow(() -> new EntityNotFoundException("Excursion not found."));
 
         if (excursion.getCruiseStop() == null || excursion.getMaximumCapacity() == null
                 || excursion.getStartTime() == null || excursion.getPlannedReturnTime() == null) {
@@ -322,46 +287,34 @@ public class TourGroupService {
         if (excursion.getStatus() == ShoreExcursionStatus.CANCELLED
                 || excursion.getStatus() == ShoreExcursionStatus.COMPLETED
                 || excursion.getStatus() == ShoreExcursionStatus.CLOSED) {
-            throw new IllegalStateException(
-                    "Cannot create or prepare a group for this excursion."
-            );
+            throw new IllegalStateException("Cannot create or prepare a group for this excursion.");
         }
 
-        if (group.getGroupCode() == null
-                || group.getGroupCode().isBlank()) {
+        if (group.getGroupCode() == null || group.getGroupCode().isBlank()) {
             throw new IllegalArgumentException("Group code is required.");
         }
 
-        if (group.getMaximumCapacity() == null
-                || group.getMaximumCapacity() <= 0) {
-            throw new IllegalArgumentException(
-                    "Maximum capacity must be greater than zero."
-            );
+        if (group.getMaximumCapacity() == null || group.getMaximumCapacity() <= 0) {
+            throw new IllegalArgumentException("Maximum capacity must be greater than zero.");
         }
 
         if (group.getMaximumCapacity() > excursion.getMaximumCapacity()) {
-            throw new IllegalArgumentException(
-                    "Group capacity cannot exceed excursion capacity."
-            );
+            throw new IllegalArgumentException("Group capacity cannot exceed excursion capacity.");
         }
 
-        boolean duplicate = excludeId == null
-                ? tourGroupRepository
-                .existsByShoreExcursion_ShoreExcursionIdAndGroupCodeIgnoreCase(
-                        excursion.getShoreExcursionId(),
-                        group.getGroupCode()
-                )
-                : tourGroupRepository
-                .existsByShoreExcursion_ShoreExcursionIdAndGroupCodeIgnoreCaseAndTourGroupIdNot(
-                        excursion.getShoreExcursionId(),
-                        group.getGroupCode(),
-                        excludeId
-                );
+        boolean duplicate =
+                excludeId == null
+                        ? tourGroupRepository
+                                .existsByShoreExcursion_ShoreExcursionIdAndGroupCodeIgnoreCase(
+                                        excursion.getShoreExcursionId(), group.getGroupCode())
+                        : tourGroupRepository
+                                .existsByShoreExcursion_ShoreExcursionIdAndGroupCodeIgnoreCaseAndTourGroupIdNot(
+                                        excursion.getShoreExcursionId(),
+                                        group.getGroupCode(),
+                                        excludeId);
 
         if (duplicate) {
-            throw new IllegalStateException(
-                    "Group code already exists for this excursion."
-            );
+            throw new IllegalStateException("Group code already exists for this excursion.");
         }
 
         validateTimes(group, excursion);
@@ -377,40 +330,29 @@ public class TourGroupService {
         long assigned = countAssigned(groupId);
 
         if (assigned >= group.getMaximumCapacity()) {
-            throw new IllegalStateException(
-                    "Tour group has reached its maximum capacity."
-            );
+            throw new IllegalStateException("Tour group has reached its maximum capacity.");
         }
 
         return group.getMaximumCapacity() - assigned;
     }
 
     private void checkCapacityAgainstExcursion(TourGroup group) {
-        long totalAssignedAcrossGroups = tourGroupRepository
-                .findByShoreExcursion_ShoreExcursionId(
-                        group.getShoreExcursion().getShoreExcursionId()
-                )
-                .stream()
-                .filter(other -> !other.getStatus()
-                        .equals(TourGroupStatus.CANCELLED))
-                .mapToLong(other -> countAssigned(
-                        other.getTourGroupId()
-                ))
-                .sum();
+        long totalAssignedAcrossGroups =
+                tourGroupRepository
+                        .findByShoreExcursion_ShoreExcursionId(
+                                group.getShoreExcursion().getShoreExcursionId())
+                        .stream()
+                        .filter(other -> !other.getStatus().equals(TourGroupStatus.CANCELLED))
+                        .mapToLong(other -> countAssigned(other.getTourGroupId()))
+                        .sum();
 
-        if (totalAssignedAcrossGroups > group.getShoreExcursion()
-                .getMaximumCapacity()) {
-            throw new IllegalStateException(
-                    "Assigned passengers exceed excursion capacity."
-            );
+        if (totalAssignedAcrossGroups > group.getShoreExcursion().getMaximumCapacity()) {
+            throw new IllegalStateException("Assigned passengers exceed excursion capacity.");
         }
     }
 
     private long countAssigned(UUID groupId) {
-        return passengerAssignmentRepository.countAssignedPassengers(
-                groupId,
-                CAPACITY_STATUSES
-        );
+        return passengerAssignmentRepository.countAssignedPassengers(groupId, CAPACITY_STATUSES);
     }
 
     private void validateTimes(TourGroup group, ShoreExcursion excursion) {
@@ -418,38 +360,26 @@ public class TourGroupService {
         Instant departure = group.getPlannedDepartureTime();
         Instant returning = group.getPlannedReturnTime();
 
-        if (departure != null && returning != null
-                && !returning.isAfter(departure)) {
-            throw new IllegalArgumentException(
-                    "Planned return time must be after departure time."
-            );
+        if (departure != null && returning != null && !returning.isAfter(departure)) {
+            throw new IllegalArgumentException("Planned return time must be after departure time.");
         }
 
-        if (assembly != null && departure != null
-                && assembly.isAfter(departure)) {
-            throw new IllegalArgumentException(
-                    "Assembly time must not be after departure time."
-            );
+        if (assembly != null && departure != null && assembly.isAfter(departure)) {
+            throw new IllegalArgumentException("Assembly time must not be after departure time.");
         }
 
         if (departure != null && departure.isBefore(excursion.getStartTime())) {
             throw new IllegalArgumentException(
-                    "Group departure cannot be before excursion start time."
-            );
+                    "Group departure cannot be before excursion start time.");
         }
 
-        if (returning != null
-                && returning.isAfter(excursion.getPlannedReturnTime())) {
+        if (returning != null && returning.isAfter(excursion.getPlannedReturnTime())) {
             throw new IllegalArgumentException(
-                    "Group return cannot be after excursion return time."
-            );
+                    "Group return cannot be after excursion return time.");
         }
 
-        if (group.getMeetingPoint() == null
-                || group.getMeetingPoint().isBlank()) {
-            throw new IllegalArgumentException(
-                    "Meeting point is required."
-            );
+        if (group.getMeetingPoint() == null || group.getMeetingPoint().isBlank()) {
+            throw new IllegalArgumentException("Meeting point is required.");
         }
     }
 
@@ -463,8 +393,7 @@ public class TourGroupService {
 
         if (group.getGuideId() == null) {
             throw new IllegalStateException(
-                    "A guide must be assigned before confirming the group."
-            );
+                    "A guide must be assigned before confirming the group.");
         }
 
         if (group.getMeetingPoint() == null
@@ -472,9 +401,7 @@ public class TourGroupService {
                 || group.getAssemblyTime() == null
                 || group.getPlannedDepartureTime() == null
                 || group.getPlannedReturnTime() == null) {
-            throw new IllegalStateException(
-                    "Meeting point and group schedule must be completed."
-            );
+            throw new IllegalStateException("Meeting point and group schedule must be completed.");
         }
 
         group.setStatus(TourGroupStatus.ASSEMBLING);
@@ -488,14 +415,11 @@ public class TourGroupService {
                 || group.getStatus() == TourGroupStatus.RETURNED
                 || group.getStatus() == TourGroupStatus.CANCELLED) {
             throw new IllegalStateException(
-                    "This group cannot be cancelled in its current status."
-            );
+                    "This group cannot be cancelled in its current status.");
         }
 
         if (reason == null || reason.isBlank()) {
-            throw new IllegalArgumentException(
-                    "Cancellation reason is required."
-            );
+            throw new IllegalArgumentException("Cancellation reason is required.");
         }
 
         group.setStatus(TourGroupStatus.CANCELLED);
@@ -503,20 +427,17 @@ public class TourGroupService {
         String existingNotes = group.getNotes();
         String cancellationNote = "Cancellation reason: " + reason.trim();
 
-        group.setNotes(existingNotes == null || existingNotes.isBlank()
-                ? cancellationNote
-                : existingNotes + "\n" + cancellationNote);
+        group.setNotes(
+                existingNotes == null || existingNotes.isBlank()
+                        ? cancellationNote
+                        : existingNotes + "\n" + cancellationNote);
 
         List<TourGroupPassenger> assignments =
-                passengerAssignmentRepository
-                        .findByTourGroup_TourGroupId(groupId);
+                passengerAssignmentRepository.findByTourGroup_TourGroupId(groupId);
 
         for (TourGroupPassenger assignment : assignments) {
-            if (assignment.getAssignmentStatus()
-                    != TourGroupPassengerAssignmentStatus.CANCELLED) {
-                assignment.setAssignmentStatus(
-                        TourGroupPassengerAssignmentStatus.CANCELLED
-                );
+            if (assignment.getAssignmentStatus() != TourGroupPassengerAssignmentStatus.CANCELLED) {
+                assignment.setAssignmentStatus(TourGroupPassengerAssignmentStatus.CANCELLED);
             }
         }
 
@@ -532,18 +453,14 @@ public class TourGroupService {
 
         long assigned = countAssigned(groupId);
         if (assigned == 0) {
-            throw new IllegalStateException(
-                    "Cannot start a group without assigned passengers."
-            );
+            throw new IllegalStateException("Cannot start a group without assigned passengers.");
         }
 
         Instant now = Instant.now();
 
         if (group.getPlannedDepartureTime() != null
                 && now.isBefore(group.getPlannedDepartureTime())) {
-            throw new IllegalStateException(
-                    "Cannot depart before planned departure time."
-            );
+            throw new IllegalStateException("Cannot depart before planned departure time.");
         }
 
         group.setActualDepartureTime(now);
@@ -560,24 +477,18 @@ public class TourGroupService {
 
         if (group.getActualDepartureTime() != null
                 && now.isBefore(group.getActualDepartureTime())) {
-            throw new IllegalStateException(
-                    "Return time cannot be before departure time."
-            );
+            throw new IllegalStateException("Return time cannot be before departure time.");
         }
 
         group.setActualReturnTime(now);
         group.setStatus(TourGroupStatus.RETURNED);
 
         List<TourGroupPassenger> assignments =
-                passengerAssignmentRepository
-                        .findByTourGroup_TourGroupId(groupId);
+                passengerAssignmentRepository.findByTourGroup_TourGroupId(groupId);
 
         for (TourGroupPassenger assignment : assignments) {
-            if (assignment.getAssignmentStatus()
-                    == TourGroupPassengerAssignmentStatus.CHECKED_IN) {
-                assignment.setAssignmentStatus(
-                        TourGroupPassengerAssignmentStatus.COMPLETED
-                );
+            if (assignment.getAssignmentStatus() == TourGroupPassengerAssignmentStatus.CHECKED_IN) {
+                assignment.setAssignmentStatus(TourGroupPassengerAssignmentStatus.COMPLETED);
                 assignment.setReturnedAt(now);
             }
         }
@@ -607,23 +518,33 @@ public class TourGroupService {
 
         group.setShoreExcursion(excursion);
         if (group.getTourGroupId() == null) group.setGroupCode(businessCodeGenerator.next("TG"));
-        group.setMaximumCapacity(request.maximumCapacity() == null || request.maximumCapacity() < 1 ? excursion.getMaximumCapacity() : request.maximumCapacity());
+        group.setMaximumCapacity(
+                request.maximumCapacity() == null || request.maximumCapacity() < 1
+                        ? excursion.getMaximumCapacity()
+                        : request.maximumCapacity());
         group.setGuideId(request.guideId());
         group.setVehicleId(request.vehicleId());
-        group.setMeetingPoint((request.meetingPoint() == null || request.meetingPoint().isBlank()) ? excursion.getMeetingPoint() : request.meetingPoint());
-        group.setAssemblyTime(request.assemblyTime() == null ? excursion.getStartTime() : request.assemblyTime());
-        group.setPlannedDepartureTime(request.plannedDepartureTime() == null ? excursion.getStartTime() : request.plannedDepartureTime());
-        group.setPlannedReturnTime(request.plannedReturnTime() == null ? excursion.getPlannedReturnTime() : request.plannedReturnTime());
+        group.setMeetingPoint(
+                (request.meetingPoint() == null || request.meetingPoint().isBlank())
+                        ? excursion.getMeetingPoint()
+                        : request.meetingPoint());
+        group.setAssemblyTime(
+                request.assemblyTime() == null ? excursion.getStartTime() : request.assemblyTime());
+        group.setPlannedDepartureTime(
+                request.plannedDepartureTime() == null
+                        ? excursion.getStartTime()
+                        : request.plannedDepartureTime());
+        group.setPlannedReturnTime(
+                request.plannedReturnTime() == null
+                        ? excursion.getPlannedReturnTime()
+                        : request.plannedReturnTime());
         group.setNotes(request.notes());
     }
 
     private TourGroup getById(UUID id) {
-        return tourGroupRepository.findById(id)
-                .orElseThrow(() ->
-                        new EntityNotFoundException(
-                                "Tour group not found: " + id
-                        )
-                );
+        return tourGroupRepository
+                .findById(id)
+                .orElseThrow(() -> new EntityNotFoundException("Tour group not found: " + id));
     }
 
     private TourGroupResponse toResponse(TourGroup group) {
@@ -636,15 +557,10 @@ public class TourGroupService {
         );
     }
 
-    private void requireStatus(
-            TourGroup group,
-            TourGroupStatus expected
-    ) {
+    private void requireStatus(TourGroup group, TourGroupStatus expected) {
         if (group.getStatus() != expected) {
             throw new IllegalStateException(
-                    "Expected status " + expected
-                            + ", actual status " + group.getStatus()
-            );
+                    "Expected status " + expected + ", actual status " + group.getStatus());
         }
     }
 }

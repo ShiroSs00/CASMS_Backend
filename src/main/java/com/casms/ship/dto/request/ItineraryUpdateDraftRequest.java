@@ -1,12 +1,14 @@
 package com.casms.ship.dto.request;
 
 import com.casms.ship.enums.ItineraryType;
+
 import io.swagger.v3.oas.annotations.media.Schema;
+
 import jakarta.validation.constraints.Size;
+
 import lombok.Data;
 
 import java.time.LocalDate;
-import java.util.UUID;
 
 @Data
 @Schema(description = "Yêu cầu cập nhật bản nháp lịch trình")

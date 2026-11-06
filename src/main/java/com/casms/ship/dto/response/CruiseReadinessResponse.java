@@ -1,7 +1,9 @@
 package com.casms.ship.dto.response;
 
 import com.casms.ship.enums.ReadinessStatus;
+
 import io.swagger.v3.oas.annotations.media.Schema;
+
 import lombok.Data;
 
 import java.time.Instant;
@@ -10,13 +12,18 @@ import java.util.List;
 import java.util.UUID;
 
 @Data
-@Schema(description = "Kết quả kiểm tra tính sẵn sàng vận hành & khởi hành của chuyến khởi hành (Operational & Departure Readiness Gate - BE-08/BE-09)")
+@Schema(
+        description =
+                "Kết quả kiểm tra tính sẵn sàng vận hành & khởi hành của chuyến khởi hành"
+                    + " (Operational & Departure Readiness Gate - BE-08/BE-09)")
 public class CruiseReadinessResponse {
 
     @Schema(description = "ID chuyến khởi hành", example = "3fa85f64-5717-4562-b3fc-2c963f66afa6")
     private UUID cruiseId;
 
-    @Schema(description = "Loại cổng kiểm tra (OPERATIONAL_GATE / DEPARTURE_GATE)", example = "DEPARTURE_GATE")
+    @Schema(
+            description = "Loại cổng kiểm tra (OPERATIONAL_GATE / DEPARTURE_GATE)",
+            example = "DEPARTURE_GATE")
     private String gateType = "DEPARTURE_GATE";
 
     @Schema(description = "Phiên bản chính sách áp dụng", example = "v3.0-2026")
@@ -43,14 +50,23 @@ public class CruiseReadinessResponse {
     @Schema(description = "Đã có hải trình (Itinerary) được liên kết", example = "true")
     private boolean itineraryConfigured;
 
-    @Schema(description = "Đã phân công nhân sự vận hành cho chuyến khởi hành hay chưa", example = "true")
+    @Schema(
+            description = "Đã phân công nhân sự vận hành cho chuyến khởi hành hay chưa",
+            example = "true")
     private boolean staffAssigned;
 
-    @Schema(description = "Đã phân công Thuyền trưởng (CAPTAIN) hợp lệ cho chuyến khởi hành hay chưa", example = "true")
+    @Schema(
+            description =
+                    "Đã phân công Thuyền trưởng (CAPTAIN) hợp lệ cho chuyến khởi hành hay chưa",
+            example = "true")
     private boolean captainAssigned;
+
     private boolean onboardStaffAssigned;
 
-    @Schema(description = "Tất cả các phân hệ chuẩn bị liên phòng ban (BE-07) đã được ký duyệt xác nhận", example = "true")
+    @Schema(
+            description =
+                    "Tất cả các phân hệ chuẩn bị liên phòng ban (BE-07) đã được ký duyệt xác nhận",
+            example = "true")
     private boolean preparationSectionsConfirmed;
 
     @Schema(description = "Số phân hệ chuẩn bị chưa ký duyệt", example = "0")
@@ -59,7 +75,10 @@ public class CruiseReadinessResponse {
     @Schema(description = "Danh sách xung đột lịch trình nhân sự (nếu có)")
     private List<String> staffConflicts;
 
-    @Schema(description = "Các quy định vận hành áp dụng có tuân thủ và không có xung đột hay không", example = "true")
+    @Schema(
+            description =
+                    "Các quy định vận hành áp dụng có tuân thủ và không có xung đột hay không",
+            example = "true")
     private boolean regulationsCompliant;
 
     @Schema(description = "Danh sách xung đột hoặc vi phạm quy định (nếu có)")
@@ -74,13 +93,18 @@ public class CruiseReadinessResponse {
     @Schema(description = "Danh sách các thông báo hoặc điểm chưa hoàn tất")
     private List<String> issues = new ArrayList<>();
 
-    @Schema(description = "Thời điểm thực hiện đánh giá (server time, ISO-8601)", example = "2026-10-26T09:00:00Z")
+    @Schema(
+            description = "Thời điểm thực hiện đánh giá (server time, ISO-8601)",
+            example = "2026-10-26T09:00:00Z")
     private Instant evaluatedAt;
 
     @Schema(description = "Revision của Cruise tại thời điểm đánh giá", example = "3")
     private Long cruiseRevision;
 
-    @Schema(description = "Trạng thái đánh giá chi tiết (READY, NOT_READY, INDETERMINATE, WARNING, NOT_APPLICABLE)")
+    @Schema(
+            description =
+                    "Trạng thái đánh giá chi tiết (READY, NOT_READY, INDETERMINATE, WARNING,"
+                        + " NOT_APPLICABLE)")
     private ReadinessStatus status;
 
     @Schema(description = "Dấu vân tay trạng thái (Fingerprint hash) phản ánh toàn bộ state nguồn")

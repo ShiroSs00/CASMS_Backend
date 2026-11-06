@@ -2,7 +2,9 @@ package com.casms.payment.entity;
 
 import com.casms.booking.entity.Booking;
 import com.casms.payment.enums.SepayTransactionStatus;
+
 import jakarta.persistence.*;
+
 import lombok.Getter;
 import lombok.Setter;
 
@@ -79,4 +81,3 @@ public class SepayTransaction {
         }
     }
 }
-

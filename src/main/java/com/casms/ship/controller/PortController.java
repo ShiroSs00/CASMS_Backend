@@ -1,5 +1,10 @@
 package com.casms.ship.controller;
 
+import com.casms.audit.AuditLog;
+import com.casms.audit.AuditRepository;
+
+import com.casms.audit.AuditLog;
+import com.casms.audit.AuditRepository;
 import com.casms.common.response.ApiResponse;
 import com.casms.ship.dto.request.PortCreateRequest;
 import com.casms.ship.dto.request.PortUpdateRequest;
@@ -7,11 +12,15 @@ import com.casms.ship.dto.response.PortResponse;
 import com.casms.ship.dto.response.TimeZoneOptionResponse;
 import com.casms.ship.enums.PortStatus;
 import com.casms.ship.service.PortService;
+
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
+
 import jakarta.validation.Valid;
+
 import lombok.RequiredArgsConstructor;
+
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
@@ -26,40 +35,63 @@ import java.util.UUID;
 @RestController
 @RequestMapping("/ports")
 @RequiredArgsConstructor
-public class
-PortController {
+public class PortController {
 
     private final PortService service;
-    @org.springframework.beans.factory.annotation.Autowired private com.casms.audit.AuditRepository directoryAudit;
+    private final AuditRepository directoryAudit;
+
     @GetMapping("/{portId}/history")
     @PreAuthorize("hasRole('OPERATIONS_MANAGER') and hasAuthority('PORT_READ')")
-    @Operation(summary="Lịch sử thay đổi danh mục",description="Audit thực tế của master; trước/sau khi có bằng chứng, không suy đoán lịch sử thiếu metadata.")
-    public ApiResponse<Page<com.casms.audit.AuditLog>> history(@PathVariable UUID portId,Pageable pageable){
-        service.detail(portId);return ApiResponse.success(directoryAudit.findByEntityIdOrderByOccurredAtDesc(portId,pageable));
+    @Operation(
+            summary = "Lịch sử thay đổi danh mục",
+            description =
+                    "Audit thực tế của master; trước/sau khi có bằng chứng, không suy đoán lịch sử"
+                        + " thiếu metadata.")
+    public ApiResponse<Page<AuditLog>> history(
+            @PathVariable UUID portId, Pageable pageable) {
+        service.detail(portId);
+        return ApiResponse.success(
+                directoryAudit.findByEntityIdOrderByOccurredAtDesc(portId, pageable));
     }
 
-
-    @Operation(summary = "Danh sách múi giờ IANA", description = "Lấy danh sách các múi giờ IANA chuẩn cho dropdown (hỗ trợ tìm kiếm theo tên hoặc mã quốc gia)")
+    @Operation(
+            summary = "Danh sách múi giờ IANA",
+            description =
+                    "Lấy danh sách các múi giờ IANA chuẩn cho dropdown (hỗ trợ tìm kiếm theo tên"
+                        + " hoặc mã quốc gia)")
     @PreAuthorize("permitAll()")
     @GetMapping("/timezones")
     public ApiResponse<List<TimeZoneOptionResponse>> listTimeZones(
             @Parameter(description = "Từ khóa tìm kiếm múi giờ (ví dụ: Tokyo, Paris, New_York)")
-            @RequestParam(required = false) String search,
+                    @RequestParam(required = false)
+                    String search,
             @Parameter(description = "Mã quốc gia ISO-2 để gợi ý múi giờ (ví dụ: JP, FR, US)")
-            @RequestParam(required = false) String countryCode) {
+                    @RequestParam(required = false)
+                    String countryCode) {
         return ApiResponse.success(service.listSupportedTimeZones(search, countryCode));
     }
 
-    @Operation(summary = "Suy luận múi giờ theo quốc gia", description = "Lấy múi giờ mặc định dựa trên mã quốc gia (ISO 3166-1 alpha-2)")
+    @Operation(
+            summary = "Suy luận múi giờ theo quốc gia",
+            description = "Lấy múi giờ mặc định dựa trên mã quốc gia (ISO 3166-1 alpha-2)")
     @PreAuthorize("permitAll()")
     @GetMapping("/timezones/resolve")
     public ApiResponse<TimeZoneOptionResponse> resolveTimeZone(
-            @Parameter(description = "Mã quốc gia ISO-2 (ví dụ: JP, VN, SG, FR, US)", required = true)
-            @RequestParam String countryCode) {
+            @Parameter(
+                            description = "Mã quốc gia ISO-2 (ví dụ: JP, VN, SG, FR, US)",
+                            required = true)
+                    @RequestParam
+                    String countryCode) {
         return ApiResponse.success(service.resolveTimeZoneByCountry(countryCode));
     }
 
-    @Operation(summary = "Tạo cảng mới", description = "OPS tạo Port UUID local từ kết quả Geocoding được chọn; latitude/longitude/coordinateSource bắt buộc. ID ngoài chỉ là metadata, không unique. Country/timezone nghiệp vụ được xác nhận riêng; audit atomic.")
+    @Operation(
+            summary = "Tạo cảng mới",
+            description =
+                    "OPS tạo Port UUID local từ kết quả Geocoding được chọn;"
+                        + " latitude/longitude/coordinateSource bắt buộc. ID ngoài chỉ là metadata,"
+                        + " không unique. Country/timezone nghiệp vụ được xác nhận riêng; audit"
+                        + " atomic.")
     @PreAuthorize("hasRole('OPERATIONS_MANAGER') and hasAuthority('PORT_CREATE')")
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
@@ -67,35 +99,71 @@ PortController {
         return ApiResponse.success(service.create(request));
     }
 
-    @Operation(summary = "Danh sách cảng", description = "Lấy danh sách cảng (hỗ trợ phân trang, lọc theo quốc gia và tìm kiếm)")
+    @Operation(
+            summary = "Danh sách cảng",
+            description = "Lấy danh sách cảng (hỗ trợ phân trang, lọc theo quốc gia và tìm kiếm)")
     @PreAuthorize("hasAuthority('PORT_READ')")
     @GetMapping
     public ApiResponse<Page<PortResponse>> list(
-            @Parameter(description = "Mã quốc gia ISO-2 (ví dụ: VN, TH)") @RequestParam(required = false) String countryCode,
-            @Parameter(description = "Danh sách mã quốc gia ISO-2") @RequestParam(required = false) List<String> countryCodes,
-            @Parameter(description = "Trạng thái cảng") @RequestParam(required = false) PortStatus status,
-            @Parameter(description = "Từ khóa tìm kiếm (tên hoặc mã cảng)") @RequestParam(required = false) String search,
+            @Parameter(description = "Mã quốc gia ISO-2 (ví dụ: VN, TH)")
+                    @RequestParam(required = false)
+                    String countryCode,
+            @Parameter(description = "Danh sách mã quốc gia ISO-2") @RequestParam(required = false)
+                    List<String> countryCodes,
+            @Parameter(description = "Trạng thái cảng") @RequestParam(required = false)
+                    PortStatus status,
+            @Parameter(description = "Từ khóa tìm kiếm (tên hoặc mã cảng)")
+                    @RequestParam(required = false)
+                    String search,
             Pageable pageable) {
         List<String> combinedCountries = new ArrayList<>();
-        if (countryCode != null && !countryCode.isBlank()) combinedCountries.add(countryCode.trim().toUpperCase());
-        if (countryCodes != null) combinedCountries.addAll(countryCodes.stream().filter(c -> c != null && !c.isBlank()).map(c -> c.trim().toUpperCase()).toList());
-        return ApiResponse.success(service.list(combinedCountries.isEmpty() ? null : combinedCountries, status, search, pageable));
+        if (countryCode != null && !countryCode.isBlank())
+            combinedCountries.add(countryCode.trim().toUpperCase());
+        if (countryCodes != null)
+            combinedCountries.addAll(
+                    countryCodes.stream()
+                            .filter(c -> c != null && !c.isBlank())
+                            .map(c -> c.trim().toUpperCase())
+                            .toList());
+        return ApiResponse.success(
+                service.list(
+                        combinedCountries.isEmpty() ? null : combinedCountries,
+                        status,
+                        search,
+                        pageable));
     }
 
-    @Operation(summary = "Danh sách cảng hoạt động", description = "Lấy danh sách tất cả cảng đang ACTIVE (hỗ trợ lọc theo quốc gia)")
+    @Operation(
+            summary = "Danh sách cảng hoạt động",
+            description = "Lấy danh sách tất cả cảng đang ACTIVE (hỗ trợ lọc theo quốc gia)")
     @PreAuthorize("permitAll()")
     @GetMapping("/active")
     public ApiResponse<List<PortResponse>> listActive(
-            @Parameter(description = "Mã quốc gia ISO-2 (ví dụ: VN, TH)") @RequestParam(required = false) String countryCode,
-            @Parameter(description = "Danh sách mã quốc gia ISO-2") @RequestParam(required = false) List<String> countryCodes,
-            @Parameter(description = "Từ khóa tìm kiếm (tên hoặc mã cảng)") @RequestParam(required = false) String search) {
+            @Parameter(description = "Mã quốc gia ISO-2 (ví dụ: VN, TH)")
+                    @RequestParam(required = false)
+                    String countryCode,
+            @Parameter(description = "Danh sách mã quốc gia ISO-2") @RequestParam(required = false)
+                    List<String> countryCodes,
+            @Parameter(description = "Từ khóa tìm kiếm (tên hoặc mã cảng)")
+                    @RequestParam(required = false)
+                    String search) {
         List<String> combinedCountries = new ArrayList<>();
-        if (countryCode != null && !countryCode.isBlank()) combinedCountries.add(countryCode.trim().toUpperCase());
-        if (countryCodes != null) combinedCountries.addAll(countryCodes.stream().filter(c -> c != null && !c.isBlank()).map(c -> c.trim().toUpperCase()).toList());
-        return ApiResponse.success(service.listAllActive(combinedCountries.isEmpty() ? null : combinedCountries, search));
+        if (countryCode != null && !countryCode.isBlank())
+            combinedCountries.add(countryCode.trim().toUpperCase());
+        if (countryCodes != null)
+            combinedCountries.addAll(
+                    countryCodes.stream()
+                            .filter(c -> c != null && !c.isBlank())
+                            .map(c -> c.trim().toUpperCase())
+                            .toList());
+        return ApiResponse.success(
+                service.listAllActive(
+                        combinedCountries.isEmpty() ? null : combinedCountries, search));
     }
 
-    @Operation(summary = "Chi tiết cảng", description = "Lấy thông tin chi tiết của một cảng theo ID")
+    @Operation(
+            summary = "Chi tiết cảng",
+            description = "Lấy thông tin chi tiết của một cảng theo ID")
     @PreAuthorize("permitAll()")
     @GetMapping("/{portId}")
     public ApiResponse<PortResponse> detail(
@@ -103,7 +171,13 @@ PortController {
         return ApiResponse.success(service.detail(portId));
     }
 
-    @Operation(summary = "Cập nhật cảng", description = "PATCH không đổi tọa độ giữ nguyên coordinateSource, kể cả legacy null. Đổi tọa độ phải gửi đủ latitude, longitude và coordinateSource mới; server gán recordedAt. Không dùng timezone Geocoding để ghi đè timeZoneId. Audit trước/sau atomic.")
+    @Operation(
+            summary = "Cập nhật cảng",
+            description =
+                    "PATCH không đổi tọa độ giữ nguyên coordinateSource, kể cả legacy null. Đổi tọa"
+                        + " độ phải gửi đủ latitude, longitude và coordinateSource mới; server gán"
+                        + " recordedAt. Không dùng timezone Geocoding để ghi đè timeZoneId. Audit"
+                        + " trước/sau atomic.")
     @PreAuthorize("hasRole('OPERATIONS_MANAGER') and hasAuthority('PORT_UPDATE')")
     @PatchMapping("/{portId}")
     public ApiResponse<PortResponse> update(
@@ -112,10 +186,12 @@ PortController {
         return ApiResponse.success(service.update(portId, request));
     }
 
-    @Operation(summary = "Xóa cảng chưa sử dụng", description = "Xóa cảng nếu cảng chưa được gán cho bất kỳ điểm dừng chuyến khởi hành nào")
+    @Operation(
+            summary = "Xóa cảng chưa sử dụng",
+            description =
+                    "Xóa cảng nếu cảng chưa được gán cho bất kỳ điểm dừng chuyến khởi hành nào")
     @PreAuthorize("hasRole('OPERATIONS_MANAGER') and hasAuthority('PORT_DELETE_UNUSED')")
     @DeleteMapping("/{portId}/unused")
-    @ResponseStatus(HttpStatus.NO_CONTENT)
     public ApiResponse<Void> deleteUnused(
             @Parameter(description = "ID của cảng", required = true) @PathVariable UUID portId) {
         service.deleteUnused(portId);
@@ -138,7 +214,9 @@ PortController {
         return ApiResponse.success(service.deactivate(portId));
     }
 
-    @Operation(summary = "Kiểm tra tính hợp lệ cảng", description = "Xác minh tính hợp lệ của dữ liệu cảng")
+    @Operation(
+            summary = "Kiểm tra tính hợp lệ cảng",
+            description = "Xác minh tính hợp lệ của dữ liệu cảng")
     @PreAuthorize("hasAuthority('PORT_VALIDATE')")
     @PostMapping("/{portId}/validate")
     public ApiResponse<Void> validatePort(
@@ -147,7 +225,9 @@ PortController {
         return ApiResponse.success("Port validation passed", null);
     }
 
-    @Operation(summary = "Kiểm tra sẵn sàng vận hành", description = "Kiểm tra cảng có đang ACTIVE và sẵn sàng cho hoạt động không")
+    @Operation(
+            summary = "Kiểm tra sẵn sàng vận hành",
+            description = "Kiểm tra cảng có đang ACTIVE và sẵn sàng cho hoạt động không")
     @PreAuthorize("hasAuthority('PORT_READ')")
     @GetMapping("/{portId}/availability")
     public ApiResponse<Boolean> checkOperationalAvailability(

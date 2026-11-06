@@ -1,5 +1,10 @@
 package com.casms.ship.repository;
 
+import static org.hamcrest.Matchers.*;
+import static org.junit.jupiter.api.Assertions.*;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+
 import com.casms.identity.entity.User;
 import com.casms.identity.enums.Role;
 import com.casms.identity.enums.UserStatus;
@@ -7,6 +12,7 @@ import com.casms.identity.repository.UserRepository;
 import com.casms.security.jwt.JwtService;
 import com.casms.ship.entity.*;
 import com.casms.ship.enums.*;
+
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -24,41 +30,27 @@ import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
-import static org.hamcrest.Matchers.*;
-import static org.junit.jupiter.api.Assertions.*;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
-
 @SpringBootTest
 @AutoConfigureMockMvc
 class ItineraryChangeHistoryPostgresIntegrationTest {
 
-    @Autowired
-    private ItineraryChangeHistoryRepository historyRepository;
+    @Autowired private ItineraryChangeHistoryRepository historyRepository;
 
-    @Autowired
-    private ItineraryRepository itineraryRepository;
+    @Autowired private ItineraryRepository itineraryRepository;
 
-    @Autowired
-    private CruiseStopRepository cruiseStopRepository;
+    @Autowired private CruiseStopRepository cruiseStopRepository;
 
-    @Autowired
-    private ItineraryDayRepository itineraryDayRepository;
+    @Autowired private ItineraryDayRepository itineraryDayRepository;
 
-    @Autowired
-    private CruiseRepository cruiseRepository;
+    @Autowired private CruiseRepository cruiseRepository;
 
-    @Autowired
-    private PortRepository portRepository;
+    @Autowired private PortRepository portRepository;
 
-    @Autowired
-    private UserRepository userRepository;
+    @Autowired private UserRepository userRepository;
 
-    @Autowired
-    private JwtService jwtService;
+    @Autowired private JwtService jwtService;
 
-    @Autowired
-    private MockMvc mockMvc;
+    @Autowired private MockMvc mockMvc;
 
     private Port port;
     private Cruise cruise1;
@@ -147,12 +139,14 @@ class ItineraryChangeHistoryPostgresIntegrationTest {
         stop1.setArrivalMethod(CruiseStopArrivalMethod.BERTH);
         stop1.setCallType(CruiseStopCallType.NORMAL);
         stop1.setPlannedArrival(Instant.now().plus(11, ChronoUnit.DAYS));
-        stop1.setPlannedDeparture(Instant.now().plus(11, ChronoUnit.DAYS).plus(8, ChronoUnit.HOURS));
+        stop1.setPlannedDeparture(
+                Instant.now().plus(11, ChronoUnit.DAYS).plus(8, ChronoUnit.HOURS));
         stop1 = cruiseStopRepository.save(stop1);
 
         // Users
         adminUser = new User();
-        adminUser.setUsername("query-cruise-manager-" + UUID.randomUUID().toString().substring(0, 8));
+        adminUser.setUsername(
+                "query-cruise-manager-" + UUID.randomUUID().toString().substring(0, 8));
         adminUser.setPasswordHash("$2a$10$abcdefghijklmnopqrstuv");
         adminUser.setStatus(UserStatus.ACTIVE);
         adminUser.setRoles(Set.of(Role.CRUISE_MANAGER));
@@ -203,11 +197,12 @@ class ItineraryChangeHistoryPostgresIntegrationTest {
         }
     }
 
-    private ItineraryChangeHistory createHistory(Itinerary itinerary,
-                                                 CruiseStop stop,
-                                                 ItineraryChangeType changeType,
-                                                 User user,
-                                                 Instant changedAt) {
+    private ItineraryChangeHistory createHistory(
+            Itinerary itinerary,
+            CruiseStop stop,
+            ItineraryChangeType changeType,
+            User user,
+            Instant changedAt) {
         ItineraryChangeHistory h = new ItineraryChangeHistory();
         h.setItinerary(itinerary);
         h.setCruiseStop(stop);
@@ -224,11 +219,25 @@ class ItineraryChangeHistoryPostgresIntegrationTest {
     }
 
     @Test
-    @DisplayName("search - Không có filter (all nulls) chạy trên PostgreSQL thật thành công không lỗi 42P18")
+    @DisplayName(
+            "search - Không có filter (all nulls) chạy trên PostgreSQL thật thành công không lỗi"
+                + " 42P18")
     void testSearch_NoFilter_ReturnsAll() {
         Instant now = Instant.now();
-        ItineraryChangeHistory h1 = createHistory(itinerary1, stop1, ItineraryChangeType.TIME_CHANGE, adminUser, now.minus(2, ChronoUnit.HOURS));
-        ItineraryChangeHistory h2 = createHistory(itinerary2, null, ItineraryChangeType.PORT_OMITTED, staffUser, now.minus(1, ChronoUnit.HOURS));
+        ItineraryChangeHistory h1 =
+                createHistory(
+                        itinerary1,
+                        stop1,
+                        ItineraryChangeType.TIME_CHANGE,
+                        adminUser,
+                        now.minus(2, ChronoUnit.HOURS));
+        ItineraryChangeHistory h2 =
+                createHistory(
+                        itinerary2,
+                        null,
+                        ItineraryChangeType.PORT_OMITTED,
+                        staffUser,
+                        now.minus(1, ChronoUnit.HOURS));
 
         List<ItineraryChangeHistory> list = historyRepository.search(null, null, null, null);
 
@@ -243,11 +252,30 @@ class ItineraryChangeHistoryPostgresIntegrationTest {
     @DisplayName("search - Giữ nguyên thứ tự lịch sử ORDER BY changedAt DESC")
     void testSearch_Ordering_PreservedChangedAtDesc() {
         Instant now = Instant.now();
-        ItineraryChangeHistory oldest = createHistory(itinerary1, null, ItineraryChangeType.TIME_CHANGE, adminUser, now.minus(3, ChronoUnit.HOURS));
-        ItineraryChangeHistory middle = createHistory(itinerary1, null, ItineraryChangeType.PORT_OMITTED, adminUser, now.minus(2, ChronoUnit.HOURS));
-        ItineraryChangeHistory newest = createHistory(itinerary1, null, ItineraryChangeType.PORT_SUBSTITUTED, adminUser, now.minus(1, ChronoUnit.HOURS));
+        ItineraryChangeHistory oldest =
+                createHistory(
+                        itinerary1,
+                        null,
+                        ItineraryChangeType.TIME_CHANGE,
+                        adminUser,
+                        now.minus(3, ChronoUnit.HOURS));
+        ItineraryChangeHistory middle =
+                createHistory(
+                        itinerary1,
+                        null,
+                        ItineraryChangeType.PORT_OMITTED,
+                        adminUser,
+                        now.minus(2, ChronoUnit.HOURS));
+        ItineraryChangeHistory newest =
+                createHistory(
+                        itinerary1,
+                        null,
+                        ItineraryChangeType.PORT_SUBSTITUTED,
+                        adminUser,
+                        now.minus(1, ChronoUnit.HOURS));
 
-        List<ItineraryChangeHistory> list = historyRepository.search(itinerary1.getItineraryId(), null, null, null);
+        List<ItineraryChangeHistory> list =
+                historyRepository.search(itinerary1.getItineraryId(), null, null, null);
 
         assertNotNull(list);
         assertEquals(3, list.size());
@@ -257,33 +285,55 @@ class ItineraryChangeHistoryPostgresIntegrationTest {
     }
 
     @Test
-    @DisplayName("search - Từng filter riêng lẻ (itineraryId, cruiseStopId, changeType, changedByUserId)")
+    @DisplayName(
+            "search - Từng filter riêng lẻ (itineraryId, cruiseStopId, changeType,"
+                + " changedByUserId)")
     void testSearch_IndividualFilters() {
         Instant now = Instant.now();
-        ItineraryChangeHistory h1 = createHistory(itinerary1, stop1, ItineraryChangeType.TIME_CHANGE, adminUser, now.minus(2, ChronoUnit.HOURS));
-        ItineraryChangeHistory h2 = createHistory(itinerary2, null, ItineraryChangeType.PORT_OMITTED, staffUser, now.minus(1, ChronoUnit.HOURS));
+        ItineraryChangeHistory h1 =
+                createHistory(
+                        itinerary1,
+                        stop1,
+                        ItineraryChangeType.TIME_CHANGE,
+                        adminUser,
+                        now.minus(2, ChronoUnit.HOURS));
+        ItineraryChangeHistory h2 =
+                createHistory(
+                        itinerary2,
+                        null,
+                        ItineraryChangeType.PORT_OMITTED,
+                        staffUser,
+                        now.minus(1, ChronoUnit.HOURS));
 
         // itineraryId only
-        List<ItineraryChangeHistory> byItin = historyRepository.search(itinerary1.getItineraryId(), null, null, null);
-        List<UUID> byItinIds = byItin.stream().map(ItineraryChangeHistory::getChangeHistoryId).toList();
+        List<ItineraryChangeHistory> byItin =
+                historyRepository.search(itinerary1.getItineraryId(), null, null, null);
+        List<UUID> byItinIds =
+                byItin.stream().map(ItineraryChangeHistory::getChangeHistoryId).toList();
         assertTrue(byItinIds.contains(h1.getChangeHistoryId()));
         assertFalse(byItinIds.contains(h2.getChangeHistoryId()));
 
         // cruiseStopId only
-        List<ItineraryChangeHistory> byStop = historyRepository.search(null, stop1.getCruiseStopId(), null, null);
-        List<UUID> byStopIds = byStop.stream().map(ItineraryChangeHistory::getChangeHistoryId).toList();
+        List<ItineraryChangeHistory> byStop =
+                historyRepository.search(null, stop1.getCruiseStopId(), null, null);
+        List<UUID> byStopIds =
+                byStop.stream().map(ItineraryChangeHistory::getChangeHistoryId).toList();
         assertTrue(byStopIds.contains(h1.getChangeHistoryId()));
         assertFalse(byStopIds.contains(h2.getChangeHistoryId()));
 
         // changeType only
-        List<ItineraryChangeHistory> byType = historyRepository.search(null, null, ItineraryChangeType.PORT_OMITTED, null);
-        List<UUID> byTypeIds = byType.stream().map(ItineraryChangeHistory::getChangeHistoryId).toList();
+        List<ItineraryChangeHistory> byType =
+                historyRepository.search(null, null, ItineraryChangeType.PORT_OMITTED, null);
+        List<UUID> byTypeIds =
+                byType.stream().map(ItineraryChangeHistory::getChangeHistoryId).toList();
         assertTrue(byTypeIds.contains(h2.getChangeHistoryId()));
         assertFalse(byTypeIds.contains(h1.getChangeHistoryId()));
 
         // changedByUserId only
-        List<ItineraryChangeHistory> byUser = historyRepository.search(null, null, null, staffUser.getUserId());
-        List<UUID> byUserIds = byUser.stream().map(ItineraryChangeHistory::getChangeHistoryId).toList();
+        List<ItineraryChangeHistory> byUser =
+                historyRepository.search(null, null, null, staffUser.getUserId());
+        List<UUID> byUserIds =
+                byUser.stream().map(ItineraryChangeHistory::getChangeHistoryId).toList();
         assertTrue(byUserIds.contains(h2.getChangeHistoryId()));
         assertFalse(byUserIds.contains(h1.getChangeHistoryId()));
     }
@@ -292,58 +342,99 @@ class ItineraryChangeHistoryPostgresIntegrationTest {
     @DisplayName("search - Kết hợp nhiều filters (itineraryId + changeType, all 4 filters)")
     void testSearch_CombinedFilters() {
         Instant now = Instant.now();
-        ItineraryChangeHistory h1 = createHistory(itinerary1, stop1, ItineraryChangeType.TIME_CHANGE, adminUser, now.minus(2, ChronoUnit.HOURS));
-        ItineraryChangeHistory h2 = createHistory(itinerary1, null, ItineraryChangeType.PORT_OMITTED, adminUser, now.minus(1, ChronoUnit.HOURS));
+        ItineraryChangeHistory h1 =
+                createHistory(
+                        itinerary1,
+                        stop1,
+                        ItineraryChangeType.TIME_CHANGE,
+                        adminUser,
+                        now.minus(2, ChronoUnit.HOURS));
+        ItineraryChangeHistory h2 =
+                createHistory(
+                        itinerary1,
+                        null,
+                        ItineraryChangeType.PORT_OMITTED,
+                        adminUser,
+                        now.minus(1, ChronoUnit.HOURS));
 
         // itineraryId + changeType
-        List<ItineraryChangeHistory> r1 = historyRepository.search(itinerary1.getItineraryId(), null, ItineraryChangeType.TIME_CHANGE, null);
+        List<ItineraryChangeHistory> r1 =
+                historyRepository.search(
+                        itinerary1.getItineraryId(), null, ItineraryChangeType.TIME_CHANGE, null);
         assertEquals(1, r1.size());
         assertEquals(h1.getChangeHistoryId(), r1.get(0).getChangeHistoryId());
 
         // all 4 filters
-        List<ItineraryChangeHistory> r2 = historyRepository.search(
-                itinerary1.getItineraryId(),
-                stop1.getCruiseStopId(),
-                ItineraryChangeType.TIME_CHANGE,
-                adminUser.getUserId()
-        );
+        List<ItineraryChangeHistory> r2 =
+                historyRepository.search(
+                        itinerary1.getItineraryId(),
+                        stop1.getCruiseStopId(),
+                        ItineraryChangeType.TIME_CHANGE,
+                        adminUser.getUserId());
         assertEquals(1, r2.size());
         assertEquals(h1.getChangeHistoryId(), r2.get(0).getChangeHistoryId());
     }
 
     @Test
-    @DisplayName("Endpoint GET /itinerary-change-history - Không có filter trả về HTTP 200 (xác minh fix lỗi HTTP 500 SQLState 42P18 parameter $5)")
+    @DisplayName(
+            "Endpoint GET /itinerary-change-history - Không có filter trả về HTTP 200 (xác minh fix"
+                + " lỗi HTTP 500 SQLState 42P18 parameter $5)")
     void testGetItineraryChangeHistoryEndpoint_NoFilter_ReturnsHttp200() throws Exception {
         createHistory(itinerary1, stop1, ItineraryChangeType.TIME_CHANGE, adminUser, Instant.now());
 
-        mockMvc.perform(get("/itinerary-change-history")
-                        .header("Authorization", "Bearer " + adminToken))
+        mockMvc.perform(
+                        get("/itinerary-change-history")
+                                .header("Authorization", "Bearer " + adminToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$").isArray())
                 .andExpect(jsonPath("$", not(empty())));
     }
 
     @Test
-    @DisplayName("Endpoint GET /itinerary-change-history - Từng filter và kết hợp filters trả về HTTP 200")
+    @DisplayName(
+            "Endpoint GET /itinerary-change-history - Từng filter và kết hợp filters trả về HTTP"
+                + " 200")
     void testGetItineraryChangeHistoryEndpoint_WithFilters_ReturnsHttp200() throws Exception {
-        ItineraryChangeHistory h1 = createHistory(itinerary1, stop1, ItineraryChangeType.TIME_CHANGE, adminUser, Instant.now().minus(2, ChronoUnit.HOURS));
-        ItineraryChangeHistory h2 = createHistory(itinerary2, null, ItineraryChangeType.PORT_OMITTED, staffUser, Instant.now().minus(1, ChronoUnit.HOURS));
+        ItineraryChangeHistory h1 =
+                createHistory(
+                        itinerary1,
+                        stop1,
+                        ItineraryChangeType.TIME_CHANGE,
+                        adminUser,
+                        Instant.now().minus(2, ChronoUnit.HOURS));
+        ItineraryChangeHistory h2 =
+                createHistory(
+                        itinerary2,
+                        null,
+                        ItineraryChangeType.PORT_OMITTED,
+                        staffUser,
+                        Instant.now().minus(1, ChronoUnit.HOURS));
 
         // Filter changeType
-        mockMvc.perform(get("/itinerary-change-history")
-                        .param("changeType", "PORT_OMITTED")
-                        .header("Authorization", "Bearer " + adminToken))
+        mockMvc.perform(
+                        get("/itinerary-change-history")
+                                .param("changeType", "PORT_OMITTED")
+                                .header("Authorization", "Bearer " + adminToken))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[?(@.changeHistoryId == '" + h2.getChangeHistoryId() + "')]").exists())
-                .andExpect(jsonPath("$[?(@.changeHistoryId == '" + h1.getChangeHistoryId() + "')]").doesNotExist());
+                .andExpect(
+                        jsonPath("$[?(@.changeHistoryId == '" + h2.getChangeHistoryId() + "')]")
+                                .exists())
+                .andExpect(
+                        jsonPath("$[?(@.changeHistoryId == '" + h1.getChangeHistoryId() + "')]")
+                                .doesNotExist());
 
         // Combined itineraryId + changeType
-        mockMvc.perform(get("/itinerary-change-history")
-                        .param("itineraryId", itinerary1.getItineraryId().toString())
-                        .param("changeType", "TIME_CHANGE")
-                        .header("Authorization", "Bearer " + adminToken))
+        mockMvc.perform(
+                        get("/itinerary-change-history")
+                                .param("itineraryId", itinerary1.getItineraryId().toString())
+                                .param("changeType", "TIME_CHANGE")
+                                .header("Authorization", "Bearer " + adminToken))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[?(@.changeHistoryId == '" + h1.getChangeHistoryId() + "')]").exists())
-                .andExpect(jsonPath("$[?(@.changeHistoryId == '" + h2.getChangeHistoryId() + "')]").doesNotExist());
+                .andExpect(
+                        jsonPath("$[?(@.changeHistoryId == '" + h1.getChangeHistoryId() + "')]")
+                                .exists())
+                .andExpect(
+                        jsonPath("$[?(@.changeHistoryId == '" + h2.getChangeHistoryId() + "')]")
+                                .doesNotExist());
     }
 }

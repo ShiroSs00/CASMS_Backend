@@ -2,7 +2,9 @@ package com.casms.booking.dto.response;
 
 import com.casms.payment.enums.InstallmentStatus;
 import com.casms.payment.enums.InstallmentType;
+
 import io.swagger.v3.oas.annotations.media.Schema;
+
 import lombok.Getter;
 import lombok.Setter;
 

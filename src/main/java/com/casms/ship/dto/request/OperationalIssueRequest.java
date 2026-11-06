@@ -1,11 +1,11 @@
-
 package com.casms.ship.dto.request;
 
 import com.casms.ship.enums.OperationalIssueSeverity;
 import com.casms.ship.enums.OperationalIssueType;
+
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
-import jakarta.validation.constraints.Size;
+
 import lombok.Getter;
 import lombok.Setter;
 
@@ -21,11 +21,9 @@ public class OperationalIssueRequest {
 
     private UUID cabinId;
 
-    @NotNull
-    private OperationalIssueType issueType;
+    @NotNull private OperationalIssueType issueType;
 
     private OperationalIssueSeverity severity;
 
-    @NotBlank
-    private String description;
+    @NotBlank private String description;
 }

@@ -1,7 +1,9 @@
 package com.casms.checkin.dto.request;
 
 import com.casms.checkin.enums.GuidanceSessionParticipantAttendanceStatus;
+
 import jakarta.validation.constraints.NotNull;
+
 import lombok.Getter;
 import lombok.Setter;
 

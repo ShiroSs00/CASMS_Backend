@@ -1,6 +1,7 @@
 package com.casms.ship.dto.response;
 
 import io.swagger.v3.oas.annotations.media.Schema;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -32,7 +33,10 @@ public class CruisePreparationSectionResponse {
     @Schema(description = "Thao tác được phép cho actor và phạm vi Cruise hiện tại")
     private List<String> allowedActions;
 
-    @Schema(description = "Trạng thái phân hệ (NOT_STARTED, IN_PROGRESS, SUBMITTED, CONFIRMED, RETURNED)", example = "IN_PROGRESS")
+    @Schema(
+            description =
+                    "Trạng thái phân hệ (NOT_STARTED, IN_PROGRESS, SUBMITTED, CONFIRMED, RETURNED)",
+            example = "IN_PROGRESS")
     private String status;
 
     @Schema(description = "Bằng chứng/kết quả chuẩn bị đã nộp")
@@ -61,6 +65,7 @@ public class CruisePreparationSectionResponse {
 
     @Schema(description = "Thời điểm trả lại")
     private Instant returnedAt;
+
     private UUID returnedByUserId;
 
     @Schema(description = "Số revision phục vụ kiểm soát xung đột", example = "1")
@@ -82,7 +87,8 @@ public class CruisePreparationSectionResponse {
         private String state;
         private String evidence;
 
-        public PreparationCheckItemDto(String itemCode, String itemName, boolean ready, String details) {
+        public PreparationCheckItemDto(
+                String itemCode, String itemName, boolean ready, String details) {
             this.itemCode = itemCode;
             this.itemName = itemName;
             this.ready = ready;

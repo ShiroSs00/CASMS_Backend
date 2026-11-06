@@ -2,7 +2,9 @@ package com.casms.ship.entity;
 
 import com.casms.ship.enums.LocationDeviceStatus;
 import com.casms.ship.enums.LocationDeviceType;
+
 import jakarta.persistence.*;
+
 import lombok.Getter;
 import lombok.Setter;
 
@@ -12,12 +14,15 @@ import java.util.UUID;
 @Getter
 @Setter
 @Entity
-@Table(name = "\"LocationDevice\"", uniqueConstraints = {
-        @UniqueConstraint(name = "uk_location_device_code", columnNames = "device_code"),
-        @UniqueConstraint(name = "uk_location_device_ship_ble_identifier", columnNames = {"ship_id", "ble_identifier"})
-}, indexes = {
-        @Index(name = "idx_location_device_ship_status", columnList = "ship_id,status")
-})
+@Table(
+        name = "\"LocationDevice\"",
+        uniqueConstraints = {
+            @UniqueConstraint(name = "uk_location_device_code", columnNames = "device_code"),
+            @UniqueConstraint(
+                    name = "uk_location_device_ship_ble_identifier",
+                    columnNames = {"ship_id", "ble_identifier"})
+        },
+        indexes = {@Index(name = "idx_location_device_ship_status", columnList = "ship_id,status")})
 public class LocationDevice {
 
     @Id
@@ -56,20 +61,28 @@ public class LocationDevice {
 
     @Column(name = "model_position_x")
     private Double modelPositionX;
+
     @Column(name = "model_position_y")
     private Double modelPositionY;
+
     @Column(name = "model_position_z")
     private Double modelPositionZ;
+
     @Column(name = "model_rotation_x")
     private Double modelRotationX;
+
     @Column(name = "model_rotation_y")
     private Double modelRotationY;
+
     @Column(name = "model_rotation_z")
     private Double modelRotationZ;
+
     @Column(name = "tx_power_dbm")
     private Double txPowerDbm = -59.0;
+
     @Column(name = "path_loss_exponent")
     private Double pathLossExponent = 2.2;
+
     @Column(name = "model_units_per_meter")
     private Double modelUnitsPerMeter = 1.0;
 

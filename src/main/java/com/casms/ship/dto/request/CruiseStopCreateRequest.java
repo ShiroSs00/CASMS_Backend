@@ -1,10 +1,13 @@
 package com.casms.ship.dto.request;
 
-import com.casms.ship.enums.CruiseStopCallType;
 import com.casms.ship.enums.CruiseStopArrivalMethod;
+import com.casms.ship.enums.CruiseStopCallType;
+
 import io.swagger.v3.oas.annotations.media.Schema;
+
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
+
 import lombok.Data;
 
 import java.time.Instant;
@@ -14,19 +17,31 @@ import java.util.UUID;
 @Schema(description = "Yêu cầu thêm điểm dừng mới vào lịch trình")
 public class CruiseStopCreateRequest {
 
-    @Schema(description = "ID lịch trình", example = "3fa85f64-5717-4562-b3fc-2c963f66afa6", requiredMode = Schema.RequiredMode.REQUIRED)
+    @Schema(
+            description = "ID lịch trình",
+            example = "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+            requiredMode = Schema.RequiredMode.REQUIRED)
     @NotNull(message = "Itinerary ID is required")
     private UUID itineraryId;
 
-    @Schema(description = "ID ngày đến", example = "3fa85f64-5717-4562-b3fc-2c963f66afa6", requiredMode = Schema.RequiredMode.REQUIRED)
+    @Schema(
+            description = "ID ngày đến",
+            example = "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+            requiredMode = Schema.RequiredMode.REQUIRED)
     @NotNull(message = "Arrival itinerary day ID is required")
     private UUID arrivalItineraryDayId;
 
-    @Schema(description = "ID ngày đi", example = "3fa85f64-5717-4562-b3fc-2c963f66afa6", requiredMode = Schema.RequiredMode.REQUIRED)
+    @Schema(
+            description = "ID ngày đi",
+            example = "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+            requiredMode = Schema.RequiredMode.REQUIRED)
     @NotNull(message = "Departure itinerary day ID is required")
     private UUID departureItineraryDayId;
 
-    @Schema(description = "ID cảng", example = "3fa85f64-5717-4562-b3fc-2c963f66afa6", requiredMode = Schema.RequiredMode.REQUIRED)
+    @Schema(
+            description = "ID cảng",
+            example = "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+            requiredMode = Schema.RequiredMode.REQUIRED)
     @NotNull(message = "Port ID is required")
     private UUID portId;
 
@@ -36,11 +51,17 @@ public class CruiseStopCreateRequest {
     @Schema(description = "Thứ tự dừng (Nếu để trống, tự động tăng)", example = "1")
     private Integer stopOrder;
 
-    @Schema(description = "Thời gian dự kiến đến (ISO-8601)", example = "2026-01-15T08:00:00Z", requiredMode = Schema.RequiredMode.REQUIRED)
+    @Schema(
+            description = "Thời gian dự kiến đến (ISO-8601)",
+            example = "2026-01-15T08:00:00Z",
+            requiredMode = Schema.RequiredMode.REQUIRED)
     @NotNull(message = "Planned arrival is required")
     private Instant plannedArrival;
 
-    @Schema(description = "Thời gian dự kiến đi (ISO-8601)", example = "2026-01-15T18:00:00Z", requiredMode = Schema.RequiredMode.REQUIRED)
+    @Schema(
+            description = "Thời gian dự kiến đi (ISO-8601)",
+            example = "2026-01-15T18:00:00Z",
+            requiredMode = Schema.RequiredMode.REQUIRED)
     @NotNull(message = "Planned departure is required")
     private Instant plannedDeparture;
 
@@ -50,7 +71,9 @@ public class CruiseStopCreateRequest {
     @Schema(description = "Phương pháp tiếp cận", example = "BERTH")
     private CruiseStopArrivalMethod arrivalMethod;
 
-    @Schema(description = "Thời gian tất cả hành khách lên tàu (ISO-8601)", example = "2026-01-15T17:30:00Z")
+    @Schema(
+            description = "Thời gian tất cả hành khách lên tàu (ISO-8601)",
+            example = "2026-01-15T17:30:00Z")
     private Instant allAboardTime;
 
     @Schema(description = "Thời gian chuyển bằng xuồng (phút)", example = "30")

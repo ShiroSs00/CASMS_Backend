@@ -1,9 +1,13 @@
 package com.casms.ship.service;
 
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.*;
+
 import com.casms.common.exception.BusinessException;
 import com.casms.identity.entity.User;
-import com.casms.identity.enums.UserStatus;
 import com.casms.identity.enums.Role;
+import com.casms.identity.enums.UserStatus;
 import com.casms.identity.repository.UserRepository;
 import com.casms.ship.dto.request.CruiseStaffRequest;
 import com.casms.ship.dto.response.CruiseStaffResponse;
@@ -11,6 +15,7 @@ import com.casms.ship.entity.Cruise;
 import com.casms.ship.entity.CruiseStaff;
 import com.casms.ship.repository.CruiseRepository;
 import com.casms.ship.repository.CruiseStaffRepository;
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -24,26 +29,17 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.*;
-
 @ExtendWith(MockitoExtension.class)
 class CruiseStaffServiceTest {
-    @Mock
-    private CruisePreparationService cruisePreparationService;
+    @Mock private CruisePreparationService cruisePreparationService;
 
-    @Mock
-    private CruiseStaffRepository cruiseStaffRepository;
+    @Mock private CruiseStaffRepository cruiseStaffRepository;
 
-    @Mock
-    private CruiseRepository cruiseRepository;
+    @Mock private CruiseRepository cruiseRepository;
 
-    @Mock
-    private UserRepository userRepository;
+    @Mock private UserRepository userRepository;
 
-    @InjectMocks
-    private CruiseStaffService cruiseStaffService;
+    @InjectMocks private CruiseStaffService cruiseStaffService;
 
     private UUID cruiseId;
     private UUID userId;
@@ -78,9 +74,12 @@ class CruiseStaffServiceTest {
 
         when(cruiseRepository.findById(cruiseId)).thenReturn(Optional.of(cruise));
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
-        when(cruiseStaffRepository.existsByCruise_CruiseIdAndUser_UserIdAndStatus(cruiseId, userId, "ACTIVE")).thenReturn(false);
+        when(cruiseStaffRepository.existsByCruise_CruiseIdAndUser_UserIdAndStatus(
+                        cruiseId, userId, "ACTIVE"))
+                .thenReturn(false);
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
-        when(cruiseStaffRepository.findConflictingAssignments(any(), any(), any(), any())).thenReturn(List.of());
+        when(cruiseStaffRepository.findConflictingAssignments(any(), any(), any(), any()))
+                .thenReturn(List.of());
 
         CruiseStaff savedStaff = new CruiseStaff();
         savedStaff.setCruiseStaffId(UUID.randomUUID());
@@ -110,7 +109,9 @@ class CruiseStaffServiceTest {
 
         when(cruiseRepository.findById(cruiseId)).thenReturn(Optional.of(cruise));
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
-        when(cruiseStaffRepository.existsByCruise_CruiseIdAndUser_UserIdAndStatus(cruiseId, userId, "ACTIVE")).thenReturn(false);
+        when(cruiseStaffRepository.existsByCruise_CruiseIdAndUser_UserIdAndStatus(
+                        cruiseId, userId, "ACTIVE"))
+                .thenReturn(false);
 
         Cruise conflictingCruise = new Cruise();
         conflictingCruise.setCruiseId(UUID.randomUUID());
@@ -125,8 +126,10 @@ class CruiseStaffServiceTest {
         when(cruiseStaffRepository.findConflictingAssignments(any(), any(), any(), any()))
                 .thenReturn(List.of(conflict));
 
-        BusinessException ex = assertThrows(BusinessException.class,
-                () -> cruiseStaffService.assignStaff(cruiseId, req, userId));
+        BusinessException ex =
+                assertThrows(
+                        BusinessException.class,
+                        () -> cruiseStaffService.assignStaff(cruiseId, req, userId));
 
         assertEquals("SHIP_STAFF_SCHEDULE_CONFLICT", ex.getCode());
         verify(cruiseStaffRepository, never()).save(any());
@@ -141,10 +144,14 @@ class CruiseStaffServiceTest {
 
         when(cruiseRepository.findById(cruiseId)).thenReturn(Optional.of(cruise));
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
-        when(cruiseStaffRepository.existsByCruise_CruiseIdAndUser_UserIdAndStatus(cruiseId, userId, "ACTIVE")).thenReturn(true);
+        when(cruiseStaffRepository.existsByCruise_CruiseIdAndUser_UserIdAndStatus(
+                        cruiseId, userId, "ACTIVE"))
+                .thenReturn(true);
 
-        BusinessException ex = assertThrows(BusinessException.class,
-                () -> cruiseStaffService.assignStaff(cruiseId, req, userId));
+        BusinessException ex =
+                assertThrows(
+                        BusinessException.class,
+                        () -> cruiseStaffService.assignStaff(cruiseId, req, userId));
 
         assertEquals("DUPLICATE_STAFF_ASSIGNMENT", ex.getCode());
     }

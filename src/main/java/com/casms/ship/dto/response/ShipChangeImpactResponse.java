@@ -1,6 +1,7 @@
 package com.casms.ship.dto.response;
 
 import io.swagger.v3.oas.annotations.media.Schema;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -35,7 +36,10 @@ public class ShipChangeImpactResponse {
     @Schema(description = "Số lượng cabin đã phân bổ có thể bị ảnh hưởng khi đổi tàu")
     private long affectedCabinAssignmentsCount;
 
-    @Schema(description = "Số lượng hoạt động trên tàu (onboard activities) có thể bị ảnh hưởng cấu hình boong/phòng")
+    @Schema(
+            description =
+                    "Số lượng hoạt động trên tàu (onboard activities) có thể bị ảnh hưởng cấu hình"
+                        + " boong/phòng")
     private long affectedOnboardActivitiesCount;
 
     @Builder.Default

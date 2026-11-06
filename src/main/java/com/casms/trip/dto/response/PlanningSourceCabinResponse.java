@@ -1,7 +1,9 @@
 package com.casms.trip.dto.response;
 
 import com.casms.ship.enums.CabinType;
+
 import io.swagger.v3.oas.annotations.media.Schema;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -13,7 +15,10 @@ import java.util.UUID;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@Schema(description = "Thông tin phòng / cabin (phòng chức năng, spa, nhà hàng, hội nghị) cho hoạt động trên tàu")
+@Schema(
+        description =
+                "Thông tin phòng / cabin (phòng chức năng, spa, nhà hàng, hội nghị) cho hoạt động"
+                    + " trên tàu")
 public class PlanningSourceCabinResponse {
 
     @Schema(description = "ID cabin / phòng")
@@ -22,10 +27,14 @@ public class PlanningSourceCabinResponse {
     @Schema(description = "Số phòng / mã vị trí", example = "202")
     private String cabinNumber;
 
-    @Schema(description = "Tên phòng / tên công năng chuyên biệt", example = "Phòng Massage Đá Nóng VIP")
+    @Schema(
+            description = "Tên phòng / tên công năng chuyên biệt",
+            example = "Phòng Massage Đá Nóng VIP")
     private String roomName;
 
-    @Schema(description = "Tên hiển thị trực quan cho khách (Số phòng + Tên công năng)", example = "Phòng 202 - Phòng Massage Đá Nóng VIP")
+    @Schema(
+            description = "Tên hiển thị trực quan cho khách (Số phòng + Tên công năng)",
+            example = "Phòng 202 - Phòng Massage Đá Nóng VIP")
     private String displayName;
 
     @Schema(description = "Loại phòng / phân loại cabin", example = "SUITE")

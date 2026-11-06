@@ -2,6 +2,7 @@ package com.casms.ship.dto.response;
 
 import com.casms.ship.enums.CruiseStatus;
 import com.casms.ship.enums.ItineraryStatus;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;

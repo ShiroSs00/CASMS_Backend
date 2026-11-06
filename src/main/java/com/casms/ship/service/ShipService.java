@@ -5,18 +5,20 @@ import com.casms.common.exception.ResourceNotFoundException;
 import com.casms.common.service.BusinessCodeGenerator;
 import com.casms.ship.dto.request.*;
 import com.casms.ship.dto.response.*;
-import com.casms.ship.enums.CabinStatus;
 import com.casms.ship.entity.Cruise;
 import com.casms.ship.entity.Ship;
+import com.casms.ship.enums.CabinStatus;
 import com.casms.ship.enums.ShipStatus;
 import com.casms.ship.repository.CabinRepository;
 import com.casms.ship.repository.CruiseRepository;
 import com.casms.ship.repository.DeckRepository;
-import com.casms.ship.repository.ShipRepository;
-import com.casms.ship.repository.ShipModelRepository;
 import com.casms.ship.repository.LocationDeviceRepository;
+import com.casms.ship.repository.ShipModelRepository;
+import com.casms.ship.repository.ShipRepository;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -47,12 +49,18 @@ public class ShipService {
 
     @Transactional
     public ShipResponse create(ShipCreateRequest request) {
-        if(request.getModelKey()!=null || request.getAssetVersion()!=null) {
-            if(!request.isModelReferenceComplete())throw new BusinessException("INVALID_MODEL_REFERENCE","modelKey and assetVersion must be supplied together");
-            var registered=modelAssets.createShipFromManifest(request.getModelKey(),request.getAssetVersion(),request);
+        if (request.getModelKey() != null || request.getAssetVersion() != null) {
+            if (!request.isModelReferenceComplete())
+                throw new BusinessException(
+                        "INVALID_MODEL_REFERENCE",
+                        "modelKey and assetVersion must be supplied together");
+            var registered =
+                    modelAssets.createShipFromManifest(
+                            request.getModelKey(), request.getAssetVersion(), request);
             return mapToResponse(getShipById(registered.shipId()));
         }
-        if(request.getShipName()==null || request.getShipName().isBlank())throw new BusinessException("INVALID_SHIP_NAME","Ship name is required");
+        if (request.getShipName() == null || request.getShipName().isBlank())
+            throw new BusinessException("INVALID_SHIP_NAME", "Ship name is required");
         String shipName = request.getShipName().trim();
         String shipCode = businessCodeGenerator.next("SH");
         ShipStatus status = request.getStatus() == null ? ShipStatus.DRAFT : request.getStatus();
@@ -71,7 +79,7 @@ public class ShipService {
         ship.setLengthMeters(request.getLengthMeters());
         ship.setBeamMeters(request.getBeamMeters());
         ship.setCommissionDate(request.getCommissionDate());
-        
+
         ship = shipRepository.save(ship);
         return mapToResponse(ship);
     }
@@ -90,8 +98,12 @@ public class ShipService {
     @Transactional
     public ShipResponse update(UUID shipId, ShipUpdateRequest request) {
         Ship ship = getShipById(shipId);
-        Double proposedLength = request.getLengthMeters() == null ? ship.getLengthMeters() : request.getLengthMeters();
-        Double proposedBeam = request.getBeamMeters() == null ? ship.getBeamMeters() : request.getBeamMeters();
+        Double proposedLength =
+                request.getLengthMeters() == null
+                        ? ship.getLengthMeters()
+                        : request.getLengthMeters();
+        Double proposedBeam =
+                request.getBeamMeters() == null ? ship.getBeamMeters() : request.getBeamMeters();
         validateHullDimensions(proposedLength, proposedBeam);
         if (request.getShipName() != null) {
             String shipName = request.getShipName().trim();
@@ -102,22 +114,28 @@ public class ShipService {
         }
         if (request.getTotalCapacity() != null) {
             if (request.getTotalCapacity() < 1) {
-                throw new BusinessException("INVALID_SHIP_CAPACITY", "Total capacity must be greater than zero");
+                throw new BusinessException(
+                        "INVALID_SHIP_CAPACITY", "Total capacity must be greater than zero");
             }
             Long configuredCabinCapacity = cabinRepository.sumCapacityByShipId(shipId);
-            if (configuredCabinCapacity != null && request.getTotalCapacity() < configuredCabinCapacity) {
-                throw new BusinessException("SHIP_CAPACITY_BELOW_CABIN_CAPACITY",
-                        "Total ship capacity cannot be lower than the combined capacity of its cabins");
+            if (configuredCabinCapacity != null
+                    && request.getTotalCapacity() < configuredCabinCapacity) {
+                throw new BusinessException(
+                        "SHIP_CAPACITY_BELOW_CABIN_CAPACITY",
+                        "Total ship capacity cannot be lower than the combined capacity of its"
+                            + " cabins");
             }
             ship.setTotalCapacity(request.getTotalCapacity());
         }
         if (request.getTotalDecks() != null) {
             if (request.getTotalDecks() < 1) {
-                throw new BusinessException("INVALID_TOTAL_DECKS", "Total decks must be greater than zero");
+                throw new BusinessException(
+                        "INVALID_TOTAL_DECKS", "Total decks must be greater than zero");
             }
             long configuredDeckCount = deckRepository.countByShipShipIdAndServiceLevelFalse(shipId);
             if (request.getTotalDecks() < configuredDeckCount) {
-                throw new BusinessException("TOTAL_DECKS_BELOW_CONFIGURED_DECK",
+                throw new BusinessException(
+                        "TOTAL_DECKS_BELOW_CONFIGURED_DECK",
                         "Total decks cannot be lower than the number of configured business decks");
             }
             ship.setTotalDecks(request.getTotalDecks());
@@ -136,17 +154,24 @@ public class ShipService {
     @Transactional
     public void deleteUnused(UUID shipId) {
         Ship ship = getShipById(shipId);
-        
+
         // Check if used in any Cruise
         if (cruiseRepository.existsByShip(ship)) {
-            throw new BusinessException("SHIP_IN_USE", "Cannot delete ship because it is assigned to one or more cruises");
+            throw new BusinessException(
+                    "SHIP_IN_USE",
+                    "Cannot delete ship because it is assigned to one or more cruises");
         }
-        if (deckRepository.countByShipShipId(shipId) > 0 || cabinRepository.countByShipShipId(shipId) > 0) {
-            throw new BusinessException("SHIP_HAS_CONFIGURATION", "Cannot delete a ship while decks or cabins are configured");
+        if (deckRepository.countByShipShipId(shipId) > 0
+                || cabinRepository.countByShipShipId(shipId) > 0) {
+            throw new BusinessException(
+                    "SHIP_HAS_CONFIGURATION",
+                    "Cannot delete a ship while decks or cabins are configured");
         }
         if (!shipModelRepository.findByShipShipIdOrderByCreatedAtDesc(shipId).isEmpty()
                 || !locationDeviceRepository.findByShipShipId(shipId).isEmpty()) {
-            throw new BusinessException("SHIP_HAS_CONFIGURATION", "Cannot delete a ship while 3D models or BLE devices are configured");
+            throw new BusinessException(
+                    "SHIP_HAS_CONFIGURATION",
+                    "Cannot delete a ship while 3D models or BLE devices are configured");
         }
 
         shipRepository.delete(ship);
@@ -162,15 +187,20 @@ public class ShipService {
         if (ship.getStatus() == newStatus) {
             return mapToResponse(ship);
         }
-        
+
         // A ship on a current cruise cannot move to a non-operational state
         if (!ShipStatus.isOperational(newStatus)) {
-            Optional<Cruise> currentCruise = cruiseRepository.findCurrentActiveCruise(shipId, Instant.now());
+            Optional<Cruise> currentCruise =
+                    cruiseRepository.findCurrentActiveCruise(shipId, Instant.now());
             if (currentCruise.isPresent()) {
-                throw new BusinessException("SHIP_ACTIVE_CRUISE", "Cannot change status to " + newStatus + " while ship is on an active cruise");
+                throw new BusinessException(
+                        "SHIP_ACTIVE_CRUISE",
+                        "Cannot change status to "
+                                + newStatus
+                                + " while ship is on an active cruise");
             }
         }
-        
+
         ship.setStatus(newStatus);
         ship = shipRepository.save(ship);
         return mapToResponse(ship);
@@ -179,7 +209,7 @@ public class ShipService {
     @Transactional(readOnly = true)
     public boolean checkScheduleAvailability(UUID shipId, Instant start, Instant end) {
         getShipById(shipId); // Ensure ship exists
-        
+
         validateScheduleRange(start, end);
         return !cruiseRepository.existsOverlappingCruises(shipId, start, end);
     }
@@ -187,11 +217,12 @@ public class ShipService {
     @Transactional(readOnly = true)
     public ShipCapacitySummaryResponse getCapacitySummary(UUID shipId) {
         Ship ship = getShipById(shipId);
-        
+
         long actualDecks = deckRepository.countByShipShipId(shipId);
         long actualCabins = cabinRepository.countByShipShipId(shipId);
-        long availableCabins = cabinRepository.countByShipShipIdAndStatus(shipId, CabinStatus.AVAILABLE);
-        
+        long availableCabins =
+                cabinRepository.countByShipShipIdAndStatus(shipId, CabinStatus.AVAILABLE);
+
         ShipCapacitySummaryResponse response = new ShipCapacitySummaryResponse();
         response.setShipId(ship.getShipId());
         response.setShipName(ship.getShipName());
@@ -201,7 +232,7 @@ public class ShipService {
         response.setActualServiceAreaCount(shipAreas.count(shipId));
         response.setActualCabinCount(actualCabins);
         response.setAvailableCabinCount(availableCabins);
-        
+
         return response;
     }
 
@@ -217,9 +248,13 @@ public class ShipService {
     @Transactional(readOnly = true)
     public CruiseSummaryResponse getCurrentCruise(UUID shipId) {
         getShipById(shipId);
-        return cruiseRepository.findCurrentActiveCruise(shipId, Instant.now())
+        return cruiseRepository
+                .findCurrentActiveCruise(shipId, Instant.now())
                 .map(this::mapToCruiseResponse)
-                .orElseThrow(() -> new ResourceNotFoundException("No active cruise found for ship currently"));
+                .orElseThrow(
+                        () ->
+                                new ResourceNotFoundException(
+                                        "No active cruise found for ship currently"));
     }
 
     @Transactional(readOnly = true)
@@ -229,7 +264,9 @@ public class ShipService {
         // Example check: totalDecks vs actual registered decks in DB
         long actualDecks = deckRepository.countByShipShipIdAndServiceLevelFalse(shipId);
         if (actualDecks > ship.getTotalDecks()) {
-            throw new BusinessException("SHIP_VALIDATION_FAILED", "Actual configured decks exceed ship's total deck limit");
+            throw new BusinessException(
+                    "SHIP_VALIDATION_FAILED",
+                    "Actual configured decks exceed ship's total deck limit");
         }
     }
 
@@ -247,54 +284,75 @@ public class ShipService {
         String readiness;
         if (!ShipStatus.isOperational(ship.getStatus())) {
             readiness = "BLOCKED";
-            issues.add(new ShipReadinessAssessmentResponse.Issue("SHIP_NOT_ACTIVE",
-                    "Ship lifecycle status must be READY or IN_SERVICE for operational readiness"));
+            issues.add(
+                    new ShipReadinessAssessmentResponse.Issue(
+                            "SHIP_NOT_ACTIVE",
+                            "Ship lifecycle status must be READY or IN_SERVICE for operational"
+                                + " readiness"));
         } else {
             readiness = "READY";
             if (deckCount == 0) {
                 readiness = "NOT_READY";
-                issues.add(new ShipReadinessAssessmentResponse.Issue("NO_CONFIGURED_DECKS", "Configure at least one deck"));
+                issues.add(
+                        new ShipReadinessAssessmentResponse.Issue(
+                                "NO_CONFIGURED_DECKS", "Configure at least one deck"));
             }
             if (cabinCount == 0) {
                 readiness = "NOT_READY";
-                issues.add(new ShipReadinessAssessmentResponse.Issue("NO_CONFIGURED_CABINS", "Configure at least one cabin"));
+                issues.add(
+                        new ShipReadinessAssessmentResponse.Issue(
+                                "NO_CONFIGURED_CABINS", "Configure at least one cabin"));
             }
         }
-        return new ShipReadinessAssessmentResponse(shipId, ship.getStatus().name(), readiness, deckCount, cabinCount,
-                List.copyOf(issues), "Structural readiness only. Cruise schedule, regulatory approval, and cabin vacancy are not assessed.");
+        return new ShipReadinessAssessmentResponse(
+                shipId,
+                ship.getStatus().name(),
+                readiness,
+                deckCount,
+                cabinCount,
+                List.copyOf(issues),
+                "Structural readiness only. Cruise schedule, regulatory approval, and cabin vacancy"
+                    + " are not assessed.");
     }
 
     private void validateShipDimensions(Integer totalCapacity, Integer totalDecks) {
         if (totalCapacity == null || totalCapacity < 1) {
-            throw new BusinessException("INVALID_SHIP_CAPACITY", "Total capacity must be greater than zero");
+            throw new BusinessException(
+                    "INVALID_SHIP_CAPACITY", "Total capacity must be greater than zero");
         }
         if (totalDecks == null || totalDecks < 1) {
-            throw new BusinessException("INVALID_TOTAL_DECKS", "Total decks must be greater than zero");
+            throw new BusinessException(
+                    "INVALID_TOTAL_DECKS", "Total decks must be greater than zero");
         }
     }
 
     private void validateHullDimensions(Double lengthMeters, Double beamMeters) {
-        if (lengthMeters != null && (!Double.isFinite(lengthMeters) || lengthMeters <= 0) ||
-                beamMeters != null && (!Double.isFinite(beamMeters) || beamMeters <= 0)) {
-            throw new BusinessException("INVALID_SHIP_HULL_DIMENSIONS",
+        if (lengthMeters != null && (!Double.isFinite(lengthMeters) || lengthMeters <= 0)
+                || beamMeters != null && (!Double.isFinite(beamMeters) || beamMeters <= 0)) {
+            throw new BusinessException(
+                    "INVALID_SHIP_HULL_DIMENSIONS",
                     "Ship dimensions, when supplied, must be finite positive values");
         }
     }
 
     private void validateCommissionDate(LocalDate commissionDate) {
         if (commissionDate != null && commissionDate.isAfter(LocalDate.now())) {
-            throw new BusinessException("INVALID_COMMISSION_DATE", "Commission date cannot be in the future");
+            throw new BusinessException(
+                    "INVALID_COMMISSION_DATE", "Commission date cannot be in the future");
         }
     }
 
     private void validateScheduleRange(Instant start, Instant end) {
         if (start == null || end == null || !end.isAfter(start)) {
-            throw new BusinessException("INVALID_DATE_RANGE", "Start time and end time are required, and end must be after start");
+            throw new BusinessException(
+                    "INVALID_DATE_RANGE",
+                    "Start time and end time are required, and end must be after start");
         }
     }
 
     private Ship getShipById(UUID shipId) {
-        return shipRepository.findById(shipId)
+        return shipRepository
+                .findById(shipId)
                 .orElseThrow(() -> new ResourceNotFoundException("Ship", shipId));
     }
 
@@ -306,7 +364,10 @@ public class ShipService {
         res.setStatus(ship.getStatus());
         res.setTotalCapacity(ship.getTotalCapacity());
         res.setTotalDecks(ship.getTotalDecks());
-        res.setDeckNumberLimit(ship.getDeckNumberLimit() == null ? ship.getTotalDecks() : ship.getDeckNumberLimit());
+        res.setDeckNumberLimit(
+                ship.getDeckNumberLimit() == null
+                        ? ship.getTotalDecks()
+                        : ship.getDeckNumberLimit());
         res.setManifestModelId(ship.getManifestModelId());
         res.setLengthMeters(ship.getLengthMeters());
         res.setBeamMeters(ship.getBeamMeters());
@@ -315,7 +376,7 @@ public class ShipService {
         res.setUpdatedAt(ship.getUpdatedAt());
         return res;
     }
-    
+
     private CruiseSummaryResponse mapToCruiseResponse(Cruise cruise) {
         CruiseSummaryResponse res = new CruiseSummaryResponse();
         res.setCruiseId(cruise.getCruiseId());

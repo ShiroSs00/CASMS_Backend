@@ -2,14 +2,15 @@ package com.casms.identity.entity;
 
 import com.casms.identity.enums.Permission;
 import com.casms.identity.enums.Role;
+
 import jakarta.persistence.*;
+
 import lombok.Getter;
 import lombok.Setter;
 
 import java.util.EnumSet;
 import java.util.HashSet;
 import java.util.Set;
-import java.util.UUID;
 
 @Getter
 @Setter

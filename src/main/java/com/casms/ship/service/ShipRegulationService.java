@@ -2,7 +2,6 @@ package com.casms.ship.service;
 
 import com.casms.common.exception.BusinessException;
 import com.casms.ship.dto.request.ShipRegulationRequest;
-import com.casms.ship.dto.response.OperationalRegulationResponse;
 import com.casms.ship.dto.response.RegulationAssignmentSnapshotResponse;
 import com.casms.ship.dto.response.RegulationConflictComparedItem;
 import com.casms.ship.dto.response.RegulationConflictResponse;
@@ -15,10 +14,13 @@ import com.casms.ship.enums.RegulationStatus;
 import com.casms.ship.repository.OperationalRegulationRepository;
 import com.casms.ship.repository.ShipRegulationRepository;
 import com.casms.ship.repository.ShipRepository;
+
 import jakarta.persistence.EntityNotFoundException;
 import jakarta.validation.Valid;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -39,37 +41,40 @@ public class ShipRegulationService {
     private final OperationalRegulationRepository operationalRegulationRepository;
     private final OperationalRegulationService operationalRegulationService;
 
-    /**
-     * Gán quy định cho tàu.
-     */
+    /** Gán quy định cho tàu. */
     public ShipRegulationResponse assign(@Valid ShipRegulationRequest request) {
         validateRequest(request);
 
         UUID shipId = request.getShipId();
         UUID regulationId = request.getRegulationId();
 
-        Ship ship = shipRepository.findById(shipId)
-                .orElseThrow(() -> new EntityNotFoundException(
-                        "Ship not found: " + shipId
-                ));
+        Ship ship =
+                shipRepository
+                        .findById(shipId)
+                        .orElseThrow(
+                                () -> new EntityNotFoundException("Ship not found: " + shipId));
 
         OperationalRegulation regulation =
-                operationalRegulationRepository.findById(regulationId)
-                        .orElseThrow(() -> new EntityNotFoundException(
-                                "Operational regulation not found: " + regulationId
-                        ));
+                operationalRegulationRepository
+                        .findById(regulationId)
+                        .orElseThrow(
+                                () ->
+                                        new EntityNotFoundException(
+                                                "Operational regulation not found: "
+                                                        + regulationId));
 
         if (regulation.getScope() == RegulationScope.GLOBAL) {
             throw new IllegalArgumentException(
-                    "GLOBAL regulations apply automatically to all ships and must not be assigned individually."
-            );
+                    "GLOBAL regulations apply automatically to all ships and must not be assigned"
+                        + " individually.");
         }
 
         RegulationConflictResponse verdict = precheck(shipId, regulationId);
         if (Boolean.FALSE.equals(verdict.getCanProceed())) {
-            HttpStatus status = "REGULATION_ALREADY_ASSIGNED".equals(verdict.getCode())
-                    ? HttpStatus.CONFLICT
-                    : HttpStatus.UNPROCESSABLE_ENTITY;
+            HttpStatus status =
+                    "REGULATION_ALREADY_ASSIGNED".equals(verdict.getCode())
+                            ? HttpStatus.CONFLICT
+                            : HttpStatus.UNPROCESSABLE_ENTITY;
             throw new BusinessException(status, verdict.getCode(), verdict.getMessage());
         }
 
@@ -81,20 +86,27 @@ public class ShipRegulationService {
         return toResponse(saved);
     }
 
-    /**
-     * Kiểm tra conflict trước khi gán quy định cho tàu.
-     */
+    /** Kiểm tra conflict trước khi gán quy định cho tàu. */
     @Transactional(readOnly = true)
     public RegulationConflictResponse precheck(UUID shipId, UUID regulationId) {
         if (shipId == null || regulationId == null) {
             throw new IllegalArgumentException("Ship ID and Regulation ID must not be null.");
         }
 
-        Ship ship = shipRepository.findById(shipId)
-                .orElseThrow(() -> new EntityNotFoundException("Ship not found: " + shipId));
+        Ship ship =
+                shipRepository
+                        .findById(shipId)
+                        .orElseThrow(
+                                () -> new EntityNotFoundException("Ship not found: " + shipId));
 
-        OperationalRegulation regulation = operationalRegulationRepository.findById(regulationId)
-                .orElseThrow(() -> new EntityNotFoundException("Operational regulation not found: " + regulationId));
+        OperationalRegulation regulation =
+                operationalRegulationRepository
+                        .findById(regulationId)
+                        .orElseThrow(
+                                () ->
+                                        new EntityNotFoundException(
+                                                "Operational regulation not found: "
+                                                        + regulationId));
 
         if (regulation.getScope() == RegulationScope.GLOBAL) {
             return RegulationConflictResponse.builder()
@@ -102,7 +114,9 @@ public class ShipRegulationService {
                     .severity("BLOCKING")
                     .canProceed(false)
                     .code("REGULATION_CONFLICT_BLOCKING")
-                    .message("GLOBAL regulations apply automatically to all ships and must not be assigned individually.")
+                    .message(
+                            "GLOBAL regulations apply automatically to all ships and must not be"
+                                + " assigned individually.")
                     .comparedWith(List.of())
                     .build();
         }
@@ -118,7 +132,8 @@ public class ShipRegulationService {
                     .build();
         }
 
-        if (shipRegulationRepository.existsByShip_ShipIdAndRegulation_RegulationId(shipId, regulationId)) {
+        if (shipRegulationRepository.existsByShip_ShipIdAndRegulation_RegulationId(
+                shipId, regulationId)) {
             return RegulationConflictResponse.builder()
                     .context("ASSIGN_SHIP")
                     .severity("BLOCKING")
@@ -129,17 +144,26 @@ public class ShipRegulationService {
                     .build();
         }
 
-        List<OperationalRegulation> directAssigned = shipRegulationRepository.findByShip_ShipId(shipId).stream()
-                .map(ShipRegulation::getRegulation)
-                .toList();
-        List<OperationalRegulation> globalRegs = operationalRegulationRepository.findByScope(RegulationScope.GLOBAL);
+        List<OperationalRegulation> directAssigned =
+                shipRegulationRepository.findByShip_ShipId(shipId).stream()
+                        .map(ShipRegulation::getRegulation)
+                        .toList();
+        List<OperationalRegulation> globalRegs =
+                operationalRegulationRepository.findByScope(RegulationScope.GLOBAL);
 
-        List<OperationalRegulation> candidates = Stream.concat(directAssigned.stream(), globalRegs.stream())
-                .filter(r -> r.getStatus() == RegulationStatus.ACTIVE)
-                .filter(r -> r.getRegulationType() == regulation.getRegulationType())
-                .filter(r -> !r.getRegulationId().equals(regulation.getRegulationId()))
-                .filter(r -> overlaps(regulation.getEffectiveFrom(), regulation.getEffectiveTo(), r.getEffectiveFrom(), r.getEffectiveTo()))
-                .toList();
+        List<OperationalRegulation> candidates =
+                Stream.concat(directAssigned.stream(), globalRegs.stream())
+                        .filter(r -> r.getStatus() == RegulationStatus.ACTIVE)
+                        .filter(r -> r.getRegulationType() == regulation.getRegulationType())
+                        .filter(r -> !r.getRegulationId().equals(regulation.getRegulationId()))
+                        .filter(
+                                r ->
+                                        overlaps(
+                                                regulation.getEffectiveFrom(),
+                                                regulation.getEffectiveTo(),
+                                                r.getEffectiveFrom(),
+                                                r.getEffectiveTo()))
+                        .toList();
 
         if (candidates.isEmpty()) {
             return RegulationConflictResponse.builder()
@@ -152,18 +176,25 @@ public class ShipRegulationService {
                     .build();
         }
 
-        List<RegulationConflictComparedItem> comparedItems = candidates.stream()
-                .map(c -> RegulationConflictComparedItem.builder()
-                        .regulationId(c.getRegulationId())
-                        .code(c.getRegulationCode())
-                        .scope(c.getScope())
-                        .value(c.getValue())
-                        .unit(c.getUnit() != null ? c.getUnit().name() : null)
-                        .build())
-                .toList();
+        List<RegulationConflictComparedItem> comparedItems =
+                candidates.stream()
+                        .map(
+                                c ->
+                                        RegulationConflictComparedItem.builder()
+                                                .regulationId(c.getRegulationId())
+                                                .code(c.getRegulationCode())
+                                                .scope(c.getScope())
+                                                .value(c.getValue())
+                                                .unit(
+                                                        c.getUnit() != null
+                                                                ? c.getUnit().name()
+                                                                : null)
+                                                .build())
+                        .toList();
 
-        boolean hasConflictingValue = candidates.stream()
-                .anyMatch(c -> !Objects.equals(c.getValue(), regulation.getValue()));
+        boolean hasConflictingValue =
+                candidates.stream()
+                        .anyMatch(c -> !Objects.equals(c.getValue(), regulation.getValue()));
 
         if (hasConflictingValue) {
             return RegulationConflictResponse.builder()
@@ -186,9 +217,7 @@ public class ShipRegulationService {
                 .build();
     }
 
-    /**
-     * Lấy các quy định GLOBAL và quy định SHIP được gán cho tàu.
-     */
+    /** Lấy các quy định GLOBAL và quy định SHIP được gán cho tàu. */
     @Transactional(readOnly = true)
     public List<ShipRegulationResponse> list(UUID shipId) {
         if (shipId == null) {
@@ -200,87 +229,92 @@ public class ShipRegulationService {
         }
 
         List<ShipRegulationResponse> globalRegulations =
-                operationalRegulationRepository
-                        .findByScope(RegulationScope.GLOBAL)
-                        .stream()
+                operationalRegulationRepository.findByScope(RegulationScope.GLOBAL).stream()
                         .map(regulation -> toResponse(shipId, regulation.getRegulationId()))
                         .toList();
 
         List<ShipRegulationResponse> shipRegulations =
-                shipRegulationRepository.findByShip_ShipId(shipId)
-                        .stream()
+                shipRegulationRepository.findByShip_ShipId(shipId).stream()
                         .map(this::toResponse)
                         .toList();
 
-        return Stream.concat(
-                globalRegulations.stream(),
-                shipRegulations.stream()
-        ).toList();
+        return Stream.concat(globalRegulations.stream(), shipRegulations.stream()).toList();
     }
 
-    /**
-     * Snapshot các quy định đang có hiệu lực (direct và inherited).
-     */
+    /** Snapshot các quy định đang có hiệu lực (direct và inherited). */
     @Transactional(readOnly = true)
     public RegulationAssignmentSnapshotResponse getEffectiveSnapshot(UUID shipId, Instant at) {
         if (shipId == null) {
             throw new IllegalArgumentException("Ship ID must not be null.");
         }
 
-        Ship ship = shipRepository.findById(shipId)
-                .orElseThrow(() -> new EntityNotFoundException("Ship not found: " + shipId));
+        Ship ship =
+                shipRepository
+                        .findById(shipId)
+                        .orElseThrow(
+                                () -> new EntityNotFoundException("Ship not found: " + shipId));
 
         Instant effectiveAt = at != null ? at : Instant.now();
 
         List<ShipRegulation> directRelations = shipRegulationRepository.findByShip_ShipId(shipId);
-        List<RegulationAssignmentSnapshotResponse.RegulationAssignmentItemResponse> directItems = directRelations.stream()
-                .map(ShipRegulation::getRegulation)
-                .filter(r -> isEffectiveAt(r, effectiveAt))
-                .map(r -> RegulationAssignmentSnapshotResponse.RegulationAssignmentItemResponse.builder()
-                        .regulation(operationalRegulationService.toResponse(r))
-                        .source("SHIP")
-                        .sourceHostId(ship.getShipId())
-                        .sourceLabel("SHIP · " + ship.getShipCode())
-                        .canRemove(true)
-                        .removeBlockedReason(null)
-                        .build())
-                .toList();
+        List<RegulationAssignmentSnapshotResponse.RegulationAssignmentItemResponse> directItems =
+                directRelations.stream()
+                        .map(ShipRegulation::getRegulation)
+                        .filter(r -> isEffectiveAt(r, effectiveAt))
+                        .map(
+                                r ->
+                                        RegulationAssignmentSnapshotResponse
+                                                .RegulationAssignmentItemResponse.builder()
+                                                .regulation(
+                                                        operationalRegulationService.toResponse(r))
+                                                .source("SHIP")
+                                                .sourceHostId(ship.getShipId())
+                                                .sourceLabel("SHIP · " + ship.getShipCode())
+                                                .canRemove(true)
+                                                .removeBlockedReason(null)
+                                                .build())
+                        .toList();
 
-        Set<UUID> directIds = directItems.stream()
-                .map(i -> i.getRegulation().getRegulationId())
-                .collect(Collectors.toSet());
+        Set<UUID> directIds =
+                directItems.stream()
+                        .map(i -> i.getRegulation().getRegulationId())
+                        .collect(Collectors.toSet());
 
-        List<RegulationAssignmentSnapshotResponse.RegulationAssignmentItemResponse> inheritedItems = operationalRegulationRepository
-                .findByScope(RegulationScope.GLOBAL)
-                .stream()
-                .filter(r -> isEffectiveAt(r, effectiveAt))
-                .filter(r -> !directIds.contains(r.getRegulationId()))
-                .map(r -> RegulationAssignmentSnapshotResponse.RegulationAssignmentItemResponse.builder()
-                        .regulation(operationalRegulationService.toResponse(r))
-                        .source("GLOBAL")
-                        .sourceHostId(null)
-                        .sourceLabel("GLOBAL")
-                        .canRemove(false)
-                        .removeBlockedReason("Quy định áp dụng toàn hệ thống, không thể gỡ.")
-                        .build())
-                .toList();
+        List<RegulationAssignmentSnapshotResponse.RegulationAssignmentItemResponse> inheritedItems =
+                operationalRegulationRepository.findByScope(RegulationScope.GLOBAL).stream()
+                        .filter(r -> isEffectiveAt(r, effectiveAt))
+                        .filter(r -> !directIds.contains(r.getRegulationId()))
+                        .map(
+                                r ->
+                                        RegulationAssignmentSnapshotResponse
+                                                .RegulationAssignmentItemResponse.builder()
+                                                .regulation(
+                                                        operationalRegulationService.toResponse(r))
+                                                .source("GLOBAL")
+                                                .sourceHostId(null)
+                                                .sourceLabel("GLOBAL")
+                                                .canRemove(false)
+                                                .removeBlockedReason(
+                                                        "Quy định áp dụng toàn hệ thống, không thể"
+                                                            + " gỡ.")
+                                                .build())
+                        .toList();
 
         return RegulationAssignmentSnapshotResponse.builder()
-                .host(RegulationAssignmentSnapshotResponse.HostSummary.builder()
-                        .type("SHIP")
-                        .id(ship.getShipId())
-                        .code(ship.getShipCode())
-                        .name(ship.getShipName())
-                        .build())
+                .host(
+                        RegulationAssignmentSnapshotResponse.HostSummary.builder()
+                                .type("SHIP")
+                                .id(ship.getShipId())
+                                .code(ship.getShipCode())
+                                .name(ship.getShipName())
+                                .build())
                 .checkedAt(effectiveAt)
                 .direct(directItems)
                 .inherited(inheritedItems)
                 .build();
     }
 
-    /**
-     * Xóa liên kết giữa tàu và quy định.
-     */
+    /** Xóa liên kết giữa tàu và quy định. */
     public void remove(UUID shipId, UUID regulationId) {
         if (shipId == null || regulationId == null) {
             throw new IllegalArgumentException("Ship ID and Regulation ID must not be null.");
@@ -290,8 +324,13 @@ public class ShipRegulationService {
         id.setShip(shipId);
         id.setRegulation(regulationId);
 
-        ShipRegulation relation = shipRegulationRepository.findById(id)
-                .orElseThrow(() -> new EntityNotFoundException("Ship regulation assignment not found."));
+        ShipRegulation relation =
+                shipRegulationRepository
+                        .findById(id)
+                        .orElseThrow(
+                                () ->
+                                        new EntityNotFoundException(
+                                                "Ship regulation assignment not found."));
 
         shipRegulationRepository.delete(relation);
     }
@@ -310,7 +349,9 @@ public class ShipRegulationService {
         if (shipId == null || regulationId == null) {
             throw new IllegalArgumentException("Ship ID and Regulation ID must not be null.");
         }
-        boolean alreadyAssigned = shipRegulationRepository.existsByShip_ShipIdAndRegulation_RegulationId(shipId, regulationId);
+        boolean alreadyAssigned =
+                shipRegulationRepository.existsByShip_ShipIdAndRegulation_RegulationId(
+                        shipId, regulationId);
         if (alreadyAssigned) {
             throw new IllegalStateException("This regulation is already assigned to the ship.");
         }
@@ -333,9 +374,7 @@ public class ShipRegulationService {
     }
 
     private void validateRequest(ShipRegulationRequest request) {
-        if (request == null
-                || request.getShipId() == null
-                || request.getRegulationId() == null) {
+        if (request == null || request.getShipId() == null || request.getRegulationId() == null) {
             throw new IllegalArgumentException("Ship ID and Regulation ID must not be null.");
         }
     }
@@ -347,16 +386,8 @@ public class ShipRegulationService {
                 .build();
     }
 
-    /**
-     * Tạo response dto cho quy định GLOBAL.
-     */
-    private ShipRegulationResponse toResponse(
-            UUID shipId,
-            UUID regulationId
-    ) {
-        return ShipRegulationResponse.builder()
-                .shipId(shipId)
-                .regulationId(regulationId)
-                .build();
+    /** Tạo response dto cho quy định GLOBAL. */
+    private ShipRegulationResponse toResponse(UUID shipId, UUID regulationId) {
+        return ShipRegulationResponse.builder().shipId(shipId).regulationId(regulationId).build();
     }
 }

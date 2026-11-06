@@ -2,7 +2,9 @@ package com.casms.trip.entity;
 
 import com.casms.identity.entity.User;
 import com.casms.trip.enums.TripScheduleVersionStatus;
+
 import jakarta.persistence.*;
+
 import lombok.Getter;
 import lombok.Setter;
 
@@ -14,8 +16,12 @@ import java.util.UUID;
 @Getter
 @Setter
 @Entity
-@Table(name = "\"TripScheduleVersion\"",
-       uniqueConstraints = @UniqueConstraint(name = "uq_trip_version", columnNames = {"trip_id", "version_number"}))
+@Table(
+        name = "\"TripScheduleVersion\"",
+        uniqueConstraints =
+                @UniqueConstraint(
+                        name = "uq_trip_version",
+                        columnNames = {"trip_id", "version_number"}))
 public class TripScheduleVersion {
 
     @Id
@@ -80,15 +86,27 @@ public class TripScheduleVersion {
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
-    @OneToMany(mappedBy = "version", fetch = FetchType.LAZY, cascade = CascadeType.ALL, orphanRemoval = true)
+    @OneToMany(
+            mappedBy = "version",
+            fetch = FetchType.LAZY,
+            cascade = CascadeType.ALL,
+            orphanRemoval = true)
     @OrderBy("dayNumber ASC")
     private List<TripPlanDay> days = new ArrayList<>();
 
-    @OneToMany(mappedBy = "version", fetch = FetchType.LAZY, cascade = CascadeType.ALL, orphanRemoval = true)
+    @OneToMany(
+            mappedBy = "version",
+            fetch = FetchType.LAZY,
+            cascade = CascadeType.ALL,
+            orphanRemoval = true)
     @OrderBy("stopOrder ASC")
     private List<TripPlanStop> stops = new ArrayList<>();
 
-    @OneToMany(mappedBy = "version", fetch = FetchType.LAZY, cascade = CascadeType.ALL, orphanRemoval = true)
+    @OneToMany(
+            mappedBy = "version",
+            fetch = FetchType.LAZY,
+            cascade = CascadeType.ALL,
+            orphanRemoval = true)
     @OrderBy("startDayNumber ASC, plannedStartTime ASC")
     private List<TripPlanEntry> entries = new ArrayList<>();
 

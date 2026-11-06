@@ -1,15 +1,17 @@
 package com.casms.booking.entity;
 
-import org.hibernate.annotations.JdbcTypeCode;
-import org.hibernate.type.SqlTypes;
 import com.casms.booking.enums.BookingStatus;
-import com.casms.identity.entity.Passenger;
 import com.casms.identity.entity.User;
 import com.casms.payment.entity.OnboardAccount;
 import com.casms.ship.entity.Cruise;
+
 import jakarta.persistence.*;
+
 import lombok.Getter;
 import lombok.Setter;
+
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.math.BigDecimal;
 import java.time.Instant;

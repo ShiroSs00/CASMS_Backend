@@ -8,11 +8,15 @@ import com.casms.trip.dto.request.VersionReturnRequest;
 import com.casms.trip.dto.request.VersionWithdrawRequest;
 import com.casms.trip.dto.response.TripScheduleVersionDetailResponse;
 import com.casms.trip.service.TripScheduleVersionService;
+
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
+
 import jakarta.validation.Valid;
+
 import lombok.RequiredArgsConstructor;
+
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -20,7 +24,9 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.UUID;
 
-@Tag(name = "Legacy Trip Schedule Version Endpoints", description = "Endpoints tương thích ngược cho phiên bản lịch trình theo versionNumber")
+@Tag(
+        name = "Legacy Trip Schedule Version Endpoints",
+        description = "Endpoints tương thích ngược cho phiên bản lịch trình theo versionNumber")
 @RestController
 @RequestMapping("/trips/{tripId}/versions")
 @RequiredArgsConstructor
@@ -28,7 +34,9 @@ public class LegacyTripScheduleVersionController {
 
     private final TripScheduleVersionService versionService;
 
-    @Operation(summary = "Lấy phiên bản mới nhất", description = "Lấy chi tiết phiên bản có số thứ tự lớn nhất của Trip")
+    @Operation(
+            summary = "Lấy phiên bản mới nhất",
+            description = "Lấy chi tiết phiên bản có số thứ tự lớn nhất của Trip")
     @PreAuthorize("hasAuthority('TRIP_READ')")
     @GetMapping("/latest")
     public ApiResponse<TripScheduleVersionDetailResponse> getLatestVersionDetail(
@@ -36,92 +44,147 @@ public class LegacyTripScheduleVersionController {
         return ApiResponse.success(versionService.getLatestVersionDetail(tripId));
     }
 
-    @Operation(summary = "Lấy chi tiết một phiên bản theo số thứ tự", description = "Lấy chi tiết một phiên bản lịch trình theo số thứ tự versionNumber")
+    @Operation(
+            summary = "Lấy chi tiết một phiên bản theo số thứ tự",
+            description = "Lấy chi tiết một phiên bản lịch trình theo số thứ tự versionNumber")
     @PreAuthorize("hasAuthority('TRIP_READ')")
     @GetMapping("/{versionNumber}")
     public ApiResponse<TripScheduleVersionDetailResponse> getVersionDetail(
             @Parameter(description = "ID của Trip", required = true) @PathVariable UUID tripId,
-            @Parameter(description = "Số thứ tự phiên bản", required = true) @PathVariable Integer versionNumber) {
+            @Parameter(description = "Số thứ tự phiên bản", required = true) @PathVariable
+                    Integer versionNumber) {
         return ApiResponse.success(versionService.getVersionDetail(tripId, versionNumber));
     }
 
-    @Operation(summary = "Lưu bản nháp lịch trình", description = "Lưu dự thảo lịch trình theo số thứ tự phiên bản.")
+    @Operation(
+            summary = "Lưu bản nháp lịch trình",
+            description = "Lưu dự thảo lịch trình theo số thứ tự phiên bản.")
     @PreAuthorize("hasAuthority('TRIP_PLAN_WRITE')")
     @PutMapping("/{versionNumber}/draft")
     public ApiResponse<TripScheduleVersionDetailResponse> saveDraft(
             @Parameter(description = "ID của Trip", required = true) @PathVariable UUID tripId,
-            @Parameter(description = "Số thứ tự phiên bản", required = true) @PathVariable Integer versionNumber,
+            @Parameter(description = "Số thứ tự phiên bản", required = true) @PathVariable
+                    Integer versionNumber,
             @Valid @RequestBody ScheduleDraftSaveRequest request,
             @AuthenticationPrincipal CasmsPrincipal principal) {
         UUID actorId = principal != null ? principal.getUserId() : null;
-        return ApiResponse.success("Saved schedule draft successfully",
+        return ApiResponse.success(
+                "Saved schedule draft successfully",
                 versionService.saveDraft(tripId, versionNumber, request, actorId));
     }
 
-    @Operation(summary = "Template Review đã dừng", deprecated = true, description = "Endpoint tương thích cũ; luôn trả 410 TEMPLATE_REVIEW_RETIRED sau kiểm tra xác thực/quyền, không đổi trạng thái hoặc revision. CRM dùng endpoint finalize; OPS xét duyệt kế hoạch chuyến qua /cruise-plans.")
-    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "410", description = "TEMPLATE_REVIEW_RETIRED — dữ liệu lịch sử giữ nguyên")
+    @Operation(
+            summary = "Template Review đã dừng",
+            deprecated = true,
+            description =
+                    "Endpoint tương thích cũ; luôn trả 410 TEMPLATE_REVIEW_RETIRED sau kiểm tra xác"
+                        + " thực/quyền, không đổi trạng thái hoặc revision. CRM dùng endpoint"
+                        + " finalize; OPS xét duyệt kế hoạch chuyến qua /cruise-plans.")
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "410",
+            description = "TEMPLATE_REVIEW_RETIRED — dữ liệu lịch sử giữ nguyên")
     @PreAuthorize("hasAuthority('TRIP_PLAN_SUBMIT')")
     @PostMapping("/{versionNumber}/submit")
     public ApiResponse<TripScheduleVersionDetailResponse> submitForReview(
             @Parameter(description = "ID của Trip", required = true) @PathVariable UUID tripId,
-            @Parameter(description = "Số thứ tự phiên bản", required = true) @PathVariable Integer versionNumber,
+            @Parameter(description = "Số thứ tự phiên bản", required = true) @PathVariable
+                    Integer versionNumber,
             @AuthenticationPrincipal CasmsPrincipal principal) {
         UUID actorId = principal != null ? principal.getUserId() : null;
-        return ApiResponse.success("Submitted version for review successfully",
+        return ApiResponse.success(
+                "Submitted version for review successfully",
                 versionService.submitForReview(tripId, versionNumber, actorId));
     }
 
-    @Operation(summary = "Template Review đã dừng", deprecated = true, description = "Endpoint tương thích cũ; luôn trả 410 TEMPLATE_REVIEW_RETIRED sau kiểm tra xác thực/quyền, không đổi trạng thái hoặc revision. CRM dùng endpoint finalize; OPS xét duyệt kế hoạch chuyến qua /cruise-plans.")
-    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "410", description = "TEMPLATE_REVIEW_RETIRED — dữ liệu lịch sử giữ nguyên")
+    @Operation(
+            summary = "Template Review đã dừng",
+            deprecated = true,
+            description =
+                    "Endpoint tương thích cũ; luôn trả 410 TEMPLATE_REVIEW_RETIRED sau kiểm tra xác"
+                        + " thực/quyền, không đổi trạng thái hoặc revision. CRM dùng endpoint"
+                        + " finalize; OPS xét duyệt kế hoạch chuyến qua /cruise-plans.")
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "410",
+            description = "TEMPLATE_REVIEW_RETIRED — dữ liệu lịch sử giữ nguyên")
     @PreAuthorize("hasAuthority('TRIP_PLAN_REVIEW')")
     @PostMapping("/{versionNumber}/return-to-draft")
     public ApiResponse<TripScheduleVersionDetailResponse> returnToDraft(
             @Parameter(description = "ID của Trip", required = true) @PathVariable UUID tripId,
-            @Parameter(description = "Số thứ tự phiên bản", required = true) @PathVariable Integer versionNumber,
+            @Parameter(description = "Số thứ tự phiên bản", required = true) @PathVariable
+                    Integer versionNumber,
             @RequestBody(required = false) VersionReturnRequest request,
             @AuthenticationPrincipal CasmsPrincipal principal) {
         UUID actorId = principal != null ? principal.getUserId() : null;
-        return ApiResponse.success("Returned version to draft successfully",
+        return ApiResponse.success(
+                "Returned version to draft successfully",
                 versionService.returnToDraft(tripId, versionNumber, request, actorId));
     }
 
-    @Operation(summary = "Template Review đã dừng", deprecated = true, description = "Endpoint tương thích cũ; luôn trả 410 TEMPLATE_REVIEW_RETIRED sau kiểm tra xác thực/quyền, không đổi trạng thái hoặc revision. CRM dùng endpoint finalize; OPS xét duyệt kế hoạch chuyến qua /cruise-plans.")
-    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "410", description = "TEMPLATE_REVIEW_RETIRED — dữ liệu lịch sử giữ nguyên")
+    @Operation(
+            summary = "Template Review đã dừng",
+            deprecated = true,
+            description =
+                    "Endpoint tương thích cũ; luôn trả 410 TEMPLATE_REVIEW_RETIRED sau kiểm tra xác"
+                        + " thực/quyền, không đổi trạng thái hoặc revision. CRM dùng endpoint"
+                        + " finalize; OPS xét duyệt kế hoạch chuyến qua /cruise-plans.")
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "410",
+            description = "TEMPLATE_REVIEW_RETIRED — dữ liệu lịch sử giữ nguyên")
     @PreAuthorize("hasAuthority('TRIP_PLAN_REVIEW')")
     @PostMapping("/{versionNumber}/publish")
     public ApiResponse<TripScheduleVersionDetailResponse> publishVersion(
             @Parameter(description = "ID của Trip", required = true) @PathVariable UUID tripId,
-            @Parameter(description = "Số thứ tự phiên bản", required = true) @PathVariable Integer versionNumber,
+            @Parameter(description = "Số thứ tự phiên bản", required = true) @PathVariable
+                    Integer versionNumber,
             @AuthenticationPrincipal CasmsPrincipal principal) {
         if (principal == null || principal.getUserId() == null) {
-            throw new BusinessException(HttpStatus.UNAUTHORIZED, "AUTH_REQUIRED", "Yêu cầu đăng nhập để phê duyệt xuất bản phiên bản");
+            throw new BusinessException(
+                    HttpStatus.UNAUTHORIZED,
+                    "AUTH_REQUIRED",
+                    "Yêu cầu đăng nhập để phê duyệt xuất bản phiên bản");
         }
-        return ApiResponse.success("Published version successfully",
+        return ApiResponse.success(
+                "Published version successfully",
                 versionService.publishVersion(tripId, versionNumber, principal.getUserId()));
     }
 
-    @Operation(summary = "Template Review đã dừng", deprecated = true, description = "Endpoint tương thích cũ; luôn trả 410 TEMPLATE_REVIEW_RETIRED sau kiểm tra xác thực/quyền, không đổi trạng thái hoặc revision. CRM dùng endpoint finalize; OPS xét duyệt kế hoạch chuyến qua /cruise-plans.")
-    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "410", description = "TEMPLATE_REVIEW_RETIRED — dữ liệu lịch sử giữ nguyên")
+    @Operation(
+            summary = "Template Review đã dừng",
+            deprecated = true,
+            description =
+                    "Endpoint tương thích cũ; luôn trả 410 TEMPLATE_REVIEW_RETIRED sau kiểm tra xác"
+                        + " thực/quyền, không đổi trạng thái hoặc revision. CRM dùng endpoint"
+                        + " finalize; OPS xét duyệt kế hoạch chuyến qua /cruise-plans.")
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "410",
+            description = "TEMPLATE_REVIEW_RETIRED — dữ liệu lịch sử giữ nguyên")
     @PreAuthorize("hasAuthority('TRIP_PLAN_SUBMIT') or hasAuthority('TRIP_PLAN_WRITE')")
     @PostMapping("/{versionNumber}/withdraw")
     public ApiResponse<TripScheduleVersionDetailResponse> withdraw(
             @Parameter(description = "ID của Trip", required = true) @PathVariable UUID tripId,
-            @Parameter(description = "Số thứ tự phiên bản", required = true) @PathVariable Integer versionNumber,
+            @Parameter(description = "Số thứ tự phiên bản", required = true) @PathVariable
+                    Integer versionNumber,
             @RequestBody(required = false) VersionWithdrawRequest request,
             @AuthenticationPrincipal CasmsPrincipal principal) {
         UUID actorId = principal != null ? principal.getUserId() : null;
-        return ApiResponse.success("Withdrawn version from review successfully",
+        return ApiResponse.success(
+                "Withdrawn version from review successfully",
                 versionService.withdraw(tripId, versionNumber, request, actorId));
     }
 
-    @Operation(summary = "Tạo bản nháp phiên bản tiếp theo", description = "Nhân bản từ phiên bản đã xuất bản gần nhất sang bản nháp mới với versionNumber + 1")
+    @Operation(
+            summary = "Tạo bản nháp phiên bản tiếp theo",
+            description =
+                    "Nhân bản từ phiên bản đã xuất bản gần nhất sang bản nháp mới với versionNumber"
+                        + " + 1")
     @PreAuthorize("hasAuthority('TRIP_PLAN_WRITE')")
     @PostMapping("/new-draft")
     public ApiResponse<TripScheduleVersionDetailResponse> createNextDraftVersion(
             @Parameter(description = "ID của Trip", required = true) @PathVariable UUID tripId,
             @AuthenticationPrincipal CasmsPrincipal principal) {
         UUID actorId = principal != null ? principal.getUserId() : null;
-        return ApiResponse.success("Created new draft version successfully",
+        return ApiResponse.success(
+                "Created new draft version successfully",
                 versionService.createNextDraftVersion(tripId, actorId));
     }
 }

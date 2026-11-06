@@ -1,5 +1,13 @@
 package com.casms.trip.contract;
 
+import static org.hamcrest.Matchers.*;
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.*;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+
 import com.casms.common.exception.BusinessException;
 import com.casms.common.exception.GlobalExceptionHandler;
 import com.casms.identity.entity.User;
@@ -23,6 +31,7 @@ import com.casms.trip.service.IdempotencyService;
 import com.casms.trip.service.TripScheduleVersionService;
 import com.casms.trip.service.TripService;
 import com.fasterxml.jackson.databind.ObjectMapper;
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -49,14 +58,6 @@ import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
-import static org.junit.jupiter.api.Assertions.*;
-import static org.hamcrest.Matchers.*;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.*;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
-
 @ExtendWith(MockitoExtension.class)
 public class TripPlanningContractTest {
 
@@ -66,26 +67,19 @@ public class TripPlanningContractTest {
 
     private ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
 
-    @Mock
-    private TripService tripService;
+    @Mock private TripService tripService;
 
-    @Mock
-    private IdempotencyService idempotencyService;
+    @Mock private IdempotencyService idempotencyService;
 
-    @Mock
-    private TripScheduleVersionService versionService;
+    @Mock private TripScheduleVersionService versionService;
 
-    @Mock
-    private DestinationRepository destinationRepository;
+    @Mock private DestinationRepository destinationRepository;
 
-    @InjectMocks
-    private TripController tripController;
+    @InjectMocks private TripController tripController;
 
-    @InjectMocks
-    private TripScheduleVersionController versionController;
+    @InjectMocks private TripScheduleVersionController versionController;
 
-    @InjectMocks
-    private TripCatalogController catalogController;
+    @InjectMocks private TripCatalogController catalogController;
 
     private UUID tripId;
     private UUID versionId;
@@ -105,8 +99,11 @@ public class TripPlanningContractTest {
         }
 
         @Override
-        public Object resolveArgument(MethodParameter parameter, ModelAndViewContainer mavContainer,
-                                      NativeWebRequest webRequest, WebDataBinderFactory binderFactory) {
+        public Object resolveArgument(
+                MethodParameter parameter,
+                ModelAndViewContainer mavContainer,
+                NativeWebRequest webRequest,
+                WebDataBinderFactory binderFactory) {
             return principal;
         }
     }
@@ -122,23 +119,26 @@ public class TripPlanningContractTest {
         user.setUsername("planner");
         testPrincipal = new CasmsPrincipal(user, null);
 
-        mockMvcTrip = MockMvcBuilders.standaloneSetup(tripController)
-                .setCustomArgumentResolvers(
-                        new PageableHandlerMethodArgumentResolver(),
-                        new TestPrincipalResolver(testPrincipal))
-                .setControllerAdvice(new GlobalExceptionHandler())
-                .build();
+        mockMvcTrip =
+                MockMvcBuilders.standaloneSetup(tripController)
+                        .setCustomArgumentResolvers(
+                                new PageableHandlerMethodArgumentResolver(),
+                                new TestPrincipalResolver(testPrincipal))
+                        .setControllerAdvice(new GlobalExceptionHandler())
+                        .build();
 
-        mockMvcVersion = MockMvcBuilders.standaloneSetup(versionController)
-                .setCustomArgumentResolvers(
-                        new PageableHandlerMethodArgumentResolver(),
-                        new TestPrincipalResolver(testPrincipal))
-                .setControllerAdvice(new GlobalExceptionHandler())
-                .build();
+        mockMvcVersion =
+                MockMvcBuilders.standaloneSetup(versionController)
+                        .setCustomArgumentResolvers(
+                                new PageableHandlerMethodArgumentResolver(),
+                                new TestPrincipalResolver(testPrincipal))
+                        .setControllerAdvice(new GlobalExceptionHandler())
+                        .build();
 
-        mockMvcCatalog = MockMvcBuilders.standaloneSetup(catalogController)
-                .setControllerAdvice(new GlobalExceptionHandler())
-                .build();
+        mockMvcCatalog =
+                MockMvcBuilders.standaloneSetup(catalogController)
+                        .setControllerAdvice(new GlobalExceptionHandler())
+                        .build();
     }
 
     // 1. GET /trips
@@ -152,9 +152,14 @@ public class TripPlanningContractTest {
         item.setStatus(TripStatus.DRAFT);
 
         when(tripService.listTrips(any(), any(Pageable.class)))
-                .thenReturn(new PageImpl<>(List.of(item), org.springframework.data.domain.PageRequest.of(0, 10), 1));
+                .thenReturn(
+                        new PageImpl<>(
+                                List.of(item),
+                                org.springframework.data.domain.PageRequest.of(0, 10),
+                                1));
 
-        mockMvcTrip.perform(get("/trips"))
+        mockMvcTrip
+                .perform(get("/trips"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.content[0].tripCode").value("TR-1001"));
@@ -162,7 +167,8 @@ public class TripPlanningContractTest {
 
     // 2. POST /trips with Idempotency-Key
     @Test
-    @DisplayName("POST /trips returns 201 Created with TripDetailResponse when Idempotency-Key provided")
+    @DisplayName(
+            "POST /trips returns 201 Created with TripDetailResponse when Idempotency-Key provided")
     void testCreateTripContractSuccess() throws Exception {
         TripCreateRequest req = new TripCreateRequest();
         req.setName("Hải trình Di sản Vịnh Bắc Bộ");
@@ -179,10 +185,12 @@ public class TripPlanningContractTest {
         when(idempotencyService.execute(eq("idem-key-123"), any(), eq("CREATE_TRIP"), any(), any()))
                 .thenReturn(res);
 
-        mockMvcTrip.perform(post("/trips")
-                        .header("Idempotency-Key", "idem-key-123")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(req)))
+        mockMvcTrip
+                .perform(
+                        post("/trips")
+                                .header("Idempotency-Key", "idem-key-123")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(objectMapper.writeValueAsString(req)))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.tripCode").value("TR-1001"));
@@ -197,9 +205,11 @@ public class TripPlanningContractTest {
         req.setDurationNights(3);
         req.setTripType(com.casms.ship.enums.ItineraryType.ROUND_TRIP);
 
-        mockMvcTrip.perform(post("/trips")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(req)))
+        mockMvcTrip
+                .perform(
+                        post("/trips")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(objectMapper.writeValueAsString(req)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.code").value("INVALID_INPUT"));
@@ -215,12 +225,18 @@ public class TripPlanningContractTest {
         req.setTripType(com.casms.ship.enums.ItineraryType.ROUND_TRIP);
 
         when(idempotencyService.execute(eq("key-dup"), any(), eq("CREATE_TRIP"), any(), any()))
-                .thenThrow(new BusinessException(HttpStatus.CONFLICT, "IDEMPOTENCY_CONFLICT", "Payload mismatch for key"));
+                .thenThrow(
+                        new BusinessException(
+                                HttpStatus.CONFLICT,
+                                "IDEMPOTENCY_CONFLICT",
+                                "Payload mismatch for key"));
 
-        mockMvcTrip.perform(post("/trips")
-                        .header("Idempotency-Key", "key-dup")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(req)))
+        mockMvcTrip
+                .perform(
+                        post("/trips")
+                                .header("Idempotency-Key", "key-dup")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(objectMapper.writeValueAsString(req)))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.code").value("IDEMPOTENCY_CONFLICT"));
@@ -237,47 +253,63 @@ public class TripPlanningContractTest {
 
         when(tripService.getTripDetail(tripId)).thenReturn(res);
 
-        mockMvcTrip.perform(get("/trips/{tripId}", tripId))
+        mockMvcTrip
+                .perform(get("/trips/{tripId}", tripId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.tripCode").value("TR-1001"));
     }
 
     // 4. PATCH /trips/{tripId}/draft
     @Test
-    @DisplayName("PATCH /trips/{tripId}/draft returns 200 or 409 STALE_REVISION on revision conflict")
+    @DisplayName(
+            "PATCH /trips/{tripId}/draft returns 200 or 409 STALE_REVISION on revision conflict")
     void testPatchTripDraftStaleRevision() throws Exception {
         TripDraftPatchRequest patch = new TripDraftPatchRequest();
         patch.setExpectedRevision(1L);
         patch.setName("Updated name");
 
         when(tripService.patchTripDraft(eq(tripId), any(), any()))
-                .thenThrow(new BusinessException(HttpStatus.CONFLICT, "STALE_REVISION", "Revision mismatch"));
+                .thenThrow(
+                        new BusinessException(
+                                HttpStatus.CONFLICT, "STALE_REVISION", "Revision mismatch"));
 
-        mockMvcTrip.perform(patch("/trips/{tripId}/draft", tripId)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(patch)))
+        mockMvcTrip
+                .perform(
+                        patch("/trips/{tripId}/draft", tripId)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(objectMapper.writeValueAsString(patch)))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("STALE_REVISION"));
     }
 
     // 5. GET /trip-planning/catalogs
     @Test
-    @DisplayName("GET /trip-planning/catalogs returns operatingAreas, tripTypes, fleetIntegrationStatus=DEFERRED_EXTERNAL")
+    @DisplayName(
+            "GET /trip-planning/catalogs returns operatingAreas, tripTypes,"
+                + " fleetIntegrationStatus=DEFERRED_EXTERNAL")
     void testGetCatalogsContract() throws Exception {
         Destination dest = new Destination();
         dest.setDestinationName("Vịnh Hạ Long");
 
         when(destinationRepository.findAllActiveDestinations()).thenReturn(List.of(dest));
 
-        mockMvcCatalog.perform(get("/trip-planning/catalogs"))
+        mockMvcCatalog
+                .perform(get("/trip-planning/catalogs"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.fleetIntegrationStatus").value("DEFERRED_EXTERNAL"))
                 .andExpect(jsonPath("$.data.operatingAreas[0]").value("Vịnh Hạ Long"))
                 .andExpect(jsonPath("$.data.tripTypes", hasItems("ROUND_TRIP", "ONE_WAY")))
-                .andExpect(jsonPath("$.data.supportedPolicies", contains(
-                        "PORT_CALL_BUFFER_30M", "EMBARKATION_DAY_1", "DISEMBARKATION_LAST_DAY",
-                        "MAKER_CHECKER_SEPARATION", "TIME_BASIS_PORT_OR_SHIP", "DECK_CABIN_REFERENCE_POLICY")))
+                .andExpect(
+                        jsonPath(
+                                "$.data.supportedPolicies",
+                                contains(
+                                        "PORT_CALL_BUFFER_30M",
+                                        "EMBARKATION_DAY_1",
+                                        "DISEMBARKATION_LAST_DAY",
+                                        "MAKER_CHECKER_SEPARATION",
+                                        "TIME_BASIS_PORT_OR_SHIP",
+                                        "DECK_CABIN_REFERENCE_POLICY")))
                 .andExpect(jsonPath("$.data.durationGroups", hasSize(2)))
                 .andExpect(jsonPath("$.data.durationGroups[*].code", contains("SHORT", "LONG")))
                 .andExpect(jsonPath("$.data.durationGroups[0].minDays").value(1))
@@ -286,8 +318,14 @@ public class TripPlanningContractTest {
                 .andExpect(jsonPath("$.data.durationGroups[1].minDays").value(3))
                 .andExpect(jsonPath("$.data.durationGroups[1].maxDays").value(5))
                 .andExpect(jsonPath("$.data.durationGroups[1].defaultDays").value(3))
-                .andExpect(jsonPath("$.data.domesticRegions[*].code", contains("BAC_BO", "TRUNG_BO", "NAM_BO")))
-                .andExpect(jsonPath("$.data.countries[*].code", contains("VN", "SG", "TH", "MY", "JP")));
+                .andExpect(
+                        jsonPath(
+                                "$.data.domesticRegions[*].code",
+                                contains("BAC_BO", "TRUNG_BO", "NAM_BO")))
+                .andExpect(
+                        jsonPath(
+                                "$.data.countries[*].code",
+                                contains("VN", "SG", "TH", "MY", "JP")));
     }
 
     // 6. GET /trips/{tripId}/schedule-versions
@@ -302,7 +340,8 @@ public class TripPlanningContractTest {
 
         when(tripService.getScheduleVersions(tripId)).thenReturn(List.of(summary));
 
-        mockMvcTrip.perform(get("/trips/{tripId}/schedule-versions", tripId))
+        mockMvcTrip
+                .perform(get("/trips/{tripId}/schedule-versions", tripId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data[0].versionNumber").value(1));
     }
@@ -318,9 +357,11 @@ public class TripPlanningContractTest {
 
         when(tripService.createScheduleVersion(eq(tripId), any(), any())).thenReturn(res);
 
-        mockMvcTrip.perform(post("/trips/{tripId}/schedule-versions", tripId)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{}"))
+        mockMvcTrip
+                .perform(
+                        post("/trips/{tripId}/schedule-versions", tripId)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{}"))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.data.versionNumber").value(2));
     }
@@ -336,14 +377,17 @@ public class TripPlanningContractTest {
 
         when(versionService.getVersionDetailById(versionId)).thenReturn(res);
 
-        mockMvcVersion.perform(get("/trip-schedule-versions/{versionId}", versionId))
+        mockMvcVersion
+                .perform(get("/trip-schedule-versions/{versionId}", versionId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.versionId").value(versionId.toString()));
     }
 
     // 9. PUT /trip-schedule-versions/{versionId}/content
     @Test
-    @DisplayName("PUT /trip-schedule-versions/{versionId}/content saves tree and returns new VersionView")
+    @DisplayName(
+            "PUT /trip-schedule-versions/{versionId}/content saves tree and returns new"
+                + " VersionView")
     void testSaveContentContractSuccess() throws Exception {
         ScheduleDraftSaveRequest req = new ScheduleDraftSaveRequest();
         req.setExpectedRevision(1L);
@@ -357,37 +401,43 @@ public class TripPlanningContractTest {
 
         when(versionService.saveDraftById(eq(versionId), any(), any())).thenReturn(res);
 
-        mockMvcVersion.perform(put("/trip-schedule-versions/{versionId}/content", versionId)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(req)))
+        mockMvcVersion
+                .perform(
+                        put("/trip-schedule-versions/{versionId}/content", versionId)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(objectMapper.writeValueAsString(req)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.revision").value(2));
     }
 
     // 10. POST /trip-schedule-versions/{versionId}/validate
     @Test
-    @DisplayName("POST /trip-schedule-versions/{versionId}/validate returns ValidationReport without changing status")
+    @DisplayName(
+            "POST /trip-schedule-versions/{versionId}/validate returns ValidationReport without"
+                + " changing status")
     void testValidateVersionContract() throws Exception {
-        ValidationReport report = ValidationReport.builder()
-                .versionId(versionId)
-                .revision(1L)
-                .validForSubmit(false)
-                .policyVersion("v1.0")
-                .violations(List.of(
-                        PlanViolation.builder()
-                                .code("DAY_TYPE_REQUIRED")
-                                .severity("ERROR")
-                                .entityType("DAY")
-                                .dayNumber(1)
-                                .field("dayType")
-                                .message("Ngày 1 chưa được xác định loại ngày")
-                                .build()
-                ))
-                .build();
+        ValidationReport report =
+                ValidationReport.builder()
+                        .versionId(versionId)
+                        .revision(1L)
+                        .validForSubmit(false)
+                        .policyVersion("v1.0")
+                        .violations(
+                                List.of(
+                                        PlanViolation.builder()
+                                                .code("DAY_TYPE_REQUIRED")
+                                                .severity("ERROR")
+                                                .entityType("DAY")
+                                                .dayNumber(1)
+                                                .field("dayType")
+                                                .message("Ngày 1 chưa được xác định loại ngày")
+                                                .build()))
+                        .build();
 
         when(versionService.validateVersion(versionId)).thenReturn(report);
 
-        mockMvcVersion.perform(post("/trip-schedule-versions/{versionId}/validate", versionId))
+        mockMvcVersion
+                .perform(post("/trip-schedule-versions/{versionId}/validate", versionId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.validForSubmit").value(false))
                 .andExpect(jsonPath("$.data.violations[0].code").value("DAY_TYPE_REQUIRED"));
@@ -395,22 +445,31 @@ public class TripPlanningContractTest {
 
     // 11. POST /trip-schedule-versions/{versionId}/submit
     @Test
-    @DisplayName("POST /trip-schedule-versions/{versionId}/submit returns 422 with details.violations if invalid")
+    @DisplayName(
+            "POST /trip-schedule-versions/{versionId}/submit returns 422 with details.violations if"
+                + " invalid")
     void testSubmitVersionValidationFailureContract() throws Exception {
-        PlanViolation violation = PlanViolation.builder()
-                .code("MISSING_EMBARKATION")
-                .severity("ERROR")
-                .entityType("VERSION")
-                .message("Thiếu cảng đón khách tại Ngày 1")
-                .build();
+        PlanViolation violation =
+                PlanViolation.builder()
+                        .code("MISSING_EMBARKATION")
+                        .severity("ERROR")
+                        .entityType("VERSION")
+                        .message("Thiếu cảng đón khách tại Ngày 1")
+                        .build();
 
         when(versionService.submitForReviewById(eq(versionId), any(), any()))
-                .thenThrow(new BusinessException(HttpStatus.UNPROCESSABLE_ENTITY, "MISSING_EMBARKATION",
-                        violation.getMessage(), java.util.Map.of("violations", List.of(violation))));
+                .thenThrow(
+                        new BusinessException(
+                                HttpStatus.UNPROCESSABLE_ENTITY,
+                                "MISSING_EMBARKATION",
+                                violation.getMessage(),
+                                java.util.Map.of("violations", List.of(violation))));
 
-        mockMvcVersion.perform(post("/trip-schedule-versions/{versionId}/submit", versionId)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"expectedRevision\": 1}"))
+        mockMvcVersion
+                .perform(
+                        post("/trip-schedule-versions/{versionId}/submit", versionId)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"expectedRevision\": 1}"))
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(jsonPath("$.code").value("MISSING_EMBARKATION"))
                 .andExpect(jsonPath("$.details.violations[0].code").value("MISSING_EMBARKATION"));
@@ -418,7 +477,8 @@ public class TripPlanningContractTest {
 
     // 12. POST /trip-schedule-versions/{versionId}/return
     @Test
-    @DisplayName("POST /trip-schedule-versions/{versionId}/return requires non-blank rejection reason")
+    @DisplayName(
+            "POST /trip-schedule-versions/{versionId}/return requires non-blank rejection reason")
     void testReturnVersionContract() throws Exception {
         VersionReturnRequest req = new VersionReturnRequest();
         req.setExpectedRevision(1L);
@@ -431,9 +491,11 @@ public class TripPlanningContractTest {
 
         when(versionService.returnToDraftById(eq(versionId), any(), any())).thenReturn(res);
 
-        mockMvcVersion.perform(post("/trip-schedule-versions/{versionId}/return", versionId)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(req)))
+        mockMvcVersion
+                .perform(
+                        post("/trip-schedule-versions/{versionId}/return", versionId)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(objectMapper.writeValueAsString(req)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("DRAFT"))
                 .andExpect(jsonPath("$.data.rejectionReason").value(req.getRejectionReason()));
@@ -444,42 +506,50 @@ public class TripPlanningContractTest {
     @DisplayName("POST /trip-schedule-versions/{versionId}/publish requires login (401)")
     void testPublishVersionUnauthenticatedContract() throws Exception {
         // Without authenticated principal
-        MockMvc unauthMvc = MockMvcBuilders.standaloneSetup(versionController)
-                .setCustomArgumentResolvers(
-                        new PageableHandlerMethodArgumentResolver(),
-                        new TestPrincipalResolver(null)) // Null principal
-                .setControllerAdvice(new GlobalExceptionHandler())
-                .build();
+        MockMvc unauthMvc =
+                MockMvcBuilders.standaloneSetup(versionController)
+                        .setCustomArgumentResolvers(
+                                new PageableHandlerMethodArgumentResolver(),
+                                new TestPrincipalResolver(null)) // Null principal
+                        .setControllerAdvice(new GlobalExceptionHandler())
+                        .build();
 
-        unauthMvc.perform(post("/trip-schedule-versions/{versionId}/publish", versionId))
+        unauthMvc
+                .perform(post("/trip-schedule-versions/{versionId}/publish", versionId))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value("AUTH_REQUIRED"));
     }
 
     // 14. GET /trip-schedule-versions/{versionId}/history
     @Test
-    @DisplayName("GET /trip-schedule-versions/{versionId}/history returns audit events without sensitive PII")
+    @DisplayName(
+            "GET /trip-schedule-versions/{versionId}/history returns audit events without sensitive"
+                + " PII")
     void testGetVersionHistoryContract() throws Exception {
-        TripAuditResponse audit = TripAuditResponse.builder()
-                .auditId(UUID.randomUUID())
-                .action("SUBMIT")
-                .entityType("TripScheduleVersion")
-                .entityId(versionId)
-                .result("SUCCESS")
-                .detail("Submitted for review")
-                .occurredAt(Instant.now())
-                .build();
+        TripAuditResponse audit =
+                TripAuditResponse.builder()
+                        .auditId(UUID.randomUUID())
+                        .action("SUBMIT")
+                        .entityType("TripScheduleVersion")
+                        .entityId(versionId)
+                        .result("SUCCESS")
+                        .detail("Submitted for review")
+                        .occurredAt(Instant.now())
+                        .build();
 
         when(versionService.getVersionHistory(versionId)).thenReturn(List.of(audit));
 
-        mockMvcVersion.perform(get("/trip-schedule-versions/{versionId}/history", versionId))
+        mockMvcVersion
+                .perform(get("/trip-schedule-versions/{versionId}/history", versionId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data[0].action").value("SUBMIT"));
     }
 
     // 15. POST /trips/{tripId}/clone
     @Test
-    @DisplayName("POST /trips/{tripId}/clone returns 201 with clonedDraftVersionId and requires Idempotency-Key")
+    @DisplayName(
+            "POST /trips/{tripId}/clone returns 201 with clonedDraftVersionId and requires"
+                + " Idempotency-Key")
     void testCloneTripContract() throws Exception {
         UUID newVersionId = UUID.randomUUID();
         TripDetailResponse res = new TripDetailResponse();
@@ -490,9 +560,11 @@ public class TripPlanningContractTest {
         when(idempotencyService.execute(eq("idem-clone-99"), any(), eq("CLONE_TRIP"), any(), any()))
                 .thenReturn(res);
 
-        mockMvcTrip.perform(post("/trips/{tripId}/clone", tripId)
-                        .header("Idempotency-Key", "idem-clone-99")
-                        .param("sourceVersionId", versionId.toString()))
+        mockMvcTrip
+                .perform(
+                        post("/trips/{tripId}/clone", tripId)
+                                .header("Idempotency-Key", "idem-clone-99")
+                                .param("sourceVersionId", versionId.toString()))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.tripCode").value("TR-1002"))
@@ -503,25 +575,28 @@ public class TripPlanningContractTest {
     @Test
     @DisplayName("GET /trip-schedule-versions/review-queue returns 200 with review queue items")
     void testGetReviewQueueContract() throws Exception {
-        TripReviewQueueItemResponse item = TripReviewQueueItemResponse.builder()
-                .versionId(versionId)
-                .versionNumber(1)
-                .status(TripScheduleVersionStatus.IN_REVIEW)
-                .revision(2L)
-                .submittedRevision(2L)
-                .submittedAt(Instant.now())
-                .submitterName("planner_user")
-                .tripCode("TR-2001")
-                .tripName("Hành trình Vịnh Hạ Long")
-                .durationGroup(TripDurationGroup.SHORT)
-                .durationDays(2)
-                .durationNights(1)
-                .build();
+        TripReviewQueueItemResponse item =
+                TripReviewQueueItemResponse.builder()
+                        .versionId(versionId)
+                        .versionNumber(1)
+                        .status(TripScheduleVersionStatus.IN_REVIEW)
+                        .revision(2L)
+                        .submittedRevision(2L)
+                        .submittedAt(Instant.now())
+                        .submitterName("planner_user")
+                        .tripCode("TR-2001")
+                        .tripName("Hành trình Vịnh Hạ Long")
+                        .durationGroup(TripDurationGroup.SHORT)
+                        .durationDays(2)
+                        .durationNights(1)
+                        .build();
 
-        Page<TripReviewQueueItemResponse> page = new PageImpl<>(List.of(item), PageRequest.of(0, 20), 1);
+        Page<TripReviewQueueItemResponse> page =
+                new PageImpl<>(List.of(item), PageRequest.of(0, 20), 1);
         when(versionService.getReviewQueue(any())).thenReturn(page);
 
-        mockMvcVersion.perform(get("/trip-schedule-versions/review-queue"))
+        mockMvcVersion
+                .perform(get("/trip-schedule-versions/review-queue"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.content[0].versionId").value(versionId.toString()))
@@ -532,7 +607,8 @@ public class TripPlanningContractTest {
 
     // 17. POST /trips/{tripId}/archive
     @Test
-    @DisplayName("POST /trips/{tripId}/archive with TripArchiveRequest returns 200 with ARCHIVED status")
+    @DisplayName(
+            "POST /trips/{tripId}/archive with TripArchiveRequest returns 200 with ARCHIVED status")
     void testArchiveTripContract() throws Exception {
         TripArchiveRequest req = new TripArchiveRequest();
         req.setExpectedRevision(1L);
@@ -547,9 +623,11 @@ public class TripPlanningContractTest {
         when(tripService.archiveTrip(eq(tripId), any(TripArchiveRequest.class), any()))
                 .thenReturn(res);
 
-        mockMvcTrip.perform(post("/trips/{tripId}/archive", tripId)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(req)))
+        mockMvcTrip
+                .perform(
+                        post("/trips/{tripId}/archive", tripId)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(objectMapper.writeValueAsString(req)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.status").value("ARCHIVED"))
@@ -558,9 +636,11 @@ public class TripPlanningContractTest {
 
     // 18. POST /trip-schedule-versions/{versionId}/cancel
     @Test
-    @DisplayName("POST /trip-schedule-versions/{versionId}/cancel returns 200 with CANCELLED status")
+    @DisplayName(
+            "POST /trip-schedule-versions/{versionId}/cancel returns 200 with CANCELLED status")
     void testCancelDraftContract() throws Exception {
-        com.casms.trip.dto.request.VersionCancelRequest req = new com.casms.trip.dto.request.VersionCancelRequest();
+        com.casms.trip.dto.request.VersionCancelRequest req =
+                new com.casms.trip.dto.request.VersionCancelRequest();
         req.setExpectedRevision(1L);
         req.setReason("Hủy bản nháp theo yêu cầu người lập");
 
@@ -571,9 +651,11 @@ public class TripPlanningContractTest {
 
         when(versionService.cancelDraftById(eq(versionId), any(), any())).thenReturn(res);
 
-        mockMvcVersion.perform(post("/trip-schedule-versions/{versionId}/cancel", versionId)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(req)))
+        mockMvcVersion
+                .perform(
+                        post("/trip-schedule-versions/{versionId}/cancel", versionId)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(objectMapper.writeValueAsString(req)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.status").value("CANCELLED"))
@@ -584,7 +666,8 @@ public class TripPlanningContractTest {
     @Test
     @DisplayName("POST /trip-schedule-versions/{versionId}/withdraw returns 200 with DRAFT status")
     void testWithdrawContract() throws Exception {
-        com.casms.trip.dto.request.VersionWithdrawRequest req = new com.casms.trip.dto.request.VersionWithdrawRequest();
+        com.casms.trip.dto.request.VersionWithdrawRequest req =
+                new com.casms.trip.dto.request.VersionWithdrawRequest();
         req.setExpectedRevision(2L);
         req.setReason("Thu hồi để điều chỉnh giờ");
 
@@ -594,9 +677,11 @@ public class TripPlanningContractTest {
 
         when(versionService.withdrawById(eq(versionId), any(), any())).thenReturn(res);
 
-        mockMvcVersion.perform(post("/trip-schedule-versions/{versionId}/withdraw", versionId)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(req)))
+        mockMvcVersion
+                .perform(
+                        post("/trip-schedule-versions/{versionId}/withdraw", versionId)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(objectMapper.writeValueAsString(req)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.status").value("DRAFT"));
@@ -606,21 +691,23 @@ public class TripPlanningContractTest {
     @Test
     @DisplayName("GET /trips/{tripId}/history returns 200 with Trip audit events and actor names")
     void testTripHistoryContract() throws Exception {
-        TripAuditResponse audit = TripAuditResponse.builder()
-                .auditId(UUID.randomUUID())
-                .action("PATCH_DRAFT")
-                .entityType("Trip")
-                .entityId(tripId)
-                .actorUserId(UUID.randomUUID())
-                .actorName("planner_user")
-                .result("SUCCESS")
-                .detail("Patched Trip TR-1001")
-                .occurredAt(Instant.now())
-                .build();
+        TripAuditResponse audit =
+                TripAuditResponse.builder()
+                        .auditId(UUID.randomUUID())
+                        .action("PATCH_DRAFT")
+                        .entityType("Trip")
+                        .entityId(tripId)
+                        .actorUserId(UUID.randomUUID())
+                        .actorName("planner_user")
+                        .result("SUCCESS")
+                        .detail("Patched Trip TR-1001")
+                        .occurredAt(Instant.now())
+                        .build();
 
         when(tripService.getTripHistory(tripId)).thenReturn(List.of(audit));
 
-        mockMvcTrip.perform(get("/trips/{tripId}/history", tripId))
+        mockMvcTrip
+                .perform(get("/trips/{tripId}/history", tripId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data[0].action").value("PATCH_DRAFT"))

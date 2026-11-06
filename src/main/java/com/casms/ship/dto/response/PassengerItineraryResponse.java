@@ -4,9 +4,9 @@ import com.casms.activity.enums.RegistrationStatus;
 import com.casms.booking.enums.BookingPassengerParticipationStatus;
 import com.casms.booking.enums.BookingStatus;
 import com.casms.ship.enums.CruiseStatus;
+import com.casms.ship.enums.CruiseStopStatus;
 import com.casms.ship.enums.ItineraryDayType;
 import com.casms.ship.enums.ItineraryStatus;
-import com.casms.ship.enums.CruiseStopStatus;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -29,15 +29,13 @@ public record PassengerItineraryResponse(
         LocalDate startDate,
         LocalDate endDate,
         List<CruiseDay> cruiseSchedule,
-        List<RegisteredActivity> registeredActivities
-) {
+        List<RegisteredActivity> registeredActivities) {
     public record CruiseDay(
             Integer dayNumber,
             LocalDate date,
             ItineraryDayType dayType,
             String description,
-            List<CruiseStopSchedule> stops
-    ) {}
+            List<CruiseStopSchedule> stops) {}
 
     public record CruiseStopSchedule(
             UUID cruiseStopId,
@@ -48,8 +46,7 @@ public record PassengerItineraryResponse(
             Instant plannedDeparture,
             Instant actualArrival,
             Instant actualDeparture,
-            CruiseStopStatus status
-    ) {}
+            CruiseStopStatus status) {}
 
     public record RegisteredActivity(
             UUID registrationId,
@@ -61,6 +58,5 @@ public record PassengerItineraryResponse(
             String location,
             RegistrationStatus registrationStatus,
             String activityStatus,
-            Integer quantity
-    ) {}
+            Integer quantity) {}
 }

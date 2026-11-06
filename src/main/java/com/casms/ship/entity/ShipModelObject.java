@@ -1,7 +1,9 @@
 package com.casms.ship.entity;
 
 import com.casms.ship.enums.ShipModelObjectType;
+
 import jakarta.persistence.*;
+
 import lombok.Getter;
 import lombok.Setter;
 
@@ -11,12 +13,17 @@ import java.util.UUID;
 @Getter
 @Setter
 @Entity
-@Table(name = "\"ShipModelObject\"", uniqueConstraints = {
-        @UniqueConstraint(name = "uk_ship_model_object_node", columnNames = {"ship_model_id", "node_key"})
-}, indexes = {
-        @Index(name = "idx_ship_model_object_deck", columnList = "deck_id"),
-        @Index(name = "idx_ship_model_object_cabin", columnList = "cabin_id")
-})
+@Table(
+        name = "\"ShipModelObject\"",
+        uniqueConstraints = {
+            @UniqueConstraint(
+                    name = "uk_ship_model_object_node",
+                    columnNames = {"ship_model_id", "node_key"})
+        },
+        indexes = {
+            @Index(name = "idx_ship_model_object_deck", columnList = "deck_id"),
+            @Index(name = "idx_ship_model_object_cabin", columnList = "cabin_id")
+        })
 public class ShipModelObject {
 
     @Id
@@ -51,20 +58,28 @@ public class ShipModelObject {
 
     @Column(name = "position_x")
     private Double positionX;
+
     @Column(name = "position_y")
     private Double positionY;
+
     @Column(name = "position_z")
     private Double positionZ;
+
     @Column(name = "rotation_x")
     private Double rotationX;
+
     @Column(name = "rotation_y")
     private Double rotationY;
+
     @Column(name = "rotation_z")
     private Double rotationZ;
+
     @Column(name = "scale_x", nullable = false)
     private Double scaleX = 1.0;
+
     @Column(name = "scale_y", nullable = false)
     private Double scaleY = 1.0;
+
     @Column(name = "scale_z", nullable = false)
     private Double scaleZ = 1.0;
 

@@ -1,7 +1,11 @@
 package com.casms.payment.repository;
 
 import com.casms.payment.entity.Payment;
+import com.casms.payment.enums.PaymentMethod;
+import com.casms.payment.enums.PaymentStatus;
+
 import jakarta.persistence.LockModeType;
+
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
@@ -19,7 +23,9 @@ public interface PaymentRepository extends JpaRepository<Payment, UUID> {
     Optional<Payment> findByIdForUpdate(@Param("paymentId") UUID paymentId);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("select p from Payment p left join p.booking b left join p.installment i left join i.booking ib where b.bookingId = :bookingId or ib.bookingId = :bookingId")
+    @Query(
+            "select p from Payment p left join p.booking b left join p.installment i left join"
+                + " i.booking ib where b.bookingId = :bookingId or ib.bookingId = :bookingId")
     List<Payment> findForBooking(@Param("bookingId") UUID bookingId);
 
     Optional<Payment> findByIdempotencyKey(String idempotencyKey);
@@ -28,7 +34,10 @@ public interface PaymentRepository extends JpaRepository<Payment, UUID> {
 
     boolean existsByProcessorReferenceAndPaymentIdNot(String processorReference, UUID paymentId);
 
-    boolean existsByInternalReceiptReferenceAndPaymentIdNot(String internalReceiptReference, UUID paymentId);
+    boolean existsByInternalReceiptReferenceAndPaymentIdNot(
+            String internalReceiptReference, UUID paymentId);
 
     List<Payment> findByBooking_BookingId(UUID bookingId);
+
+    List<Payment> findByStatusAndPaymentMethod(PaymentStatus status, PaymentMethod paymentMethod);
 }

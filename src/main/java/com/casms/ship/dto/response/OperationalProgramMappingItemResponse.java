@@ -1,7 +1,9 @@
 package com.casms.ship.dto.response;
 
 import com.casms.trip.enums.TripPlanEntryKind;
+
 import io.swagger.v3.oas.annotations.media.Schema;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -24,13 +26,19 @@ public class OperationalProgramMappingItemResponse {
     @Schema(description = "Client Key của mục kế hoạch nguồn")
     private String clientKey;
 
-    @Schema(description = "Phân loại mục chương trình (ONBOARD_ACTIVITY, SHORE_EXCURSION, SERVING_WINDOW)")
+    @Schema(
+            description =
+                    "Phân loại mục chương trình (ONBOARD_ACTIVITY, SHORE_EXCURSION,"
+                        + " SERVING_WINDOW)")
     private TripPlanEntryKind kind;
 
     @Schema(description = "Tiêu đề / tên chương trình")
     private String title;
 
-    @Schema(description = "ID bản ghi đích đã tạo hoặc liên kết (OnboardActivity ID, ShoreExcursion ID, Service ID)")
+    @Schema(
+            description =
+                    "ID bản ghi đích đã tạo hoặc liên kết (OnboardActivity ID, ShoreExcursion ID,"
+                        + " Service ID)")
     private UUID targetId;
 
     @Schema(description = "Mã định danh bản ghi đích")
@@ -52,9 +60,16 @@ public class OperationalProgramMappingItemResponse {
     @Schema(description = "Danh sách cảnh báo riêng cho mục này")
     private List<String> warnings = new ArrayList<>();
 
-    @Schema(description = "Dữ liệu nghiệp vụ còn thiếu cần bổ sung (ví dụ: Nhà cung cấp, Sức chứa, Boong tàu)")
+    @Schema(
+            description =
+                    "Dữ liệu nghiệp vụ còn thiếu cần bổ sung (ví dụ: Nhà cung cấp, Sức chứa, Boong"
+                        + " tàu)")
     private String requiredData;
 
-    @Schema(description = "Hành động gợi ý cho FE xử lý tiếp theo (READY, CONFIGURE_PRICING, CONFIGURE_CAPACITY, ASSIGN_SUPPLIER, SET_MEETING_POINT, ADJUST_SCHEDULE)")
+    @Schema(
+            description =
+                    "Hành động gợi ý cho FE xử lý tiếp theo (READY, CONFIGURE_PRICING,"
+                        + " CONFIGURE_CAPACITY, ASSIGN_SUPPLIER, SET_MEETING_POINT,"
+                        + " ADJUST_SCHEDULE)")
     private String action;
 }

@@ -1,9 +1,14 @@
 package com.casms.identity.service;
 
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.when;
+
 import com.casms.identity.dto.UserLookupResponse;
 import com.casms.identity.entity.User;
+import com.casms.identity.enums.Role;
 import com.casms.identity.enums.UserStatus;
 import com.casms.identity.repository.UserRepository;
+
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -13,30 +18,25 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.List;
 import java.util.UUID;
 
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.when;
-
-import com.casms.identity.enums.Role;
-
 @ExtendWith(MockitoExtension.class)
 class IdentityServiceTest {
 
     @Test
     void deviceAccountsAreListedForDeviceBindingButNeverAsEmployees() {
-        User device=new User();device.setUserId(UUID.randomUUID());device.setStatus(UserStatus.ACTIVE);
-        device.setRoles(java.util.Set.of(Role.POS,Role.ONBOARD_STAFF));
+        User device = new User();
+        device.setUserId(UUID.randomUUID());
+        device.setStatus(UserStatus.ACTIVE);
+        device.setRoles(java.util.Set.of(Role.POS, Role.ONBOARD_STAFF));
         when(userRepository.findByStatus(UserStatus.ACTIVE)).thenReturn(List.of(device));
-        assertEquals(1,identityService.findUsers(UserStatus.ACTIVE,"POS").size());
-        assertTrue(identityService.findUsers(UserStatus.ACTIVE,"ONBOARD_STAFF").isEmpty());
-        assertTrue(identityService.findUsers(UserStatus.ACTIVE,null).isEmpty());
+        assertEquals(1, identityService.findUsers(UserStatus.ACTIVE, "POS").size());
+        assertTrue(identityService.findUsers(UserStatus.ACTIVE, "ONBOARD_STAFF").isEmpty());
+        assertTrue(identityService.findUsers(UserStatus.ACTIVE, null).isEmpty());
         assertFalse(IdentityService.isEligibleOperationalHandler(device));
     }
 
-    @Mock
-    private UserRepository userRepository;
+    @Mock private UserRepository userRepository;
 
-    @InjectMocks
-    private IdentityService identityService;
+    @InjectMocks private IdentityService identityService;
 
     @Test
     void findUsers_returnsSafeFieldsAndCapabilityLabel() {
@@ -49,7 +49,8 @@ class IdentityServiceTest {
 
         when(userRepository.findByStatus(UserStatus.ACTIVE)).thenReturn(List.of(user));
 
-        List<UserLookupResponse> result = identityService.findUsers(UserStatus.ACTIVE, "OPERATIONAL_ISSUE");
+        List<UserLookupResponse> result =
+                identityService.findUsers(UserStatus.ACTIVE, "OPERATIONAL_ISSUE");
 
         assertEquals(1, result.size());
         UserLookupResponse dto = result.get(0);
@@ -74,9 +75,11 @@ class IdentityServiceTest {
         opStaff.setStatus(UserStatus.ACTIVE);
         opStaff.addRole(Role.OPERATIONS_MANAGER);
 
-        when(userRepository.findByStatus(UserStatus.ACTIVE)).thenReturn(List.of(passenger, opStaff));
+        when(userRepository.findByStatus(UserStatus.ACTIVE))
+                .thenReturn(List.of(passenger, opStaff));
 
-        List<UserLookupResponse> result = identityService.findUsers(UserStatus.ACTIVE, "OPERATIONAL_ISSUE");
+        List<UserLookupResponse> result =
+                identityService.findUsers(UserStatus.ACTIVE, "OPERATIONAL_ISSUE");
 
         assertEquals(1, result.size());
         assertEquals("ops01", result.get(0).getUsername());

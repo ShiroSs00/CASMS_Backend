@@ -1,7 +1,10 @@
 package com.casms.ship.entity;
 
 import jakarta.persistence.*;
+
+import lombok.EqualsAndHashCode;
 import lombok.Getter;
+import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 import java.io.Serializable;
@@ -26,6 +29,8 @@ public class ShipRegulation {
 
     @Getter
     @Setter
+    @NoArgsConstructor
+    @EqualsAndHashCode
     public static class ShipRegulationId implements Serializable {
         private UUID ship;
         private UUID regulation;

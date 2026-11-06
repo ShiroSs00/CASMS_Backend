@@ -1,6 +1,7 @@
 package com.casms.payment.entity;
 
 import jakarta.persistence.*;
+
 import lombok.Getter;
 import lombok.Setter;
 
@@ -10,8 +11,9 @@ import java.util.UUID;
 @Getter
 @Setter
 @Entity
-@Table(name = "\"RefundLine\"",
-       uniqueConstraints = @UniqueConstraint(columnNames = {"refund_id", "invoice_line_id"}))
+@Table(
+        name = "\"RefundLine\"",
+        uniqueConstraints = @UniqueConstraint(columnNames = {"refund_id", "invoice_line_id"}))
 public class RefundLine {
 
     @Id

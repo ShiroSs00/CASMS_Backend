@@ -2,7 +2,9 @@ package com.casms.payment.dto.response;
 
 import com.casms.payment.enums.PaymentStatus;
 import com.casms.payment.enums.PaymentType;
+
 import io.swagger.v3.oas.annotations.media.Schema;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -74,4 +76,3 @@ public class SepayCheckoutResponse {
     @Schema(description = "Hướng dẫn thanh toán chi tiết cho khách")
     private String instructions;
 }
-

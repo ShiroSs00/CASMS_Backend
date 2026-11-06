@@ -2,7 +2,9 @@ package com.casms.ship.dto.response;
 
 import com.casms.ship.enums.ItineraryStatus;
 import com.casms.ship.enums.ItineraryType;
+
 import io.swagger.v3.oas.annotations.media.Schema;
+
 import lombok.Data;
 
 import java.time.Instant;
@@ -17,7 +19,9 @@ public class ItineraryResponse {
     @Schema(description = "ID lịch trình", example = "3fa85f64-5717-4562-b3fc-2c963f66afa6")
     private UUID itineraryId;
 
-    @Schema(description = "ID chuyến khởi hành liên quan", example = "3fa85f64-5717-4562-b3fc-2c963f66afa6")
+    @Schema(
+            description = "ID chuyến khởi hành liên quan",
+            example = "3fa85f64-5717-4562-b3fc-2c963f66afa6")
     private UUID cruiseId;
 
     @Schema(description = "Mã chuyến khởi hành", example = "CR-0001")
@@ -38,10 +42,15 @@ public class ItineraryResponse {
     @Schema(description = "Trạng thái lịch trình", example = "DRAFT")
     private ItineraryStatus status;
 
-    @Schema(description = "Lịch trình có kế thừa phê duyệt từ TripScheduleVersion PUBLISHED hay không", example = "true")
+    @Schema(
+            description =
+                    "Lịch trình có kế thừa phê duyệt từ TripScheduleVersion PUBLISHED hay không",
+            example = "true")
     private Boolean approvalInherited;
 
-    @Schema(description = "Nội dung lịch trình có bị sửa đổi sau khi khởi tạo từ nguồn hay không", example = "false")
+    @Schema(
+            description = "Nội dung lịch trình có bị sửa đổi sau khi khởi tạo từ nguồn hay không",
+            example = "false")
     private Boolean contentModifiedAfterMaterialization;
 
     @Schema(description = "ID người phê duyệt", example = "3fa85f64-5717-4562-b3fc-2c963f66afa6")

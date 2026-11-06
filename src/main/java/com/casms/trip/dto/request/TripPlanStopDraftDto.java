@@ -3,9 +3,12 @@ package com.casms.trip.dto.request;
 import com.casms.ship.enums.CruiseStopArrivalMethod;
 import com.casms.ship.enums.CruiseStopCallType;
 import com.fasterxml.jackson.annotation.JsonFormat;
+
 import io.swagger.v3.oas.annotations.media.Schema;
+
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+
 import lombok.Data;
 
 import java.time.LocalTime;
@@ -16,13 +19,17 @@ import java.util.UUID;
 public class TripPlanStopDraftDto {
 
     @NotBlank(message = "Client key is required for correlation")
-    @Schema(description = "Khóa tương quan do client sinh (duy nhất trong version)", example = "stop-hph-01")
+    @Schema(
+            description = "Khóa tương quan do client sinh (duy nhất trong version)",
+            example = "stop-hph-01")
     private String clientKey;
 
     @jakarta.validation.Valid
-    @Schema(description="Visit children; omitted/null preserves existing visits, [] explicitly removes visits in DRAFT. Never inferred from legacy destinationId.")
+    @Schema(
+            description =
+                    "Visit children; omitted/null preserves existing visits, [] explicitly removes"
+                        + " visits in DRAFT. Never inferred from legacy destinationId.")
     private java.util.List<DestinationVisitDraftDto> visits;
-
 
     @NotNull(message = "Port ID is required")
     @Schema(description = "ID cảng ghé thăm")
@@ -40,7 +47,11 @@ public class TripPlanStopDraftDto {
     private Integer arrivalDayNumber;
 
     @JsonFormat(pattern = "HH:mm:ss", shape = JsonFormat.Shape.STRING)
-    @Schema(type = "string", pattern = "^(0[0-9]|1[0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]$", description = "Giờ cập cảng dự kiến tương đối", example = "08:00:00")
+    @Schema(
+            type = "string",
+            pattern = "^(0[0-9]|1[0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]$",
+            description = "Giờ cập cảng dự kiến tương đối",
+            example = "08:00:00")
     private LocalTime plannedArrivalTime;
 
     @NotNull(message = "Departure day number is required")
@@ -48,7 +59,11 @@ public class TripPlanStopDraftDto {
     private Integer departureDayNumber;
 
     @JsonFormat(pattern = "HH:mm:ss", shape = JsonFormat.Shape.STRING)
-    @Schema(type = "string", pattern = "^(0[0-9]|1[0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]$", description = "Giờ rời cảng dự kiến tương đối", example = "18:00:00")
+    @Schema(
+            type = "string",
+            pattern = "^(0[0-9]|1[0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]$",
+            description = "Giờ rời cảng dự kiến tương đối",
+            example = "18:00:00")
     private LocalTime plannedDepartureTime;
 
     @Schema(description = "Loại ghé cảng (NORMAL, LATE_NIGHT, OVERNIGHT)", example = "NORMAL")
@@ -57,11 +72,17 @@ public class TripPlanStopDraftDto {
     @Schema(description = "Phương thức cập bến (BERTH, TENDER)", example = "BERTH")
     private CruiseStopArrivalMethod arrivalMethod = CruiseStopArrivalMethod.BERTH;
 
-    @Schema(description = "Ngày tất cả lên tàu tương đối (thường là departureDayNumber)", example = "1")
+    @Schema(
+            description = "Ngày tất cả lên tàu tương đối (thường là departureDayNumber)",
+            example = "1")
     private Integer allAboardDayNumber;
 
     @JsonFormat(pattern = "HH:mm:ss", shape = JsonFormat.Shape.STRING)
-    @Schema(type = "string", pattern = "^(0[0-9]|1[0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]$", description = "Giờ tất cả lên tàu tương đối (<= departureTime)", example = "17:30:00")
+    @Schema(
+            type = "string",
+            pattern = "^(0[0-9]|1[0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]$",
+            description = "Giờ tất cả lên tàu tương đối (<= departureTime)",
+            example = "17:30:00")
     private LocalTime allAboardTime;
 
     @Schema(description = "Đánh dấu là cảng đón khách (Embarkation)", example = "true")

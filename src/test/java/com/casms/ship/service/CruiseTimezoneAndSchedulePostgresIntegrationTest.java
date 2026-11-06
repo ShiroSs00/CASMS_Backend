@@ -1,5 +1,7 @@
 package com.casms.ship.service;
 
+import static org.junit.jupiter.api.Assertions.*;
+
 import com.casms.activity.entity.OnboardActivity;
 import com.casms.activity.entity.ShoreExcursion;
 import com.casms.activity.entity.Supplier;
@@ -23,6 +25,7 @@ import com.casms.trip.enums.TripPlanEntryKind;
 import com.casms.trip.enums.TripScheduleVersionStatus;
 import com.casms.trip.enums.TripStatus;
 import com.casms.trip.repository.*;
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -32,8 +35,6 @@ import org.springframework.boot.test.context.SpringBootTest;
 import java.math.BigDecimal;
 import java.time.*;
 import java.util.*;
-
-import static org.junit.jupiter.api.Assertions.*;
 
 @SpringBootTest
 public class CruiseTimezoneAndSchedulePostgresIntegrationTest {
@@ -126,7 +127,8 @@ public class CruiseTimezoneAndSchedulePostgresIntegrationTest {
         testSupplier = supplierRepository.save(testSupplier);
     }
 
-    private TripScheduleVersion createTestVersionWithPrograms(String tripCode, boolean overnightActivity) {
+    private TripScheduleVersion createTestVersionWithPrograms(
+            String tripCode, boolean overnightActivity) {
         Trip trip = new Trip();
         trip.setTripCode(tripCode + "-" + UUID.randomUUID().toString().substring(0, 6));
         trip.setName("Hải Trình Test " + tripCode);
@@ -243,13 +245,16 @@ public class CruiseTimezoneAndSchedulePostgresIntegrationTest {
     }
 
     @Test
-    @DisplayName("BE-R05a / Case 1: Preview và Persisted mapping cho cùng input/revision có cùng Instant chính xác")
+    @DisplayName(
+            "BE-R05a / Case 1: Preview và Persisted mapping cho cùng input/revision có cùng Instant"
+                + " chính xác")
     void test01_sameInputAndRevision_previewAndMaterializedHaveIdenticalInstants() {
         TripScheduleVersion version = createTestVersionWithPrograms("TR-TZ-01", false);
         Instant departure = Instant.parse("2026-11-01T01:00:00Z"); // 08:00 UTC+7 (Asia/Ho_Chi_Minh)
 
         // 1. Preview
-        CruiseSchedulePreviewResponse preview = scheduleMaterializationService.previewSchedule(version.getVersionId(), departure);
+        CruiseSchedulePreviewResponse preview =
+                scheduleMaterializationService.previewSchedule(version.getVersionId(), departure);
         assertNotNull(preview);
         assertFalse(preview.getMaterialized());
         assertNull(preview.getItineraryId());
@@ -269,56 +274,99 @@ public class CruiseTimezoneAndSchedulePostgresIntegrationTest {
         assertNotNull(created);
 
         // 3. Load DB entities
-        Itinerary itinerary = itineraryRepository.findByCruiseCruiseId(created.getCruiseId()).orElseThrow();
-        List<CruiseStop> dbStops = cruiseStopRepository.findByItineraryItineraryIdOrderByStopOrderAsc(itinerary.getItineraryId());
-        List<OnboardActivity> dbActs = onboardActivityRepository.findByCruise_CruiseId(created.getCruiseId());
-        List<ShoreExcursion> dbExcs = shoreExcursionRepository.findByCruiseStop_Itinerary_Cruise_CruiseId(created.getCruiseId());
+        Itinerary itinerary =
+                itineraryRepository.findByCruiseCruiseId(created.getCruiseId()).orElseThrow();
+        List<CruiseStop> dbStops =
+                cruiseStopRepository.findByItineraryItineraryIdOrderByStopOrderAsc(
+                        itinerary.getItineraryId());
+        List<OnboardActivity> dbActs =
+                onboardActivityRepository.findByCruise_CruiseId(created.getCruiseId());
+        List<ShoreExcursion> dbExcs =
+                shoreExcursionRepository.findByCruiseStop_Itinerary_Cruise_CruiseId(
+                        created.getCruiseId());
 
         assertEquals(2, dbStops.size());
         assertEquals(1, dbActs.size());
         assertEquals(1, dbExcs.size());
 
         // Stop 1 Instant comparison
-        CruiseSchedulePreviewResponse.ProjectedStopDto prevStop1 = preview.getDays().get(0).getStops().get(0);
+        CruiseSchedulePreviewResponse.ProjectedStopDto prevStop1 =
+                preview.getDays().get(0).getStops().get(0);
         CruiseStop dbStop1 = dbStops.get(0);
-        assertEquals(prevStop1.getPlannedArrival(), dbStop1.getPlannedArrival(), "Stop 1 plannedArrival must match");
-        assertEquals(prevStop1.getPlannedDeparture(), dbStop1.getPlannedDeparture(), "Stop 1 plannedDeparture must match");
+        assertEquals(
+                prevStop1.getPlannedArrival(),
+                dbStop1.getPlannedArrival(),
+                "Stop 1 plannedArrival must match");
+        assertEquals(
+                prevStop1.getPlannedDeparture(),
+                dbStop1.getPlannedDeparture(),
+                "Stop 1 plannedDeparture must match");
 
         // Stop 2 Instant comparison
-        CruiseSchedulePreviewResponse.ProjectedStopDto prevStop2 = preview.getDays().get(1).getStops().get(0);
+        CruiseSchedulePreviewResponse.ProjectedStopDto prevStop2 =
+                preview.getDays().get(1).getStops().get(0);
         CruiseStop dbStop2 = dbStops.get(1);
-        assertEquals(prevStop2.getPlannedArrival(), dbStop2.getPlannedArrival(), "Stop 2 plannedArrival must match");
-        assertEquals(prevStop2.getPlannedDeparture(), dbStop2.getPlannedDeparture(), "Stop 2 plannedDeparture must match");
+        assertEquals(
+                prevStop2.getPlannedArrival(),
+                dbStop2.getPlannedArrival(),
+                "Stop 2 plannedArrival must match");
+        assertEquals(
+                prevStop2.getPlannedDeparture(),
+                dbStop2.getPlannedDeparture(),
+                "Stop 2 plannedDeparture must match");
 
         // Onboard Activity Instant comparison
-        CruiseSchedulePreviewResponse.ProjectedEntryDto prevAct = preview.getDays().get(0).getEntries().get(0);
+        CruiseSchedulePreviewResponse.ProjectedEntryDto prevAct =
+                preview.getDays().get(0).getEntries().get(0);
         OnboardActivity dbAct = dbActs.get(0);
-        assertEquals(prevAct.getPlannedStartTime(), dbAct.getStartTime(), "Onboard Activity startTime must match preview exactly");
-        assertEquals(prevAct.getPlannedEndTime(), dbAct.getEndTime(), "Onboard Activity endTime must match preview exactly");
+        assertEquals(
+                prevAct.getPlannedStartTime(),
+                dbAct.getStartTime(),
+                "Onboard Activity startTime must match preview exactly");
+        assertEquals(
+                prevAct.getPlannedEndTime(),
+                dbAct.getEndTime(),
+                "Onboard Activity endTime must match preview exactly");
 
         // Shore Excursion Instant comparison
-        CruiseSchedulePreviewResponse.ProjectedEntryDto prevExc = preview.getDays().get(1).getEntries().get(0);
+        CruiseSchedulePreviewResponse.ProjectedEntryDto prevExc =
+                preview.getDays().get(1).getEntries().get(0);
         ShoreExcursion dbExc = dbExcs.get(0);
-        assertEquals(prevExc.getPlannedStartTime(), dbExc.getStartTime(), "Shore Excursion startTime must match preview exactly");
-        assertEquals(prevExc.getPlannedEndTime(), dbExc.getPlannedReturnTime(), "Shore Excursion endTime must match preview exactly");
+        assertEquals(
+                prevExc.getPlannedStartTime(),
+                dbExc.getStartTime(),
+                "Shore Excursion startTime must match preview exactly");
+        assertEquals(
+                prevExc.getPlannedEndTime(),
+                dbExc.getPlannedReturnTime(),
+                "Shore Excursion endTime must match preview exactly");
     }
 
     @Test
-    @DisplayName("BE-R05a / Case 2: D 23:00 -> D+1 02:00 tính toán qua ranh giới ngày an toàn, duration dương")
+    @DisplayName(
+            "BE-R05a / Case 2: D 23:00 -> D+1 02:00 tính toán qua ranh giới ngày an toàn, duration"
+                + " dương")
     void test02_overnightSpan_calculatesAcrossDayBoundariesWithoutNegativeDuration() {
         TripScheduleVersion version = createTestVersionWithPrograms("TR-TZ-02", true);
         Instant departure = Instant.parse("2026-11-05T01:00:00Z");
 
         // Preview
-        CruiseSchedulePreviewResponse preview = scheduleMaterializationService.previewSchedule(version.getVersionId(), departure);
-        CruiseSchedulePreviewResponse.ProjectedEntryDto overnightEntry = preview.getDays().get(0).getEntries().get(0);
+        CruiseSchedulePreviewResponse preview =
+                scheduleMaterializationService.previewSchedule(version.getVersionId(), departure);
+        CruiseSchedulePreviewResponse.ProjectedEntryDto overnightEntry =
+                preview.getDays().get(0).getEntries().get(0);
 
         assertNotNull(overnightEntry.getPlannedStartTime());
         assertNotNull(overnightEntry.getPlannedEndTime());
-        assertTrue(overnightEntry.getPlannedEndTime().isAfter(overnightEntry.getPlannedStartTime()),
+        assertTrue(
+                overnightEntry.getPlannedEndTime().isAfter(overnightEntry.getPlannedStartTime()),
                 "End time must be after start time across midnight boundary");
 
-        long durationHours = Duration.between(overnightEntry.getPlannedStartTime(), overnightEntry.getPlannedEndTime()).toHours();
+        long durationHours =
+                Duration.between(
+                                overnightEntry.getPlannedStartTime(),
+                                overnightEntry.getPlannedEndTime())
+                        .toHours();
         assertEquals(3, durationHours, "23:00 to 02:00 next day must be exactly 3 hours");
 
         // Materialize and check DB
@@ -332,7 +380,8 @@ public class CruiseTimezoneAndSchedulePostgresIntegrationTest {
         req.setSourceVersionId(version.getVersionId());
 
         CruiseResponse created = cruiseService.create(req);
-        List<OnboardActivity> acts = onboardActivityRepository.findByCruise_CruiseId(created.getCruiseId());
+        List<OnboardActivity> acts =
+                onboardActivityRepository.findByCruise_CruiseId(created.getCruiseId());
         assertEquals(1, acts.size());
 
         OnboardActivity act = acts.get(0);
@@ -342,7 +391,9 @@ public class CruiseTimezoneAndSchedulePostgresIntegrationTest {
     }
 
     @Test
-    @DisplayName("BE-R05a / Case 3: Lặp cảng trong cùng hải trình nhận occurrence ID riêng biệt và không lỗi overlap")
+    @DisplayName(
+            "BE-R05a / Case 3: Lặp cảng trong cùng hải trình nhận occurrence ID riêng biệt và không"
+                + " lỗi overlap")
     void test03_repeatedPortCalls_differentOccurrenceIdsAndNoOverlap() {
         Trip trip = new Trip();
         trip.setTripCode("TR-TZ-03-" + UUID.randomUUID().toString().substring(0, 4));
@@ -402,7 +453,8 @@ public class CruiseTimezoneAndSchedulePostgresIntegrationTest {
         version = versionRepository.save(version);
 
         Instant departure = Instant.parse("2026-11-10T01:00:00Z");
-        CruiseSchedulePreviewResponse preview = scheduleMaterializationService.previewSchedule(version.getVersionId(), departure);
+        CruiseSchedulePreviewResponse preview =
+                scheduleMaterializationService.previewSchedule(version.getVersionId(), departure);
         assertNotNull(preview);
 
         CruiseCreateRequest req = new CruiseCreateRequest();
@@ -415,7 +467,8 @@ public class CruiseTimezoneAndSchedulePostgresIntegrationTest {
         req.setSourceVersionId(version.getVersionId());
 
         CruiseResponse created = cruiseService.create(req);
-        CruiseSchedulePreviewResponse schedule = scheduleMaterializationService.getCruiseSchedule(created.getCruiseId());
+        CruiseSchedulePreviewResponse schedule =
+                scheduleMaterializationService.getCruiseSchedule(created.getCruiseId());
 
         assertTrue(schedule.getMaterialized());
         assertEquals(3, schedule.getDays().size());
@@ -425,11 +478,16 @@ public class CruiseTimezoneAndSchedulePostgresIntegrationTest {
 
         assertNotNull(occurrence1);
         assertNotNull(occurrence3);
-        assertNotEquals(occurrence1, occurrence3, "Cùng cảng HPH tại hai lần ghé phải có hai occurrence ID riêng biệt");
+        assertNotEquals(
+                occurrence1,
+                occurrence3,
+                "Cùng cảng HPH tại hai lần ghé phải có hai occurrence ID riêng biệt");
     }
 
     @Test
-    @DisplayName("BE-R05a / Case 4: Các cảng khác múi giờ tính đúng thời gian địa phương và instant tuyệt đối")
+    @DisplayName(
+            "BE-R05a / Case 4: Các cảng khác múi giờ tính đúng thời gian địa phương và instant"
+                + " tuyệt đối")
     void test04_crossTimezonePorts_correctLocalAndInstantConversions() {
         Trip trip = new Trip();
         trip.setTripCode("TR-TZ-04-" + UUID.randomUUID().toString().substring(0, 6));
@@ -476,10 +534,13 @@ public class CruiseTimezoneAndSchedulePostgresIntegrationTest {
         version = versionRepository.save(version);
 
         Instant departure = Instant.parse("2026-11-15T01:00:00Z"); // 08:00 UTC+7
-        CruiseSchedulePreviewResponse preview = scheduleMaterializationService.previewSchedule(version.getVersionId(), departure);
+        CruiseSchedulePreviewResponse preview =
+                scheduleMaterializationService.previewSchedule(version.getVersionId(), departure);
 
-        CruiseSchedulePreviewResponse.ProjectedStopDto stop1 = preview.getDays().get(0).getStops().get(0);
-        CruiseSchedulePreviewResponse.ProjectedStopDto stop2 = preview.getDays().get(1).getStops().get(0);
+        CruiseSchedulePreviewResponse.ProjectedStopDto stop1 =
+                preview.getDays().get(0).getStops().get(0);
+        CruiseSchedulePreviewResponse.ProjectedStopDto stop2 =
+                preview.getDays().get(1).getStops().get(0);
 
         assertEquals("Asia/Ho_Chi_Minh", stop1.getPortTimeZoneId());
         assertEquals("Asia/Tokyo", stop2.getPortTimeZoneId());
@@ -491,13 +552,20 @@ public class CruiseTimezoneAndSchedulePostgresIntegrationTest {
         assertEquals(Instant.parse("2026-11-16T03:00:00Z"), stop2.getPlannedArrival());
 
         // Transit duration: 11:00 UTC Day 1 -> 03:00 UTC Day 2 = 16 hours
-        long transitHours = Duration.between(stop1.getPlannedDeparture(), stop2.getPlannedArrival()).toHours();
-        assertEquals(16, transitHours, "Transit time between Vietnam and Japan must be 16 hours positive");
+        long transitHours =
+                Duration.between(stop1.getPlannedDeparture(), stop2.getPlannedArrival()).toHours();
+        assertEquals(
+                16,
+                transitHours,
+                "Transit time between Vietnam and Japan must be 16 hours positive");
     }
 
     @Test
-    @DisplayName("BE-R05a / Case 5: Cảng thiếu hoặc sai múi giờ ném lỗi explicit BusinessException, không fallback ngầm")
-    void test05_invalidOrMissingPortTimezone_throwsExplicitBusinessExceptionWithoutSilentFallback() {
+    @DisplayName(
+            "BE-R05a / Case 5: Cảng thiếu hoặc sai múi giờ ném lỗi explicit BusinessException,"
+                + " không fallback ngầm")
+    void
+            test05_invalidOrMissingPortTimezone_throwsExplicitBusinessExceptionWithoutSilentFallback() {
         Port invalidPort = new Port();
         invalidPort.setPortCode("VN-BAD-TZ-" + UUID.randomUUID().toString().substring(0, 4));
         invalidPort.setPortName("Bad Timezone Port");
@@ -539,20 +607,30 @@ public class CruiseTimezoneAndSchedulePostgresIntegrationTest {
 
         Instant departure = Instant.parse("2026-11-20T01:00:00Z");
 
-        BusinessException ex = assertThrows(BusinessException.class, () ->
-                scheduleMaterializationService.previewSchedule(targetVersionId, departure));
-        assertEquals("INVALID_PORT_TIME_ZONE", ex.getCode(), "Must throw INVALID_PORT_TIME_ZONE and never silently fallback");
+        BusinessException ex =
+                assertThrows(
+                        BusinessException.class,
+                        () ->
+                                scheduleMaterializationService.previewSchedule(
+                                        targetVersionId, departure));
+        assertEquals(
+                "INVALID_PORT_TIME_ZONE",
+                ex.getCode(),
+                "Must throw INVALID_PORT_TIME_ZONE and never silently fallback");
     }
 
     @Test
-    @DisplayName("BE-R05a / Case 6: getCruiseSchedule phản ánh rõ lịch đã commit vs chưa commit; không fake projection")
+    @DisplayName(
+            "BE-R05a / Case 6: getCruiseSchedule phản ánh rõ lịch đã commit vs chưa commit; không"
+                + " fake projection")
     void test06_getCruiseSchedule_materializedVsUnmaterializedReflectedClearly() {
         TripScheduleVersion version = createTestVersionWithPrograms("TR-TZ-06", false);
         Instant departure = Instant.parse("2026-11-25T01:00:00Z");
 
         // Tạo cruise DRAFT nhưng KHÔNG gọi materialize (chưa có Itinerary)
         Cruise unmaterializedCruise = new Cruise();
-        unmaterializedCruise.setCruiseCode("CR-TZ-UNMAT-" + UUID.randomUUID().toString().substring(0, 4));
+        unmaterializedCruise.setCruiseCode(
+                "CR-TZ-UNMAT-" + UUID.randomUUID().toString().substring(0, 4));
         unmaterializedCruise.setCruiseName("Chưa có lịch trình");
         unmaterializedCruise.setCruiseType(CruiseCruiseType.MULTI_DAYS);
         unmaterializedCruise.setStatus(CruiseStatus.DRAFT);
@@ -565,11 +643,14 @@ public class CruiseTimezoneAndSchedulePostgresIntegrationTest {
         unmaterializedCruise = cruiseRepository.save(unmaterializedCruise);
 
         // Gọi getCruiseSchedule khi chưa commit Itinerary
-        CruiseSchedulePreviewResponse resUnmaterialized = scheduleMaterializationService.getCruiseSchedule(unmaterializedCruise.getCruiseId());
+        CruiseSchedulePreviewResponse resUnmaterialized =
+                scheduleMaterializationService.getCruiseSchedule(
+                        unmaterializedCruise.getCruiseId());
         assertNotNull(resUnmaterialized);
         assertFalse(resUnmaterialized.getMaterialized(), "materialized must be false");
         assertNull(resUnmaterialized.getItineraryId(), "itineraryId must be null");
-        assertTrue(resUnmaterialized.getDays().isEmpty(), "days must be empty, not fake projection");
+        assertTrue(
+                resUnmaterialized.getDays().isEmpty(), "days must be empty, not fake projection");
         assertNotNull(resUnmaterialized.getWarnings());
         assertTrue(resUnmaterialized.getWarnings().get(0).contains("chưa được khởi tạo"));
 
@@ -584,7 +665,8 @@ public class CruiseTimezoneAndSchedulePostgresIntegrationTest {
         req.setSourceVersionId(version.getVersionId());
 
         CruiseResponse materializedCruise = cruiseService.create(req);
-        CruiseSchedulePreviewResponse resMaterialized = scheduleMaterializationService.getCruiseSchedule(materializedCruise.getCruiseId());
+        CruiseSchedulePreviewResponse resMaterialized =
+                scheduleMaterializationService.getCruiseSchedule(materializedCruise.getCruiseId());
 
         assertTrue(resMaterialized.getMaterialized(), "materialized must be true");
         assertNotNull(resMaterialized.getItineraryId(), "itineraryId must be present");
@@ -594,13 +676,16 @@ public class CruiseTimezoneAndSchedulePostgresIntegrationTest {
     }
 
     @Test
-    @DisplayName("BE-R05a / Case 7: Nguồn đổi revision giữa preview và create bị chặn bằng lỗi STALE_PREVIEW")
+    @DisplayName(
+            "BE-R05a / Case 7: Nguồn đổi revision giữa preview và create bị chặn bằng lỗi"
+                + " STALE_PREVIEW")
     void test07_stalePreview_versionRevisionChangedBetweenPreviewAndCreate_rejected() {
         TripScheduleVersion version = createTestVersionWithPrograms("TR-TZ-07", false);
         Instant departure = Instant.parse("2026-12-01T01:00:00Z");
 
         // Preview thu được revision hiện tại của version
-        CruiseSchedulePreviewResponse preview = scheduleMaterializationService.previewSchedule(version.getVersionId(), departure);
+        CruiseSchedulePreviewResponse preview =
+                scheduleMaterializationService.previewSchedule(version.getVersionId(), departure);
         Long initialRevision = preview.getSourceVersionRevision();
         assertNotNull(initialRevision);
 
@@ -620,12 +705,18 @@ public class CruiseTimezoneAndSchedulePostgresIntegrationTest {
         req.setSourceVersionId(version.getVersionId());
         req.setExpectedSourceVersionRevision(initialRevision); // Stale revision!
 
-        BusinessException ex = assertThrows(BusinessException.class, () -> cruiseService.create(req));
-        assertEquals("STALE_PREVIEW", ex.getCode(), "Must reject with STALE_PREVIEW when source revision changed");
+        BusinessException ex =
+                assertThrows(BusinessException.class, () -> cruiseService.create(req));
+        assertEquals(
+                "STALE_PREVIEW",
+                ex.getCode(),
+                "Must reject with STALE_PREVIEW when source revision changed");
     }
 
     @Test
-    @DisplayName("BE-R05a / Case 8: Planned time không bao giờ bị ghi đè vào Actual time khi materialize")
+    @DisplayName(
+            "BE-R05a / Case 8: Planned time không bao giờ bị ghi đè vào Actual time khi"
+                + " materialize")
     void test08_plannedTimesNotWrittenToActual() {
         TripScheduleVersion version = createTestVersionWithPrograms("TR-TZ-08", false);
         Instant departure = Instant.parse("2026-12-05T01:00:00Z");
@@ -640,30 +731,40 @@ public class CruiseTimezoneAndSchedulePostgresIntegrationTest {
         req.setSourceVersionId(version.getVersionId());
 
         CruiseResponse created = cruiseService.create(req);
-        Itinerary itinerary = itineraryRepository.findByCruiseCruiseId(created.getCruiseId()).orElseThrow();
-        List<CruiseStop> stops = cruiseStopRepository.findByItineraryItineraryIdOrderByStopOrderAsc(itinerary.getItineraryId());
+        Itinerary itinerary =
+                itineraryRepository.findByCruiseCruiseId(created.getCruiseId()).orElseThrow();
+        List<CruiseStop> stops =
+                cruiseStopRepository.findByItineraryItineraryIdOrderByStopOrderAsc(
+                        itinerary.getItineraryId());
 
         assertFalse(stops.isEmpty());
         for (CruiseStop s : stops) {
             assertNotNull(s.getPlannedArrival(), "plannedArrival must be set");
             assertNotNull(s.getPlannedDeparture(), "plannedDeparture must be set");
-            assertNull(s.getActualArrival(), "actualArrival must remain NULL at materialization time");
-            assertNull(s.getActualDeparture(), "actualDeparture must remain NULL at materialization time");
+            assertNull(
+                    s.getActualArrival(), "actualArrival must remain NULL at materialization time");
+            assertNull(
+                    s.getActualDeparture(),
+                    "actualDeparture must remain NULL at materialization time");
         }
     }
 
     @Test
-    @DisplayName("BE-R05a / Case 9: DST (Daylight Saving Time) tính toán chuẩn xác cho các cảng Châu Âu theo chuẩn IANA")
+    @DisplayName(
+            "BE-R05a / Case 9: DST (Daylight Saving Time) tính toán chuẩn xác cho các cảng Châu Âu"
+                + " theo chuẩn IANA")
     void test09_dstTimezoneHandling() {
         // Paris mùa hè (July 15, UTC+2 CEST): 10:00 local -> 08:00 UTC
         LocalDate summerDate = LocalDate.of(2026, 7, 15);
         ZoneId parisZone = PortTimeZoneHelper.resolveZone("Europe/Paris");
-        Instant summerInstant = LocalDateTime.of(summerDate, LocalTime.of(10, 0)).atZone(parisZone).toInstant();
+        Instant summerInstant =
+                LocalDateTime.of(summerDate, LocalTime.of(10, 0)).atZone(parisZone).toInstant();
         assertEquals(Instant.parse("2026-07-15T08:00:00Z"), summerInstant);
 
         // Paris mùa đông (January 15, UTC+1 CET): 10:00 local -> 09:00 UTC
         LocalDate winterDate = LocalDate.of(2026, 1, 15);
-        Instant winterInstant = LocalDateTime.of(winterDate, LocalTime.of(10, 0)).atZone(parisZone).toInstant();
+        Instant winterInstant =
+                LocalDateTime.of(winterDate, LocalTime.of(10, 0)).atZone(parisZone).toInstant();
         assertEquals(Instant.parse("2026-01-15T09:00:00Z"), winterInstant);
     }
 }

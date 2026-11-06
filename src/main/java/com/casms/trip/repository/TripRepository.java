@@ -2,6 +2,7 @@ package com.casms.trip.repository;
 
 import com.casms.trip.entity.Trip;
 import com.casms.trip.enums.TripStatus;
+
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;

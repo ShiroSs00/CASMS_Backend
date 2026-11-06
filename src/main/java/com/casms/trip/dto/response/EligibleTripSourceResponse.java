@@ -1,6 +1,7 @@
 package com.casms.trip.dto.response;
 
 import io.swagger.v3.oas.annotations.media.Schema;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -14,10 +15,15 @@ import java.util.UUID;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@Schema(description = "Thông tin phiên bản Trip mẫu đủ điều kiện xuất bản (PUBLISHED) để tạo Cruise Draft (C01)")
+@Schema(
+        description =
+                "Thông tin phiên bản Trip mẫu đủ điều kiện xuất bản (PUBLISHED) để tạo Cruise Draft"
+                    + " (C01)")
 public class EligibleTripSourceResponse {
 
-    @Schema(description = "ID của phiên bản mẫu lịch trình", example = "3fa85f64-5717-4562-b3fc-2c963f66afa6")
+    @Schema(
+            description = "ID của phiên bản mẫu lịch trình",
+            example = "3fa85f64-5717-4562-b3fc-2c963f66afa6")
     private UUID versionId;
 
     @Schema(description = "Số thứ tự phiên bản", example = "1")
@@ -50,13 +56,17 @@ public class EligibleTripSourceResponse {
     @Schema(description = "Danh sách mã quốc gia được phép của Trip", example = "[\"VN\"]")
     private List<String> countryCodes;
 
-    @Schema(description = "Danh sách miền nội địa đăng ký (nếu là DOMESTIC)", example = "[\"BAC_BO\", \"TRUNG_BO\"]")
+    @Schema(
+            description = "Danh sách miền nội địa đăng ký (nếu là DOMESTIC)",
+            example = "[\"BAC_BO\", \"TRUNG_BO\"]")
     private List<String> domesticRegions;
 
     @Schema(description = "ID cảng khởi hành xuất phát đầu tuyến")
     private UUID departurePortId;
 
-    @Schema(description = "Tên cảng khởi hành xuất phát đầu tuyến", example = "Cảng Quốc tế Hạ Long")
+    @Schema(
+            description = "Tên cảng khởi hành xuất phát đầu tuyến",
+            example = "Cảng Quốc tế Hạ Long")
     private String departurePortName;
 
     @Schema(description = "Mã cảng khởi hành", example = "VNHLG")
@@ -74,6 +84,8 @@ public class EligibleTripSourceResponse {
     @Schema(description = "Tổng số điểm dừng cảng trong hải trình", example = "3")
     private int totalStops;
 
-    @Schema(description = "Tóm tắt thứ tự các cảng ghé", example = "[\"Hạ Long (VNHLG)\", \"Đà Nẵng (VNDAD)\", \"Nha Trang (VNNHA)\"]")
+    @Schema(
+            description = "Tóm tắt thứ tự các cảng ghé",
+            example = "[\"Hạ Long (VNHLG)\", \"Đà Nẵng (VNDAD)\", \"Nha Trang (VNNHA)\"]")
     private List<String> stopsSummary;
 }

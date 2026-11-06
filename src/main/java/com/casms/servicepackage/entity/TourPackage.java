@@ -1,12 +1,15 @@
 package com.casms.servicepackage.entity;
 
-import org.hibernate.annotations.JdbcTypeCode;
-import org.hibernate.type.SqlTypes;
 import com.casms.servicepackage.enums.TourPackageStatus;
 import com.casms.servicepackage.enums.TourPackageType;
+
 import jakarta.persistence.*;
+
 import lombok.Getter;
 import lombok.Setter;
+
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -67,7 +70,7 @@ public class TourPackage {
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
-    @Column(name="owner_cruise_id")
+    @Column(name = "owner_cruise_id")
     private UUID ownerCruiseId;
 
     @PrePersist

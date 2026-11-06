@@ -3,15 +3,15 @@ package com.casms.security.authorization;
 import com.casms.identity.enums.Permission;
 import com.casms.identity.enums.Role;
 import com.casms.security.principal.CasmsPrincipal;
+
 import org.springframework.security.access.expression.SecurityExpressionRoot;
 import org.springframework.security.access.expression.method.MethodSecurityExpressionOperations;
 import org.springframework.security.core.Authentication;
 
-import java.io.Serializable;
-import java.util.Set;
 import java.util.UUID;
 
-public class CasmsSecurityExpressionRoot extends SecurityExpressionRoot implements MethodSecurityExpressionOperations {
+public class CasmsSecurityExpressionRoot extends SecurityExpressionRoot
+        implements MethodSecurityExpressionOperations {
 
     private final CasmsPrincipal principal;
     private Object filterObject;

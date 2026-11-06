@@ -1,5 +1,7 @@
 package com.casms.ship.service;
 
+import static org.junit.jupiter.api.Assertions.*;
+
 import com.casms.booking.dto.request.BookingCreateRequest;
 import com.casms.booking.dto.request.BookingQuoteRequest;
 import com.casms.booking.dto.request.PassengerBookingItemRequest;
@@ -30,6 +32,7 @@ import com.casms.ship.dto.response.CruiseSellabilityResponse;
 import com.casms.ship.entity.*;
 import com.casms.ship.enums.*;
 import com.casms.ship.repository.*;
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -46,8 +49,6 @@ import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
-
-import static org.junit.jupiter.api.Assertions.*;
 
 @SpringBootTest
 @ActiveProfiles("test")
@@ -145,7 +146,8 @@ public class CruisePricingPolicyIntegrationTest {
         testCaptain = userRepository.save(testCaptain);
     }
 
-    private CruiseResponse createCruiseWithItineraryAndCaptain(String name, Instant dep, Instant ret) {
+    private CruiseResponse createCruiseWithItineraryAndCaptain(
+            String name, Instant dep, Instant ret) {
         CruiseCreateRequest req = new CruiseCreateRequest();
         req.setCruiseName(name);
         req.setDepartureDatetime(dep);
@@ -174,31 +176,40 @@ public class CruisePricingPolicyIntegrationTest {
     }
 
     @Test
-    @DisplayName("BE-H01.1: Cruise chua co Pricing Policy bi block Sale Readiness va khong the open sale")
+    @DisplayName(
+            "BE-H01.1: Cruise chua co Pricing Policy bi block Sale Readiness va khong the open"
+                + " sale")
     void test_missingPricingPolicy_blocksReadinessAndOpenSale() {
         Instant dep = Instant.now().plus(40, ChronoUnit.DAYS);
         Instant ret = dep.plus(3, ChronoUnit.DAYS);
         CruiseResponse cruise = createCruiseWithItineraryAndCaptain("No Price Cruise", dep, ret);
 
         // 1. Kiem tra readiness gate
-        CruiseSaleReadinessResponse readiness = cruiseService.validateSaleReadiness(cruise.getCruiseId());
+        CruiseSaleReadinessResponse readiness =
+                cruiseService.validateSaleReadiness(cruise.getCruiseId());
         assertFalse(readiness.isReady(), "Cruise chua co pricing policy khong duoc ready for sale");
-        assertTrue(readiness.getBlockers().stream().anyMatch(b -> b.contains("PRICING_POLICY_MISSING")),
+        assertTrue(
+                readiness.getBlockers().stream()
+                        .anyMatch(b -> b.contains("PRICING_POLICY_MISSING")),
                 "Phai chua blocker PRICING_POLICY_MISSING");
 
         // 2. Thu mo ban phai bi chan
-        CruiseOpenSaleRequest openReq = CruiseOpenSaleRequest.builder()
-                .expectedRevision(cruise.getRevision())
-                .build();
-        BusinessException ex = assertThrows(BusinessException.class, () ->
-                cruiseService.openSale(cruise.getCruiseId(), openReq));
+        CruiseOpenSaleRequest openReq =
+                CruiseOpenSaleRequest.builder().expectedRevision(cruise.getRevision()).build();
+        BusinessException ex =
+                assertThrows(
+                        BusinessException.class,
+                        () -> cruiseService.openSale(cruise.getCruiseId(), openReq));
         assertEquals("CRUISE_NOT_SALE_READY", ex.getCode());
 
         // 3. Public sellability bao cao khong sellable va khong co gia fallback
-        CruiseSellabilityResponse sellability = cruiseService.getPublicSellability(cruise.getCruiseId());
+        CruiseSellabilityResponse sellability =
+                cruiseService.getPublicSellability(cruise.getCruiseId());
         assertFalse(sellability.isSellable());
-        assertTrue(sellability.getCabinTypes().isEmpty() ||
-                sellability.getCabinTypes().stream().allMatch(c -> c.getBaseFare() == null));
+        assertTrue(
+                sellability.getCabinTypes().isEmpty()
+                        || sellability.getCabinTypes().stream()
+                                .allMatch(c -> c.getBaseFare() == null));
     }
 
     @Test
@@ -218,68 +229,84 @@ public class CruisePricingPolicyIntegrationTest {
         req.setDepositPercentage(new BigDecimal("0.3000"));
         req.setFinalPaymentDueDays(14);
         req.setFullPaymentCutoffDays(7);
-        pricingPolicyService.savePricingPolicy(cruise.getCruiseId(), req, testOpsManager.getUserId(), false);
+        pricingPolicyService.savePricingPolicy(
+                cruise.getCruiseId(), req, testOpsManager.getUserId(), false);
 
-        CruiseSaleReadinessResponse readiness = cruiseService.validateSaleReadiness(cruise.getCruiseId());
+        CruiseSaleReadinessResponse readiness =
+                cruiseService.validateSaleReadiness(cruise.getCruiseId());
         assertFalse(readiness.isReady());
-        assertTrue(readiness.getBlockers().stream().anyMatch(b -> b.contains("PRICING_POLICY_NOT_APPROVED")),
+        assertTrue(
+                readiness.getBlockers().stream()
+                        .anyMatch(b -> b.contains("PRICING_POLICY_NOT_APPROVED")),
                 "Policy DRAFT phai tra blocker PRICING_POLICY_NOT_APPROVED");
     }
 
     @Test
-    @DisplayName("BE-H01.3: Hang phong tren tau chua duoc dinh gia (NULL) bi chan voi PRICING_POLICY_FARE_MISSING")
+    @DisplayName(
+            "BE-H01.3: Hang phong tren tau chua duoc dinh gia (NULL) bi chan voi"
+                + " PRICING_POLICY_FARE_MISSING")
     void test_unpricedCabinType_blocksReadiness() {
         Instant dep = Instant.now().plus(40, ChronoUnit.DAYS);
         Instant ret = dep.plus(3, ChronoUnit.DAYS);
-        CruiseResponse cruise = createCruiseWithItineraryAndCaptain("Unpriced Cabin Cruise", dep, ret);
+        CruiseResponse cruise =
+                createCruiseWithItineraryAndCaptain("Unpriced Cabin Cruise", dep, ret);
 
         // Chi dinh gia BALCONY, de NULL INTERIOR du tau co cabin INTERIOR
-        CruisePricingPolicy policy = CruisePricingPolicy.builder()
-                .cruise(cruiseRepository.findById(cruise.getCruiseId()).orElseThrow())
-                .policyVersion("PRC-2026.10-V1")
-                .status(PricingPolicyStatus.APPROVED)
-                .currency("USD")
-                .balconyBaseFare(new BigDecimal("450.00"))
-                .interiorBaseFare(null) // NULL!
-                .taxRate(new BigDecimal("0.1000"))
-                .portFeePerPassenger(new BigDecimal("25.00"))
-                .depositPercentage(new BigDecimal("0.3000"))
-                .finalPaymentDueDays(14)
-                .fullPaymentCutoffDays(7)
-                .build();
+        CruisePricingPolicy policy =
+                CruisePricingPolicy.builder()
+                        .cruise(cruiseRepository.findById(cruise.getCruiseId()).orElseThrow())
+                        .policyVersion("PRC-2026.10-V1")
+                        .status(PricingPolicyStatus.APPROVED)
+                        .currency("USD")
+                        .balconyBaseFare(new BigDecimal("450.00"))
+                        .interiorBaseFare(null) // NULL!
+                        .taxRate(new BigDecimal("0.1000"))
+                        .portFeePerPassenger(new BigDecimal("25.00"))
+                        .depositPercentage(new BigDecimal("0.3000"))
+                        .finalPaymentDueDays(14)
+                        .fullPaymentCutoffDays(7)
+                        .build();
         cruisePricingPolicyRepository.save(policy);
 
-        CruiseSaleReadinessResponse readiness = cruiseService.validateSaleReadiness(cruise.getCruiseId());
+        CruiseSaleReadinessResponse readiness =
+                cruiseService.validateSaleReadiness(cruise.getCruiseId());
         assertFalse(readiness.isReady());
-        assertTrue(readiness.getBlockers().stream().anyMatch(b -> b.contains("PRICING_POLICY_FARE_MISSING")),
+        assertTrue(
+                readiness.getBlockers().stream()
+                        .anyMatch(b -> b.contains("PRICING_POLICY_FARE_MISSING")),
                 "Thieu gia cho INTERIOR phai co blocker PRICING_POLICY_FARE_MISSING");
     }
 
     @Test
-    @DisplayName("BE-H01.4: Gia 0 hop le (dich vu bao gom / mien phi) duoc chap nhan khong bi coi la NULL")
+    @DisplayName(
+            "BE-H01.4: Gia 0 hop le (dich vu bao gom / mien phi) duoc chap nhan khong bi coi la"
+                + " NULL")
     void test_zeroFare_acceptedAsValidComplimentary() {
         Instant dep = Instant.now().plus(40, ChronoUnit.DAYS);
         Instant ret = dep.plus(3, ChronoUnit.DAYS);
         CruiseResponse cruise = createCruiseWithItineraryAndCaptain("Zero Fare Cruise", dep, ret);
 
         // Dat INTERIOR = 0 (mien phi cho hang phong nay)
-        CruisePricingPolicy policy = CruisePricingPolicy.builder()
-                .cruise(cruiseRepository.findById(cruise.getCruiseId()).orElseThrow())
-                .policyVersion("PRC-2026.10-V1")
-                .status(PricingPolicyStatus.APPROVED)
-                .currency("USD")
-                .balconyBaseFare(new BigDecimal("450.00"))
-                .interiorBaseFare(BigDecimal.ZERO) // Explicit 0
-                .taxRate(new BigDecimal("0.1000"))
-                .portFeePerPassenger(new BigDecimal("25.00"))
-                .depositPercentage(new BigDecimal("0.3000"))
-                .finalPaymentDueDays(14)
-                .fullPaymentCutoffDays(7)
-                .build();
+        CruisePricingPolicy policy =
+                CruisePricingPolicy.builder()
+                        .cruise(cruiseRepository.findById(cruise.getCruiseId()).orElseThrow())
+                        .policyVersion("PRC-2026.10-V1")
+                        .status(PricingPolicyStatus.APPROVED)
+                        .currency("USD")
+                        .balconyBaseFare(new BigDecimal("450.00"))
+                        .interiorBaseFare(BigDecimal.ZERO) // Explicit 0
+                        .taxRate(new BigDecimal("0.1000"))
+                        .portFeePerPassenger(new BigDecimal("25.00"))
+                        .depositPercentage(new BigDecimal("0.3000"))
+                        .finalPaymentDueDays(14)
+                        .fullPaymentCutoffDays(7)
+                        .build();
         cruisePricingPolicyRepository.save(policy);
 
-        CruiseSaleReadinessResponse readiness = cruiseService.validateSaleReadiness(cruise.getCruiseId());
-        assertTrue(readiness.getBlockers().stream().noneMatch(b -> b.contains("PRICING_POLICY")),
+        CruiseSaleReadinessResponse readiness =
+                cruiseService.validateSaleReadiness(cruise.getCruiseId());
+        assertTrue(
+                readiness.getBlockers().stream().noneMatch(b -> b.contains("PRICING_POLICY")),
                 "Gia 0 phai duoc chap nhan hop le ma khong tao blocker pricing");
     }
 
@@ -288,7 +315,8 @@ public class CruisePricingPolicyIntegrationTest {
     void test_pricingPolicy_restApiLifecycle_andOpenSaleSuccess() {
         Instant dep = Instant.now().plus(40, ChronoUnit.DAYS);
         Instant ret = dep.plus(3, ChronoUnit.DAYS);
-        CruiseResponse cruise = createCruiseWithItineraryAndCaptain("Full Lifecycle Cruise", dep, ret);
+        CruiseResponse cruise =
+                createCruiseWithItineraryAndCaptain("Full Lifecycle Cruise", dep, ret);
 
         // 1. Save DRAFT via Service
         CruisePricingPolicyRequest saveReq = new CruisePricingPolicyRequest();
@@ -302,91 +330,103 @@ public class CruisePricingPolicyIntegrationTest {
         saveReq.setFullPaymentCutoffDays(7);
         saveReq.setCancellationPolicy("Huy truoc 30 ngay hoan 100%, sau 30 ngay mat coc.");
 
-        CruisePricingPolicyResponse saved = pricingPolicyService.savePricingPolicy(
-                cruise.getCruiseId(), saveReq, testOpsManager.getUserId(), false);
+        CruisePricingPolicyResponse saved =
+                pricingPolicyService.savePricingPolicy(
+                        cruise.getCruiseId(), saveReq, testOpsManager.getUserId(), false);
         assertEquals(PricingPolicyStatus.DRAFT, saved.getStatus());
         assertEquals("USD", saved.getCurrency());
 
         // 2. Approve Policy
-        CruisePricingPolicyResponse approved = pricingPolicyService.approvePricingPolicy(
-                cruise.getCruiseId(), testOpsManager.getUserId());
+        CruisePricingPolicyResponse approved =
+                pricingPolicyService.approvePricingPolicy(
+                        cruise.getCruiseId(), testOpsManager.getUserId());
         assertEquals(PricingPolicyStatus.APPROVED, approved.getStatus());
         assertNotNull(approved.getApprovedAt());
         assertEquals(testOpsManager.getUserId(), approved.getApprovedBy());
 
         // 3. Get Policy
-        CruisePricingPolicyResponse fetched = pricingPolicyService.getPricingPolicy(cruise.getCruiseId());
+        CruisePricingPolicyResponse fetched =
+                pricingPolicyService.getPricingPolicy(cruise.getCruiseId());
         assertEquals(PricingPolicyStatus.APPROVED, fetched.getStatus());
         assertEquals(0, new BigDecimal("500.00").compareTo(fetched.getBalconyBaseFare()));
 
         // 4. Readiness phai PASS va Mo ban thanh cong
-        CruiseSaleReadinessResponse readiness = cruiseService.validateSaleReadiness(cruise.getCruiseId());
+        CruiseSaleReadinessResponse readiness =
+                cruiseService.validateSaleReadiness(cruise.getCruiseId());
         assertTrue(readiness.isReady(), "Readiness phai PASS sau khi phe duyet policy");
 
-        CruiseOpenSaleRequest openReq = CruiseOpenSaleRequest.builder()
-                .expectedRevision(cruise.getRevision())
-                .build();
+        CruiseOpenSaleRequest openReq =
+                CruiseOpenSaleRequest.builder().expectedRevision(cruise.getRevision()).build();
         CruiseResponse opened = cruiseService.openSale(cruise.getCruiseId(), openReq);
         assertEquals(CruiseStatus.PUBLISHED, opened.getStatus());
 
         // 5. Public sellability authoritative
-        CruiseSellabilityResponse sellability = cruiseService.getPublicSellability(cruise.getCruiseId());
+        CruiseSellabilityResponse sellability =
+                cruiseService.getPublicSellability(cruise.getCruiseId());
         assertTrue(sellability.isSellable());
         assertEquals(approved.getPolicyVersion(), sellability.getPricingPolicyVersion());
-        BigDecimal balconyFare = sellability.getCabinTypes().stream()
-                .filter(c -> c.getCabinType() == CabinType.BALCONY)
-                .map(CabinTypeSellabilityItem::getBaseFare)
-                .findFirst().orElse(null);
+        BigDecimal balconyFare =
+                sellability.getCabinTypes().stream()
+                        .filter(c -> c.getCabinType() == CabinType.BALCONY)
+                        .map(CabinTypeSellabilityItem::getBaseFare)
+                        .findFirst()
+                        .orElse(null);
         assertNotNull(balconyFare);
         assertEquals(0, new BigDecimal("500.00").compareTo(balconyFare));
 
-        BigDecimal interiorFare = sellability.getCabinTypes().stream()
-                .filter(c -> c.getCabinType() == CabinType.INTERIOR)
-                .map(CabinTypeSellabilityItem::getBaseFare)
-                .findFirst().orElse(null);
+        BigDecimal interiorFare =
+                sellability.getCabinTypes().stream()
+                        .filter(c -> c.getCabinType() == CabinType.INTERIOR)
+                        .map(CabinTypeSellabilityItem::getBaseFare)
+                        .findFirst()
+                        .orElse(null);
         assertNotNull(interiorFare);
         assertEquals(0, new BigDecimal("320.00").compareTo(interiorFare));
     }
 
     @Test
-    @DisplayName("BE-H01.6: Quote va Booking nhat quan ve policyVersion, subtotal, tax, port fee, deposit")
+    @DisplayName(
+            "BE-H01.6: Quote va Booking nhat quan ve policyVersion, subtotal, tax, port fee,"
+                + " deposit")
     void test_quoteAndBooking_consistencyWithAuthoritativePolicy() {
         Instant dep = Instant.now().plus(40, ChronoUnit.DAYS);
         Instant ret = dep.plus(3, ChronoUnit.DAYS);
-        CruiseResponse cruise = createCruiseWithItineraryAndCaptain("Quote Booking Sync Cruise", dep, ret);
+        CruiseResponse cruise =
+                createCruiseWithItineraryAndCaptain("Quote Booking Sync Cruise", dep, ret);
 
         // Setup Approved Policy
-        CruisePricingPolicy policy = CruisePricingPolicy.builder()
-                .cruise(cruiseRepository.findById(cruise.getCruiseId()).orElseThrow())
-                .policyVersion("PRC-2026.10-V1")
-                .status(PricingPolicyStatus.APPROVED)
-                .currency("USD")
-                .balconyBaseFare(new BigDecimal("450.00"))
-                .interiorBaseFare(new BigDecimal("300.00"))
-                .taxRate(new BigDecimal("0.1000")) // 10%
-                .portFeePerPassenger(new BigDecimal("25.00")) // 25 USD
-                .depositPercentage(new BigDecimal("0.3000")) // 30%
-                .finalPaymentDueDays(14)
-                .fullPaymentCutoffDays(7)
-                .build();
+        CruisePricingPolicy policy =
+                CruisePricingPolicy.builder()
+                        .cruise(cruiseRepository.findById(cruise.getCruiseId()).orElseThrow())
+                        .policyVersion("PRC-2026.10-V1")
+                        .status(PricingPolicyStatus.APPROVED)
+                        .currency("USD")
+                        .balconyBaseFare(new BigDecimal("450.00"))
+                        .interiorBaseFare(new BigDecimal("300.00"))
+                        .taxRate(new BigDecimal("0.1000")) // 10%
+                        .portFeePerPassenger(new BigDecimal("25.00")) // 25 USD
+                        .depositPercentage(new BigDecimal("0.3000")) // 30%
+                        .finalPaymentDueDays(14)
+                        .fullPaymentCutoffDays(7)
+                        .build();
         cruisePricingPolicyRepository.save(policy);
 
         // Mo ban cruise
-        CruiseOpenSaleRequest openReq = CruiseOpenSaleRequest.builder()
-                .expectedRevision(cruise.getRevision())
-                .build();
+        CruiseOpenSaleRequest openReq =
+                CruiseOpenSaleRequest.builder().expectedRevision(cruise.getRevision()).build();
         cruiseService.openSale(cruise.getCruiseId(), openReq);
 
         // 1. Phat hanh Quote cho 2 khach: 1 BALCONY ($450) + 1 INTERIOR ($300)
         BookingQuoteRequest quoteReq = new BookingQuoteRequest();
         quoteReq.setCruiseId(cruise.getCruiseId());
         quoteReq.setPaymentPlan(PaymentPlan.DEPOSIT);
-        quoteReq.setPassengers(List.of(
-                new PassengerQuoteItem(testCabinBalcony.getCabinId(), null),
-                new PassengerQuoteItem(testCabinInterior.getCabinId(), null)
-        ));
+        quoteReq.setPassengers(
+                List.of(
+                        new PassengerQuoteItem(testCabinBalcony.getCabinId(), null),
+                        new PassengerQuoteItem(testCabinInterior.getCabinId(), null)));
 
-        CasmsPrincipal guestPrincipal = new CasmsPrincipal(testOpsManager, rolePermissionRepository);
+        CasmsPrincipal guestPrincipal =
+                new CasmsPrincipal(testOpsManager, rolePermissionRepository);
         BookingQuoteResponse quoteRes = bookingService.createQuote(quoteReq, guestPrincipal);
 
         assertNotNull(quoteRes.getQuoteId());
@@ -436,11 +476,14 @@ public class CruisePricingPolicyIntegrationTest {
     }
 
     @Test
-    @DisplayName("BE-H01.7: Cap nhat policy lam vo hieu quote cu (QUOTE_INVALIDATED) va thay doi fingerprint")
+    @DisplayName(
+            "BE-H01.7: Cap nhat policy lam vo hieu quote cu (QUOTE_INVALIDATED) va thay doi"
+                + " fingerprint")
     void test_policyUpdate_invalidatesOldQuotesAndChangesFingerprint() {
         Instant dep = Instant.now().plus(40, ChronoUnit.DAYS);
         Instant ret = dep.plus(3, ChronoUnit.DAYS);
-        CruiseResponse cruise = createCruiseWithItineraryAndCaptain("Policy Invalidation Cruise", dep, ret);
+        CruiseResponse cruise =
+                createCruiseWithItineraryAndCaptain("Policy Invalidation Cruise", dep, ret);
 
         // 1. Luu va approve V1
         CruisePricingPolicyRequest reqV1 = new CruisePricingPolicyRequest();
@@ -452,27 +495,31 @@ public class CruisePricingPolicyIntegrationTest {
         reqV1.setDepositPercentage(new BigDecimal("0.3000"));
         reqV1.setFinalPaymentDueDays(14);
         reqV1.setFullPaymentCutoffDays(7);
-        pricingPolicyService.savePricingPolicy(cruise.getCruiseId(), reqV1, testOpsManager.getUserId(), true);
+        pricingPolicyService.savePricingPolicy(
+                cruise.getCruiseId(), reqV1, testOpsManager.getUserId(), true);
         pricingPolicyService.approvePricingPolicy(cruise.getCruiseId(), testOpsManager.getUserId());
 
         // Mo ban
-        CruiseOpenSaleRequest openReq = CruiseOpenSaleRequest.builder()
-                .expectedRevision(cruise.getRevision())
-                .build();
+        CruiseOpenSaleRequest openReq =
+                CruiseOpenSaleRequest.builder().expectedRevision(cruise.getRevision()).build();
         cruiseService.openSale(cruise.getCruiseId(), openReq);
 
-        String fingerprintV1 = cruiseService.validateSaleReadiness(cruise.getCruiseId()).getFingerprint();
+        String fingerprintV1 =
+                cruiseService.validateSaleReadiness(cruise.getCruiseId()).getFingerprint();
 
         // 2. Phat hanh Quote tren V1
         BookingQuoteRequest quoteReq = new BookingQuoteRequest();
         quoteReq.setCruiseId(cruise.getCruiseId());
         quoteReq.setPaymentPlan(PaymentPlan.FULL);
-        quoteReq.setPassengers(List.of(new PassengerQuoteItem(testCabinBalcony.getCabinId(), null)));
+        quoteReq.setPassengers(
+                List.of(new PassengerQuoteItem(testCabinBalcony.getCabinId(), null)));
 
-        CasmsPrincipal guestPrincipal = new CasmsPrincipal(testOpsManager, rolePermissionRepository);
+        CasmsPrincipal guestPrincipal =
+                new CasmsPrincipal(testOpsManager, rolePermissionRepository);
         BookingQuoteResponse quoteRes = bookingService.createQuote(quoteReq, guestPrincipal);
 
-        // 3. Cap nhat gia (tang gia Balcony tu 450 len 550) -> Auto bump version & Invalidate quotes
+        // 3. Cap nhat gia (tang gia Balcony tu 450 len 550) -> Auto bump version & Invalidate
+        // quotes
         CruisePricingPolicyRequest reqV2 = new CruisePricingPolicyRequest();
         reqV2.setCurrency("USD");
         reqV2.setBalconyBaseFare(new BigDecimal("550.00")); // Doi gia!
@@ -482,17 +529,24 @@ public class CruisePricingPolicyIntegrationTest {
         reqV2.setDepositPercentage(new BigDecimal("0.3000"));
         reqV2.setFinalPaymentDueDays(14);
         reqV2.setFullPaymentCutoffDays(7);
-        CruisePricingPolicyResponse updatedPolicy = pricingPolicyService.savePricingPolicy(
-                cruise.getCruiseId(), reqV2, testOpsManager.getUserId(), true);
+        CruisePricingPolicyResponse updatedPolicy =
+                pricingPolicyService.savePricingPolicy(
+                        cruise.getCruiseId(), reqV2, testOpsManager.getUserId(), true);
 
-        assertTrue(updatedPolicy.getPolicyVersion().contains("-V2"),
+        assertTrue(
+                updatedPolicy.getPolicyVersion().contains("-V2"),
                 "Policy version phai duoc tu dong tang len V2 khi sua gia");
 
-        String fingerprintV2 = cruiseService.validateSaleReadiness(cruise.getCruiseId()).getFingerprint();
-        assertNotEquals(fingerprintV1, fingerprintV2, "Fingerprint phai thay doi khi policy version thay doi");
+        String fingerprintV2 =
+                cruiseService.validateSaleReadiness(cruise.getCruiseId()).getFingerprint();
+        assertNotEquals(
+                fingerprintV1,
+                fingerprintV2,
+                "Fingerprint phai thay doi khi policy version thay doi");
 
         // 4. Quote cu da bi danh dau INVALIDATED trong DB
-        BookingQuote oldQuoteInDb = bookingQuoteRepository.findById(quoteRes.getQuoteId()).orElseThrow();
+        BookingQuote oldQuoteInDb =
+                bookingQuoteRepository.findById(quoteRes.getQuoteId()).orElseThrow();
         assertEquals("INVALIDATED", oldQuoteInDb.getStatus());
 
         // 5. Dung quote cu dat ve phai bi he thong tu choi voi QUOTE_INVALIDATED
@@ -507,8 +561,13 @@ public class CruisePricingPolicyIntegrationTest {
         p.setEmail("oldguest@example.com");
         bookReq.setPassengers(List.of(p));
 
-        BusinessException ex = assertThrows(BusinessException.class,
-                () -> bookingService.createBooking(bookReq, guestPrincipal));
-        assertEquals("QUOTE_INVALIDATED", ex.getCode(), "Quote cu da bi vo hieu hoa phai bi he thong tu choi");
+        BusinessException ex =
+                assertThrows(
+                        BusinessException.class,
+                        () -> bookingService.createBooking(bookReq, guestPrincipal));
+        assertEquals(
+                "QUOTE_INVALIDATED",
+                ex.getCode(),
+                "Quote cu da bi vo hieu hoa phai bi he thong tu choi");
     }
 }

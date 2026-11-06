@@ -1,13 +1,13 @@
 package com.casms.booking.controller;
 
-import com.casms.booking.dto.request.BookingQuoteRequest;
-import com.casms.booking.dto.response.BookingQuoteResponse;
 import com.casms.booking.dto.request.BookingCancelRequest;
 import com.casms.booking.dto.request.BookingContractAcceptRequest;
 import com.casms.booking.dto.request.BookingCreateRequest;
+import com.casms.booking.dto.request.BookingQuoteRequest;
 import com.casms.booking.dto.request.CabinChangeRequest;
 import com.casms.booking.dto.response.AvailableCabinResponse;
 import com.casms.booking.dto.response.BookingDetailResponse;
+import com.casms.booking.dto.response.BookingQuoteResponse;
 import com.casms.booking.dto.response.BookingSummaryResponse;
 import com.casms.booking.enums.BookingStatus;
 import com.casms.booking.service.BookingService;
@@ -15,11 +15,16 @@ import com.casms.common.exception.BusinessException;
 import com.casms.common.response.ApiResponse;
 import com.casms.security.principal.CasmsPrincipal;
 import com.casms.ship.enums.CabinType;
+import com.casms.trip.service.IdempotencyService;
+
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
+
 import jakarta.validation.Valid;
+
 import lombok.RequiredArgsConstructor;
+
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
@@ -28,10 +33,11 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
-import com.casms.trip.service.IdempotencyService;
 import java.util.UUID;
 
-@Tag(name = "Booking & Contracts", description = "Quản lý đặt chỗ chuyến khởi hành, hành khách tự chọn phòng và hợp đồng")
+@Tag(
+        name = "Booking & Contracts",
+        description = "Quản lý đặt chỗ chuyến khởi hành, hành khách tự chọn phòng và hợp đồng")
 @RestController
 @RequestMapping("/booking")
 @RequiredArgsConstructor
@@ -39,44 +45,53 @@ public class BookingController {
 
     private final BookingService bookingService;
     private final IdempotencyService idempotencyService;
-    private final com.casms.cruisepackage.service.CruisePackageEntitlementService fareEntitlements;
 
-    @GetMapping({"/{bookingId}/cruise-package-entitlements","/{bookingId}/fare-entitlements"})
-    @PreAuthorize("hasAuthority('BOOKING_READ')")
-    public ApiResponse<List<com.casms.cruisepackage.service.CruisePackageEntitlementService.EntitlementView>> fareEntitlements(
-            @PathVariable UUID bookingId,@AuthenticationPrincipal CasmsPrincipal principal) {
-        bookingService.detail(bookingId,principal); // Reuse existing Booking ownership/staff access boundary.
-        return ApiResponse.success(fareEntitlements.list(bookingId));
-    }
-
-    @Operation(summary = "Tra cứu phòng trống để tự chọn (Công khai / Khách vãng lai)",
-               description = "Tìm kiếm danh sách phòng trống trên tàu của chuyến khởi hành để hành khách xem sơ đồ và tự chọn phòng (Không yêu cầu đăng nhập)")
+    @Operation(
+            summary = "Tra cứu phòng trống để tự chọn (Công khai / Khách vãng lai)",
+            description =
+                    "Tìm kiếm danh sách phòng trống trên tàu của chuyến khởi hành để hành khách xem"
+                        + " sơ đồ và tự chọn phòng (Không yêu cầu đăng nhập)")
     @GetMapping("/available-cabins")
     public ApiResponse<List<AvailableCabinResponse>> getAvailableCabins(
-            @Parameter(description = "ID của chuyến khởi hành", required = true) @RequestParam UUID cruiseId,
-            @Parameter(description = "ID tầng/boong (tùy chọn)") @RequestParam(required = false) UUID deckId,
-            @Parameter(description = "Hạng phòng (INTERIOR, OCEAN_VIEW, BALCONY, SUITE)") @RequestParam(required = false) CabinType cabinType,
-            @Parameter(description = "Sức chứa tối thiểu yêu cầu") @RequestParam(required = false) Integer minCapacity,
-            @RequestParam(required=false) UUID bookingPassengerId,@AuthenticationPrincipal CasmsPrincipal principal) {
-        if(bookingPassengerId!=null)return ApiResponse.success(bookingService.getAvailableCabinsForBooking(cruiseId,deckId,cabinType,minCapacity,bookingPassengerId,principal,false));
-        return ApiResponse.success(bookingService.getAvailableCabins(cruiseId, deckId, cabinType, minCapacity));
+            @Parameter(description = "ID của chuyến khởi hành", required = true) @RequestParam
+                    UUID cruiseId,
+            @Parameter(description = "ID tầng/boong (tùy chọn)") @RequestParam(required = false)
+                    UUID deckId,
+            @Parameter(description = "Hạng phòng (INTERIOR, OCEAN_VIEW, BALCONY, SUITE)")
+                    @RequestParam(required = false)
+                    CabinType cabinType,
+            @Parameter(description = "Sức chứa tối thiểu yêu cầu") @RequestParam(required = false)
+                    Integer minCapacity) {
+        return ApiResponse.success(
+                bookingService.getAvailableCabins(cruiseId, deckId, cabinType, minCapacity));
     }
 
-    @Operation(summary = "Tra cứu phòng còn trống kèm node và vị trí trên model 3D",
-            description = "Dùng cabinId trong kết quả để gửi POST /booking; modelNodeKey và transforms dùng để gắn phòng được chọn vào GLB")
+    @Operation(
+            summary = "Tra cứu phòng còn trống kèm node và vị trí trên model 3D",
+            description =
+                    "Dùng cabinId trong kết quả để gửi POST /booking; modelNodeKey và transforms"
+                        + " dùng để gắn phòng được chọn vào GLB")
     @GetMapping("/3d-available-cabins")
     public ApiResponse<List<AvailableCabinResponse>> getThreeDimensionalAvailableCabins(
-            @Parameter(description = "ID chuyến khởi hành", required = true) @RequestParam UUID cruiseId,
-            @Parameter(description = "ID deck (tùy chọn)") @RequestParam(required = false) UUID deckId,
-            @Parameter(description = "Loại cabin (tùy chọn)") @RequestParam(required = false) CabinType cabinType,
-            @Parameter(description = "Sức chứa còn trống tối thiểu") @RequestParam(required = false) Integer minCapacity,
-            @RequestParam(required=false) UUID bookingPassengerId,@AuthenticationPrincipal CasmsPrincipal principal) {
-        if(bookingPassengerId!=null)return ApiResponse.success(bookingService.getAvailableCabinsForBooking(cruiseId,deckId,cabinType,minCapacity,bookingPassengerId,principal,true));
-        return ApiResponse.success(bookingService.getThreeDimensionalAvailableCabins(cruiseId, deckId, cabinType, minCapacity));
+            @Parameter(description = "ID chuyến khởi hành", required = true) @RequestParam
+                    UUID cruiseId,
+            @Parameter(description = "ID deck (tùy chọn)") @RequestParam(required = false)
+                    UUID deckId,
+            @Parameter(description = "Loại cabin (tùy chọn)") @RequestParam(required = false)
+                    CabinType cabinType,
+            @Parameter(description = "Sức chứa còn trống tối thiểu") @RequestParam(required = false)
+                    Integer minCapacity) {
+        return ApiResponse.success(
+                bookingService.getThreeDimensionalAvailableCabins(
+                        cruiseId, deckId, cabinType, minCapacity));
     }
 
-    @Operation(summary = "Yêu cầu báo giá chính thức (BE-11 Authoritative Quote API)",
-               description = "Báo giá theo chính sách thương mại được duyệt. Hạn hiệu lực phải có nguồn cấu hình hợp lệ; thiếu policy trả BUSINESS_POLICY_REQUIRED, không dùng TTL mặc định. Báo giá không giữ chỗ.")
+    @Operation(
+            summary = "Yêu cầu báo giá chính thức (BE-11 Authoritative Quote API)",
+            description =
+                    "Tính toán báo giá chi tiết theo chính sách thương mại của chuyến khởi hành,"
+                        + " bao gồm cabin, gói tour, phụ phí cảng, thuế và lịch thanh toán. Báo giá"
+                        + " có TTL 30 phút.")
     @PostMapping("/quotes")
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<BookingQuoteResponse> createQuote(
@@ -85,120 +100,182 @@ public class BookingController {
         return ApiResponse.success(bookingService.createQuote(request, principal));
     }
 
-    @Operation(summary = "Tra cứu thông tin báo giá (BE-11 / BE-H02)",
-               description = "Xem chi tiết báo giá và kiểm tra hạn sử dụng của báo giá (Yêu cầu quyền sở hữu hoặc X-Guest-Token đối với khách vãng lai)")
+    @Operation(
+            summary = "Tra cứu thông tin báo giá (BE-11 / BE-H02)",
+            description =
+                    "Xem chi tiết báo giá và kiểm tra hạn sử dụng của báo giá (Yêu cầu quyền sở hữu"
+                        + " hoặc X-Guest-Token đối với khách vãng lai)")
     @GetMapping("/quotes/{quoteId}")
     public ApiResponse<BookingQuoteResponse> getQuote(
             @PathVariable UUID quoteId,
             @RequestHeader(value = "X-Guest-Token", required = false) String guestTokenHeader,
             @RequestParam(value = "guestToken", required = false) String guestTokenParam,
             @AuthenticationPrincipal CasmsPrincipal principal) {
-        String guestToken = (guestTokenHeader != null && !guestTokenHeader.isBlank())
-                ? guestTokenHeader
-                : guestTokenParam;
+        String guestToken =
+                (guestTokenHeader != null && !guestTokenHeader.isBlank())
+                        ? guestTokenHeader
+                        : guestTokenParam;
         return ApiResponse.success(bookingService.getQuote(quoteId, principal, guestToken));
     }
 
-    @Operation(summary = "Tạo đặt chỗ chuyến khởi hành (Hỗ trợ cả khách chưa đăng nhập và đã đăng nhập - BE-16 / BE-H03 Idempotency)",
-               description = "Hành khách tự chọn cabin cụ thể và gói dịch vụ. Bắt buộc Idempotency-Key header đối với khách hàng để chống duplicate booking khi mạng chập chờn hoặc retry timeout.")
+    @Operation(
+            summary =
+                    "Tạo đặt chỗ chuyến khởi hành (Hỗ trợ cả khách chưa đăng nhập và đã đăng nhập -"
+                        + " BE-16 / BE-H03 Idempotency)",
+            description =
+                    "Hành khách tự chọn cabin cụ thể và gói dịch vụ. Bắt buộc Idempotency-Key"
+                        + " header đối với khách hàng để chống duplicate booking khi mạng chập chờn"
+                        + " hoặc retry timeout.")
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<BookingDetailResponse> create(
             @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
             @RequestBody @Valid BookingCreateRequest request,
             @AuthenticationPrincipal CasmsPrincipal principal) {
-        boolean isStaff = principal != null && (principal.hasAuthority("BOOKING_MANAGE") || principal.hasAuthority("ROLE_ADMIN"));
+        boolean isStaff =
+                principal != null
+                        && (principal.hasAuthority("BOOKING_MANAGE")
+                                || principal.hasAuthority("ROLE_ADMIN"));
         if (!isStaff && (idempotencyKey == null || idempotencyKey.isBlank())) {
-            throw new BusinessException(HttpStatus.BAD_REQUEST, "IDEMPOTENCY_KEY_REQUIRED",
+            throw new BusinessException(
+                    HttpStatus.BAD_REQUEST,
+                    "IDEMPOTENCY_KEY_REQUIRED",
                     "Tiêu đề Idempotency-Key là bắt buộc đối với giao dịch đặt vé.");
         }
         UUID actorId = principal != null ? principal.getUserId() : null;
         if (idempotencyKey != null && !idempotencyKey.isBlank()) {
-            BookingDetailResponse response = idempotencyService.execute(
-                    idempotencyKey, actorId, "CREATE_BOOKING", request, BookingDetailResponse.class,
-                    () -> bookingService.createBooking(request, principal));
+            BookingDetailResponse response =
+                    idempotencyService.execute(
+                            idempotencyKey,
+                            actorId,
+                            "CREATE_BOOKING",
+                            request,
+                            BookingDetailResponse.class,
+                            () -> bookingService.createBooking(request, principal));
             return ApiResponse.success("Booking created successfully", response);
         }
-        return ApiResponse.success("Booking created successfully", bookingService.createBooking(request, principal));
+        return ApiResponse.success(
+                "Booking created successfully", bookingService.createBooking(request, principal));
     }
 
-    @Operation(summary = "Phục hồi kết quả đặt chỗ sau sự cố mạng / timeout (BE-H03 Recovery Intent)",
-               description = "Truy vấn lại kết quả đặt chỗ bằng Idempotency-Key khi client bị timeout hoặc mất kết nối trước khi nhận được Booking Reference")
+    @Operation(
+            summary = "Phục hồi kết quả đặt chỗ sau sự cố mạng / timeout (BE-H03 Recovery Intent)",
+            description =
+                    "Truy vấn lại kết quả đặt chỗ bằng Idempotency-Key khi client bị timeout hoặc"
+                        + " mất kết nối trước khi nhận được Booking Reference")
     @GetMapping("/recovery")
     public ApiResponse<BookingDetailResponse> recoverBooking(
             @Parameter(description = "Idempotency-Key đã gửi khi tạo đặt chỗ", required = true)
-            @RequestParam String idempotencyKey,
+                    @RequestParam
+                    String idempotencyKey,
             @AuthenticationPrincipal CasmsPrincipal principal) {
-        return ApiResponse.success(bookingService.recoverBookingByIdempotencyKey(idempotencyKey, principal));
+        return ApiResponse.success(
+                bookingService.recoverBookingByIdempotencyKey(idempotencyKey, principal));
     }
 
-    @Operation(summary = "Tra cứu đơn đặt chỗ cho khách vãng lai",
-               description = "Khách hàng không cần đăng nhập, có thể tra cứu đơn đặt chỗ bằng Mã đặt chỗ (Booking Reference) kết hợp Email hoặc Số điện thoại")
+    @Operation(
+            summary = "Tra cứu đơn đặt chỗ cho khách vãng lai",
+            description =
+                    "Khách hàng không cần đăng nhập, có thể tra cứu đơn đặt chỗ bằng Mã đặt chỗ"
+                        + " (Booking Reference) kết hợp Email hoặc Số điện thoại")
     @GetMapping("/lookup")
     public ApiResponse<BookingDetailResponse> lookup(
-            @Parameter(description = "Mã tham chiếu đơn đặt chỗ (VD: BK-20261019-XXXX)", required = true) @RequestParam String reference,
-            @Parameter(description = "Email người đặt (để xác thực)") @RequestParam(required = false) String email,
-            @Parameter(description = "Số điện thoại người đặt (để xác thực)") @RequestParam(required = false) String phoneNumber) {
+            @Parameter(
+                            description = "Mã tham chiếu đơn đặt chỗ (VD: BK-20261019-XXXX)",
+                            required = true)
+                    @RequestParam
+                    String reference,
+            @Parameter(description = "Email người đặt (để xác thực)")
+                    @RequestParam(required = false)
+                    String email,
+            @Parameter(description = "Số điện thoại người đặt (để xác thực)")
+                    @RequestParam(required = false)
+                    String phoneNumber) {
         return ApiResponse.success(bookingService.lookupBooking(reference, email, phoneNumber));
     }
 
-    @Operation(summary = "Danh sách đơn đặt chỗ",
-               description = "Tra cứu danh sách đơn đặt chỗ (Hành khách chỉ xem đơn của chính mình, nhân viên xem toàn bộ theo bộ lọc)")
+    @Operation(
+            summary = "Danh sách đơn đặt chỗ",
+            description =
+                    "Tra cứu danh sách đơn đặt chỗ (Hành khách chỉ xem đơn của chính mình, nhân"
+                        + " viên xem toàn bộ theo bộ lọc)")
     @PreAuthorize("hasAnyAuthority('BOOKING_READ')")
     @GetMapping
     public ApiResponse<Page<BookingSummaryResponse>> list(
-            @Parameter(description = "Lọc theo chuyến khởi hành") @RequestParam(required = false) UUID cruiseId,
-            @Parameter(description = "Lọc theo trạng thái (Draft, Confirmed, Cancelled)") @RequestParam(required = false) BookingStatus status,
+            @Parameter(description = "Lọc theo chuyến khởi hành") @RequestParam(required = false)
+                    UUID cruiseId,
+            @Parameter(description = "Lọc theo trạng thái (Draft, Confirmed, Cancelled)")
+                    @RequestParam(required = false)
+                    BookingStatus status,
             Pageable pageable,
             @AuthenticationPrincipal CasmsPrincipal principal) {
         return ApiResponse.success(bookingService.list(cruiseId, status, pageable, principal));
     }
 
-    @Operation(summary = "Chi tiết đơn đặt chỗ",
-               description = "Lấy đầy đủ thông tin chi tiết một đơn đặt chỗ gồm danh sách hành khách, phòng đã chọn, gói dịch vụ và hợp đồng")
+    @Operation(
+            summary = "Chi tiết đơn đặt chỗ",
+            description =
+                    "Lấy đầy đủ thông tin chi tiết một đơn đặt chỗ gồm danh sách hành khách, phòng"
+                        + " đã chọn, gói dịch vụ và hợp đồng")
     @PreAuthorize("hasAnyAuthority('BOOKING_READ')")
     @GetMapping("/{bookingId}")
     public ApiResponse<BookingDetailResponse> detail(
-            @Parameter(description = "ID đơn đặt chỗ", required = true) @PathVariable UUID bookingId,
+            @Parameter(description = "ID đơn đặt chỗ", required = true) @PathVariable
+                    UUID bookingId,
             @AuthenticationPrincipal CasmsPrincipal principal) {
         return ApiResponse.success(bookingService.detail(bookingId, principal));
     }
 
-    @Operation(summary = "Xác nhận hợp đồng bản cứng",
-               description = "Xác nhận hợp đồng đã ký bản cứng, ghi nhận mã lưu trữ hồ sơ, người thực hiện và thời điểm ký để đủ điều kiện xác nhận đặt chỗ")
+    @Operation(
+            summary = "Xác nhận hợp đồng bản cứng",
+            description =
+                    "Xác nhận hợp đồng đã ký bản cứng, ghi nhận mã lưu trữ hồ sơ, người thực hiện"
+                        + " và thời điểm ký để đủ điều kiện xác nhận đặt chỗ")
     @PreAuthorize("hasAuthority('BOOKING_CONTRACT_MANAGE')")
     @PostMapping("/{bookingId}/contract/accept")
     public ApiResponse<BookingDetailResponse> acceptContract(
-            @Parameter(description = "ID đơn đặt chỗ", required = true) @PathVariable UUID bookingId,
+            @Parameter(description = "ID đơn đặt chỗ", required = true) @PathVariable
+                    UUID bookingId,
             @RequestBody @Valid BookingContractAcceptRequest request,
             @AuthenticationPrincipal CasmsPrincipal principal) {
-        return ApiResponse.success("Contract accepted successfully", bookingService.acceptContract(bookingId, request, principal));
+        return ApiResponse.success(
+                "Contract accepted successfully",
+                bookingService.acceptContract(bookingId, request, principal));
     }
 
-    @Operation(summary = "Xác nhận đặt chỗ",
-               description = "Chuyển trạng thái đơn đặt chỗ sang Confirmed sau khi đã thanh toán tiền cọc hoặc thanh toán toàn bộ")
+    @Operation(
+            summary = "Xác nhận đặt chỗ",
+            description =
+                    "Chuyển trạng thái đơn đặt chỗ sang Confirmed sau khi đã thanh toán tiền cọc"
+                        + " hoặc thanh toán toàn bộ")
     @PreAuthorize("hasAuthority('BOOKING_CONFIRM')")
     @PostMapping("/{bookingId}/confirm")
     public ApiResponse<BookingDetailResponse> confirm(
-            @Parameter(description = "ID đơn đặt chỗ", required = true) @PathVariable UUID bookingId,
+            @Parameter(description = "ID đơn đặt chỗ", required = true) @PathVariable
+                    UUID bookingId,
             @AuthenticationPrincipal CasmsPrincipal principal) {
         return ApiResponse.success(bookingService.confirm(bookingId, principal));
     }
 
-    @Operation(summary = "Hủy đơn đặt chỗ",
-               description = "Hủy đặt chỗ, tự động đóng hiệu lực gán phòng đã chọn để giải phóng chỗ trống và ghi nhận lý do hủy")
+    @Operation(
+            summary = "Hủy đơn đặt chỗ",
+            description =
+                    "Hủy đặt chỗ, tự động đóng hiệu lực gán phòng đã chọn để giải phóng chỗ trống"
+                        + " và ghi nhận lý do hủy")
     @PreAuthorize("hasAnyAuthority('BOOKING_CANCEL')")
     @PostMapping("/{bookingId}/cancel")
     public ApiResponse<BookingDetailResponse> cancel(
-            @Parameter(description = "ID đơn đặt chỗ", required = true) @PathVariable UUID bookingId,
+            @Parameter(description = "ID đơn đặt chỗ", required = true) @PathVariable
+                    UUID bookingId,
             @RequestBody @Valid BookingCancelRequest request,
             @AuthenticationPrincipal CasmsPrincipal principal) {
         return ApiResponse.success(bookingService.cancel(bookingId, request, principal));
     }
 
-    @Operation(summary = "Đổi phòng cho hành khách",
-               description = "Chuyển hành khách sang phòng trống khác trên cùng con tàu theo yêu cầu")
-    @PreAuthorize("hasAnyAuthority('BOOKING_CABIN_ASSIGN', 'BOOKING_UPDATE') or (hasRole('PASSENGER') and hasAuthority('BOOKING_READ'))")
+    @Operation(
+            summary = "Đổi phòng cho hành khách",
+            description = "Chuyển hành khách sang phòng trống khác trên cùng con tàu theo yêu cầu")
+    @PreAuthorize("hasAnyAuthority('BOOKING_CABIN_ASSIGN', 'BOOKING_UPDATE')")
     @PostMapping("/change-cabin")
     public ApiResponse<BookingDetailResponse> changeCabin(
             @RequestBody @Valid CabinChangeRequest request,
