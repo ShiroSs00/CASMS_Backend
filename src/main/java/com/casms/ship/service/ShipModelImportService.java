@@ -37,6 +37,67 @@ public class ShipModelImportService {
     private final ObjectMapper mapper;
     private final ModelImportJobLifecycle jobLifecycle;
     private final PlatformTransactionManager transactionManager;
+    private final ShipModelAssetService assetService;
+
+    @Transactional
+    public ModelImportJobResponse importByCode(UUID shipId, String modelKey,
+            org.springframework.web.multipart.MultipartFile bundle,
+            org.springframework.security.core.Authentication authentication) {
+        if (bundle == null || bundle.isEmpty() || bundle.getSize() > 2L * 1024 * 1024 * 1024)
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A non-empty ZIP up to 2 GiB is required");
+        models.lockShip(shipId).orElseThrow(() -> new ResourceNotFoundException("Ship", shipId));
+        List<ShipModel> matches = models.findByShipShipIdOrderByCreatedAtDesc(shipId).stream()
+                .filter(model -> modelKey.equals(model.getModelKey())).toList();
+        ShipModel existing = matches.stream().filter(model -> model.getStatus() == ShipModelStatus.READY)
+                .findFirst().orElseGet(() -> matches.stream()
+                        .filter(model -> model.getStatus() == ShipModelStatus.DRAFT).findFirst().orElse(null));
+        if (existing == null && !matches.isEmpty())
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "No editable model with this code");
+        if (existing == null) requireAuthority(authentication, "SHIP_MODEL_CREATE");
+        else if (existing.getStatus() == ShipModelStatus.READY)
+            requireAuthority(authentication, "SHIP_MODEL_PUBLISH");
+
+        String version;
+        try {
+            version = assets.storeImportZip(modelKey, bundle);
+        } catch (java.io.IOException ex) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Cannot read the uploaded model ZIP", ex);
+        }
+        ShipModel model;
+        if (existing == null) {
+            UUID id = assetService.register(shipId,
+                    new com.casms.ship.dto.request.ShipModelAssetRegisterRequest(modelKey, version));
+            model = model(shipId, id);
+        } else {
+            model = existing;
+            assetService.updateImportedBundle(model, modelKey, version);
+        }
+
+        ModelImportJob job = new ModelImportJob();
+        job.setShipModel(model);
+        job.setRequestedBy(authentication == null ? null : authentication.getName());
+        job.setStatus(ModelImportStatus.RUNNING);
+        jobs.saveAndFlush(job);
+        ModelImportJobResponse result = importModelTransaction(shipId, model.getShipModelId(),
+                job.getModelImportJobId(), true);
+        if (result.objectsFailed() > 0) {
+            var errors = issues.findByJobModelImportJobIdOrderByCreatedAt(job.getModelImportJobId())
+                    .stream().limit(20)
+                    .map(issue -> new ModelImportIssueResponse(issue.getModelImportIssueId(),
+                            issue.getObjectIdentifier(), issue.getObjectType(), issue.getErrorCode(),
+                            issue.getMessage(), issue.getCreatedAt())).toList();
+            throw new com.casms.common.exception.BusinessException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "SHIP_MODEL_IMPORT_REJECTED", "Import contains invalid objects", Map.of("issues", errors));
+        }
+        return result;
+    }
+
+    private static void requireAuthority(org.springframework.security.core.Authentication authentication,
+            String authority) {
+        if (authentication == null || authentication.getAuthorities().stream()
+                .noneMatch(granted -> authority.equals(granted.getAuthority())))
+            throw new org.springframework.security.access.AccessDeniedException("Missing required authority: " + authority);
+    }
 
     /**
      * Imports the metadata manifest atomically for each valid object; absent objects are retained.
@@ -46,7 +107,7 @@ public class ShipModelImportService {
         try {
             TransactionTemplate transaction = new TransactionTemplate(transactionManager);
             return transaction.execute(
-                    status -> importModelTransaction(shipId, modelId, job.getModelImportJobId()));
+                    status -> importModelTransaction(shipId, modelId, job.getModelImportJobId(), false));
         } catch (RuntimeException failure) {
             try {
                 jobLifecycle.fail(job.getModelImportJobId(), failure);
@@ -57,10 +118,12 @@ public class ShipModelImportService {
         }
     }
 
-    private ModelImportJobResponse importModelTransaction(UUID shipId, UUID modelId, UUID jobId) {
+    private ModelImportJobResponse importModelTransaction(UUID shipId, UUID modelId, UUID jobId,
+            boolean importByCode) {
         models.lockShip(shipId).orElseThrow(() -> new ResourceNotFoundException("Ship", shipId));
         ShipModel model = model(shipId, modelId);
-        if (model.getStatus() != ShipModelStatus.DRAFT) {
+        if (model.getStatus() != ShipModelStatus.DRAFT
+                && !(importByCode && model.getStatus() == ShipModelStatus.READY)) {
             throw new ResponseStatusException(
                     HttpStatus.CONFLICT,
                     "Model structure can only be imported while the model is DRAFT");

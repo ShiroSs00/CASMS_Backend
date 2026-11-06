@@ -111,22 +111,7 @@ public class ShipModelAssetService {
         syncShipFromManifest(ship, manifest, false);
         ShipModel model = new ShipModel();
         model.setShip(ship);
-        model.setModelKey(request.modelKey());
-        model.setAssetVersion(request.assetVersion());
-        model.setShipManufacturerName(optionalManifestText(manifest, "shipManufacturerName"));
-        model.setModelProvider(optionalManifestText(manifest, "modelProvider"));
-        model.setAssetRevision(manifest.path("revision").asText());
-        model.setVersion(request.modelKey() + "@" + request.assetVersion());
-        model.setFileUri(
-                "database://model-assets/"
-                        + request.modelKey()
-                        + "/"
-                        + request.assetVersion()
-                        + "/manifest.json");
-        model.setFileFormat("glb");
-        model.setCoordinateSystem("GLTF");
-        model.setCoordinateUnit("metre");
-        model.setModelUnitsPerMeter(1.0);
+        configureBundle(model, request.modelKey(), request.assetVersion(), manifest);
         model.setStatus(ShipModelStatus.DRAFT);
         try {
             return models.save(model).getShipModelId();
@@ -136,6 +121,32 @@ public class ShipModelAssetService {
                     "Model asset version is already registered on this ship",
                     ex);
         }
+    }
+
+    void updateImportedBundle(ShipModel model, String modelKey, String assetVersion) {
+        JsonNode manifest = assets.manifest(modelKey, assetVersion);
+        syncShipFromManifest(model.getShip(), manifest, false);
+        configureBundle(model, modelKey, assetVersion, manifest);
+    }
+
+    private void configureBundle(ShipModel model, String modelKey, String assetVersion,
+            JsonNode manifest) {
+        model.setModelKey(modelKey);
+        model.setAssetVersion(assetVersion);
+        model.setShipManufacturerName(optionalManifestText(manifest, "shipManufacturerName"));
+        model.setModelProvider(optionalManifestText(manifest, "modelProvider"));
+        model.setAssetRevision(manifest.path("revision").asText());
+        model.setVersion(modelKey + "@" + assetVersion);
+        model.setFileUri(
+                "database://model-assets/"
+                        + modelKey
+                        + "/"
+                        + assetVersion
+                        + "/manifest.json");
+        model.setFileFormat("glb");
+        model.setCoordinateSystem("GLTF");
+        model.setCoordinateUnit("metre");
+        model.setModelUnitsPerMeter(1.0);
     }
 
     /** Create an independent physical ship; a manifest is a reusable source template. */
@@ -427,15 +438,10 @@ public class ShipModelAssetService {
     }
 
     @Transactional(readOnly = true)
-    public ShipModelAssetStore.AssetMetadata publicAsset(UUID shipId, UUID modelId, String name) {
+    public AssetDownload publicAsset(UUID shipId, UUID modelId, String name) {
         ShipModel model = publicAssetModel(shipId, modelId, name);
-        return assets.asset(model.getModelKey(), model.getAssetVersion(), name);
-    }
-
-    @Transactional(readOnly = true)
-    public void writePublicAsset(UUID shipId, UUID modelId, String name, OutputStream output) {
-        ShipModel model = publicAssetModel(shipId, modelId, name);
-        assets.writeAsset(model.getModelKey(), model.getAssetVersion(), name, output);
+        return new AssetDownload(model.getModelKey(), model.getAssetVersion(), name,
+                assets.asset(model.getModelKey(), model.getAssetVersion(), name));
     }
 
     @Transactional(readOnly = true)
@@ -602,17 +608,19 @@ public class ShipModelAssetService {
         models.save(model);
     }
 
+    public record AssetDownload(String modelKey, String assetVersion, String name,
+            ShipModelAssetStore.AssetMetadata metadata) {}
+
     @Transactional(readOnly = true)
-    public ShipModelAssetStore.AssetMetadata asset(UUID shipId, UUID modelId, String assetName) {
+    public AssetDownload asset(UUID shipId, UUID modelId, String assetName) {
         ShipModel model = model(shipId, modelId);
-        manifest(model);
-        return assets.asset(model.getModelKey(), model.getAssetVersion(), assetName);
+        return new AssetDownload(model.getModelKey(), model.getAssetVersion(), assetName,
+                assets.asset(model.getModelKey(), model.getAssetVersion(), assetName));
     }
 
     @Transactional(readOnly = true)
-    public void writeAsset(UUID shipId, UUID modelId, String assetName, OutputStream output) {
-        ShipModel model = model(shipId, modelId);
-        assets.writeAsset(model.getModelKey(), model.getAssetVersion(), assetName, output);
+    public void writeAsset(AssetDownload download, OutputStream output) {
+        assets.writeAsset(download.modelKey(), download.assetVersion(), download.name(), output);
     }
 
     private void validatePersistedMappings(UUID shipId, ShipModel model, JsonNode manifest) {

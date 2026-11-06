@@ -54,6 +54,17 @@ public class ShipModelController {
     private final ShipModelAssetService assetService;
     private final ShipModelImportService importService;
 
+    @Operation(summary = "Import or update a ship model by code from a ZIP bundle")
+    @PreAuthorize("hasAuthority('SHIP_MODEL_UPDATE')")
+    @PostMapping(value = "/ships/{shipId}/models/imports", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ApiResponse<ModelImportJobResponse> importByCode(
+            @PathVariable UUID shipId,
+            @RequestParam @jakarta.validation.constraints.Pattern(regexp = "[a-z0-9-]{1,80}") String modelKey,
+            @RequestPart("bundle") MultipartFile bundle,
+            org.springframework.security.core.Authentication authentication) {
+        return ApiResponse.success(importService.importByCode(shipId, modelKey, bundle, authentication));
+    }
+
     @Operation(
             summary = "Import physical decks, cabins and areas from a registered model manifest",
             description =
@@ -225,16 +236,16 @@ public class ShipModelController {
     public ResponseEntity<StreamingResponseBody> asset(
             @PathVariable UUID shipId, @PathVariable UUID modelId, @PathVariable String assetPath) {
         String name = assetPath.startsWith("/") ? assetPath.substring(1) : assetPath;
-        var metadata = assetService.asset(shipId, modelId, name);
+        var download = assetService.asset(shipId, modelId, name);
         MediaType mediaType =
                 name.endsWith(".glb")
                         ? MediaType.parseMediaType("model/gltf-binary")
                         : MediaType.APPLICATION_JSON;
         StreamingResponseBody body =
-                output -> assetService.writeAsset(shipId, modelId, name, output);
+                output -> assetService.writeAsset(download, output);
         return ResponseEntity.ok()
                 .contentType(mediaType)
-                .contentLength(metadata.size())
+                .contentLength(download.metadata().size())
                 .cacheControl(CacheControl.noCache().cachePrivate())
                 .body(body);
     }

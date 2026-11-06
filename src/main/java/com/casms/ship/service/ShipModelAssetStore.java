@@ -68,6 +68,31 @@ public class ShipModelAssetStore {
     }
 
     public UploadResult storeZip(String modelKey, String assetVersion, InputStream archive) {
+        if (assetVersion != null && assetVersion.matches("zip-[0-9a-f]{64}"))
+            throw bad("This asset version format is reserved for import by model code");
+        return storeZip(modelKey, assetVersion, archive, false);
+    }
+
+    String storeImportZip(String modelKey, org.springframework.web.multipart.MultipartFile bundle)
+            throws IOException {
+        MessageDigest digest = sha256();
+        try (var input = new java.security.DigestInputStream(bundle.getInputStream(), digest)) {
+            input.transferTo(OutputStream.nullOutputStream());
+        }
+        String version = "zip-" + HexFormat.of().formatHex(digest.digest());
+        validateBundleKey(modelKey, version);
+        jdbc.query("SELECT pg_advisory_xact_lock(hashtextextended(?, 0))",
+                rs -> {}, "ship-model-import:" + modelKey + ":" + version);
+        if (!bundleExists(modelKey, version)) {
+            try (var input = bundle.getInputStream()) {
+                storeZip(modelKey, version, input, true);
+            }
+        }
+        return version;
+    }
+
+    private UploadResult storeZip(String modelKey, String assetVersion, InputStream archive,
+            boolean importByCode) {
         validateBundleKey(modelKey, assetVersion);
         if (bundleExists(modelKey, assetVersion)) {
             throw new ResponseStatusException(
@@ -83,8 +108,8 @@ public class ShipModelAssetStore {
             while ((entry = zip.getNextEntry()) != null) {
                 String path = entry.getName().replace('\\', '/');
                 if (entry.isDirectory()) continue;
-                if (!path.startsWith(prefix)) throw bad("ZIP entries must be under " + prefix);
-                String name = path.substring(prefix.length());
+                String name = importByCode ? importAssetName(modelKey, path)
+                        : versionedAssetName(path, prefix);
                 validateAssetPath(name, true);
                 if (stored.containsKey(name)) throw bad("Duplicate asset path in ZIP: " + name);
                 if (++fileCount > MAX_FILES) throw bad("ZIP contains too many files");
@@ -105,7 +130,7 @@ public class ShipModelAssetStore {
             throw bad("ZIP must include manifest.json and checksums.json");
         }
         JsonNode manifest = readJson(modelKey, assetVersion, "manifest.json", MAX_MANIFEST_BYTES);
-        validateManifest(modelKey, manifest);
+        validateManifest(modelKey, manifest, importByCode);
         Set<String> allowed = allowedAssets(manifest);
         for (String name : allowed) {
             if (!stored.containsKey(name)) throw bad("ZIP is missing manifest asset: " + name);
@@ -138,6 +163,20 @@ public class ShipModelAssetStore {
         enforceFullModelCopyLimit(modelKey, assetVersion, manifest, stored);
 
         return new UploadResult(fileCount, totalBytes);
+    }
+
+    private static String versionedAssetName(String path, String prefix) {
+        if (!path.startsWith(prefix)) throw bad("ZIP entries must be under " + prefix);
+        return path.substring(prefix.length());
+    }
+
+    private static String importAssetName(String modelKey, String path) {
+        if (!path.startsWith("model-assets/")) return path;
+        String[] parts = path.split("/", 4);
+        if (parts.length != 4 || !modelKey.equals(parts[1]))
+            throw bad("ZIP directory must match the model code");
+        validateBundleKey(modelKey, parts[2]);
+        return parts[3];
     }
 
     private void enforceFullModelCopyLimit(
@@ -215,7 +254,7 @@ public class ShipModelAssetStore {
 
     public JsonNode manifest(String modelKey, String assetVersion) {
         JsonNode manifest = readJson(modelKey, assetVersion, "manifest.json", MAX_MANIFEST_BYTES);
-        validateManifest(modelKey, manifest);
+        validateManifest(modelKey, manifest, assetVersion.matches("zip-[0-9a-f]{64}"));
         return manifest;
     }
 
@@ -551,10 +590,10 @@ public class ShipModelAssetStore {
         }
     }
 
-    private void validateManifest(String modelKey, JsonNode manifest) {
+    private void validateManifest(String modelKey, JsonNode manifest, boolean importByCode) {
         if (!manifest.isObject()
                 || !modelKey.equals(manifest.path("modelId").asText())
-                || manifest.path("revision").asText().isBlank()
+                || (!importByCode && manifest.path("revision").asText().isBlank())
                 || !"metre".equals(manifest.path("units").asText())
                 || !"+Y".equals(manifest.path("gltfAxes").path("up").asText())) {
             throw bad("Manifest model ID, revision, units or axes are invalid");

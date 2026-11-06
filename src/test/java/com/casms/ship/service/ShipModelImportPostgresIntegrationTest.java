@@ -81,6 +81,60 @@ class ShipModelImportPostgresIntegrationTest {
     private final List<UUID> testServiceIds = new ArrayList<>();
 
     @Test
+    void importByCodeUpdatesReadyModelAndPreservesAreaAssignments() throws Exception {
+        UUID shipId = createShip(1).getShipId();
+        String admin = token(Role.ADMIN);
+        String key = uniqueKey("by-code");
+        Path original = bundleWithPhysicalAreas(key, "v1", "valid");
+        UUID modelId = UUID.fromString(importByCode(shipId, key, original, admin, 200)
+                .path("data").path("modelId").asText());
+        var lounge = objects.findByShipModelShipModelIdAndNodeKey(modelId, "physical-lounge").orElseThrow();
+        var gym = objects.findByShipModelShipModelIdAndNodeKey(modelId, "physical-gym").orElseThrow();
+        mockMvc.perform(post("/ships/{shipId}/models/{modelId}/activate", shipId, modelId)
+                .header("Authorization", "Bearer " + admin)).andExpect(status().isOk());
+
+        var service = new com.casms.servicepackage.entity.Service();
+        service.setServiceCode("IT-" + UUID.randomUUID());
+        service.setServiceName("Import test service");
+        service.setServiceType("DINING");
+        service.setStatus(com.casms.servicepackage.enums.ServiceStatus.ACTIVE);
+        UUID serviceId = catalogueServices.saveAndFlush(service).getServiceId();
+        testServiceIds.add(serviceId);
+        UUID assignment = UUID.randomUUID();
+        jdbc.update("INSERT INTO \"AreaServiceAssignment\" (assignment_id,area_object_id,service_id) VALUES (?,?,?)",
+                assignment, lounge.getShipModelObjectId(), serviceId);
+        try {
+            Path changed = bundleWithPhysicalAreas(key, "v2", "moved");
+            JsonNode updated = importByCode(shipId, key, changed, admin, 200).path("data");
+            assertEquals(modelId.toString(), updated.path("modelId").asText());
+            assertEquals(ShipModelStatus.READY, models.findById(modelId).orElseThrow().getStatus());
+            assertEquals(1, models.findByShipShipIdOrderByCreatedAtDesc(shipId).size());
+            assertEquals(lounge.getShipModelObjectId(), objects.findByShipModelShipModelIdAndNodeKey(
+                    modelId, "physical-lounge").orElseThrow().getShipModelObjectId());
+            assertEquals(1, jdbc.queryForObject("SELECT count(*) FROM \"AreaServiceAssignment\" WHERE assignment_id=? AND area_object_id=?",
+                    Integer.class, assignment, lounge.getShipModelObjectId()));
+            assertEquals(7.0, objects.findById(gym.getShipModelObjectId()).orElseThrow().getPositionX());
+            String version = models.findById(modelId).orElseThrow().getAssetVersion();
+            importByCode(shipId, key, changed, admin, 200);
+            assertEquals(version, models.findById(modelId).orElseThrow().getAssetVersion());
+            importByCode(shipId, key, bundleWithPhysicalAreas(key, "bad", "invalid-size"), admin, 422);
+            assertEquals(version, models.findById(modelId).orElseThrow().getAssetVersion());
+            assertEquals(7.0, objects.findById(gym.getShipModelObjectId()).orElseThrow().getPositionX());
+        } finally {
+            jdbc.update("DELETE FROM \"AreaServiceAssignment\" WHERE assignment_id=?", assignment);
+        }
+    }
+
+    private JsonNode importByCode(UUID shipId, String key, Path bundle, String token, int expected)
+            throws Exception {
+        uploadedBundles.add(key + "|zip-" + sha256(Files.readAllBytes(bundle)));
+        return mapper.readTree(mockMvc.perform(multipart("/ships/{shipId}/models/imports", shipId)
+                        .file(new FileBackedMultipartFile("bundle", bundle))
+                        .param("modelKey", key).header("Authorization", "Bearer " + token))
+                .andExpect(status().is(expected)).andReturn().getResponse().getContentAsString());
+    }
+
+    @Test
     void physicalAreasPersistAsFacilitiesAndReadBackWithoutCreatingServices() throws Exception {
         Ship ship = createShip(1);
         String token = token(Role.ADMIN);
@@ -2027,7 +2081,7 @@ class ShipModelImportPostgresIntegrationTest {
                                 "size",
                                 mode.equals("invalid-size") ? List.of(-4, 3, 5) : List.of(4, 3, 5),
                                 "center",
-                                List.of(3, -1, 2),
+                                List.of(mode.equals("moved") ? 7 : 3, -1, 2),
                                 "components",
                                 List.of(Map.of("name", "Gym equipment"))));
         areas.add(gym);
@@ -2058,7 +2112,7 @@ class ShipModelImportPostgresIntegrationTest {
                                 "name",
                                 "Gym",
                                 "translation",
-                                List.of(3, -1, 2),
+                                List.of(mode.equals("moved") ? 7 : 3, -1, 2),
                                 "rotation",
                                 mode.equals("invalid-transform")
                                         ? List.of(0, 0, 0, 0)
@@ -2099,6 +2153,7 @@ class ShipModelImportPostgresIntegrationTest {
                                         "deckNumber",
                                         1))));
         byte[] updatedGlb = glb(mapper.writeValueAsBytes(gltf));
+        if (mode.equals("moved")) manifest.remove("revision");
         entries.put("manifest.json", mapper.writeValueAsBytes(manifest));
         entries.put("ship.glb", updatedGlb);
         entries.put("exterior.glb", updatedGlb);
@@ -2112,7 +2167,7 @@ class ShipModelImportPostgresIntegrationTest {
         tempArchives.add(result);
         try (var zip = new ZipOutputStream(Files.newOutputStream(result))) {
             for (var e : entries.entrySet()) {
-                zip.putNextEntry(new ZipEntry(prefix + e.getKey()));
+                zip.putNextEntry(new ZipEntry((mode.equals("moved") ? "" : prefix) + e.getKey()));
                 zip.write(e.getValue());
                 zip.closeEntry();
             }

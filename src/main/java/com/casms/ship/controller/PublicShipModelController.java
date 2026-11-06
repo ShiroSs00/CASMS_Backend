@@ -32,13 +32,13 @@ public class PublicShipModelController {
     public ResponseEntity<StreamingResponseBody> asset(
             @PathVariable UUID shipId, @PathVariable UUID modelId, @PathVariable String assetPath) {
         String name = assetPath.startsWith("/") ? assetPath.substring(1) : assetPath;
-        var metadata = assets.publicAsset(shipId, modelId, name);
+        var download = assets.publicAsset(shipId, modelId, name);
         StreamingResponseBody body =
-                output -> assets.writePublicAsset(shipId, modelId, name, output);
+                output -> assets.writeAsset(download, output);
         // Recheck publication on every request, including after archive/deactivation.
         return ResponseEntity.ok()
                 .contentType(MediaType.parseMediaType("model/gltf-binary"))
-                .contentLength(metadata.size())
+                .contentLength(download.metadata().size())
                 .cacheControl(CacheControl.noStore())
                 .body(body);
     }
