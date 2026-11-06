@@ -1,0 +1,28 @@
+{
+  "$schema": "https://aka.ms/codetour-schema",
+  "title": "[CASMS] 06. Lịch trình Hải trình, Dịch vụ Giải trí & Kiểm toán Hàng hải (Audit Trail)",
+  "description": "Walkthrough quy trình thiết lập hải trình tàu, tổ chức sự kiện giải trí trên tàu và cơ chế lưu trữ vết kiểm toán (Audit Trail) độc lập với giao dịch chính.",
+  "steps": [
+    {
+      "file": "src/main/java/com/casms/ship/service/ItineraryService.java",
+      "line": 50,
+      "description": "### 1. Thiết lập Hải trình & Lịch cập Cảng (Itinerary Management)\n\nPhương thức `create(...)`:\n- Xây dựng chuỗi ngày hành trình trên biển: Ngày chạy biển (Sea Day) hoặc ngày cập cảng (Port Call).\n- Thiết lập khung giờ cập cảng (Port Window) và kiểm tra các quy định hải phận với `CountryScopeValidator` và `VietnamGeographyRegistry`.\n- Đảm bảo lịch trình chỉ được mở bán vé (`OPEN_FOR_SALE`) khi đã hoàn tất phê duyệt an toàn hải hành."
+    },
+    {
+      "file": "src/main/java/com/casms/activity/controller/ActivityController.java",
+      "line": 34,
+      "description": "### 2. API Quản lý Hoạt động Giải trí Trên Tàu (Onboard Activities)\n\n`ActivityController` cung cấp các dịch vụ đa dạng phục vụ hành khách:\n- Danh mục show diễn nghệ thuật tại nhà hát, lớp học nấu ăn, giải đấu casino, tour tham quan dã ngoại trên bờ (Shore Excursion).\n- Kiểm tra quyền lợi gói dịch vụ đi kèm vé (Package Entitlement) thông qua `CruisePackageEntitlementService`."
+    },
+    {
+      "file": "src/main/java/com/casms/activity/service/ActivityService.java",
+      "line": 147,
+      "description": "### 3. Điều phối Hoạt động & Quản lý Sức chứa Khán phòng\n\nPhương thức `createActivity(...)` và `registerParticipant(...)`:\n- Kiểm soát số lượng chỗ ngồi có hạn của rạp hát/sân khấu (`availableSeats`).\n- Ngăn chặn việc đặt trùng khung giờ cho cùng một hành khách giữa các sự kiện khác nhau trên tàu."
+    },
+    {
+      "file": "src/main/java/com/casms/audit/AuditService.java",
+      "line": 34,
+      "description": "### 4. Dịch vụ Ghi vết Kiểm toán Độc lập (Maritime Audit Trail)\n\nĐoạn mã mẫu mực về thiết kế Transaction:\n```java\n@Async\n@Transactional(propagation = Propagation.REQUIRES_NEW)\npublic void recordAudit(UUID actorUserId, String action, String entityType, UUID entityId, String result, String detail) {\n    ...\n}\n```\n**Điểm sáng kỹ thuật cho đồ án**:\n- `@Async`: Ghi log kiểm toán ở luồng nền bất đồng bộ, không làm chậm độ trễ (latency) của API người dùng.\n- `Propagation.REQUIRES_NEW`: Mở một transaction cơ sở dữ liệu hoàn toàn tách biệt. Ngay cả khi giao dịch nghiệp vụ chính bị lỗi và Rollback, bản ghi log về hành vi và lỗi đó vẫn được Commit an toàn vào cơ sở dữ liệu, đáp ứng tiêu chuẩn thanh tra an toàn hàng hải quốc tế."
+    }
+  ]
+}
+
