@@ -119,6 +119,32 @@ class GlobalExceptionHandlerTest {
     }
 
     @Test
+    void handleDatabaseLockAndTimeout_statementTimeout_returns504GatewayTimeout() {
+        var ex = new org.springframework.dao.DataAccessResourceFailureException(
+                "PreparedStatementCallback; SQL [SELECT pg_advisory_xact_lock(...)]; ERROR: canceling statement due to statement timeout");
+
+        ResponseEntity<ApiResponse<Void>> response = handler.handleDatabaseLockAndTimeout(ex);
+
+        assertEquals(HttpStatus.GATEWAY_TIMEOUT, response.getStatusCode());
+        assertNotNull(response.getBody());
+        assertFalse(response.getBody().isSuccess());
+        assertEquals("DATABASE_TIMEOUT", response.getBody().getCode());
+        assertTrue(response.getBody().getError().contains("Database Statement Timeout"));
+    }
+
+    @Test
+    void handleDatabaseLockAndTimeout_lockConflict_returns409Conflict() {
+        var ex = new org.springframework.dao.CannotAcquireLockException("could not obtain lock on relation");
+
+        ResponseEntity<ApiResponse<Void>> response = handler.handleDatabaseLockAndTimeout(ex);
+
+        assertEquals(HttpStatus.CONFLICT, response.getStatusCode());
+        assertNotNull(response.getBody());
+        assertFalse(response.getBody().isSuccess());
+        assertEquals("LOCK_CONFLICT", response.getBody().getCode());
+    }
+
+    @Test
     void handleGeneral_returns500WithTraceId() {
         Exception ex = new RuntimeException("Unexpected db crash");
 

@@ -96,8 +96,18 @@ public class ShipModelAssetStore {
         }
         String version = "zip-" + HexFormat.of().formatHex(digest.digest());
         validateBundleKey(modelKey, version);
-        jdbc.query("SELECT pg_advisory_xact_lock(hashtextextended(?, 0))",
-                rs -> {}, "ship-model-import:" + modelKey);
+        Boolean acquired =
+                jdbc.queryForObject(
+                        "SELECT pg_try_advisory_xact_lock(hashtextextended(?, 0))",
+                        Boolean.class,
+                        "ship-model-import:" + modelKey);
+        if (Boolean.FALSE.equals(acquired)) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "Một tiến trình tải lên mô hình 3D cho tàu '"
+                            + modelKey
+                            + "' đang được xử lý. Vui lòng chờ trong giây lát hoặc thử lại sau.");
+        }
         if (!bundleExists(modelKey, version)) {
             try (var input = bundle.getInputStream()) {
                 storeZip(modelKey, version, input, true);
@@ -208,9 +218,15 @@ public class ShipModelAssetStore {
                             try (var statement =
                                     connection.prepareStatement(
                                             "SELECT"
-                                                + " pg_advisory_xact_lock(hashtextextended(?,0))")) {
+                                                + " pg_try_advisory_xact_lock(hashtextextended(?,0))")) {
                                 statement.setString(1, "ship-model-full:" + fingerprint);
-                                statement.execute();
+                                try (var rs = statement.executeQuery()) {
+                                    if (rs.next() && !rs.getBoolean(1)) {
+                                        throw new ResponseStatusException(
+                                                HttpStatus.CONFLICT,
+                                                "Một tiến trình xử lý mô hình tương tự đang diễn ra. Vui lòng thử lại sau.");
+                                    }
+                                }
                             }
                             return null;
                         });

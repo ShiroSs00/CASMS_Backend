@@ -8,8 +8,12 @@ import jakarta.validation.ConstraintViolationException;
 
 import lombok.extern.slf4j.Slf4j;
 
+import org.springframework.dao.CannotAcquireLockException;
+import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.OptimisticLockingFailureException;
+import org.springframework.dao.PessimisticLockingFailureException;
+import org.springframework.dao.QueryTimeoutException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
@@ -251,6 +255,36 @@ public class GlobalExceptionHandler {
                                                 ? root.getMessage()
                                                 : msg),
                                 "DATA_INTEGRITY_VIOLATION"));
+    }
+
+    @ExceptionHandler({
+        QueryTimeoutException.class,
+        CannotAcquireLockException.class,
+        PessimisticLockingFailureException.class,
+        DataAccessResourceFailureException.class
+    })
+    public ResponseEntity<ApiResponse<Void>> handleDatabaseLockAndTimeout(Exception ex) {
+        String msg = ex.getMessage() != null ? ex.getMessage().toLowerCase() : "";
+        log.warn("Database lock/timeout exception: {}", ex.getMessage());
+        if (msg.contains("statement timeout") || msg.contains("timeout")) {
+            return ResponseEntity.status(HttpStatus.GATEWAY_TIMEOUT)
+                    .body(
+                            ApiResponse.error(
+                                    "Thao tác xử lý dữ liệu vượt quá thời gian chờ (Database Statement Timeout). Vui lòng kiểm tra dung lượng gói tải lên hoặc thử lại.",
+                                    "DATABASE_TIMEOUT"));
+        }
+        if (msg.contains("lock") || msg.contains("deadlock")) {
+            return ResponseEntity.status(HttpStatus.CONFLICT)
+                    .body(
+                            ApiResponse.error(
+                                    "Tài nguyên đang bị khóa bởi một tiến trình khác đang xử lý. Vui lòng thử lại sau giây lát.",
+                                    "LOCK_CONFLICT"));
+        }
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .body(
+                        ApiResponse.error(
+                                "Không thể hoàn tất thao tác cơ sở dữ liệu. Vui lòng thử lại sau.",
+                                "DATABASE_RESOURCE_ERROR"));
     }
 
     @ExceptionHandler(Exception.class)

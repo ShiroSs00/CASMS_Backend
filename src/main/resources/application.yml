@@ -13,6 +13,7 @@ spring:
     password: ${DB_PASSWORD:Baothanh@890}
     driver-class-name: org.postgresql.Driver
     hikari:
+      connection-init-sql: "SET idle_in_transaction_session_timeout = '60s';"
       data-source-properties:
         stringtype: unspecified
 
