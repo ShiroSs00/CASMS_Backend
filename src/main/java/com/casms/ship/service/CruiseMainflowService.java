@@ -52,8 +52,8 @@ public class CruiseMainflowService {
                 WHERE c.cruise_id=? AND (
                     (r.snapshot IS NOT NULL AND jsonb_exists(r.snapshot,'packageEvidence'))
                     OR (r.submitted_revision IS NULL AND c.status='DRAFT' AND (
-                        c.source_version_id IS NOT NULL
-                        OR EXISTS(SELECT 1 FROM "DepartureFarePackage" f WHERE f.cruise_id=c.cruise_id)
+                        EXISTS(SELECT 1 FROM "DepartureFarePackage" f WHERE f.cruise_id=c.cruise_id)
+                        OR EXISTS(SELECT 1 FROM "CruisePlanPackageSelectionItem" s WHERE s.cruise_id=c.cruise_id)
                     ))
                 ))
                 """, Boolean.class, id));
@@ -881,6 +881,11 @@ SELECT EXISTS(SELECT 1 FROM "CruisePricingPolicy" p JOIN "Cruise" c USING(cruise
                         var view = terms.read(id);
                         if (!"APPROVED".equals(view.status()))
                             terms.review(id, "approve", new DepartureSaleTermsService.Review(view.revision(), null), actor);
+                    } else {
+                        var pricing = pricingServices.getObject();
+                        var policy = pricing.getPricingPolicy(id);
+                        if (!"APPROVED".equals(policy.getStatus().name()))
+                            pricing.review(id, "approve", new CruisePricingPolicyService.Review(policy.getRevision(), null), actor);
                     }
                 } else if (unified) {
                     saleTermsServices.getObject().recallForPlan(id, actor, request.reason());
