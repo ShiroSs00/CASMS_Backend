@@ -262,10 +262,7 @@ public class ShipService {
         return cruiseRepository
                 .findCurrentActiveCruise(shipId, Instant.now())
                 .map(this::mapToCruiseResponse)
-                .orElseThrow(
-                        () ->
-                                new ResourceNotFoundException(
-                                        "No active cruise found for ship currently"));
+                .orElse(null);
     }
 
     @Transactional(readOnly = true)

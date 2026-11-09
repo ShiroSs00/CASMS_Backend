@@ -111,6 +111,20 @@ class ShipServiceTest {
     }
 
     @Test
+    void currentCruise_returnsNullForIdleShipButRejectsUnknownShip() {
+        UUID idleShip = UUID.randomUUID();
+        UUID unknownShip = UUID.randomUUID();
+        when(shipRepository.findById(idleShip)).thenReturn(Optional.of(new Ship()));
+        when(cruiseRepository.findCurrentActiveCruise(eq(idleShip), any()))
+                .thenReturn(Optional.empty());
+        when(shipRepository.findById(unknownShip)).thenReturn(Optional.empty());
+
+        assertNull(service.getCurrentCruise(idleShip));
+        assertThrows(ResourceNotFoundException.class, () -> service.getCurrentCruise(unknownShip));
+        verify(cruiseRepository, never()).findCurrentActiveCruise(eq(unknownShip), any());
+    }
+
+    @Test
     void update_updatesNonNullFields() {
         UUID id = UUID.randomUUID();
         Ship s = new Ship();
