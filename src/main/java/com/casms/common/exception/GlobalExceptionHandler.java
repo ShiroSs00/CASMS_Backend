@@ -17,6 +17,7 @@ import org.springframework.security.core.AuthenticationException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
@@ -81,6 +82,16 @@ public class GlobalExceptionHandler {
         }
 
         return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiResponse.error(msg, code));
+    }
+
+    @ExceptionHandler(MissingServletRequestParameterException.class)
+    public ResponseEntity<ApiResponse<Void>> handleMissingParameter(
+            MissingServletRequestParameterException ex) {
+        return ResponseEntity.badRequest().body(ApiResponse.error(
+                "Thiếu thông tin bắt buộc.",
+                "MISSING_REQUIRED_PARAMETER",
+                Map.of("parameter", ex.getParameterName()),
+                null));
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
