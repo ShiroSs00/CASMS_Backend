@@ -606,24 +606,6 @@ public class CruiseScopedProgramsController {
                     HttpStatus.UNPROCESSABLE_ENTITY,
                     "ACTIVITY_OUTSIDE_CRUISE",
                     "Repair must fit the Cruise window");
-        if (Boolean.TRUE.equals(
-                jdbc.queryForObject(
-                        "SELECT EXISTS(SELECT 1 FROM \"OnboardActivity\" a JOIN \"OnboardActivity\""
-                                + " base_activity ON base_activity.onboard_activity_id=? WHERE"
-                                + " a.cruise_id=? AND"
-                                + " a.onboard_activity_id<>base_activity.onboard_activity_id AND"
-                                + " lower(a.location)=lower(base_activity.location) AND a.status IN"
-                                + " ('PLANNED','OPEN','FULL','IN_PROGRESS') AND a.start_time<? AND"
-                                + " a.end_time>?)",
-                        Boolean.class,
-                        id,
-                        cruiseId,
-                        java.sql.Timestamp.from(input.endsAt()),
-                        java.sql.Timestamp.from(input.startsAt()))))
-            throw new BusinessException(
-                    HttpStatus.CONFLICT,
-                    "ACTIVITY_TIME_REPAIR_CONFLICT",
-                    "Activity overlaps at the same location");
         plans.recordOperationalEvent(
                 cruiseId, "ACTIVITY_TIME_REPAIR_BEFORE", principal.getUserId());
         jdbc.update(

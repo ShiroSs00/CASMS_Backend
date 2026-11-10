@@ -42,6 +42,7 @@ class ItineraryServiceTest {
     @Mock private CruiseRepository cruiseRepository;
 
     @Mock private UserRepository userRepository;
+    @Mock private ItineraryProgramPolicy programPolicy;
 
     @InjectMocks private ItineraryService itineraryService;
 
@@ -62,6 +63,8 @@ class ItineraryServiceTest {
         sampleCruise = new Cruise();
         sampleCruise.setCruiseId(cruiseId);
         sampleCruise.setCruiseCode("CR-2026-001");
+        sampleCruise.setDepartureDatetime(java.time.Instant.parse("2026-11-01T01:00:00Z"));
+        sampleCruise.setReturnDatetime(java.time.Instant.parse("2026-11-08T01:00:00Z"));
 
         creatorUser = new User();
         creatorUser.setUserId(creatorUserId);
@@ -126,7 +129,7 @@ class ItineraryServiceTest {
         when(itineraryRepository.existsByCruiseCruiseId(cruiseId)).thenReturn(false);
         when(userRepository.findById(creatorUserId)).thenReturn(Optional.of(creatorUser));
 
-        createRequest.setEndDate(createRequest.getStartDate()); // same day or before
+        createRequest.setEndDate(createRequest.getStartDate().minusDays(1)); // earlier than departure
 
         BusinessException ex =
                 assertThrows(
@@ -163,6 +166,7 @@ class ItineraryServiceTest {
         UUID itineraryId = UUID.randomUUID();
         Itinerary itinerary = new Itinerary();
         itinerary.setItineraryId(itineraryId);
+        itinerary.setCruise(sampleCruise);
         itinerary.setStatus(ItineraryStatus.APPROVED);
 
         when(itineraryRepository.findById(itineraryId)).thenReturn(Optional.of(itinerary));
@@ -182,6 +186,7 @@ class ItineraryServiceTest {
         UUID itineraryId = UUID.randomUUID();
         Itinerary itinerary = new Itinerary();
         itinerary.setItineraryId(itineraryId);
+        itinerary.setCruise(sampleCruise);
         itinerary.setStatus(ItineraryStatus.DRAFT);
         itinerary.setItineraryName("Old Name");
         itinerary.setStartDate(LocalDate.of(2026, 11, 1));
@@ -207,6 +212,7 @@ class ItineraryServiceTest {
         UUID itineraryId = UUID.randomUUID();
         Itinerary itinerary = new Itinerary();
         itinerary.setItineraryId(itineraryId);
+        itinerary.setCruise(sampleCruise);
         itinerary.setStatus(ItineraryStatus.DRAFT);
 
         when(itineraryRepository.findById(itineraryId)).thenReturn(Optional.of(itinerary));
@@ -223,6 +229,7 @@ class ItineraryServiceTest {
         UUID itineraryId = UUID.randomUUID();
         Itinerary itinerary = new Itinerary();
         itinerary.setItineraryId(itineraryId);
+        itinerary.setCruise(sampleCruise);
         itinerary.setStatus(ItineraryStatus.PENDING_APPROVAL);
 
         when(itineraryRepository.findById(itineraryId)).thenReturn(Optional.of(itinerary));
@@ -238,10 +245,28 @@ class ItineraryServiceTest {
     }
 
     @Test
+    void incompleteProgramsCannotBeApprovedOrPersistApproval() {
+        UUID itineraryId = UUID.randomUUID();
+        Itinerary itinerary = new Itinerary();
+        itinerary.setItineraryId(itineraryId);
+        itinerary.setCruise(sampleCruise);
+        itinerary.setStatus(ItineraryStatus.PENDING_APPROVAL);
+        when(itineraryRepository.findById(itineraryId)).thenReturn(Optional.of(itinerary));
+        when(userRepository.findById(approverUserId)).thenReturn(Optional.of(approverUser));
+        doThrow(new BusinessException("ITINERARY_PROGRAMS_INCOMPLETE", "Missing activity details"))
+                .when(programPolicy).requireComplete(cruiseId);
+        assertEquals("ITINERARY_PROGRAMS_INCOMPLETE", assertThrows(BusinessException.class,
+                () -> itineraryService.approve(itineraryId, approverUserId)).getCode());
+        assertEquals(ItineraryStatus.PENDING_APPROVAL, itinerary.getStatus());
+        verify(itineraryRepository, never()).save(any());
+    }
+
+    @Test
     void reject_nonPendingStatus_throwsException() {
         UUID itineraryId = UUID.randomUUID();
         Itinerary itinerary = new Itinerary();
         itinerary.setItineraryId(itineraryId);
+        itinerary.setCruise(sampleCruise);
         itinerary.setStatus(ItineraryStatus.DRAFT);
 
         when(itineraryRepository.findById(itineraryId)).thenReturn(Optional.of(itinerary));
@@ -260,6 +285,7 @@ class ItineraryServiceTest {
         UUID itineraryId = UUID.randomUUID();
         Itinerary itinerary = new Itinerary();
         itinerary.setItineraryId(itineraryId);
+        itinerary.setCruise(sampleCruise);
         itinerary.setStatus(ItineraryStatus.PENDING_APPROVAL);
 
         when(itineraryRepository.findById(itineraryId)).thenReturn(Optional.of(itinerary));
@@ -280,6 +306,7 @@ class ItineraryServiceTest {
         UUID itineraryId = UUID.randomUUID();
         Itinerary itinerary = new Itinerary();
         itinerary.setItineraryId(itineraryId);
+        itinerary.setCruise(sampleCruise);
         itinerary.setStatus(ItineraryStatus.PENDING_APPROVAL);
         itinerary.setCreatedByUser(approverUser); // Người duyệt cũng chính là người tạo!
 
@@ -297,6 +324,7 @@ class ItineraryServiceTest {
         UUID itineraryId = UUID.randomUUID();
         Itinerary itinerary = new Itinerary();
         itinerary.setItineraryId(itineraryId);
+        itinerary.setCruise(sampleCruise);
         itinerary.setStatus(ItineraryStatus.REJECTED);
 
         when(itineraryRepository.findById(itineraryId)).thenReturn(Optional.of(itinerary));
@@ -312,6 +340,7 @@ class ItineraryServiceTest {
         UUID itineraryId = UUID.randomUUID();
         Itinerary itinerary = new Itinerary();
         itinerary.setItineraryId(itineraryId);
+        itinerary.setCruise(sampleCruise);
         itinerary.setStartDate(LocalDate.of(2026, 11, 1));
         itinerary.setEndDate(LocalDate.of(2026, 11, 8));
         itinerary.setDays(List.of());
@@ -330,7 +359,9 @@ class ItineraryServiceTest {
         UUID itineraryId = UUID.randomUUID();
         Itinerary itinerary = new Itinerary();
         itinerary.setItineraryId(itineraryId);
+        itinerary.setCruise(sampleCruise);
         itinerary.setStartDate(LocalDate.of(2026, 11, 1));
+        sampleCruise.setReturnDatetime(java.time.Instant.parse("2026-11-03T01:00:00Z"));
         itinerary.setEndDate(LocalDate.of(2026, 11, 3)); // Khoảng cách 3 ngày (1, 2, 3)
 
         ItineraryDay day1 = new ItineraryDay();

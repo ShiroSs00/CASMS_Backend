@@ -42,6 +42,7 @@ class OperationalProgramUnknownInputTest {
         cruise.setCruiseId(UUID.randomUUID());
         cruise.setCruiseCode("QA-UNKNOWN");
         cruise.setDepartureDatetime(Instant.parse("2028-03-01T01:00:00Z"));
+        cruise.setReturnDatetime(Instant.parse("2028-03-04T01:00:00Z"));
         var entry = new TripPlanEntry();
         entry.setEntryId(UUID.randomUUID());
         entry.setClientKey("draft-activity");
@@ -97,6 +98,7 @@ class OperationalProgramUnknownInputTest {
         var cruise = new Cruise();
         cruise.setCruiseId(UUID.randomUUID());
         cruise.setDepartureDatetime(Instant.parse("2028-03-01T01:00:00Z"));
+        cruise.setReturnDatetime(Instant.parse("2028-03-04T01:00:00Z"));
         var entry = new TripPlanEntry();
         entry.setEntryId(UUID.randomUUID());
         entry.setKind(TripPlanEntryKind.ONBOARD_ACTIVITY);
@@ -121,6 +123,7 @@ class OperationalProgramUnknownInputTest {
         var cruise = new Cruise();
         cruise.setCruiseId(UUID.randomUUID());
         cruise.setDepartureDatetime(Instant.parse("2028-03-01T01:00:00Z"));
+        cruise.setReturnDatetime(Instant.parse("2028-03-04T01:00:00Z"));
         var source = new ArrayList<TripPlanEntry>();
         for (int day = 1; day <= 2; day++) {
             var entry = new TripPlanEntry();
@@ -186,6 +189,7 @@ class OperationalProgramUnknownInputTest {
         var cruise = new Cruise();
         cruise.setCruiseId(UUID.randomUUID());
         cruise.setDepartureDatetime(Instant.parse("2028-03-01T01:00:00Z"));
+        cruise.setReturnDatetime(Instant.parse("2028-03-04T01:00:00Z"));
         var port = new com.casms.ship.entity.Port();
         port.setPortId(UUID.randomUUID());
         port.setTimeZoneId("Asia/Singapore");
@@ -198,6 +202,7 @@ class OperationalProgramUnknownInputTest {
         stop.setPort(port);
         stop.setStopOrder(1);
         stop.setNotes("sourceStopId:" + sourceStop.getStopId());
+        stop.setSourceStopId(sourceStop.getStopId());
         stop.setPlannedArrival(Instant.parse("2028-03-01T14:00:00Z"));
         stop.setPlannedDeparture(Instant.parse("2028-03-02T04:00:00Z"));
         var itinerary = new com.casms.ship.entity.Itinerary();

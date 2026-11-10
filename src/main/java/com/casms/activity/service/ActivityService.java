@@ -341,7 +341,6 @@ public class ActivityService {
         validateActivitySchedule(a);
         validateActivityPricing(a);
         validateUniqueActivityCode(a.getActivityCode(), exclude);
-        validateLocationConflicts(a, exclude);
     }
 
     private static void validateActivityBasicInfo(OnboardActivity a) {
@@ -386,43 +385,11 @@ public class ActivityService {
                 });
     }
 
-    private void validateLocationConflicts(OnboardActivity a, UUID exclude) {
-        if (a.getCruise() == null || a.getLocation() == null || a.getLocation().isBlank()) {
-            return;
-        }
-        long conflicts = activities.countScheduleConflicts(
-                a.getCruise().getCruiseId(),
-                a.getLocation(),
-                a.getStartTime(),
-                a.getEndTime(),
-                List.of(
-                        OnboardActivityStatus.PLANNED,
-                        OnboardActivityStatus.OPEN,
-                        OnboardActivityStatus.FULL,
-                        OnboardActivityStatus.IN_PROGRESS),
-                exclude);
-        if (conflicts > 0) {
-            throw new IllegalArgumentException("Activity schedule conflicts at the same location on this cruise");
-        }
-    }
-
+    /** Activity spaces are shared venues: simultaneous activities are permitted. */
     @Transactional(readOnly = true)
     public long scheduleConflicts(UUID id) {
-        OnboardActivity a = findActivityOrThrow(id);
-        if (a.getCruise() == null || a.getLocation() == null || a.getLocation().isBlank()) {
-            return 0;
-        }
-        return activities.countScheduleConflicts(
-                a.getCruise().getCruiseId(),
-                a.getLocation(),
-                a.getStartTime(),
-                a.getEndTime(),
-                List.of(
-                        OnboardActivityStatus.PLANNED,
-                        OnboardActivityStatus.OPEN,
-                        OnboardActivityStatus.FULL,
-                        OnboardActivityStatus.IN_PROGRESS),
-                id);
+        findActivityOrThrow(id);
+        return 0;
     }
 
     @Transactional(readOnly = true)

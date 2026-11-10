@@ -205,7 +205,8 @@ def main():
         current = {(r["verb"], r["path"], r["controller"], r["handler"]) for r in routes}
         missing = current - recorded
         stale = recorded - current
-        broken = [r["diagram"] for r in routes if not (OUT / r["module"] / (slug(r["verb"].lower() + "-" + r["path"]) + ".md")).exists()]
+        broken = [f"{r['module']}/{slug(r['verb'].lower() + '-' + r['path'])}.md" for r in routes
+                  if not (OUT / r["module"] / (slug(r["verb"].lower() + "-" + r["path"]) + ".md")).exists()]
         syntax_errors = []
         for diagram in OUT.rglob("*.md"):
             markdown = diagram.read_text(encoding="utf-8")
