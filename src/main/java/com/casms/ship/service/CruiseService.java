@@ -325,6 +325,7 @@ public class CruiseService {
                         ? sourceVersion.getTrip().getPlannedScope()
                         : request.getPlannedScope());
         cruise.setStatus(CruiseStatus.DRAFT);
+        applyDefaultBookingAndGuidanceWindows(cruise, Instant.now());
         if (sourceVersion != null) {
             cruise.setSourceVersion(sourceVersion);
             cruise.setSourceTrip(sourceVersion.getTrip());
@@ -343,6 +344,21 @@ public class CruiseService {
         }
         cruisePreparationService.initializeSections(cruise);
         return mapToResponse(cruise);
+    }
+
+    public static void applyDefaultBookingAndGuidanceWindows(Cruise cruise, Instant referenceNow) {
+        if (cruise == null || cruise.getDepartureDatetime() == null) {
+            return;
+        }
+        CruiseMainflowService.Windows defaults =
+                CruiseMainflowService.defaultWindowsForDeparture(
+                        cruise.getRevision() != null ? cruise.getRevision() : 0L,
+                        cruise.getDepartureDatetime(),
+                        referenceNow);
+        cruise.setBookingOpensAt(defaults.bookingOpensAt());
+        cruise.setBookingClosesAt(defaults.bookingClosesAt());
+        cruise.setGuidanceOpensAt(defaults.guidanceOpensAt());
+        cruise.setGuidanceClosesAt(defaults.guidanceClosesAt());
     }
 
     @Transactional(readOnly = true)
@@ -536,7 +552,30 @@ public class CruiseService {
                     "Departure and return datetimes are required; return must be after departure");
         }
 
-        if (cruise.getShip() != null
+        if (request.getShipId() != null) {
+            Ship targetShip =
+                    shipRepository
+                            .findById(request.getShipId())
+                            .orElseThrow(
+                                    () ->
+                                            new ResourceNotFoundException(
+                                                    "Ship", request.getShipId()));
+            if (targetShip.getStatus() != ShipStatus.READY
+                    && targetShip.getStatus() != ShipStatus.IN_SERVICE) {
+                throw new BusinessException(
+                        "SHIP_NOT_OPERATIONAL", "Selected ship is not in an operational status");
+            }
+            if (cruiseRepository.existsOverlappingCruisesExcluding(
+                    targetShip.getShipId(),
+                    cruise.getCruiseId(),
+                    effectiveDeparture,
+                    effectiveReturn)) {
+                throw new BusinessException(
+                        "SHIP_SCHEDULE_CONFLICT",
+                        "Selected ship already has an overlapping active cruise");
+            }
+            cruise.setShip(targetShip);
+        } else if (cruise.getShip() != null
                 && (request.getDepartureDatetime() != null
                         || request.getReturnDatetime() != null)) {
             if (cruiseRepository.existsOverlappingCruisesExcluding(
@@ -567,6 +606,13 @@ public class CruiseService {
         // BE-R05b: Cập nhật ngày của Itinerary/CruiseStop/OnboardActivity/ShoreExcursion đồng bộ
         // khi dời ngày
         shiftScheduleAndPrograms(cruise, oldDep, effectiveDeparture);
+        if (!Objects.equals(oldDep, effectiveDeparture)
+                || cruise.getBookingOpensAt() == null
+                || cruise.getBookingClosesAt() == null
+                || cruise.getGuidanceOpensAt() == null
+                || cruise.getGuidanceClosesAt() == null) {
+            applyDefaultBookingAndGuidanceWindows(cruise, Instant.now());
+        }
 
         Trip sourceTrip = cruise.getSourceTrip();
 

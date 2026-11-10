@@ -306,12 +306,8 @@ public class CruisePricingPolicyService {
         cruiseRepository
                 .findByIdForUpdate(cruiseId)
                 .orElseThrow(() -> new ResourceNotFoundException("Cruise", cruiseId));
-        var p =
-                pricingPolicyRepository
-                        .findByCruise_CruiseId(cruiseId)
-                        .orElseThrow(
-                                () -> new ResourceNotFoundException("Pricing policy", cruiseId));
-        if (p.getStatus() != PricingPolicyStatus.PENDING_APPROVAL) return;
+        var p = pricingPolicyRepository.findByCruise_CruiseId(cruiseId).orElse(null);
+        if (p == null || p.getStatus() != PricingPolicyStatus.PENDING_APPROVAL) return;
         p.setStatus(PricingPolicyStatus.DRAFT);
         p.setSubmittedBy(null);
         p.setSubmittedAt(null);

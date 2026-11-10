@@ -2499,33 +2499,9 @@ public class TripScheduleVersionService {
                 }
             }
 
-            // BE-13: Quy tắc điểm tập trung (meetingPoint):
-            // - Khung phục vụ (SERVING_WINDOW): KHÔNG bắt buộc meetingPoint.
-            // - Tham quan trên bờ (SHORE_EXCURSION): BẮT BUỘC meetingPoint.
-            // - Hoạt động trên tàu (ONBOARD_ACTIVITY): Cần meetingPoint hoặc locationText.
-            if (entry.getKind() == TripPlanEntryKind.SHORE_EXCURSION) {
-                if (entry.getMeetingPoint() == null || entry.getMeetingPoint().trim().isEmpty()) {
-                    violations.add(
-                            PlanViolation.builder()
-                                    .code("MEETING_POINT_REQUIRED")
-                                    .severity("ERROR")
-                                    .entityType("ENTRY")
-                                    .clientKey(entry.getClientKey())
-                                    .dayNumber(entry.getStartDayNumber())
-                                    .field("meetingPoint")
-                                    .fieldPath(
-                                            "entries[clientKey="
-                                                    + entry.getClientKey()
-                                                    + "].meetingPoint")
-                                    .actionHint("SET_MEETING_POINT")
-                                    .message(
-                                            "Hoạt động tham quan trên bờ '"
-                                                    + entry.getTitle()
-                                                    + "' bắt buộc phải có điểm tập trung"
-                                                    + " (meetingPoint).")
-                                    .build());
-                }
-            } else if (entry.getKind() == TripPlanEntryKind.ONBOARD_ACTIVITY) {
+            // Shore tour meeting details are resolved during departure preparation.
+            // Keep validation for legacy onboard activities already stored in templates.
+            if (entry.getKind() == TripPlanEntryKind.ONBOARD_ACTIVITY) {
                 boolean hasMeeting =
                         entry.getMeetingPoint() != null
                                 && !entry.getMeetingPoint().trim().isEmpty();

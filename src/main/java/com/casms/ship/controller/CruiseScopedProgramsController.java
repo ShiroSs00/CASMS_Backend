@@ -240,7 +240,7 @@ public class CruiseScopedProgramsController {
             @NotBlank String name,
             String description,
             @NotNull TourPackageType type,
-            @NotNull @DecimalMin("0") BigDecimal price,
+            @DecimalMin("0") BigDecimal price,
             @NotBlank @Pattern(regexp = "[A-Z]{3}") String currency) {}
 
     public record Component(@NotNull UUID referenceId, @NotNull BenefitType benefitType) {}
@@ -269,6 +269,11 @@ public class CruiseScopedProgramsController {
     }
 
     private void price(BigDecimal amount, String currency) {
+        if ((amount != null && amount.signum() < 0) || (currency != null && !currency.isBlank() && !currency.matches("[A-Z]{3}")))
+            throw new BusinessException(HttpStatus.UNPROCESSABLE_ENTITY, "PROGRAM_PRICE_REQUIRED", "Explicit nonnegative price and currency required");
+    }
+    @SuppressWarnings("unused")
+    private void legacyPriceCheck(BigDecimal amount, String currency) {
         if (amount == null
                 || amount.signum() < 0
                 || currency == null
@@ -421,8 +426,8 @@ public class CruiseScopedProgramsController {
 
     public record ExcursionCommercialInput(
             @NotNull @Min(1) Integer maximumCapacity,
-            @NotNull @DecimalMin("0") BigDecimal price,
-            @NotBlank @Pattern(regexp = "[A-Z]{3}") String currencyCode) {}
+            @DecimalMin("0") BigDecimal price,
+            String currencyCode) {}
 
     @GetMapping("/excursions/{id}")
     @PreAuthorize(
@@ -480,7 +485,7 @@ public class CruiseScopedProgramsController {
                                 cruiseId)));
         var result =
                 excursions.updateCommercial(
-                        id, input.maximumCapacity(), input.price(), input.currencyCode());
+                        id, input.maximumCapacity(), input.price() != null ? input.price() : (excursions.detail(id).price() != null ? excursions.detail(id).price() : BigDecimal.ZERO), input.currencyCode() != null && !input.currencyCode().isBlank() ? input.currencyCode() : (excursions.detail(id).currencyCode() != null && !excursions.detail(id).currencyCode().isBlank() ? excursions.detail(id).currencyCode() : "USD"));
         finish(cruiseId);
         return ApiResponse.success(result);
     }
@@ -667,7 +672,7 @@ public class CruiseScopedProgramsController {
         ActivityView result =
                 ActivityView.of(
                         activities.updateActivity(
-                                id, activity(input), input.deckId(), input.cabinId()));
+                                id, activityWithExistingPrice(input, occurrence), input.deckId(), input.cabinId()));
         finish(cruiseId);
         return ApiResponse.success(result);
     }
@@ -683,6 +688,13 @@ public class CruiseScopedProgramsController {
         activities.deleteActivity(id);
         finish(cruiseId);
         return ApiResponse.success(null);
+    }
+
+    private OnboardActivity activityWithExistingPrice(ActivityRequest r, OnboardActivity existing) {
+        OnboardActivity a = activity(r);
+        if (a.getPrice() == null) a.setPrice(existing.getPrice() != null ? existing.getPrice() : BigDecimal.ZERO);
+        if (a.getCurrencyCode() == null || a.getCurrencyCode().isBlank()) a.setCurrencyCode(existing.getCurrencyCode() != null && !existing.getCurrencyCode().isBlank() ? existing.getCurrencyCode() : "USD");
+        return a;
     }
 
     private OnboardActivity activity(ActivityRequest r) {
