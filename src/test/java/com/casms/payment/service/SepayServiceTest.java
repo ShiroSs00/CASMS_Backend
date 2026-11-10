@@ -552,6 +552,7 @@ class SepayServiceTest {
         assertEquals(PaymentStatus.Confirmed, resp.getStatus());
         assertEquals(new BigDecimal("300.0000"), resp.getConfirmedAmount());
         assertEquals(new BigDecimal("700.0000"), resp.getRemainingBookingBalance());
+        assertFalse(resp.isBookingConfirmed(), "A settled payment does not confirm an unsigned contract booking");
     }
 
     @Test

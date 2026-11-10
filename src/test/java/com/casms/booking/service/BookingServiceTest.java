@@ -91,6 +91,8 @@ class BookingServiceTest {
     @Mock private PaymentRepository paymentRepository;
     @Mock private RefundRepository refundRepository;
     @Mock private NotificationRepository notificationRepository;
+    @Mock private com.casms.notification.service.BookingEmailService bookingEmailService;
+    @Mock private com.casms.trip.repository.IdempotencyRecordRepository idempotencyRecordRepository;
     @Mock private BusinessCodeGenerator businessCodeGenerator;
     @Mock private com.casms.ship.repository.CruiseTourPackageRepository cruiseTourPackageRepository;
     @Mock private com.casms.ship.repository.ItineraryRepository itineraryRepository;
@@ -100,6 +102,14 @@ class BookingServiceTest {
     @Spy private ObjectMapper objectMapper = new ObjectMapper();
 
     @InjectMocks private BookingService bookingService;
+
+    private User passengerAccount() {
+        User user = new User();
+        user.setUserId(UUID.randomUUID());
+        user.setRoles(EnumSet.of(com.casms.identity.enums.Role.PASSENGER));
+        user.setStatus(com.casms.identity.enums.UserStatus.ACTIVE);
+        return user;
+    }
 
     private Ship ship;
     private Cruise cruise;
@@ -155,10 +165,11 @@ class BookingServiceTest {
         verify(bookingRepository, never()).findByBookingReference(any());
     }
 
-    @Test
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {true, false})
     @DisplayName("Đặt tour thành công cho khách vãng lai và tự động cấp tài khoản theo email")
-    void createBooking_guestSuccess() {
-        when(businessCodeGenerator.next("BK")).thenReturn("BK-0001");
+    void createBooking_guestSuccess(boolean sameIdentityOnNextTrip) {
+        when(businessCodeGenerator.next("BK")).thenReturn("BK-0001", "BK-0002");
         BookingCreateRequest request = new BookingCreateRequest();
         request.setCruiseId(cruiseId);
         request.setPaymentPlan(PaymentPlan.DEPOSIT);
@@ -201,7 +212,7 @@ class BookingServiceTest {
         request.setQuoteId(quoteId);
         request.setQuoteGuestToken("guest-token-123");
 
-        when(userRepository.findByEmail("nguyenvana@example.com")).thenReturn(Optional.empty());
+        when(userRepository.findByNormalizedEmail("nguyenvana@example.com")).thenReturn(Optional.empty());
         when(passwordEncoder.encode(any())).thenReturn("hashed_pass");
         User savedUser = new User();
         savedUser.setUserId(UUID.randomUUID());
@@ -239,18 +250,20 @@ class BookingServiceTest {
                 .thenAnswer(
                         i -> {
                             Booking b = i.getArgument(0);
-                            b.setBookingId(UUID.randomUUID());
+                            if (b.getBookingId() == null) b.setBookingId(UUID.randomUUID());
                             return b;
                         });
 
-        Passenger passenger = new Passenger();
-        passenger.setPassengerId(UUID.randomUUID());
-        when(passengerRepository.save(any(Passenger.class))).thenReturn(passenger);
-
-        BookingPassenger bp = new BookingPassenger();
-        bp.setBookingPassengerId(UUID.randomUUID());
-        bp.setPassenger(passenger);
-        when(bookingPassengerRepository.save(any(BookingPassenger.class))).thenReturn(bp);
+        when(passengerRepository.save(any(Passenger.class))).thenAnswer(invocation -> {
+            Passenger saved = invocation.getArgument(0);
+            if (saved.getPassengerId() == null) saved.setPassengerId(UUID.randomUUID());
+            return saved;
+        });
+        when(bookingPassengerRepository.save(any(BookingPassenger.class))).thenAnswer(invocation -> {
+            BookingPassenger saved = invocation.getArgument(0);
+            saved.setBookingPassengerId(UUID.randomUUID());
+            return saved;
+        });
 
         BookingDetailResponse response = bookingService.createBooking(request, null);
 
@@ -259,6 +272,35 @@ class BookingServiceTest {
         assertNotNull(response.getBookingReference());
         verify(notificationRepository).save(any());
         verify(bookingContractRepository).save(any());
+
+        var profiles = org.mockito.ArgumentCaptor.forClass(Passenger.class);
+        verify(passengerRepository).save(profiles.capture());
+        Passenger firstProfile = profiles.getValue();
+        savedUser.setRoles(EnumSet.of(com.casms.identity.enums.Role.PASSENGER));
+        savedUser.setStatus(com.casms.identity.enums.UserStatus.ACTIVE);
+        when(userRepository.findByNormalizedEmail("nguyenvana@example.com")).thenReturn(Optional.of(savedUser));
+        when(passengerRepository.findByUser_UserId(savedUser.getUserId())).thenReturn(Optional.of(firstProfile));
+        BookingQuote nextQuote = new BookingQuote();
+        org.springframework.beans.BeanUtils.copyProperties(quote, nextQuote);
+        nextQuote.setQuoteId(UUID.randomUUID()); nextQuote.setStatus("ACTIVE");
+        when(bookingQuoteRepository.findById(nextQuote.getQuoteId())).thenReturn(Optional.of(nextQuote));
+        request.setQuoteId(nextQuote.getQuoteId());
+        if (sameIdentityOnNextTrip) {
+            BookingDetailResponse second = bookingService.createBooking(request, null);
+            assertNotEquals(response.getBookingId(), second.getBookingId());
+            var memberships = org.mockito.ArgumentCaptor.forClass(BookingPassenger.class);
+            verify(bookingPassengerRepository, times(2)).save(memberships.capture());
+            assertSame(firstProfile, memberships.getAllValues().get(1).getPassenger());
+            assertNotEquals(memberships.getAllValues().get(0).getBookingPassengerId(),
+                    memberships.getAllValues().get(1).getBookingPassengerId());
+            assertSame(firstProfile.getUser(), savedUser);
+        } else {
+            p.setFullName("Another Person");
+            assertEquals("PASSENGER_IDENTITY_MISMATCH", assertThrows(BusinessException.class,
+                    () -> bookingService.createBooking(request, null)).getCode());
+            assertEquals("Nguyen Van A", firstProfile.getFullName());
+        }
+        verify(bookingEmailService, times(1)).markProvisioned(savedUser);
     }
 
     @Test
@@ -330,7 +372,7 @@ class BookingServiceTest {
 
         request.setPassengers(List.of(p1, p2, p3)); // 3 passengers, but cabin capacity is only 2
 
-        when(userRepository.findByEmail("a@example.com")).thenReturn(Optional.of(new User()));
+        when(userRepository.findByNormalizedEmail("a@example.com")).thenReturn(Optional.of(passengerAccount()));
         when(cruiseRepository.findByIdForUpdate(cruiseId)).thenReturn(Optional.of(cruise));
         Itinerary itinerary = new Itinerary();
         itinerary.setStatus(ItineraryStatus.OPEN_FOR_SALE);
@@ -359,7 +401,7 @@ class BookingServiceTest {
         p.setCabinId(cabinId);
         request.setPassengers(List.of(p));
 
-        when(userRepository.findByEmail("a@example.com")).thenReturn(Optional.of(new User()));
+        when(userRepository.findByNormalizedEmail("a@example.com")).thenReturn(Optional.of(passengerAccount()));
         when(cruiseRepository.findByIdForUpdate(cruiseId)).thenReturn(Optional.of(cruise));
         Itinerary itinerary = new Itinerary();
         itinerary.setStatus(ItineraryStatus.APPROVED);
@@ -382,7 +424,7 @@ class BookingServiceTest {
         p.setCabinId(cabinId);
         request.setPassengers(List.of(p));
 
-        when(userRepository.findByEmail("a@example.com")).thenReturn(Optional.of(new User()));
+        when(userRepository.findByNormalizedEmail("a@example.com")).thenReturn(Optional.of(passengerAccount()));
         when(cruiseRepository.findByIdForUpdate(cruiseId)).thenReturn(Optional.of(cruise));
         Itinerary itinerary = new Itinerary();
         itinerary.setStatus(ItineraryStatus.SUSPENDED);
@@ -441,6 +483,7 @@ class BookingServiceTest {
 
         Booking booking = new Booking();
         booking.setBookingId(bookingId);
+        booking.setAgreedFareAmount(new BigDecimal("100"));
         booking.setBookedByUser(bookedUser);
         booking.setBookingStatus(BookingStatus.Draft);
         booking.setCruise(cruise);

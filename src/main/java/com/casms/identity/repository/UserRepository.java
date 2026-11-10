@@ -16,6 +16,9 @@ public interface UserRepository extends JpaRepository<User, UUID> {
 
     Optional<User> findByEmail(String email);
 
+    @org.springframework.data.jpa.repository.Query("select u from User u where lower(trim(u.email)) = :email")
+    Optional<User> findByNormalizedEmail(@org.springframework.data.repository.query.Param("email") String email);
+
     boolean existsByUsername(String username);
 
     boolean existsByEmail(String email);

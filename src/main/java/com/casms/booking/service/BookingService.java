@@ -134,6 +134,7 @@ public class BookingService {
     private final BookingQuoteRepository bookingQuoteRepository;
     private final IdempotencyRecordRepository idempotencyRecordRepository;
     private final ObjectMapper objectMapper;
+    private final com.casms.notification.service.BookingEmailService bookingEmailService;
 
     /** Tra cứu danh sách các phòng còn trống trên tàu của chuyến đi để khách hàng tự chọn. */
     private final com.casms.ship.service.CruiseMainflowService mainflow;
@@ -407,7 +408,7 @@ public class BookingService {
 
         // Validate primary passenger contact information for guest booking
         PassengerBookingItemRequest primaryPassenger = request.getPassengers().get(0);
-        if (principal == null
+        if ((principal == null || principal.isStaff() || principal.isAdmin())
                 && (primaryPassenger.getEmail() == null || primaryPassenger.getEmail().isBlank())) {
             throw new BusinessException(
                     "PRIMARY_EMAIL_REQUIRED",
@@ -445,8 +446,17 @@ public class BookingService {
         }
 
         User bookedByUser;
-        if (principal != null && principal.getUserId() != null) {
+        if (principal != null && principal.getUserId() != null && !principal.isStaff() && !principal.isAdmin()) {
             bookedByUser = getUser(principal.getUserId());
+            if (!bookedByUser.hasRole(Role.PASSENGER)) {
+                throw new BusinessException(HttpStatus.FORBIDDEN, "PASSENGER_ACCOUNT_REQUIRED",
+                        "Booking requires a passenger account or authorized booking staff");
+            }
+            if (primaryPassenger.getEmail() != null && !primaryPassenger.getEmail().isBlank()
+                    && !primaryPassenger.getEmail().trim().equalsIgnoreCase(bookedByUser.getEmail())) {
+                throw new BusinessException(HttpStatus.CONFLICT, "PASSENGER_IDENTITY_MISMATCH",
+                        "Primary passenger contact must match the authenticated passenger account");
+            }
         } else {
             // Guest booking: Hành khách đặt tour khi chưa đăng nhập
             bookedByUser = resolveOrCreateGuestUser(primaryPassenger);
@@ -937,21 +947,32 @@ public class BookingService {
             } else {
                 passenger = new Passenger();
             }
-            passenger.setFullName(pReq.getFullName().trim());
-            passenger.setDateOfBirth(pReq.getDateOfBirth());
-            passenger.setNationality(
-                    pReq.getNationality() != null
-                            ? pReq.getNationality().trim().toUpperCase()
-                            : null);
-            passenger.setDocumentType(pReq.getDocumentType());
-            passenger.setDocumentNumberProtected(
-                    pReq.getDocumentNumber() != null
-                            ? pReq.getDocumentNumber().trim().toUpperCase()
-                            : null);
-            passenger.setEmail(
-                    pReq.getEmail() != null ? pReq.getEmail().trim().toLowerCase() : null);
-            passenger.setPhoneNumber(
-                    pReq.getPhoneNumber() != null ? pReq.getPhoneNumber().trim() : null);
+            if (passenger.getPassengerId() != null) {
+                if (!Objects.equals(passenger.getFullName(), pReq.getFullName().trim())
+                        || !Objects.equals(passenger.getDateOfBirth(), pReq.getDateOfBirth())
+                        || !Objects.equals(passenger.getDocumentType(), pReq.getDocumentType())
+                        || !Objects.equals(passenger.getDocumentNumberProtected(),
+                                pReq.getDocumentNumber() == null ? null : pReq.getDocumentNumber().trim().toUpperCase(Locale.ROOT))) {
+                    throw new BusinessException(HttpStatus.CONFLICT, "PASSENGER_IDENTITY_MISMATCH",
+                            "Existing passenger identity must be verified and updated separately");
+                }
+            } else {
+                passenger.setFullName(pReq.getFullName().trim());
+                passenger.setDateOfBirth(pReq.getDateOfBirth());
+                passenger.setNationality(
+                        pReq.getNationality() != null
+                                ? pReq.getNationality().trim().toUpperCase()
+                                : null);
+                passenger.setDocumentType(pReq.getDocumentType());
+                passenger.setDocumentNumberProtected(
+                        pReq.getDocumentNumber() != null
+                                ? pReq.getDocumentNumber().trim().toUpperCase()
+                                : null);
+                passenger.setEmail(
+                        pReq.getEmail() != null ? pReq.getEmail().trim().toLowerCase() : null);
+                passenger.setPhoneNumber(
+                        pReq.getPhoneNumber() != null ? pReq.getPhoneNumber().trim() : null);
+            }
             passenger = passengerRepository.save(passenger);
 
             // Lưu BookingPassenger
@@ -1038,6 +1059,9 @@ public class BookingService {
     @Transactional(readOnly = true)
     public Page<BookingSummaryResponse> list(
             UUID cruiseId, BookingStatus status, Pageable pageable, CasmsPrincipal principal) {
+        if (principal == null || principal.getUserId() == null) {
+            throw new BusinessException(HttpStatus.UNAUTHORIZED, "AUTH_REQUIRED", "Authentication required");
+        }
         boolean isStaffOrAgent =
                 principal != null
                         && (principal.isAdmin()
@@ -1122,8 +1146,18 @@ public class BookingService {
                         "PASSENGER_MISMATCH",
                         "The signer must be an active passenger in this booking");
             }
-        } else if (!passengers.isEmpty()) {
-            signerId = passengers.get(0).getBookingPassengerId();
+        } else {
+            signerId = booking.getRepresentativeBookingPassengerId();
+        }
+        final UUID effectiveSignerId = signerId;
+        if (passengers.stream().noneMatch(bp -> Objects.equals(bp.getBookingPassengerId(), effectiveSignerId)
+                && bp.getParticipationStatus() == BookingPassengerParticipationStatus.Active)) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "PASSENGER_MISMATCH",
+                    "The signer must be an active passenger in this booking");
+        }
+        if (request.getAcceptedAt() != null && request.getAcceptedAt().isAfter(Instant.now())) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "CONTRACT_SIGNED_AT_INVALID",
+                    "Physical contract signing cannot be in the future");
         }
 
         contract.setStatus(BookingContractStatus.Accepted);
@@ -1341,6 +1375,7 @@ public class BookingService {
         booking = bookingRepository.save(booking);
 
         log.info("Confirmed booking reference: {}", booking.getBookingReference());
+        bookingEmailService.enqueueConfirmation(booking, verifiedNetPaid(booking));
         return mapToDetailResponse(booking);
     }
 
@@ -1400,15 +1435,10 @@ public class BookingService {
                         ? booking.getRequiredDepositAmount()
                         : booking.getAgreedFareAmount();
         if (requiredDeposit != null && collectedAmount.compareTo(requiredDeposit) >= 0) {
-            try {
-                confirmInternal(booking.getBookingId());
-                return true;
-            } catch (Exception e) {
-                log.warn(
-                        "Auto-confirmation failed for booking {}: {}",
-                        booking.getBookingId(),
-                        e.getMessage());
-            }
+            // Do not swallow a failure after changing booking state or writing the outbox.
+            // The caller must roll back and retry/reconcile the entire transaction.
+            confirmInternal(booking.getBookingId());
+            return true;
         }
         return false;
     }
@@ -1589,6 +1619,10 @@ public class BookingService {
         res.setCurrency(booking.getCurrency());
         res.setRequiredDepositAmount(booking.getRequiredDepositAmount());
         res.setFinalPaymentDueAt(booking.getFinalPaymentDueAt());
+        BigDecimal netPaid = verifiedNetPaid(booking);
+        res.setTotalPaidAmount(netPaid);
+        res.setOutstandingBalance(booking.getAgreedFareAmount().subtract(netPaid).max(BigDecimal.ZERO));
+        res.setFullyPaid(res.getOutstandingBalance().signum() == 0);
 
         res.setBookedByUserId(booking.getBookedByUser().getUserId());
         res.setBookedByUsername(booking.getBookedByUser().getUsername());
@@ -1694,6 +1728,7 @@ public class BookingService {
                 installmentRepository.findByBookingBookingIdOrderBySequenceNoAsc(
                         booking.getBookingId());
         List<InstallmentResponse> installmentResponses = new ArrayList<>();
+        BigDecimal unallocatedPaid = netPaid;
         for (Installment inst : installments) {
             InstallmentResponse iRes = new InstallmentResponse();
             iRes.setInstallmentId(inst.getInstallmentId());
@@ -1703,6 +1738,12 @@ public class BookingService {
             iRes.setCurrency(inst.getCurrency());
             iRes.setDueAt(inst.getDueAt());
             iRes.setStatus(inst.getStatus());
+            BigDecimal allocated = inst.getStatus() == InstallmentStatus.Cancelled ? BigDecimal.ZERO
+                    : unallocatedPaid.min(inst.getRequiredAmount());
+            iRes.setPaidAmount(allocated);
+            iRes.setOutstandingAmount(inst.getRequiredAmount().subtract(allocated).max(BigDecimal.ZERO));
+            iRes.setPaid(iRes.getOutstandingAmount().signum() == 0);
+            unallocatedPaid = unallocatedPaid.subtract(allocated);
 
             if (installments.size() == 1) {
                 iRes.setDescription("Thanh toán toàn bộ 100% tiền vé");
@@ -2485,72 +2526,57 @@ public class BookingService {
     @Transactional(readOnly = true)
     public BookingDetailResponse recoverBookingByIdempotencyKey(
             String idempotencyKey, CasmsPrincipal principal) {
+        return recoverBookingByIdempotencyKey(idempotencyKey, principal, null);
+    }
+
+    @Transactional(readOnly = true)
+    public BookingDetailResponse recoverBookingByIdempotencyKey(
+            String idempotencyKey, CasmsPrincipal principal, String guestToken) {
         if (idempotencyKey == null || idempotencyKey.isBlank()) {
-            throw new BusinessException(
-                    HttpStatus.BAD_REQUEST,
-                    "INVALID_IDEMPOTENCY_KEY",
-                    "Idempotency-Key không được để trống");
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "INVALID_IDEMPOTENCY_KEY",
+                    "Idempotency-Key is required");
         }
-        IdempotencyRecord record =
-                idempotencyRecordRepository
-                        .findByOperationAndIdempotencyKey("CREATE_BOOKING", idempotencyKey.trim())
-                        .orElseThrow(
-                                () ->
-                                        new BusinessException(
-                                                HttpStatus.NOT_FOUND,
-                                                "RECOVERY_NOT_FOUND",
-                                                "Không tìm thấy giao dịch đặt chỗ tương ứng với"
-                                                    + " Idempotency-Key: "
-                                                        + idempotencyKey));
-
-        if (record.getResponsePayload() != null && !record.getResponsePayload().isBlank()) {
+        UUID actorId = principal != null ? principal.getUserId() : null;
+        if (actorId == null && (guestToken == null || guestToken.isBlank())) {
+            throw new BusinessException(HttpStatus.UNAUTHORIZED, "RECOVERY_OWNERSHIP_REQUIRED",
+                    "Sign in or provide the original quote X-Guest-Token");
+        }
+        Optional<IdempotencyRecord> scopedRecord = idempotencyRecordRepository
+                .findByActorIdAndOperationAndIdempotencyKey(actorId, "CREATE_BOOKING", idempotencyKey.trim());
+        if (scopedRecord.isEmpty() && actorId != null && guestToken != null && !guestToken.isBlank()) {
+            scopedRecord = idempotencyRecordRepository.findByActorIdAndOperationAndIdempotencyKey(
+                    null, "CREATE_BOOKING", idempotencyKey.trim());
+        }
+        IdempotencyRecord record = scopedRecord
+                .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND,
+                        "RECOVERY_NOT_FOUND", "Booking recovery not found"));
+        UUID bookingId = record.getResultingId();
+        if (bookingId == null && record.getResponsePayload() != null) {
             try {
-                BookingDetailResponse cached =
-                        objectMapper.readValue(
-                                record.getResponsePayload(), BookingDetailResponse.class);
-                if (record.getActorId() != null
-                        && principal != null
-                        && !principal.hasAuthority("BOOKING_READ")
-                        && !principal.hasAuthority("ROLE_ADMIN")
-                        && !record.getActorId().equals(principal.getUserId())) {
-                    throw new BusinessException(
-                            HttpStatus.FORBIDDEN,
-                            "FORBIDDEN_RECOVERY",
-                            "Bạn không có quyền truy cập kết quả giao dịch của người dùng khác");
-                }
-                return cached;
-            } catch (Exception e) {
-                log.warn(
-                        "Failed to parse cached response payload for recovery: {}", e.getMessage());
+                bookingId = objectMapper.readValue(record.getResponsePayload(), BookingDetailResponse.class)
+                        .getBookingId();
+            } catch (com.fasterxml.jackson.core.JsonProcessingException ex) {
+                throw new BusinessException(HttpStatus.CONFLICT, "RECOVERY_UNAVAILABLE",
+                        "Stored booking recovery result is invalid");
             }
         }
-
-        if (record.getResultingId() != null) {
-            Booking booking =
-                    bookingRepository
-                            .findById(record.getResultingId())
-                            .orElseThrow(
-                                    () ->
-                                            new ResourceNotFoundException(
-                                                    "Booking", record.getResultingId()));
-            if (record.getActorId() != null
-                    && principal != null
-                    && !principal.hasAuthority("BOOKING_READ")
-                    && !principal.hasAuthority("ROLE_ADMIN")
-                    && !record.getActorId().equals(principal.getUserId())) {
-                throw new BusinessException(
-                        HttpStatus.FORBIDDEN,
-                        "FORBIDDEN_RECOVERY",
-                        "Bạn không có quyền truy cập kết quả giao dịch của người dùng khác");
-            }
-            return mapToDetailResponse(booking);
+        if (bookingId == null) {
+            throw new BusinessException(HttpStatus.CONFLICT, "RECOVERY_IN_PROGRESS",
+                    "Booking outcome is not yet available; do not create another booking");
         }
-
-        throw new BusinessException(
-                HttpStatus.CONFLICT,
-                "RECOVERY_IN_PROGRESS",
-                "Giao dịch với Idempotency-Key này đang trong quá trình xử lý, vui lòng thử lại sau"
-                    + " giây lát");
+        Booking booking = getBooking(bookingId);
+        if (record.getActorId() != null) {
+            validateAccess(booking, principal);
+        } else {
+            BookingQuote quote = booking.getQuote();
+            if (quote == null || quote.getUser() != null || quote.getGuestToken() == null
+                    || !MessageDigest.isEqual(quote.getGuestToken().getBytes(StandardCharsets.UTF_8),
+                            guestToken.getBytes(StandardCharsets.UTF_8))) {
+                throw new BusinessException(HttpStatus.FORBIDDEN, "FORBIDDEN_RECOVERY",
+                        "Guest ownership proof does not match");
+            }
+        }
+        return mapToDetailResponse(booking);
     }
 
     private String generateQuoteFingerprint(
@@ -2662,9 +2688,15 @@ public class BookingService {
     private User resolveOrCreateGuestUser(PassengerBookingItemRequest primaryPassenger) {
         String email = primaryPassenger.getEmail();
         if (email != null && !email.isBlank()) {
-            String normEmail = email.trim().toLowerCase();
-            Optional<User> existingUser = userRepository.findByEmail(normEmail);
+            String normEmail = email.trim().toLowerCase(Locale.ROOT);
+            bookingEmailService.lockContact(normEmail);
+            Optional<User> existingUser = userRepository.findByNormalizedEmail(normEmail);
             if (existingUser.isPresent()) {
+                if (!existingUser.get().hasRole(Role.PASSENGER) || existingUser.get().isStaff()
+                        || existingUser.get().isAdmin() || existingUser.get().getStatus() != UserStatus.ACTIVE) {
+                    throw new BusinessException(HttpStatus.CONFLICT, "PASSENGER_ACCOUNT_REQUIRED",
+                            "Contact email belongs to a non-passenger account");
+                }
                 return existingUser.get();
             }
 
@@ -2680,7 +2712,9 @@ public class BookingService {
             guestUser.setPasswordHash(passwordEncoder.encode(UUID.randomUUID().toString()));
             guestUser.setStatus(UserStatus.ACTIVE);
             guestUser.setRoles(EnumSet.of(Role.PASSENGER));
-            return userRepository.save(guestUser);
+            User saved = userRepository.save(guestUser);
+            bookingEmailService.markProvisioned(saved);
+            return saved;
         }
 
         // Trường hợp không có email: tạo tài khoản khách vãng lai
@@ -2695,6 +2729,23 @@ public class BookingService {
         anonymousGuest.setStatus(UserStatus.ACTIVE);
         anonymousGuest.setRoles(EnumSet.of(Role.PASSENGER));
         return userRepository.save(anonymousGuest);
+    }
+
+    private BigDecimal verifiedNetPaid(Booking booking) {
+        BigDecimal paid = paymentRepository.findForBooking(booking.getBookingId()).stream()
+                .filter(p -> p.getStatus() == PaymentStatus.Confirmed && p.getConfirmedAt() != null
+                        && p.getConfirmedAmount() != null && p.getConfirmedAmount().signum() > 0
+                        && p.getOperationType() == PaymentOperationType.Collect
+                        && paymentBelongsToBooking(p, booking.getBookingId()) && paymentHasSettlementEvidence(p)
+                        && p.getCurrency() != null && p.getCurrency().trim().equalsIgnoreCase(booking.getCurrency()))
+                .map(Payment::getConfirmedAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal refunds = refundRepository.findForBooking(booking.getBookingId()).stream()
+                .filter(r -> r.getStatus() == RefundStatus.Completed && r.getCompletedAt() != null
+                        && r.getApprovedAmount() != null && r.getApprovedAmount().signum() > 0
+                        && r.getCurrency() != null && r.getCurrency().trim().equalsIgnoreCase(booking.getCurrency())
+                        && r.getProcessorOrReceiptReference() != null && !r.getProcessorOrReceiptReference().isBlank())
+                .map(Refund::getApprovedAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
+        return paid.subtract(refunds).max(BigDecimal.ZERO);
     }
 
     private void validateAccess(Booking booking, CasmsPrincipal principal) {

@@ -15,6 +15,9 @@ import java.util.UUID;
 @Getter
 @Setter
 public class InstallmentResponse {
+    private BigDecimal paidAmount;
+    private BigDecimal outstandingAmount;
+    private boolean paid;
 
     @Schema(description = "ID đợt thanh toán")
     private UUID installmentId;
