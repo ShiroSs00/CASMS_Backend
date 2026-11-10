@@ -1258,7 +1258,8 @@ public class BookingService {
                                         "Cruise is not currently open for sale");
                             }
                         });
-        String bookingCurrency = booking.getCurrency();
+        final String bookingCurrency =
+                booking.getCurrency() != null ? booking.getCurrency().trim() : null;
         BigDecimal collectedAmount =
                 paymentRepository.findForBooking(bookingId).stream()
                         .filter(
@@ -1272,9 +1273,9 @@ public class BookingService {
                                                 && payment.getOperationType()
                                                         == PaymentOperationType.Collect
                                                 && payment.getCurrency() != null
-                                                && payment.getCurrency()
-                                                        .trim()
-                                                        .equalsIgnoreCase(bookingCurrency))
+                                                && (bookingCurrency == null
+                                                        || bookingCurrency.equalsIgnoreCase(
+                                                                payment.getCurrency().trim())))
                         .map(Payment::getConfirmedAmount)
                         .reduce(BigDecimal.ZERO, BigDecimal::add);
         BigDecimal completedRefunds =
@@ -1286,9 +1287,9 @@ public class BookingService {
                                                 && refund.getApprovedAmount() != null
                                                 && refund.getApprovedAmount().signum() > 0
                                                 && refund.getCurrency() != null
-                                                && refund.getCurrency()
-                                                        .trim()
-                                                        .equalsIgnoreCase(bookingCurrency)
+                                                && (bookingCurrency == null
+                                                        || bookingCurrency.equalsIgnoreCase(
+                                                                refund.getCurrency().trim()))
                                                 && refund.getProcessorOrReceiptReference() != null
                                                 && !refund.getProcessorOrReceiptReference()
                                                         .isBlank())
@@ -1391,7 +1392,8 @@ public class BookingService {
         if (contract == null || contract.getStatus() != BookingContractStatus.Accepted) {
             return false;
         }
-        String bookingCurrency = booking.getCurrency();
+        final String bookingCurrency =
+                booking.getCurrency() != null ? booking.getCurrency().trim() : null;
         BigDecimal collectedAmount =
                 paymentRepository.findForBooking(booking.getBookingId()).stream()
                         .filter(
@@ -1406,9 +1408,9 @@ public class BookingService {
                                                 && payment.getOperationType()
                                                         == PaymentOperationType.Collect
                                                 && payment.getCurrency() != null
-                                                && payment.getCurrency()
-                                                        .trim()
-                                                        .equalsIgnoreCase(bookingCurrency))
+                                                && (bookingCurrency == null
+                                                        || bookingCurrency.equalsIgnoreCase(
+                                                                payment.getCurrency().trim())))
                         .map(Payment::getConfirmedAmount)
                         .reduce(BigDecimal.ZERO, BigDecimal::add);
         BigDecimal completedRefunds =
@@ -1420,9 +1422,9 @@ public class BookingService {
                                                 && refund.getApprovedAmount() != null
                                                 && refund.getApprovedAmount().signum() > 0
                                                 && refund.getCurrency() != null
-                                                && refund.getCurrency()
-                                                        .trim()
-                                                        .equalsIgnoreCase(bookingCurrency)
+                                                && (bookingCurrency == null
+                                                        || bookingCurrency.equalsIgnoreCase(
+                                                                refund.getCurrency().trim()))
                                                 && refund.getProcessorOrReceiptReference() != null
                                                 && !refund.getProcessorOrReceiptReference()
                                                         .isBlank())

@@ -793,11 +793,17 @@ public class SepayService {
                                     : "N/A");
 
             BigDecimal exchangeRate = sepayProperties.getUsdToVndRate();
+            boolean isVndCurrency =
+                    "VND".equalsIgnoreCase(matchedPayment.getCurrency())
+                            || (matchedBooking != null
+                                    && "VND".equalsIgnoreCase(matchedBooking.getCurrency()));
             BigDecimal expectedVnd =
-                    matchedPayment
-                            .getRequestedAmount()
-                            .multiply(exchangeRate)
-                            .setScale(0, RoundingMode.HALF_UP);
+                    isVndCurrency
+                            ? matchedPayment.getRequestedAmount().setScale(0, RoundingMode.HALF_UP)
+                            : matchedPayment
+                                    .getRequestedAmount()
+                                    .multiply(exchangeRate)
+                                    .setScale(0, RoundingMode.HALF_UP);
             BigDecimal receivedVnd =
                     payload.getTransferAmount() != null
                             ? payload.getTransferAmount()
@@ -1147,9 +1153,9 @@ public class SepayService {
             return null;
         }
 
-        // Tìm các chuỗi dạng BK + số (ví dụ: BK-0001, BK0001, BK-2026-0001, BK20260001)
+        // Tìm các chuỗi dạng BK + số hoặc mã ký tự (ví dụ: BK-0001, BK0001, BK-2026-0001, BK20260001, BK-20261019-9B3E)
         Pattern pattern =
-                Pattern.compile("BK[-_]?[0-9]{4,10}(?:[-_][0-9]{1,6})?", Pattern.CASE_INSENSITIVE);
+                Pattern.compile("BK[-_]?[A-Za-z0-9]{3,16}(?:[-_][A-Za-z0-9]{1,8})?", Pattern.CASE_INSENSITIVE);
         Matcher matcher = pattern.matcher(memo);
 
         while (matcher.find()) {
