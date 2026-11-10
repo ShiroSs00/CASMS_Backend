@@ -145,12 +145,10 @@ public class BookingController {
         UUID actorId = principal != null ? principal.getUserId() : null;
         if (idempotencyKey != null && !idempotencyKey.isBlank()) {
             BookingDetailResponse response =
-                    idempotencyService.execute(
+                    idempotencyService.executeBookingCreate(
                             idempotencyKey,
                             actorId,
-                            "CREATE_BOOKING",
                             request,
-                            BookingDetailResponse.class,
                             () -> bookingService.createBooking(request, principal));
             return ApiResponse.success("Booking created successfully", response);
         }
@@ -162,15 +160,17 @@ public class BookingController {
             summary = "Phục hồi kết quả đặt chỗ sau sự cố mạng / timeout (BE-H03 Recovery Intent)",
             description =
                     "Truy vấn lại kết quả đặt chỗ bằng Idempotency-Key khi client bị timeout hoặc"
-                        + " mất kết nối trước khi nhận được Booking Reference")
+                        + " mất kết nối trước khi nhận được Booking Reference. Bắt buộc JWT của"
+                        + " người tạo hoặc X-Guest-Token của báo giá gốc; key riêng lẻ không cấp quyền.")
     @GetMapping("/recovery")
     public ApiResponse<BookingDetailResponse> recoverBooking(
             @Parameter(description = "Idempotency-Key đã gửi khi tạo đặt chỗ", required = true)
                     @RequestParam
                     String idempotencyKey,
+            @RequestHeader(value = "X-Guest-Token", required = false) String guestToken,
             @AuthenticationPrincipal CasmsPrincipal principal) {
         return ApiResponse.success(
-                bookingService.recoverBookingByIdempotencyKey(idempotencyKey, principal));
+                bookingService.recoverBookingByIdempotencyKey(idempotencyKey, principal, guestToken));
     }
 
     @Operation(

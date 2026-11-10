@@ -996,8 +996,7 @@ public class SepayService {
         boolean isConfirmed =
                 (payment.getBooking() != null
                                 && payment.getBooking().getBookingStatus()
-                                        == BookingStatus.Confirmed)
-                        || payment.getStatus() == PaymentStatus.Confirmed;
+                                        == BookingStatus.Confirmed);
 
         return PaymentStatusCheckResponse.builder()
                 .paymentId(payment.getPaymentId())

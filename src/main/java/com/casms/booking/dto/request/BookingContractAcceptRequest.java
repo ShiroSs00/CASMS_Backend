@@ -19,6 +19,7 @@ public class BookingContractAcceptRequest {
             example = "DOC-CTR-BK0001-20261023",
             requiredMode = Schema.RequiredMode.REQUIRED)
     @NotBlank(message = "Document reference / physical filing code is required")
+    @jakarta.validation.constraints.Size(max = 255)
     private String documentReference;
 
     @Schema(
@@ -29,10 +30,10 @@ public class BookingContractAcceptRequest {
     private UUID acceptedByBookingPassengerId;
 
     @Schema(description = "Thời điểm ký kết thực tế (nếu không truyền, lấy thời điểm hiện tại)")
+    @jakarta.validation.constraints.PastOrPresent
     private Instant acceptedAt;
 
-    @Schema(
-            description = "Ghi chú bổ sung / thông tin kiểm chứng biên bản bàn giao",
-            example = "Đã ký tại quầy giao dịch OceVie Landmark 81")
+    @Schema(description = "Không tiếp nhận nội dung hoặc ghi chú hợp đồng; trường này phải để null")
+    @jakarta.validation.constraints.Null(message = "Contract notes and contents must not be stored; provide references only")
     private String notes;
 }

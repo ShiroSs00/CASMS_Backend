@@ -11,6 +11,19 @@ import java.util.UUID;
 @Repository
 public interface IdempotencyRecordRepository extends JpaRepository<IdempotencyRecord, UUID> {
 
+    @org.springframework.data.jpa.repository.Modifying
+    @org.springframework.data.jpa.repository.Query(value = """
+            INSERT INTO "IdempotencyRecord"
+                (idempotency_id, actor_id, operation, idempotency_key, request_hash, created_at)
+            VALUES (:id, :actor, 'CREATE_BOOKING', :key, :hash, now())
+            ON CONFLICT DO NOTHING
+            """, nativeQuery = true)
+    int reserveBooking(
+            @org.springframework.data.repository.query.Param("id") UUID id,
+            @org.springframework.data.repository.query.Param("actor") UUID actor,
+            @org.springframework.data.repository.query.Param("key") String key,
+            @org.springframework.data.repository.query.Param("hash") String hash);
+
     Optional<IdempotencyRecord> findByActorIdAndOperationAndIdempotencyKey(
             UUID actorId, String operation, String idempotencyKey);
 

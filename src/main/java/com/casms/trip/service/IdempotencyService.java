@@ -31,6 +31,18 @@ public class IdempotencyService {
 
     @Setter private Function<UUID, Object> entityRecoveryFunction;
 
+    /** Booking and its replay result must be durable together, including guest requests. */
+    @org.springframework.transaction.annotation.Transactional(rollbackFor = Exception.class)
+    public BookingDetailResponse executeBookingCreate(
+            String key, UUID actorId, Object payload, Supplier<BookingDetailResponse> action) {
+        if (key == null || key.isBlank() || key.trim().length() > 255) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "INVALID_IDEMPOTENCY_KEY",
+                    "Booking Idempotency-Key must contain 1-255 characters");
+        }
+        return executeInternal(key, actorId, "CREATE_BOOKING", payload,
+                BookingDetailResponse.class, action, true);
+    }
+
     public <T> T execute(
             String idempotencyKey,
             UUID actorId,
@@ -75,7 +87,7 @@ public class IdempotencyService {
             Object payload,
             Class<T> responseType,
             Supplier<T> action,
-            boolean atomicCruise) {
+            boolean atomicResult) {
         if (idempotencyKey == null || idempotencyKey.isBlank()) {
             return action.get();
         }
@@ -84,8 +96,10 @@ public class IdempotencyService {
         String requestHash = computeHash(canonicalJson(payload));
 
         IdempotencyReservationService.ReservationResult reservation =
-                atomicCruise
-                        ? reservationService.reserveCruiseKey(actorId, trimmedKey, requestHash)
+                atomicResult
+                        ? ("CREATE_BOOKING".equals(operation)
+                                ? reservationService.reserveBookingKey(actorId, trimmedKey, requestHash)
+                                : reservationService.reserveCruiseKey(actorId, trimmedKey, requestHash))
                         : reservationService.reserveKey(
                                 actorId, operation, trimmedKey, requestHash);
 
@@ -95,9 +109,10 @@ public class IdempotencyService {
             String legacyHash = computeHash(payload != null ? payload.toString() : "");
             if (!legacyHash.equals(requestHash)) {
                 var legacy =
-                        atomicCruise
-                                ? reservationService.reserveCruiseKey(
-                                        actorId, trimmedKey, legacyHash)
+                        atomicResult
+                                ? ("CREATE_BOOKING".equals(operation)
+                                        ? reservationService.reserveBookingKey(actorId, trimmedKey, legacyHash)
+                                        : reservationService.reserveCruiseKey(actorId, trimmedKey, legacyHash))
                                 : reservationService.reserveKey(
                                         actorId, operation, trimmedKey, legacyHash);
                 if (legacy.getStatus()
@@ -183,7 +198,9 @@ public class IdempotencyService {
                         + " key.",
                     trimmedKey,
                     e.getMessage());
-            reservationService.releaseKey(reservationId);
+            if (!atomicResult || !"CREATE_BOOKING".equals(operation)) {
+                reservationService.releaseKey(reservationId);
+            }
             throw e;
         }
 
@@ -198,16 +215,16 @@ public class IdempotencyService {
             } else if (result instanceof BookingDetailResponse bookingRes) {
                 resultingId = bookingRes.getBookingId();
             }
-            if (atomicCruise)
+            if (atomicResult)
                 reservationService.completeKeyInCurrentTransaction(
                         reservationId, json, resultingId);
             else reservationService.completeKey(reservationId, json, resultingId);
         } catch (Exception e) {
-            if (atomicCruise) {
+            if (atomicResult) {
                 throw new BusinessException(
                         HttpStatus.INTERNAL_SERVER_ERROR,
                         "IDEMPOTENCY_COMPLETION_FAILED",
-                        "Không thể lưu kết quả yêu cầu; giao dịch tạo chuyến chưa được xác nhận và"
+                        "Không thể lưu kết quả yêu cầu; giao dịch chưa được xác nhận và"
                             + " phải được hủy.");
             }
             log.warn(
