@@ -121,6 +121,16 @@ public class CruiseScopedProgramsController {
                                             + " JOIN \"Cruise\" c ON c.ship_id=d.ship_id WHERE"
                                             + " c.cruise_id=? ORDER BY d.deck_number,d.deck_id",
                                         cruiseId),
+                        "cabins",
+                                jdbc.queryForList(
+                                        "SELECT b.cabin_id AS id,b.cabin_number AS number,"
+                                            + " b.ship_id AS \"shipId\",b.deck_id AS \"deckId\","
+                                            + " b.capacity,b.status FROM \"Cabin\" b"
+                                            + " JOIN \"Deck\" d ON d.deck_id=b.deck_id AND"
+                                            + " d.ship_id=b.ship_id JOIN \"Cruise\" c ON"
+                                            + " c.ship_id=b.ship_id WHERE c.cruise_id=?"
+                                            + " ORDER BY d.deck_number,b.cabin_number,b.cabin_id",
+                                        cruiseId),
                         "services",
                                 jdbc.queryForList(
                                         "SELECT s.service_id AS id,s.service_name AS"

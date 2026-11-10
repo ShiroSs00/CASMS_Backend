@@ -499,20 +499,13 @@ public class CruiseMainflowService {
 
     private String readinessFingerprint(UUID id) {
         StringBuilder evidence = new StringBuilder(planSnapshot(id));
-        for (String table : List.of("CruiseStaff", "CruisePreparationSection", "CruiseRegulation"))
+        for (String table : List.of("CruiseRegulation"))
             evidence.append(
                     aggregate(
                             "SELECT to_jsonb(t)-ARRAY['updated_at'] FROM \""
                                     + table
                                     + "\" t WHERE cruise_id=?",
                             id));
-        // Attendance/completion is downstream of sale. Publication/content/assignment remain
-        // material.
-        evidence.append(
-                aggregate(
-                        "SELECT to_jsonb(t)-ARRAY['updated_at','status','revision'] FROM"
-                            + " \"GuidanceSession\" t WHERE cruise_id=?",
-                        id));
         evidence.append(
                 aggregate(
                         "SELECT to_jsonb(s) FROM \"Ship\" s JOIN \"Cruise\" c USING(ship_id) WHERE"
@@ -706,30 +699,6 @@ SELECT EXISTS(SELECT 1 FROM "CruisePricingPolicy" p JOIN "Cruise" c USING(cruise
         List<String> b = new ArrayList<>(planIssues);
         if (!approved(id, r)) b.add("PLAN_APPROVAL_REQUIRED");
         if (usesUnifiedPackages(id)) b.addAll(commercialBlockers(id));
-        Integer confirmed =
-                jdbc.queryForObject(
-                        "SELECT count(*) FROM \"CruisePreparationSection\" WHERE cruise_id=? AND"
-                            + " status='CONFIRMED' AND section_code IN"
-                            + " ('TECHNICAL_NAUTICAL','HOTEL_CABIN','ENTERTAINMENT_SHORE','SAFETY_CREW')",
-                        Integer.class,
-                        id);
-        if (confirmed == null || confirmed != 4) b.add("PREPARATION_CONFIRMATION_REQUIRED");
-        Boolean onboard =
-                jdbc.queryForObject(
-                        com.casms.ship.repository.CruiseStaffRepository.ACTIVE_ONBOARD_SQL.replace(
-                                ":cruiseId", "?"),
-                        Boolean.class,
-                        id);
-        if (!Boolean.TRUE.equals(onboard)) b.add("ONBOARD_STAFF_REQUIRED");
-        Boolean guidance =
-                jdbc.queryForObject(
-                        "SELECT EXISTS(SELECT 1 FROM \"GuidanceSession\" WHERE cruise_id=? AND"
-                            + " status IN ('Published','Completed') AND published_at IS NOT NULL"
-                            + " AND content IS NOT NULL AND length(trim(content))>0 AND"
-                            + " instructor_user_id IS NOT NULL)",
-                        Boolean.class,
-                        id);
-        if (!Boolean.TRUE.equals(guidance)) b.add("GUIDANCE_PUBLICATION_REQUIRED");
         Windows resolvedWindows = resolveWindows(c);
         // FN-038 checks booking consistency; no minimum bookings/check-in/attendance before sale.
         if (resolvedWindows.bookingOpensAt() == null || resolvedWindows.bookingClosesAt() == null)
@@ -740,7 +709,16 @@ SELECT EXISTS(SELECT 1 FROM "CruisePricingPolicy" p JOIN "Cruise" c USING(cruise
                 b.add("DEPENDENCY_TIMEOUT");
             if (!operational.isReady())
                 operational.getBlockers().stream()
-                        .filter(code -> !"PLAN_APPROVAL_REQUIRED".equals(code))
+                        .filter(code -> !Set.of(
+                                "PLAN_APPROVAL_REQUIRED",
+                                "PREPARATION_CONFIRMATION_REQUIRED",
+                                "PREPARATION_SECTIONS_NOT_CONFIRMED",
+                                "ONBOARD_STAFF_REQUIRED",
+                                "MISSING_ONBOARD_STAFF",
+                                "MISSING_CAPTAIN",
+                                "STAFF_SCHEDULE_CONFLICT",
+                                "GUIDANCE_PUBLICATION_REQUIRED"
+                        ).contains(code))
                         .filter(code -> !b.contains(code))
                         .forEach(b::add);
         }
