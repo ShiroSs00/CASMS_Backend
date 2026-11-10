@@ -18,6 +18,13 @@ import java.util.UUID;
 @Setter
 public class BookingDetailResponse {
 
+    @Schema(description = "Verified collections less completed evidenced refunds, in booking currency")
+    private BigDecimal totalPaidAmount;
+    @Schema(description = "Amount still owed, never negative")
+    private BigDecimal outstandingBalance;
+    @Schema(description = "Payment balance is zero; separate from contract and booking confirmation")
+    private boolean fullyPaid;
+
     @Schema(description = "ID của đơn đặt chỗ (Booking ID)")
     private UUID bookingId;
 

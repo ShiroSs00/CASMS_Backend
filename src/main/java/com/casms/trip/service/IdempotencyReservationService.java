@@ -24,6 +24,20 @@ public class IdempotencyReservationService {
 
     private final IdempotencyRecordRepository repository;
 
+    @Transactional(propagation = Propagation.MANDATORY)
+    public ReservationResult reserveBookingKey(UUID actorId, String key, String hash) {
+        int inserted = repository.reserveBooking(UUID.randomUUID(), actorId, key, hash);
+        IdempotencyRecord record = repository
+                .findByActorIdAndOperationAndIdempotencyKey(actorId, "CREATE_BOOKING", key)
+                .orElseThrow(() -> new IllegalStateException("Booking reservation missing"));
+        if (!hash.equals(record.getRequestHash())) {
+            return new ReservationResult(ReservationStatus.CONFLICT, record);
+        }
+        return new ReservationResult(inserted == 1 ? ReservationStatus.RESERVED
+                : (record.getResultingId() != null || record.getResponsePayload() != null)
+                        ? ReservationStatus.CACHED : ReservationStatus.IN_PROGRESS, record);
+    }
+
     public enum ReservationStatus {
         RESERVED,
         CACHED,
@@ -95,10 +109,11 @@ public class IdempotencyReservationService {
                 || existing.getResultingId() != null) {
             return new ReservationResult(ReservationStatus.CACHED, existing);
         }
-        // Never expire an uncertain CREATE_CRUISE request: elapsed time does not prove the Cruise
-        // was not committed.
+        // Never expire uncertain cruise or booking requests: elapsed time does not prove that
+        // their business transaction was not committed.
         // Other operations keep their existing stale-reservation policy.
         if (!"CREATE_CRUISE".equals(operation)
+                && !"CREATE_BOOKING".equals(operation)
                 && existing.getCreatedAt() != null
                 && existing.getCreatedAt().isBefore(Instant.now().minusSeconds(60))) {
             log.warn(

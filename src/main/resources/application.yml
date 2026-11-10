@@ -1,4 +1,16 @@
 spring:
+  mail:
+    host: ${SPRING_MAIL_HOST:localhost}
+    port: ${SPRING_MAIL_PORT:587}
+    username: ${SPRING_MAIL_USERNAME:}
+    password: ${SPRING_MAIL_PASSWORD:}
+    properties:
+      mail.smtp.auth: true
+      mail.smtp.starttls.enable: true
+      mail.smtp.starttls.required: true
+      mail.smtp.connectiontimeout: 5000
+      mail.smtp.timeout: 5000
+      mail.smtp.writetimeout: 5000
   application:
     name: CASMS
 
@@ -72,6 +84,10 @@ springdoc:
     try-it-out-enabled: true
 
 casms:
+  booking-email:
+    enabled: ${CASMS_BOOKING_EMAIL_ENABLED:false}
+    from: ${CASMS_BOOKING_EMAIL_FROM:}
+    portal-url: ${CASMS_BOOKING_EMAIL_PORTAL_URL:http://localhost:3000}
   payment:
     sepay:
       enabled: ${SEPAY_ENABLED:true}
