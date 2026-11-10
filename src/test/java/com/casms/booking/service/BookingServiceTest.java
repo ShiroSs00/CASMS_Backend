@@ -14,6 +14,7 @@ import com.casms.booking.entity.Booking;
 import com.casms.booking.entity.BookingContract;
 import com.casms.booking.entity.BookingPassenger;
 import com.casms.booking.enums.BookingContractStatus;
+import com.casms.booking.enums.BookingPassengerParticipationStatus;
 import com.casms.booking.enums.BookingStatus;
 import com.casms.booking.enums.PaymentPlan;
 import com.casms.booking.repository.BookingContractRepository;
@@ -643,5 +644,83 @@ class BookingServiceTest {
                                 createdAt,
                                 nineDays.minus(7, ChronoUnit.DAYS),
                                 nineDays));
+    }
+
+    @Test
+    @DisplayName("In bảng hợp đồng trích xuất trực tiếp từ dữ liệu hành khách đã lưu")
+    void generateContractHtml_success() {
+        UUID testBookingId = UUID.randomUUID();
+        User owner = new User();
+        owner.setUserId(UUID.randomUUID());
+        owner.setUsername("testuser");
+        owner.setEmail("testuser@example.com");
+
+        Cruise testCruise = new Cruise();
+        testCruise.setCruiseId(UUID.randomUUID());
+        testCruise.setCruiseCode("CR-2026-TEST");
+        testCruise.setCruiseName("Hành trình Hạ Long Kỳ Quan");
+        Ship testShip = new Ship();
+        testShip.setShipName("CASMS Diamond");
+        testCruise.setShip(testShip);
+        testCruise.setDepartureDatetime(Instant.now().plus(10, ChronoUnit.DAYS));
+        testCruise.setReturnDatetime(Instant.now().plus(13, ChronoUnit.DAYS));
+
+        Booking booking = new Booking();
+        booking.setBookingId(testBookingId);
+        booking.setBookingReference("BK-TEST-PRINT");
+        booking.setBookingStatus(BookingStatus.Draft);
+        booking.setBookedByUser(owner);
+        booking.setCruise(testCruise);
+        booking.setAgreedFareAmount(new BigDecimal("15000000"));
+        booking.setCurrency("VND");
+        booking.setRequiredDepositAmount(new BigDecimal("4500000"));
+
+        BookingContract contract = new BookingContract();
+        contract.setContractReference("CTR-BK-TEST-PRINT");
+        contract.setStatus(BookingContractStatus.Draft);
+
+        Passenger passenger = new Passenger();
+        passenger.setFullName("Nguyễn Văn A");
+        passenger.setDateOfBirth(LocalDate.of(1992, 5, 20));
+        passenger.setNationality("VNM");
+        passenger.setDocumentType(PassengerDocumentType.NationalID);
+        passenger.setDocumentNumberProtected("001201009999");
+        passenger.setEmail("nguyenvana@gmail.com");
+        passenger.setPhoneNumber("0987654321");
+
+        BookingPassenger bp = new BookingPassenger();
+        bp.setBookingPassengerId(UUID.randomUUID());
+        bp.setBooking(booking);
+        bp.setPassenger(passenger);
+        bp.setParticipationStatus(BookingPassengerParticipationStatus.Active);
+        bp.setRequestedCabinCategory("BALCONY");
+
+        when(bookingRepository.findById(testBookingId)).thenReturn(Optional.of(booking));
+        when(bookingContractRepository.findByBookingBookingId(testBookingId))
+                .thenReturn(Optional.of(contract));
+        when(bookingPassengerRepository.findByBookingBookingId(testBookingId))
+                .thenReturn(List.of(bp));
+        when(bookingPassengerPackageRepository.findByBookingPassengerBookingBookingId(testBookingId))
+                .thenReturn(Collections.emptyList());
+        when(cabinAssignmentRepository.findByBookingPassengerBookingPassengerIdAndValidToIsNull(
+                        bp.getBookingPassengerId()))
+                .thenReturn(Optional.empty());
+        when(installmentRepository.findByBookingBookingIdOrderBySequenceNoAsc(testBookingId))
+                .thenReturn(Collections.emptyList());
+
+        CasmsPrincipal principal = mock(CasmsPrincipal.class);
+        when(principal.getUserId()).thenReturn(owner.getUserId());
+
+        String html = bookingService.generateContractHtml(testBookingId, principal);
+
+        assertNotNull(html);
+        assertTrue(html.contains("HỢP ĐỒNG DỊCH VỤ VẬN CHUYỂN HÀNH KHÁCH ĐƯỜNG BIỂN"));
+        assertTrue(html.contains("BK-TEST-PRINT"));
+        assertTrue(html.contains("CTR-BK-TEST-PRINT"));
+        assertTrue(html.contains("Nguyễn Văn A"));
+        assertTrue(html.contains("001201009999"));
+        assertTrue(html.contains("nguyenvana@gmail.com"));
+        assertTrue(html.contains("Hành trình Hạ Long Kỳ Quan"));
+        assertTrue(html.contains("CASMS Diamond"));
     }
 }

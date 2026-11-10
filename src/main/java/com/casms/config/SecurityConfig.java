@@ -66,6 +66,7 @@ public class SecurityConfig {
                                                 "/booking/available-cabins",
                                                 "/booking/3d-available-cabins",
                                                 "/booking/lookup",
+                                                "/booking/lookup/**",
                                                 "/booking/recovery",
                                                 "/payment/sepay/**")
                                         .permitAll()

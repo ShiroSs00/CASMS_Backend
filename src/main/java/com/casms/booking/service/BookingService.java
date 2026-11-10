@@ -95,8 +95,12 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.text.NumberFormat;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -2720,5 +2724,579 @@ public class BookingService {
                     "ACCESS_DENIED",
                     "You can only view or manage your own bookings");
         }
+    }
+
+    /**
+     * Xuất bảng hợp đồng chuyến đi định dạng HTML in A4 cho nhân viên hoặc hành khách đã đăng nhập.
+     * Hợp đồng không lưu file/blob trên database mà trích xuất động từ thông tin hành khách đã đăng ký.
+     */
+    @Transactional(readOnly = true)
+    public String generateContractHtml(UUID bookingId, CasmsPrincipal principal) {
+        Booking booking = getBooking(bookingId);
+        validateAccess(booking, principal);
+        BookingDetailResponse detail = mapToDetailResponse(booking);
+        return buildContractHtml(detail);
+    }
+
+    /**
+     * Xuất bảng hợp đồng chuyến đi định dạng HTML in A4 cho khách vãng lai (không cần đăng nhập).
+     * Xác thực bằng mã đặt chỗ + email hoặc số điện thoại người đặt.
+     */
+    @Transactional(readOnly = true)
+    public String generateContractHtmlByLookup(String reference, String email, String phoneNumber) {
+        BookingDetailResponse detail = lookupBooking(reference, email, phoneNumber);
+        return buildContractHtml(detail);
+    }
+
+    private String buildContractHtml(BookingDetailResponse detail) {
+        String bookingRef = escapeHtml(detail.getBookingReference());
+        String contractRef =
+                escapeHtml(
+                        detail.getContractReference() != null
+                                ? detail.getContractReference()
+                                : "CTR-" + bookingRef);
+
+        StringBuilder html = new StringBuilder();
+        html.append("<!DOCTYPE html>\n");
+        html.append("<html lang=\"vi\">\n");
+        html.append("<head>\n");
+        html.append("<meta charset=\"UTF-8\">\n");
+        html.append("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n");
+        html.append("<title>Hợp Đồng Vận Chuyển Hải Trình - ").append(bookingRef).append("</title>\n");
+        html.append("<style>\n").append(buildContractStyles()).append("</style>\n");
+        html.append("</head>\n");
+        html.append("<body>\n");
+
+        html.append("<div class=\"no-print\">\n")
+                .append("  <div class=\"toolbar-info\">\n")
+                .append("    <strong>HỆ THỐNG ĐẶT VÉ HẢI TRÌNH CASMS CRUISE</strong>\n")
+                .append("    <span style=\"opacity: 0.85; margin-left: 12px;\">Bản hợp đồng được tổng hợp tự động từ hồ sơ hành khách đã đăng ký (Không lưu trữ file dư thừa trên CSDL).</span>\n")
+                .append("  </div>\n")
+                .append("  <div class=\"toolbar-actions\">\n")
+                .append("    <button class=\"btn-print\" onclick=\"window.print()\">🖨️ In Hợp Đồng / Xuất PDF</button>\n")
+                .append("  </div>\n")
+                .append("</div>\n");
+
+        html.append("<div class=\"contract-paper\">\n");
+        html.append(buildContractHeader(detail, contractRef, bookingRef));
+        html.append(buildPartiesSection(detail));
+        html.append(buildCruiseSection(detail));
+        html.append(buildPassengerTable(detail.getPassengers()));
+        html.append(buildFinancialAndInstallmentSection(detail));
+        html.append(buildTermsAndSignatures(detail, contractRef));
+        html.append("</div>\n");
+
+        html.append("</body>\n</html>");
+        return html.toString();
+    }
+
+    private String buildContractHeader(
+            BookingDetailResponse detail, String contractRef, String bookingRef) {
+        boolean isAccepted = detail.getContractStatus() == BookingContractStatus.Accepted;
+        String statusLabel = isAccepted ? "ĐÃ KÝ KẾT &amp; XÁC NHẬN" : "BẢN THẢO CHỜ XÁC NHẬN";
+        String statusClass = isAccepted ? "badge-success" : "badge-warning";
+
+        return "<div class=\"contract-header\">\n"
+                + "  <div class=\"header-left\">\n"
+                + "    <strong>HÃNG TÀU DU LỊCH CAO CẤP CASMS</strong><br>\n"
+                + "    <span>Hệ thống Quản lý Hải trình &amp; Lưu trú Du thuyền</span><br>\n"
+                + "    <span>Hotline: 1900-CASMS (22767) | Email: support@casms.vn</span><br>\n"
+                + "    <span>Địa chỉ: Cảng Khách Quốc Tế Tuần Châu, TP. Hạ Long</span>\n"
+                + "  </div>\n"
+                + "  <div class=\"header-right\">\n"
+                + "    <strong>CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM</strong><br>\n"
+                + "    <span style=\"font-weight: 600;\">Độc lập - Tự do - Hạnh phúc</span><br>\n"
+                + "    <span>-------o0o-------</span>\n"
+                + "  </div>\n"
+                + "</div>\n"
+                + "<div class=\"contract-title\">\n"
+                + "  <h1>HỢP ĐỒNG DỊCH VỤ VẬN CHUYỂN HÀNH KHÁCH ĐƯỜNG BIỂN</h1>\n"
+                + "  <p>(V/v Cung cấp dịch vụ vận tải hành khách &amp; lưu trú hải trình du thuyền"
+                + " cao cấp)</p>\n"
+                + "  <div class=\"meta-badges\">\n"
+                + "    <span class=\"badge\">Mã Hợp Đồng: <strong>"
+                + contractRef
+                + "</strong></span>\n"
+                + "    <span class=\"badge\">Mã Đặt Chỗ: <strong>"
+                + bookingRef
+                + "</strong></span>\n"
+                + "    <span class=\"badge "
+                + statusClass
+                + "\">"
+                + statusLabel
+                + "</span>\n"
+                + "  </div>\n"
+                + "</div>\n";
+    }
+
+    private String buildPartiesSection(BookingDetailResponse detail) {
+        List<BookingPassengerResponse> passengers = detail.getPassengers();
+        BookingPassengerResponse primary =
+                (passengers != null && !passengers.isEmpty()) ? passengers.get(0) : null;
+
+        String repName =
+                primary != null && primary.getFullName() != null
+                        ? escapeHtml(primary.getFullName())
+                        : escapeHtml(detail.getBookedByUsername());
+        String repDoc =
+                (primary != null && primary.getDocumentNumber() != null)
+                        ? escapeHtml(primary.getDocumentNumber())
+                        : "Theo hồ sơ lưu";
+        String repDob =
+                (primary != null && primary.getDateOfBirth() != null)
+                        ? formatDate(primary.getDateOfBirth())
+                        : "Chưa cập nhật";
+        String repNationality =
+                (primary != null && primary.getNationality() != null)
+                        ? escapeHtml(primary.getNationality())
+                        : "Việt Nam";
+        String repPhone =
+                (primary != null && primary.getPhoneNumber() != null)
+                        ? escapeHtml(primary.getPhoneNumber())
+                        : "Chưa cập nhật";
+        String repEmail =
+                (primary != null && primary.getEmail() != null)
+                        ? escapeHtml(primary.getEmail())
+                        : "Chưa cập nhật";
+
+        return "<div class=\"section\">\n"
+                + "  <div class=\"section-title\">THÔNG TIN CÁC BÊN THAM GIA KÝ KẾT</div>\n"
+                + "  <div class=\"two-col\">\n"
+                + "    <div class=\"party-box\">\n"
+                + "      <h4>BÊN A: ĐƠN VỊ VẬN CHUYỂN (CASMS CRUISE)</h4>\n"
+                + "      <div class=\"info-row\"><span class=\"info-label\">Doanh nghiệp:</span>"
+                + " CÔNG TY CỔ PHẦN HẢI TRÌNH DU THUYỀN CASMS</div>\n"
+                + "      <div class=\"info-row\"><span class=\"info-label\">Đại diện bởi:</span>"
+                + " Ban Quản lý Khai thác Hải trình CASMS</div>\n"
+                + "      <div class=\"info-row\"><span class=\"info-label\">Du thuyền:</span> "
+                + escapeHtml(
+                        detail.getShipName() != null ? detail.getShipName() : "Đội tàu CASMS")
+                + "</div>\n"
+                + "      <div class=\"info-row\"><span class=\"info-label\">Tổng đài"
+                + " CSKH:</span> 1900-CASMS / booking@casms.vn</div>\n"
+                + "    </div>\n"
+                + "    <div class=\"party-box\">\n"
+                + "      <h4>BÊN B: ĐẠI DIỆN HÀNH KHÁCH / BÊN ĐẶT CHỖ</h4>\n"
+                + "      <div class=\"info-row\"><span class=\"info-label\">Người đại diện:</span>"
+                + " <strong>"
+                + repName
+                + "</strong></div>\n"
+                + "      <div class=\"info-row\"><span class=\"info-label\">Số CCCD/Hộ"
+                + " chiếu:</span> "
+                + repDoc
+                + "</div>\n"
+                + "      <div class=\"info-row\"><span class=\"info-label\">Ngày sinh / QT:</span>"
+                + " "
+                + repDob
+                + " | "
+                + repNationality
+                + "</div>\n"
+                + "      <div class=\"info-row\"><span class=\"info-label\">Số điện thoại:</span> "
+                + repPhone
+                + "</div>\n"
+                + "      <div class=\"info-row\"><span class=\"info-label\">Email liên hệ:</span> "
+                + repEmail
+                + "</div>\n"
+                + "    </div>\n"
+                + "  </div>\n"
+                + "</div>\n";
+    }
+
+    private String buildCruiseSection(BookingDetailResponse detail) {
+        String cruiseName =
+                escapeHtml(
+                        detail.getCruiseName() != null
+                                ? detail.getCruiseName()
+                                : "Hải trình Du thuyền CASMS");
+        String cruiseCode = escapeHtml(detail.getCruiseCode() != null ? detail.getCruiseCode() : "-");
+        String shipName = escapeHtml(detail.getShipName() != null ? detail.getShipName() : "-");
+        String departure = formatInstant(detail.getDepartureDatetime());
+        String returnTime = formatInstant(detail.getReturnDatetime());
+
+        return "<div class=\"section\">\n"
+                + "  <div class=\"section-title\">ĐIỀU 1: THÔNG TIN HẢI TRÌNH &amp; DU THUYỀN VẬN"
+                + " HÀNH</div>\n"
+                + "  <table class=\"data-table\">\n"
+                + "    <tr>\n"
+                + "      <th style=\"width: 25%;\">Tên Chuyến Hải Trình</th>\n"
+                + "      <td><strong>"
+                + cruiseName
+                + "</strong> (Mã chuyến: "
+                + cruiseCode
+                + ")</td>\n"
+                + "      <th style=\"width: 20%;\">Du Thuyền Vận Hành</th>\n"
+                + "      <td><strong>"
+                + shipName
+                + "</strong></td>\n"
+                + "    </tr>\n"
+                + "    <tr>\n"
+                + "      <th>Thời Gian Khởi Hành</th>\n"
+                + "      <td>"
+                + departure
+                + "</td>\n"
+                + "      <th>Thời Gian Kết Thúc</th>\n"
+                + "      <td>"
+                + returnTime
+                + "</td>\n"
+                + "    </tr>\n"
+                + "  </table>\n"
+                + "</div>\n";
+    }
+
+    private String buildPassengerTable(List<BookingPassengerResponse> passengers) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("<div class=\"section\">\n");
+        sb.append(
+                "  <div class=\"section-title\">ĐIỀU 2: DANH SÁCH HÀNH KHÁCH &amp; PHÂN BỔ BUỒNG"
+                    + " PHÒNG (CABIN)</div>\n");
+        sb.append(
+                        "  <p style=\"font-size: 12px; color: #475569; margin: 4px 0 8px 0;"
+                            + " font-style: italic;\">")
+                .append(
+                        "* Bảng thông tin được kết xuất trực tiếp từ dữ liệu hành khách đã đăng ký"
+                            + " trước đó của đơn đặt chỗ:")
+                .append("</p>\n");
+        sb.append("  <table class=\"data-table\">\n");
+        sb.append("    <thead>\n");
+        sb.append("      <tr>\n");
+        sb.append("        <th style=\"width: 35px;\">STT</th>\n");
+        sb.append("        <th>Họ và Tên Hành Khách</th>\n");
+        sb.append("        <th style=\"width: 90px;\">Ngày Sinh</th>\n");
+        sb.append("        <th style=\"width: 70px;\">Quốc Tịch</th>\n");
+        sb.append("        <th>CCCD / Hộ Chiếu</th>\n");
+        sb.append("        <th>Số Phòng (Cabin)</th>\n");
+        sb.append("        <th>Hạng Phòng</th>\n");
+        sb.append("        <th>Gói Dịch Vụ</th>\n");
+        sb.append("      </tr>\n");
+        sb.append("    </thead>\n");
+        sb.append("    <tbody>\n");
+
+        if (passengers == null || passengers.isEmpty()) {
+            sb.append(
+                    "      <tr><td colspan=\"8\" class=\"center\">Chưa có thông tin hành"
+                        + " khách</td></tr>\n");
+        } else {
+            int stt = 1;
+            for (BookingPassengerResponse p : passengers) {
+                String cabinStr =
+                        p.getCabinNumber() != null
+                                ? ("Phòng "
+                                        + escapeHtml(p.getCabinNumber())
+                                        + (p.getDeckNumber() != null
+                                                ? " (Tầng " + p.getDeckNumber() + ")"
+                                                : ""))
+                                : "Chờ gán phòng";
+                String cabinTypeStr =
+                        p.getCabinType() != null
+                                ? formatCabinType(p.getCabinType())
+                                : (p.getRequestedCabinCategory() != null
+                                        ? escapeHtml(p.getRequestedCabinCategory())
+                                        : "Tiêu chuẩn");
+                String pkgStr =
+                        p.getTourPackageName() != null
+                                ? escapeHtml(p.getTourPackageName())
+                                : "Cơ bản";
+
+                sb.append("      <tr>\n");
+                sb.append("        <td class=\"center\">").append(stt++).append("</td>\n");
+                sb.append("        <td><strong>")
+                        .append(escapeHtml(p.getFullName()))
+                        .append("</strong></td>\n");
+                sb.append("        <td class=\"center\">")
+                        .append(formatDate(p.getDateOfBirth()))
+                        .append("</td>\n");
+                sb.append("        <td class=\"center\">")
+                        .append(escapeHtml(p.getNationality() != null ? p.getNationality() : "VNM"))
+                        .append("</td>\n");
+                sb.append("        <td>")
+                        .append(
+                                escapeHtml(
+                                        p.getDocumentNumber() != null
+                                                ? p.getDocumentNumber()
+                                                : "-"))
+                        .append("</td>\n");
+                sb.append("        <td>").append(cabinStr).append("</td>\n");
+                sb.append("        <td>").append(cabinTypeStr).append("</td>\n");
+                sb.append("        <td>").append(pkgStr).append("</td>\n");
+                sb.append("      </tr>\n");
+            }
+        }
+
+        sb.append("    </tbody>\n");
+        sb.append("  </table>\n");
+        sb.append("</div>\n");
+        return sb.toString();
+    }
+
+    private String buildFinancialAndInstallmentSection(BookingDetailResponse detail) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("<div class=\"section\">\n");
+        sb.append(
+                "  <div class=\"section-title\">ĐIỀU 3: GIÁ TRỊ HỢP ĐỒNG &amp; LỊCH TRÌNH THANH"
+                    + " TOÁN</div>\n");
+        sb.append("  <table class=\"data-table\">\n");
+        sb.append("    <tr>\n");
+        sb.append("      <th style=\"width: 25%;\">Tổng Giá Trị Hợp Đồng</th>\n");
+        sb.append("      <td><strong style=\"color: #1e3a8a; font-size: 14px;\">")
+                .append(formatMoney(detail.getAgreedFareAmount(), detail.getCurrency()))
+                .append("</strong></td>\n");
+        sb.append("      <th style=\"width: 20%;\">Tiền Cọc Yêu Cầu</th>\n");
+        sb.append("      <td>")
+                .append(formatMoney(detail.getRequiredDepositAmount(), detail.getCurrency()))
+                .append("</td>\n");
+        sb.append("    </tr>\n");
+        sb.append("    <tr>\n");
+        sb.append("      <th>Hạn Chót Thanh Toán</th>\n");
+        sb.append("      <td colspan=\"3\">")
+                .append(formatInstant(detail.getFinalPaymentDueAt()))
+                .append("</td>\n");
+        sb.append("    </tr>\n");
+        sb.append("  </table>\n");
+
+        List<InstallmentResponse> installments = detail.getInstallments();
+        if (installments != null && !installments.isEmpty()) {
+            sb.append("  <table class=\"data-table\" style=\"margin-top: 8px;\">\n");
+            sb.append("    <thead>\n");
+            sb.append("      <tr>\n");
+            sb.append("        <th style=\"width: 45px;\">Đợt</th>\n");
+            sb.append("        <th>Nội Dung Thanh Toán</th>\n");
+            sb.append("        <th style=\"width: 140px;\">Số Tiền</th>\n");
+            sb.append("        <th style=\"width: 130px;\">Hạn Thanh Toán</th>\n");
+            sb.append("        <th style=\"width: 110px;\">Trạng Thái</th>\n");
+            sb.append("      </tr>\n");
+            sb.append("    </thead>\n");
+            sb.append("    <tbody>\n");
+            for (InstallmentResponse inst : installments) {
+                String statusStr;
+                if (inst.getStatus() == InstallmentStatus.Cancelled) {
+                    statusStr = "<span style=\"color:#dc2626;\">Đã hủy</span>";
+                } else if (detail.getBookingStatus() == BookingStatus.Confirmed
+                        && (inst.getSequenceNo() != null && inst.getSequenceNo() == 1)) {
+                    statusStr =
+                            "<span style=\"color:#166534; font-weight:bold;\">✓ Đã thanh toán"
+                                    + " (Cọc)</span>";
+                } else {
+                    statusStr = "<span style=\"color:#854d0e;\">Đã lên lịch</span>";
+                }
+                sb.append("      <tr>\n");
+                sb.append("        <td class=\"center\">")
+                        .append(inst.getSequenceNo())
+                        .append("</td>\n");
+                sb.append("        <td>").append(escapeHtml(inst.getDescription())).append("</td>\n");
+                sb.append("        <td class=\"right\"><strong>")
+                        .append(formatMoney(inst.getRequiredAmount(), inst.getCurrency()))
+                        .append("</strong></td>\n");
+                sb.append("        <td class=\"center\">")
+                        .append(formatInstant(inst.getDueAt()))
+                        .append("</td>\n");
+                sb.append("        <td class=\"center\">").append(statusStr).append("</td>\n");
+                sb.append("      </tr>\n");
+            }
+            sb.append("    </tbody>\n");
+            sb.append("  </table>\n");
+        }
+
+        sb.append("</div>\n");
+        return sb.toString();
+    }
+
+    private String buildTermsAndSignatures(BookingDetailResponse detail, String contractRef) {
+        boolean isAccepted = detail.getContractStatus() == BookingContractStatus.Accepted;
+        String acceptedTime = formatInstant(detail.getContractAcceptedAt());
+        String docRef =
+                detail.getContractDocumentReference() != null
+                        ? escapeHtml(detail.getContractDocumentReference())
+                        : "Lưu trữ số điện tử CASMS";
+
+        return "<div class=\"section\">\n"
+                + "  <div class=\"section-title\">ĐIỀU 4: QUY ĐỊNH AN TOÀN HÀNG HẢI (SOLAS) &amp;"
+                + " ĐIỀU KHOẢN VẬN TẢI</div>\n"
+                + "  <div style=\"font-size: 12px; line-height: 1.6; color: #334155;\">\n"
+                + "    1. <strong>An toàn sinh mạng trên biển:</strong> Hành khách có nghĩa vụ chấp"
+                + " hành nghiêm túc quy định của Công ước quốc tế SOLAS và hướng dẫn cứu hộ của"
+                + " Thuyền trưởng. Tất cả hành khách phải tham gia buổi diễn tập an toàn (Muster"
+                + " Drill) trước khi tàu rời cảng.<br>\n"
+                + "    2. <strong>Giấy tờ tùy thân:</strong> Hành khách phải xuất trình bản gốc giấy"
+                + " tờ tùy thân hợp lệ (CCCD / Hộ chiếu còn hạn trên 6 tháng) khi làm thủ tục"
+                + " check-in lên tàu.<br>\n"
+                + "    3. <strong>Hành lý &amp; Hàng cấm:</strong> Nghiêm cấm mang theo vũ khí, chất"
+                + " nổ, chất dễ cháy, ma túy và các hóa chất độc hại lên tàu theo quy định của Luật"
+                + " Hàng hải Việt Nam.\n"
+                + "  </div>\n"
+                + "</div>\n"
+                + "<div class=\"section\" style=\"page-break-inside: avoid;\">\n"
+                + "  <div class=\"section-title\">ĐIỀU 5: HIỆU LỰC HỢP ĐỒNG &amp; KÝ KẾT XÁC"
+                + " NHẬN</div>\n"
+                + "  <div style=\"font-size: 12px; margin-bottom: 12px;\">\n"
+                + "    Hợp đồng này được xác lập có hiệu lực kể từ ngày phát hành/ký kết. Hai bên"
+                + " cam kết thực hiện đúng các điều khoản đã thỏa thuận trong hợp đồng.<br>\n"
+                + "    <em>* Mã hồ sơ lưu trữ: <strong>"
+                + docRef
+                + "</strong> | Thời điểm xác nhận: <strong>"
+                + acceptedTime
+                + "</strong></em>\n"
+                + "  </div>\n"
+                + "  <div class=\"signature-grid\">\n"
+                + "    <div class=\"signature-box\">\n"
+                + "      <strong>ĐẠI DIỆN BÊN A</strong><br>\n"
+                + "      <span>(CÔNG TY CỔ PHẦN HẢI TRÌNH DU THUYỀN CASMS)</span>\n"
+                + "      <div class=\"signature-space\">\n"
+                + (isAccepted
+                        ? "        <div class=\"seal-mark accepted\">✓ ĐÃ KÝ SỐ &amp; ĐÓNG DẤU ĐIỆN"
+                                + " TỬ<br><small>CASMS CRUISE MARITIME</small></div>\n"
+                        : "        <div class=\"seal-mark\">[Ký và đóng dấu]</div>\n")
+                + "      </div>\n"
+                + "      <strong>BAN ĐIỀU HÀNH HẢI TRÌNH</strong>\n"
+                + "    </div>\n"
+                + "    <div class=\"signature-box\">\n"
+                + "      <strong>ĐẠI DIỆN BÊN B</strong><br>\n"
+                + "      <span>(HÀNH KHÁCH / ĐẠI DIỆN ĐOÀN)</span>\n"
+                + "      <div class=\"signature-space\">\n"
+                + (isAccepted
+                        ? "        <div class=\"seal-mark accepted\">✓ ĐÃ XÁC NHẬN CHẤP THUẬN HỢP"
+                                + " ĐỒNG<br><small>"
+                                + acceptedTime
+                                + "</small></div>\n"
+                        : "        <div class=\"seal-mark\">[Ký và ghi rõ họ tên]</div>\n")
+                + "      </div>\n"
+                + "      <strong>"
+                + (detail.getPassengers() != null && !detail.getPassengers().isEmpty()
+                        ? escapeHtml(detail.getPassengers().get(0).getFullName())
+                        : "ĐẠI DIỆN HÀNH KHÁCH")
+                + "</strong>\n"
+                + "    </div>\n"
+                + "  </div>\n"
+                + "</div>\n"
+                + "<div class=\"footer-note\">\n"
+                + "  Bản hợp đồng được trích xuất động từ Cơ sở dữ liệu Hành khách của Hệ thống Quản"
+                + " lý Hải trình CASMS. Mọi sao chép trái phép không qua xác thực của hệ thống đều"
+                + " không có giá trị pháp lý.\n"
+                + "</div>\n";
+    }
+
+    private String formatCabinType(CabinType type) {
+        if (type == null) {
+            return "Tiêu chuẩn";
+        }
+        return switch (type) {
+            case BALCONY -> "Ban công (Balcony)";
+            case SUITE -> "Hạng sang (Suite)";
+            case OCEAN_VIEW -> "Hướng biển (Ocean View)";
+            case INTERIOR -> "Nội thất (Interior)";
+        };
+    }
+
+    private String escapeHtml(String input) {
+        if (input == null) {
+            return "";
+        }
+        return input.replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;")
+                .replace("\"", "&quot;")
+                .replace("'", "&#39;");
+    }
+
+    private String formatInstant(Instant instant) {
+        if (instant == null) {
+            return "Chưa cập nhật";
+        }
+        return DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")
+                .withZone(ZoneId.of("Asia/Ho_Chi_Minh"))
+                .format(instant);
+    }
+
+    private String formatDate(LocalDate date) {
+        if (date == null) {
+            return "Chưa cập nhật";
+        }
+        return DateTimeFormatter.ofPattern("dd/MM/yyyy").format(date);
+    }
+
+    private String formatMoney(BigDecimal amount, String currency) {
+        if (amount == null) {
+            return "0 " + (currency != null ? currency : "VND");
+        }
+        NumberFormat nf = NumberFormat.getNumberInstance(Locale.GERMANY);
+        return nf.format(amount) + " " + (currency != null ? currency : "VND");
+    }
+
+    private String buildContractStyles() {
+        return "body { font-family: 'Times New Roman', Times, serif, 'Segoe UI', Arial;"
+                + " color: #222; background-color: #f1f5f9; margin: 0; padding: 24px; line-height:"
+                + " 1.5; }\n"
+                + ".no-print { max-width: 860px; margin: 0 auto 20px auto; display: flex;"
+                + " justify-content: space-between; align-items: center; background: #0f172a;"
+                + " color: #fff; padding: 12px 20px; border-radius: 8px; box-shadow: 0 4px 12px"
+                + " rgba(0,0,0,0.15); font-family: 'Segoe UI', sans-serif; font-size: 13px; }\n"
+                + ".btn-print { background: #2563eb; color: #fff; border: none; padding: 8px 18px;"
+                + " font-size: 14px; font-weight: 600; border-radius: 6px; cursor: pointer;"
+                + " transition: background 0.2s; }\n"
+                + ".btn-print:hover { background: #1d4ed8; }\n"
+                + ".contract-paper { background: #fff; max-width: 860px; margin: 0 auto; padding:"
+                + " 45px 55px; box-shadow: 0 0 20px rgba(0,0,0,0.08); border-radius: 4px;"
+                + " box-sizing: border-box; }\n"
+                + "@media print {\n"
+                + "  body { background: #fff !important; padding: 0 !important; font-size: 12.5px;"
+                + " }\n"
+                + "  .no-print { display: none !important; }\n"
+                + "  .contract-paper { box-shadow: none !important; border: none !important;"
+                + " padding: 0 !important; max-width: 100% !important; width: 100% !important; }\n"
+                + "  @page { size: A4 portrait; margin: 15mm; }\n"
+                + "}\n"
+                + ".contract-header { display: flex; justify-content: space-between; margin-bottom:"
+                + " 22px; border-bottom: 2px solid #0f172a; padding-bottom: 12px; }\n"
+                + ".header-left { width: 48%; font-size: 12.5px; }\n"
+                + ".header-left strong { font-size: 14px; color: #1e3a8a; text-transform:"
+                + " uppercase; }\n"
+                + ".header-right { width: 48%; text-align: center; font-size: 12.5px; }\n"
+                + ".header-right strong { font-size: 13.5px; text-transform: uppercase; }\n"
+                + ".contract-title { text-align: center; margin: 20px 0 22px 0; }\n"
+                + ".contract-title h1 { font-size: 19px; margin: 0 0 6px 0; text-transform:"
+                + " uppercase; color: #0f172a; letter-spacing: 0.5px; }\n"
+                + ".contract-title p { margin: 0; font-style: italic; font-size: 12.5px; color:"
+                + " #475569; }\n"
+                + ".meta-badges { display: flex; justify-content: center; gap: 12px; margin-top:"
+                + " 10px; font-size: 12px; font-family: 'Segoe UI', sans-serif; }\n"
+                + ".badge { padding: 4px 10px; border-radius: 4px; background: #e2e8f0;"
+                + " font-weight: 600; }\n"
+                + ".badge-success { background: #dcfce7; color: #166534; border: 1px solid #86efac;"
+                + " }\n"
+                + ".badge-warning { background: #fef9c3; color: #854d0e; border: 1px solid #fde047;"
+                + " }\n"
+                + ".section { margin-bottom: 20px; }\n"
+                + ".section-title { font-size: 13.5px; font-weight: bold; text-transform:"
+                + " uppercase; color: #1e293b; margin-bottom: 8px; border-left: 4px solid #2563eb;"
+                + " padding-left: 8px; }\n"
+                + ".two-col { display: flex; gap: 16px; font-size: 12.5px; }\n"
+                + ".party-box { flex: 1; background: #f8fafc; border: 1px solid #e2e8f0;"
+                + " border-radius: 6px; padding: 12px 14px; }\n"
+                + ".party-box h4 { margin: 0 0 8px 0; font-size: 12.5px; color: #1e3a8a;"
+                + " border-bottom: 1px solid #cbd5e1; padding-bottom: 4px; text-transform:"
+                + " uppercase; }\n"
+                + ".info-row { margin-bottom: 4px; }\n"
+                + ".info-label { font-weight: 600; color: #475569; display: inline-block;"
+                + " min-width: 110px; }\n"
+                + "table.data-table { width: 100%; border-collapse: collapse; margin-top: 8px;"
+                + " font-size: 12px; }\n"
+                + "table.data-table th, table.data-table td { border: 1px solid #cbd5e1; padding:"
+                + " 7px 9px; text-align: left; }\n"
+                + "table.data-table th { background-color: #f1f5f9; color: #0f172a; font-weight:"
+                + " 600; text-align: center; }\n"
+                + "table.data-table td.center { text-align: center; }\n"
+                + "table.data-table td.right { text-align: right; }\n"
+                + ".signature-grid { display: flex; justify-content: space-between; margin-top:"
+                + " 30px; page-break-inside: avoid; }\n"
+                + ".signature-box { width: 46%; text-align: center; font-size: 12.5px; }\n"
+                + ".signature-space { height: 75px; display: flex; align-items: center;"
+                + " justify-content: center; }\n"
+                + ".seal-mark { display: inline-block; border: 2px dashed #94a3b8; color: #64748b;"
+                + " padding: 5px 12px; border-radius: 4px; font-size: 11px; font-family: 'Segoe"
+                + " UI', sans-serif; }\n"
+                + ".seal-mark.accepted { border: 2px solid #16a34a; color: #15803d; font-weight:"
+                + " bold; }\n"
+                + ".footer-note { margin-top: 25px; font-size: 11px; color: #64748b; text-align:"
+                + " center; border-top: 1px solid #e2e8f0; padding-top: 10px; font-style: italic;"
+                + " }\n";
     }
 }

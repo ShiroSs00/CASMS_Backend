@@ -28,6 +28,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
@@ -195,6 +197,30 @@ public class BookingController {
     }
 
     @Operation(
+            summary = "In bảng hợp đồng chuyến đi cho khách vãng lai (Công khai / Không cần đăng nhập)",
+            description =
+                    "Hành khách tra cứu bằng Booking Reference và Email/Số điện thoại để xem và"
+                        + " in bảng hợp đồng vận tải đường biển hoàn chỉnh dạng A4.")
+    @GetMapping(value = "/lookup/contract/print", produces = "text/html;charset=UTF-8")
+    public ResponseEntity<String> printContractByLookup(
+            @Parameter(
+                            description = "Mã tham chiếu đơn đặt chỗ (VD: BK-20261019-XXXX)",
+                            required = true)
+                    @RequestParam
+                    String reference,
+            @Parameter(description = "Email người đặt (để xác thực)")
+                    @RequestParam(required = false)
+                    String email,
+            @Parameter(description = "Số điện thoại người đặt (để xác thực)")
+                    @RequestParam(required = false)
+                    String phoneNumber) {
+        String html = bookingService.generateContractHtmlByLookup(reference, email, phoneNumber);
+        return ResponseEntity.ok()
+                .contentType(MediaType.valueOf("text/html;charset=UTF-8"))
+                .body(html);
+    }
+
+    @Operation(
             summary = "Danh sách đơn đặt chỗ",
             description =
                     "Tra cứu danh sách đơn đặt chỗ (Hành khách chỉ xem đơn của chính mình, nhân"
@@ -241,6 +267,23 @@ public class BookingController {
         return ApiResponse.success(
                 "Contract accepted successfully",
                 bookingService.acceptContract(bookingId, request, principal));
+    }
+
+    @Operation(
+            summary = "In bảng hợp đồng chuyến đi (Cho nhân viên hoặc hành khách đã đăng nhập)",
+            description =
+                    "Kết xuất bảng hợp đồng chuyến đi định dạng in A4 hoàn chỉnh, lấy trực tiếp"
+                        + " từ dữ liệu hành khách, phân bổ cabin và giá cước đã nhập.")
+    @PreAuthorize("hasAnyAuthority('BOOKING_READ')")
+    @GetMapping(value = "/{bookingId}/contract/print", produces = "text/html;charset=UTF-8")
+    public ResponseEntity<String> printContract(
+            @Parameter(description = "ID đơn đặt chỗ", required = true) @PathVariable
+                    UUID bookingId,
+            @AuthenticationPrincipal CasmsPrincipal principal) {
+        String html = bookingService.generateContractHtml(bookingId, principal);
+        return ResponseEntity.ok()
+                .contentType(MediaType.valueOf("text/html;charset=UTF-8"))
+                .body(html);
     }
 
     @Operation(
