@@ -50,4 +50,7 @@ public class CruiseUpdateDraftRequest {
 
     @Schema(description = "ID cảng kết thúc mới", example = "3fa85f64-5717-4562-b3fc-2c963f66afa6")
     private UUID returnPortId;
+
+    @Schema(description = "ID tàu phân công cho chuyến khởi hành", example = "b3400000-0000-4000-8000-000000000201")
+    private UUID shipId;
 }

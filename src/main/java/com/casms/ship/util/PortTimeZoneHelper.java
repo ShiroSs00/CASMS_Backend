@@ -49,9 +49,25 @@ public final class PortTimeZoneHelper {
     public static final ZoneId SHIP_TIME_ZONE = ZoneId.of(SHIP_TIME_ZONE_ID);
 
     public static java.time.Duration departureOffset(java.time.LocalTime templateTime, Instant departure) {
-        if (templateTime == null) return java.time.Duration.ZERO;
-        var templateDateTime = departure.atZone(SHIP_TIME_ZONE).toLocalDate().atTime(templateTime);
-        return java.time.Duration.between(strictLocalInstant(templateDateTime, SHIP_TIME_ZONE), departure);
+        return departureOffset(templateTime, null, null, departure);
+    }
+
+    public static java.time.Duration departureOffset(
+            java.time.LocalTime dayDepartureTime,
+            java.time.LocalTime firstStopTime,
+            ZoneId firstStopZone,
+            Instant departure) {
+        if (departure == null) return java.time.Duration.ZERO;
+        var day1Date = departure.atZone(SHIP_TIME_ZONE).toLocalDate();
+        if (dayDepartureTime != null) {
+            var templateDateTime = day1Date.atTime(dayDepartureTime);
+            return java.time.Duration.between(strictLocalInstant(templateDateTime, SHIP_TIME_ZONE), departure);
+        }
+        if (firstStopTime != null && firstStopZone != null) {
+            var templateDateTime = day1Date.atTime(firstStopTime);
+            return java.time.Duration.between(strictLocalInstant(templateDateTime, firstStopZone), departure);
+        }
+        return java.time.Duration.ZERO;
     }
 
     /**

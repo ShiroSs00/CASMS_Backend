@@ -93,7 +93,8 @@ public class ActivityController {
             @NotNull UUID sourceActivityId,
             @NotNull Instant startTime, @NotNull Instant endTime,
             @NotBlank @Size(max=250) String location,
-            UUID deckId, UUID cabinId, @Positive Integer capacity) {}
+            UUID deckId, UUID cabinId, @Positive Integer capacity,
+            @Size(max=255) String meetingPoint) {}
 
     @GetMapping("/catalog")
     @PreAuthorize("hasAuthority('ACTIVITY_READ') or (hasRole('CRUISE_MANAGER') and hasAuthority('CRUISE_UPDATE_DRAFT'))")
@@ -138,6 +139,7 @@ public class ActivityController {
             Instant startTime,
             Instant endTime,
             String location,
+            String meetingPoint,
             UUID deckId,
             Integer deckNumber,
             String deckName,
@@ -158,6 +160,7 @@ public class ActivityController {
                     a.getStartTime(),
                     a.getEndTime(),
                     a.getLocation(),
+                    a.getMeetingPoint(),
                     a.getDeck() != null ? a.getDeck().getDeckId() : null,
                     a.getDeck() != null ? a.getDeck().getDeckNumber() : null,
                     a.getDeck() != null ? a.getDeck().getDeckName() : null,

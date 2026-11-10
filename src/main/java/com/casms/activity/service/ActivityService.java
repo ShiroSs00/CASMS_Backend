@@ -124,12 +124,14 @@ public class ActivityService {
         a.setActivityName(source.getActivityName());
         a.setDescription(source.getDescription());
         a.setCategory(source.getCategory());
-        a.setPrice(source.getPrice());
-        a.setCurrencyCode(source.getCurrencyCode());
+        a.setPrice(source.getPrice() == null ? BigDecimal.ZERO : source.getPrice());
+        a.setCurrencyCode(source.getCurrencyCode() == null || source.getCurrencyCode().isBlank() ? "USD" : source.getCurrencyCode());
         a.setCapacity(input.capacity() == null ? source.getCapacity() : input.capacity());
         a.setStartTime(input.startTime());
         a.setEndTime(input.endTime());
         a.setLocation(input.location());
+        a.setMeetingPoint(input.meetingPoint() == null || input.meetingPoint().isBlank()
+                ? null : input.meetingPoint().trim());
         return doCreateActivity(a, cruiseId, input.deckId(), input.cabinId());
     }
 

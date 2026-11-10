@@ -294,6 +294,11 @@ public class CruisePlanMutationGuard {
     }
 
     private boolean structural(String type, String method, Object[] args) {
+        if (type.equals("ActivityService") && method.equals("scheduleCatalog")) {
+            return !Boolean.TRUE.equals(jdbc.queryForObject(
+                    "SELECT ship_id IS NOT NULL FROM \"Cruise\" WHERE cruise_id=?",
+                    Boolean.class, args[0]));
+        }
         if (type.equals("ShoreExcursionService") && method.equals("updateCommercial")) return false;
         if (Set.of("ItineraryService", "ItineraryDayService", "CruiseStopService").contains(type))
             return true;

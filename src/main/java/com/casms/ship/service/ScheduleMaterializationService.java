@@ -777,8 +777,30 @@ public class ScheduleMaterializationService {
         // BE-04 / G06: Giờ cơ sở tàu (Ship Base Timezone) luôn là Asia/Ho_Chi_Minh
         ZoneId shipZone = PortTimeZoneHelper.SHIP_TIME_ZONE;
         LocalDate day1Date = departureDatetime.atZone(shipZone).toLocalDate();
-        Duration departureOffset = PortTimeZoneHelper.departureOffset(
-                departureDay == null ? null : departureDay.getPlannedDepartureTime(), departureDatetime);
+        java.time.LocalTime firstStopBaselineTime = null;
+        ZoneId firstStopBaselineZone = null;
+        if (!startsAtSea
+                && firstStop != null
+                && firstStop.getPort() != null
+                && Integer.valueOf(1).equals(firstStop.getArrivalDayNumber())) {
+            var firstStopFacts =
+                    firstStop.getPortFacts() != null
+                            ? firstStop.getPortFacts()
+                            : com.casms.ship.dto.PortFacts.capture(firstStop.getPort());
+            if (PortTimeZoneHelper.isValidTimeZoneId(firstStopFacts.timeZoneId())) {
+                firstStopBaselineZone = PortTimeZoneHelper.resolveZone(firstStopFacts.timeZoneId());
+                firstStopBaselineTime =
+                        firstStop.getPlannedArrivalTime() != null
+                                ? firstStop.getPlannedArrivalTime()
+                                : firstStop.getPlannedDepartureTime();
+            }
+        }
+        Duration departureOffset =
+                PortTimeZoneHelper.departureOffset(
+                        departureDay == null ? null : departureDay.getPlannedDepartureTime(),
+                        firstStopBaselineTime,
+                        firstStopBaselineZone,
+                        departureDatetime);
 
         // Validate Country Scope cho tất cả các cảng trong lịch trình
         for (TripPlanStop stop : planStops) {
@@ -1226,12 +1248,7 @@ public class ScheduleMaterializationService {
         }
         if (departurePort != null
                 && projectedStops.stream()
-                        .noneMatch(
-                                c ->
-                                        c.getPortId().equals(departurePort.getPortId())
-                                                && Objects.equals(
-                                                        c.getPlannedDeparture(),
-                                                        departureDatetime))) {
+                        .noneMatch(c -> c.getPortId().equals(departurePort.getPortId()))) {
             var departureFacts =
                     departureDay != null && departureDay.getDeparturePortFacts() != null
                             ? departureDay.getDeparturePortFacts()
@@ -1242,9 +1259,7 @@ public class ScheduleMaterializationService {
                             departureFacts.timeZoneId(),
                             departureDatetime));
         }
-        boolean portPassed =
-                !portChecks.isEmpty()
-                        && portChecks.stream().allMatch(c -> "PASS".equals(c.status()));
+        boolean portPassed = portChecks.stream().allMatch(c -> "PASS".equals(c.status()));
         // Tính toán returnDatetime
         Instant returnDatetime = projectedReturn;
 
@@ -1256,15 +1271,13 @@ public class ScheduleMaterializationService {
                 .materializationBlockers(
                         portPassed
                                 ? List.of()
-                                : portChecks.isEmpty()
-                                        ? List.of("WINDOW_NOT_CONFIGURED")
-                                        : portChecks.stream()
-                                                .filter(c -> !"PASS".equals(c.status()))
-                                                .map(
-                                                        com.casms.ship.dto.PortWindowContract.Check
-                                                                ::code)
-                                                .distinct()
-                                                .toList())
+                                : portChecks.stream()
+                                        .filter(c -> !"PASS".equals(c.status()))
+                                        .map(
+                                                com.casms.ship.dto.PortWindowContract.Check
+                                                        ::code)
+                                        .distinct()
+                                        .toList())
                 .sourceTripId(trip.getTripId())
                 .sourceTripCode(trip.getTripCode())
                 .sourceTripName(trip.getName())

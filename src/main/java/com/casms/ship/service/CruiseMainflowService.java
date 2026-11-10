@@ -47,6 +47,15 @@ public class CruiseMainflowService {
     @org.springframework.beans.factory.annotation.Autowired
     private org.springframework.beans.factory.ObjectProvider<com.casms.cruisepackage.service.CruisePackageCabinMappingService> cabinMappings;
 
+    @org.springframework.beans.factory.annotation.Autowired
+    private org.springframework.beans.factory.ObjectProvider<CruiseShipAssignmentPolicy> shipAssignmentPolicies;
+
+    private CruiseShipAssignmentPolicy shipAssignmentPolicy() {
+        CruiseShipAssignmentPolicy provided =
+                shipAssignmentPolicies == null ? null : shipAssignmentPolicies.getIfAvailable();
+        return provided != null ? provided : new CruiseShipAssignmentPolicy(jdbc);
+    }
+
     public boolean usesUnifiedPackages(UUID id) {
         return Boolean.TRUE.equals(jdbc.queryForObject("""
                 SELECT EXISTS(SELECT 1 FROM "Cruise" c LEFT JOIN "CruisePlanReview" r USING(cruise_id)
@@ -78,24 +87,98 @@ public class CruiseMainflowService {
             Instant guidanceOpensAt,
             Instant guidanceClosesAt) {}
 
+    @com.fasterxml.jackson.annotation.JsonInclude(
+            com.fasterxml.jackson.annotation.JsonInclude.Include.ALWAYS)
+    public record AssignmentAction(boolean allowed, String reason) {}
+
+    @com.fasterxml.jackson.annotation.JsonInclude(
+            com.fasterxml.jackson.annotation.JsonInclude.Include.ALWAYS)
     public record AssignmentContext(
-            UUID cruiseId, long cruiseRevision, boolean hasBookings, boolean editablePlan) {}
+            UUID cruiseId,
+            long cruiseRevision,
+            boolean hasBookings,
+            boolean editablePlan,
+            UUID shipId,
+            String shipName,
+            String shipCode,
+            String assignmentStatus,
+            Map<String, AssignmentAction> allowedActions,
+            boolean requiresImpactWorkflow,
+            List<String> impactBlockers,
+            com.casms.ship.dto.response.ShipAssignmentSafetyResponse changeSafety,
+            com.casms.ship.dto.response.ShipAssignmentSafetyResponse unassignSafety) {}
 
     /** Minimal safety fact for CRM ship assignment; never exposes the passenger manifest. */
     public AssignmentContext assignmentContext(UUID id) {
         Map<String, Object> c = cruise(id, false);
-        boolean editable =
-                "DRAFT".equals(c.get("status"))
-                        && Set.of("DRAFT", "WITHDRAWN", "REVISION_REQUESTED")
-                                .contains(status(row(id)));
+        boolean editablePlan =
+                Set.of("DRAFT", "WITHDRAWN", "REVISION_REQUESTED").contains(status(row(id)));
+        boolean editable = "DRAFT".equals(c.get("status")) && editablePlan;
         boolean hasBookings =
                 Boolean.TRUE.equals(
                         jdbc.queryForObject(
                                 "SELECT EXISTS(SELECT 1 FROM \"Booking\" WHERE cruise_id=?)",
                                 Boolean.class,
                                 id));
+        UUID shipId = (UUID) c.get("ship_id");
+        Map<String, Object> ship =
+                shipId == null
+                        ? Map.of()
+                        : jdbc.queryForMap(
+                                "SELECT ship_name,ship_code FROM \"Ship\" WHERE ship_id=?", shipId);
+        CruiseShipAssignmentPolicy policy = shipAssignmentPolicy();
+        var assignSafety = policy.assess(id, null, "ASSIGN");
+        var changeSafety = policy.assess(id, null, "CHANGE");
+        var unassignSafety = policy.assess(id, null, "UNASSIGN");
+        var blockers = changeSafety.blockers();
+        boolean impact = "PUBLISHED".equals(c.get("status")) || policy.requiresImpact(id);
+        String reason =
+                !policy.canMutate()
+                        ? "Chỉ Quản lý lịch trình có quyền phân công tàu được thay đổi phân công."
+                        : !editablePlan
+                                ? "Kế hoạch đang bị khóa; cần thu hồi hoặc yêu cầu sửa đổi trước."
+                                : !Set.of("DRAFT", "PUBLISHED").contains(c.get("status"))
+                                        ? "Trạng thái chuyến không cho phép thay đổi phân công."
+                                        : null;
+        String downstream = blockers.isEmpty() ? null : String.join(" ", blockers);
+        Map<String, AssignmentAction> actions =
+                Map.of(
+                        "assign",
+                        new AssignmentAction(
+                                reason == null && shipId == null && assignSafety.canProceed(),
+                                reason != null
+                                        ? reason
+                                        : shipId != null
+                                                ? "Chuyến đã có tàu."
+                                                : String.join(" ", assignSafety.blockers())),
+                        "change",
+                        new AssignmentAction(
+                                reason == null && shipId != null && changeSafety.canProceed(),
+                                reason != null
+                                        ? reason
+                                        : shipId == null ? "Chuyến chưa có tàu để đổi." : downstream),
+                        "unassign",
+                        new AssignmentAction(
+                                reason == null && shipId != null && unassignSafety.canProceed(),
+                                reason != null
+                                        ? reason
+                                        : shipId == null
+                                                ? "Chuyến chưa có tàu để gỡ."
+                                                : String.join(" ", unassignSafety.blockers())));
         return new AssignmentContext(
-                id, ((Number) c.get("revision")).longValue(), hasBookings, editable);
+                id,
+                ((Number) c.get("revision")).longValue(),
+                hasBookings,
+                editable,
+                shipId,
+                (String) ship.get("ship_name"),
+                (String) ship.get("ship_code"),
+                shipId == null ? "UNASSIGNED" : "ASSIGNED",
+                actions,
+                impact,
+                blockers,
+                changeSafety,
+                unassignSafety);
     }
 
     public record View(
@@ -161,6 +244,47 @@ public class CruiseMainflowService {
         return t instanceof java.sql.Timestamp x
                 ? x.toInstant()
                 : t instanceof java.time.OffsetDateTime x ? x.toInstant() : null;
+    }
+
+    public static Windows defaultWindowsForDeparture(long revision, Instant departure, Instant referenceTime) {
+        if (departure == null) {
+            return new Windows(revision, null, null, null, null);
+        }
+        Instant ref = (referenceTime != null ? referenceTime : Instant.now())
+                .truncatedTo(java.time.temporal.ChronoUnit.MINUTES);
+        java.time.Duration lead = java.time.Duration.between(ref, departure);
+        Instant bookingClosesAt =
+                lead.compareTo(java.time.Duration.ofDays(14)) >= 0
+                        ? departure.minus(java.time.Duration.ofDays(3)).truncatedTo(java.time.temporal.ChronoUnit.MINUTES)
+                        : departure.minus(java.time.Duration.ofDays(2)).truncatedTo(java.time.temporal.ChronoUnit.MINUTES);
+        Instant bookingOpensAt =
+                ref.isBefore(bookingClosesAt.minus(java.time.Duration.ofHours(1)))
+                        ? ref
+                        : departure.minus(java.time.Duration.ofDays(30)).truncatedTo(java.time.temporal.ChronoUnit.MINUTES);
+        Instant guidanceOpensAt = bookingClosesAt;
+        Instant guidanceClosesAt = departure.minus(java.time.Duration.ofHours(2)).truncatedTo(java.time.temporal.ChronoUnit.MINUTES);
+        if (!guidanceClosesAt.isAfter(guidanceOpensAt)) {
+            guidanceClosesAt = departure.truncatedTo(java.time.temporal.ChronoUnit.MINUTES);
+        }
+        return new Windows(revision, bookingOpensAt, bookingClosesAt, guidanceOpensAt, guidanceClosesAt);
+    }
+
+    private Windows resolveWindows(Map<String, Object> c) {
+        long rev = ((Number) c.get("revision")).longValue();
+        Instant bOpen = time(c.get("booking_opens_at"));
+        Instant bClose = time(c.get("booking_closes_at"));
+        Instant gOpen = time(c.get("guidance_opens_at"));
+        Instant gClose = time(c.get("guidance_closes_at"));
+        if (bOpen != null && bClose != null && gOpen != null && gClose != null) {
+            return new Windows(rev, bOpen, bClose, gOpen, gClose);
+        }
+        Windows defaults = defaultWindowsForDeparture(rev, time(c.get("departure_datetime")), time(c.get("created_at")));
+        return new Windows(
+                rev,
+                bOpen != null ? bOpen : defaults.bookingOpensAt(),
+                bClose != null ? bClose : defaults.bookingClosesAt(),
+                gOpen != null ? gOpen : defaults.guidanceOpensAt(),
+                gClose != null ? gClose : defaults.guidanceClosesAt());
     }
 
     private JsonNode json(Object value) {
@@ -422,13 +546,11 @@ public class CruiseMainflowService {
         programPolicy.issues(id).stream()
                 .map(ItineraryProgramPolicy.Issue::code).distinct().forEach(b::add);
         var windowChecks = portWindowEvaluator.cruise(id);
-        if (windowChecks.isEmpty()) b.add("WINDOW_NOT_CONFIGURED");
-        else
-            windowChecks.stream()
-                    .filter(check -> !"PASS".equals(check.status()))
-                    .map(com.casms.ship.dto.PortWindowContract.Check::code)
-                    .distinct()
-                    .forEach(b::add);
+        windowChecks.stream()
+                .filter(check -> !"PASS".equals(check.status()))
+                .map(com.casms.ship.dto.PortWindowContract.Check::code)
+                .distinct()
+                .forEach(b::add);
         if (c.get("ship_id") == null) b.add("SHIP_REQUIRED");
         // Source-less legacy Cruises keep their actual schedule; never invent a template link.
         if (c.get("source_trip_id") != null && c.get("source_version_id") == null)
@@ -436,12 +558,13 @@ public class CruiseMainflowService {
         if (!Set.of("DOMESTIC", "INTERNATIONAL")
                 .contains(Objects.toString(c.get("planned_scope"), "")))
             b.add("SCOPE_COUNTRY_REQUIRED");
-        if (c.get("booking_opens_at") == null || c.get("booking_closes_at") == null)
+        Windows resolvedWindows = resolveWindows(c);
+        if (resolvedWindows.bookingOpensAt() == null || resolvedWindows.bookingClosesAt() == null)
             b.add("BOOKING_WINDOW_REQUIRED");
-        if (c.get("guidance_opens_at") == null || c.get("guidance_closes_at") == null)
+        if (resolvedWindows.guidanceOpensAt() == null || resolvedWindows.guidanceClosesAt() == null)
             b.add("GUIDANCE_WINDOW_REQUIRED");
-        Instant bookingClose = time(c.get("booking_closes_at")),
-                guidanceStart = time(c.get("guidance_opens_at"));
+        Instant bookingClose = resolvedWindows.bookingClosesAt(),
+                guidanceStart = resolvedWindows.guidanceOpensAt();
         if (bookingClose != null && guidanceStart != null && guidanceStart.isBefore(bookingClose))
             b.add("GUIDANCE_BEFORE_BOOKING_CLOSE");
         if (Boolean.FALSE.equals(
@@ -474,14 +597,14 @@ public class CruiseMainflowService {
             var terms = saleTermsServices.getObject().read(id);
             if (!Set.of("DRAFT", "PENDING_APPROVAL", "APPROVED").contains(terms.status()))
                 b.add("SALE_TERMS_REQUIRED");
-        } else if (Boolean.FALSE.equals(
+        } else if (Boolean.TRUE.equals(
                 jdbc.queryForObject(
                         "SELECT EXISTS(SELECT 1 FROM \"CruisePricingPolicy\" WHERE cruise_id=?)",
                         Boolean.class,
-                        id))) b.add("PRICING_POLICY_REQUIRED");
-        else if (!Boolean.TRUE.equals(
-                jdbc.queryForObject(
-                        """
+                        id))
+                && !Boolean.TRUE.equals(
+                        jdbc.queryForObject(
+                                """
 SELECT EXISTS(SELECT 1 FROM "CruisePricingPolicy" p JOIN "Cruise" c USING(cruise_id)
   WHERE p.cruise_id=? AND p.policy_number=(SELECT max(policy_number) FROM "CruisePricingPolicy" WHERE cruise_id=p.cruise_id)
     AND p.currency='USD' AND p.deposit_percentage BETWEEN 0 AND 1
@@ -490,8 +613,8 @@ SELECT EXISTS(SELECT 1 FROM "CruisePricingPolicy" p JOIN "Cruise" c USING(cruise
         WHEN 'OCEAN_VIEW' THEN p.ocean_view_base_fare WHEN 'BALCONY' THEN p.balcony_base_fare
         WHEN 'SUITE' THEN p.suite_base_fare END IS NULL))
 """,
-                        Boolean.class,
-                        id))) b.add("PRICING_POLICY_CONFIGURATION_REQUIRED");
+                                Boolean.class,
+                                id))) b.add("PRICING_POLICY_CONFIGURATION_REQUIRED");
         issues.stream().map(ProgramIssue::code).distinct().forEach(b::add);
         return b;
     }
@@ -530,11 +653,13 @@ SELECT EXISTS(SELECT 1 FROM "CruisePricingPolicy" p JOIN "Cruise" c USING(cruise
         List<String> codes = new ArrayList<>();
         if (!(row.get("capacity") instanceof Number n) || n.longValue() < 1)
             codes.add(kind + "_CAPACITY_REQUIRED");
-        if (!(row.get("price") instanceof Number n)
-                || new java.math.BigDecimal(n.toString()).signum() < 0)
+        if (row.get("price") instanceof Number n
+                && new java.math.BigDecimal(n.toString()).signum() < 0)
             codes.add(kind + "_PRICE_REQUIRED");
-        if (!(row.get("currency_code") instanceof String currency)
-                || !currency.trim().matches("[A-Z]{3}")) codes.add(kind + "_CURRENCY_REQUIRED");
+        if (row.get("currency_code") instanceof String currency
+                && !currency.isBlank()
+                && !currency.trim().matches("[A-Z]{3}"))
+            codes.add(kind + "_CURRENCY_REQUIRED");
         Instant start = time(row.get("start_time")),
                 end = time(row.get("end_time")),
                 earliest = time(row.get("earliest")),
@@ -605,8 +730,9 @@ SELECT EXISTS(SELECT 1 FROM "CruisePricingPolicy" p JOIN "Cruise" c USING(cruise
                         Boolean.class,
                         id);
         if (!Boolean.TRUE.equals(guidance)) b.add("GUIDANCE_PUBLICATION_REQUIRED");
+        Windows resolvedWindows = resolveWindows(c);
         // FN-038 checks booking consistency; no minimum bookings/check-in/attendance before sale.
-        if (c.get("booking_opens_at") == null || c.get("booking_closes_at") == null)
+        if (resolvedWindows.bookingOpensAt() == null || resolvedWindows.bookingClosesAt() == null)
             b.add("BOOKING_WINDOW_REQUIRED");
         {
             var operational = cruiseServices.getObject().validateOperationalReadiness(id);
@@ -664,12 +790,7 @@ SELECT EXISTS(SELECT 1 FROM "CruisePricingPolicy" p JOIN "Cruise" c USING(cruise
                 planIssues,
                 b,
                 actions,
-                new Windows(
-                        ((Number) c.get("revision")).longValue(),
-                        time(c.get("booking_opens_at")),
-                        time(c.get("booking_closes_at")),
-                        time(c.get("guidance_opens_at")),
-                        time(c.get("guidance_closes_at"))),
+                resolvedWindows,
                 issues,
                 portWindowEvaluator.cruise(id),
                 usesUnifiedPackages(id),
@@ -812,7 +933,11 @@ SELECT EXISTS(SELECT 1 FROM "CruisePricingPolicy" p JOIN "Cruise" c USING(cruise
                     var view = terms.read(id);
                     if ("DRAFT".equals(view.status()))
                         terms.review(id, "submit", new DepartureSaleTermsService.Review(view.revision(), null), actor);
-                } else {
+                } else if (Boolean.TRUE.equals(
+                        jdbc.queryForObject(
+                                "SELECT EXISTS(SELECT 1 FROM \"CruisePricingPolicy\" WHERE cruise_id=?)",
+                                Boolean.class,
+                                id))) {
                     var pricing = pricingServices.getObject();
                     var policy = pricing.getPricingPolicy(id);
                     if ("DRAFT".equals(policy.getStatus().name()))
@@ -884,7 +1009,11 @@ SELECT EXISTS(SELECT 1 FROM "CruisePricingPolicy" p JOIN "Cruise" c USING(cruise
                         var view = terms.read(id);
                         if (!"APPROVED".equals(view.status()))
                             terms.review(id, "approve", new DepartureSaleTermsService.Review(view.revision(), null), actor);
-                    } else {
+                    } else if (Boolean.TRUE.equals(
+                            jdbc.queryForObject(
+                                    "SELECT EXISTS(SELECT 1 FROM \"CruisePricingPolicy\" WHERE cruise_id=?)",
+                                    Boolean.class,
+                                    id))) {
                         var pricing = pricingServices.getObject();
                         var policy = pricing.getPricingPolicy(id);
                         if (!"APPROVED".equals(policy.getStatus().name()))
@@ -1004,7 +1133,8 @@ SELECT EXISTS(SELECT 1 FROM "CruisePricingPolicy" p JOIN "Cruise" c USING(cruise
 
     public boolean isBookingWindowOpen(UUID id) {
         Map<String, Object> c = cruise(id, false);
-        Instant opens = time(c.get("booking_opens_at")), closes = time(c.get("booking_closes_at"));
+        Windows w = resolveWindows(c);
+        Instant opens = w.bookingOpensAt(), closes = w.bookingClosesAt();
         Instant now = Instant.now();
         return opens != null && closes != null && !now.isBefore(opens) && now.isBefore(closes);
     }
