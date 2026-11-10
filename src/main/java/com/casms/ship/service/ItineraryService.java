@@ -30,7 +30,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.time.LocalDate;
-import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.UUID;
@@ -45,6 +44,7 @@ public class ItineraryService {
     private final ItineraryDayRepository itineraryDayRepository;
     private final CruiseRepository cruiseRepository;
     private final UserRepository userRepository;
+    private final ItineraryProgramPolicy programPolicy;
 
     @Transactional
     public ItineraryResponse create(ItineraryCreateRequest request, UUID creatorUserId) {
@@ -275,9 +275,9 @@ public class ItineraryService {
             Cruise cruise = itinerary.getCruise();
             if (cruise.getDepartureDatetime() != null && cruise.getReturnDatetime() != null) {
                 LocalDate departureDate =
-                        cruise.getDepartureDatetime().atZone(ZoneOffset.UTC).toLocalDate();
+                        cruise.getDepartureDatetime().atZone(com.casms.ship.util.PortTimeZoneHelper.SHIP_TIME_ZONE).toLocalDate();
                 LocalDate returnDate =
-                        cruise.getReturnDatetime().atZone(ZoneOffset.UTC).toLocalDate();
+                        cruise.getReturnDatetime().atZone(com.casms.ship.util.PortTimeZoneHelper.SHIP_TIME_ZONE).toLocalDate();
                 if (itinerary.getStartDate().isBefore(departureDate)
                         || itinerary.getEndDate().isAfter(returnDate)) {
                     throw new BusinessException(
@@ -290,6 +290,7 @@ public class ItineraryService {
 
     @Transactional
     public ItineraryResponse submit(UUID itineraryId) {
+        programPolicy.lockForTransition(itineraryId);
         Itinerary itinerary = getItineraryById(itineraryId);
 
         if (itinerary.getStatus() != ItineraryStatus.DRAFT) {
@@ -298,6 +299,7 @@ public class ItineraryService {
         }
 
         validateFeasibility(itinerary.getItineraryId());
+        programPolicy.requireComplete(itinerary.getCruise().getCruiseId());
 
         itinerary.setStatus(ItineraryStatus.PENDING_APPROVAL);
         itinerary = itineraryRepository.save(itinerary);
@@ -307,6 +309,7 @@ public class ItineraryService {
 
     @Transactional
     public ItineraryResponse approve(UUID itineraryId, UUID approverId) {
+        programPolicy.lockForTransition(itineraryId);
         Itinerary itinerary = getItineraryById(itineraryId);
 
         if (itinerary.getStatus() != ItineraryStatus.PENDING_APPROVAL) {
@@ -326,6 +329,7 @@ public class ItineraryService {
                 userRepository
                         .findById(approverId)
                         .orElseThrow(() -> new ResourceNotFoundException("User", approverId));
+        programPolicy.requireComplete(itinerary.getCruise().getCruiseId());
 
         itinerary.setStatus(ItineraryStatus.APPROVED);
         itinerary.setApprovedByUser(approver);
@@ -444,6 +448,7 @@ public class ItineraryService {
 
     @Transactional
     public ItineraryResponse publish(UUID itineraryId) {
+        programPolicy.lockForTransition(itineraryId);
         Itinerary itinerary = getItineraryById(itineraryId);
 
         if (itinerary.getStatus() != ItineraryStatus.APPROVED) {
@@ -452,6 +457,7 @@ public class ItineraryService {
         }
 
         validateStructure(itineraryId);
+        programPolicy.requireComplete(itinerary.getCruise().getCruiseId());
 
         itinerary.setStatus(ItineraryStatus.OPEN_FOR_SALE);
         itinerary = itineraryRepository.save(itinerary);

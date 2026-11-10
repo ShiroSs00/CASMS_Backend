@@ -36,7 +36,7 @@ class ShoreExcursionServiceTest {
     @InjectMocks private ShoreExcursionService service;
 
     @Test
-    void list_withoutFilters_returnsAllExcursions() {
+    void list_withoutFilters_excludesUnscheduledDefinitions() {
         ShoreExcursion excursion = new ShoreExcursion();
         excursion.setStatus(ShoreExcursionStatus.PLANNED);
 
@@ -44,7 +44,7 @@ class ShoreExcursionServiceTest {
 
         // Cần supplier và cruise stop hợp lệ để map response.
         // Nếu entity chưa có quan hệ, hãy bổ sung fixture theo entity thực tế.
-        assertThrows(RuntimeException.class, () -> service.list(null, null, null));
+        assertTrue(service.list(null, null, null).isEmpty());
     }
 
     @Test
@@ -104,6 +104,15 @@ class ShoreExcursionServiceTest {
         assertThrows(
                 IllegalArgumentException.class,
                 () -> service.checkAvailability(UUID.randomUUID(), 0));
+    }
+
+    @Test
+    void checkAvailability_incompleteDraftIsUnavailableWithoutNullPointer() {
+        UUID id = UUID.randomUUID();
+        ShoreExcursion excursion = new ShoreExcursion();
+        excursion.setStatus(ShoreExcursionStatus.PLANNED);
+        when(excursionRepository.findById(id)).thenReturn(Optional.of(excursion));
+        assertThrows(IllegalStateException.class, () -> service.checkAvailability(id, 1));
     }
 
     @Test

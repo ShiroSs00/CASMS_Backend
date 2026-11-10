@@ -31,6 +31,7 @@ class PreparationServiceAuthorizationTest {
     @Mock com.casms.servicepackage.repository.ServiceScheduleRepository schedules;
     @Mock com.casms.identity.repository.UserRepository users;
     @Mock org.springframework.jdbc.core.JdbcTemplate jdbc;
+    @Mock ItineraryProgramPolicy programPolicy;
 
     @Spy
     com.fasterxml.jackson.databind.ObjectMapper mapper =
@@ -86,6 +87,25 @@ class PreparationServiceAuthorizationTest {
                                                 Set.of()))
                         .getCode());
         verifyNoInteractions(cruises, sections, jdbc);
+    }
+
+    @Test
+    void departmentalSubmissionDoesNotRequireCompletePrograms() {
+        UUID id = UUID.randomUUID(), cruiseId = UUID.randomUUID();
+        actor(id, true, false, true);
+        var coordinator = new com.casms.identity.entity.User(); coordinator.setUserId(id);
+        var cruise = new Cruise(); cruise.setCruiseId(cruiseId); cruise.setPreparationCoordinator(coordinator);
+        var section = new CruisePreparationSection(); section.setCruise(cruise);
+        section.setSectionCode("TECHNICAL_NAUTICAL"); section.setStatus("NOT_STARTED"); section.setRevision(1L);
+        when(cruises.findByIdForUpdate(cruiseId)).thenReturn(Optional.of(cruise));
+        when(sections.findByCruiseCruiseIdOrderBySectionCodeAsc(cruiseId)).thenReturn(List.of(section));
+        when(sections.findByCruiseCruiseIdAndSectionCodeForUpdate(cruiseId,"TECHNICAL_NAUTICAL"))
+                .thenReturn(Optional.of(section));
+        when(sections.saveAndFlush(section)).thenReturn(section);
+        var input = new CruisePreparationSubmitRequest(); input.setExpectedRevision(1L); input.setEvidence("Technical dossier");
+        service.submitSection(cruiseId,"TECHNICAL_NAUTICAL",input,id,Set.of());
+        assertEquals("SUBMITTED",section.getStatus());
+        verifyNoInteractions(programPolicy);
     }
 
     @Test
@@ -166,7 +186,7 @@ class PreparationServiceAuthorizationTest {
                         jdbc,
                         mapper,
                         mock(PortWindowEvaluator.class),
-                        mock(org.springframework.beans.factory.ObjectProvider.class));
+                        mock(org.springframework.beans.factory.ObjectProvider.class), programPolicy);
         assertEquals(
                 "READY_ACTION_FORBIDDEN",
                 assertThrows(

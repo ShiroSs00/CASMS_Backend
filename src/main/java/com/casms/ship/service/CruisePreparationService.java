@@ -43,6 +43,7 @@ public class CruisePreparationService {
     private final com.casms.identity.repository.UserRepository userRepository;
     private final org.springframework.jdbc.core.JdbcTemplate jdbc;
     private final com.fasterxml.jackson.databind.ObjectMapper mapper;
+    private final ItineraryProgramPolicy programPolicy;
 
     private CasmsPrincipal currentActor() {
         var auth =
@@ -378,6 +379,7 @@ public class CruisePreparationService {
                     HttpStatus.UNPROCESSABLE_ENTITY,
                     "PREPARATION_REVISIONS_REQUIRED",
                     "Read all active preparation sections before submitting");
+        programPolicy.requireComplete(cruiseId);
         ensureSectionsInitialized(cruise);
         List<CruisePreparationSection> pending = new ArrayList<>();
         for (var template : TEMPLATES) {

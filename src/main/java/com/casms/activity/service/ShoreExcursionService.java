@@ -287,18 +287,7 @@ public class ShoreExcursionService {
                     "Excursion must return before all-aboard/departure time.");
         }
 
-        long conflicts =
-                excursionRepository.countScheduleConflicts(
-                        stop.getCruiseStopId(),
-                        excursion.getStartTime(),
-                        excursion.getPlannedReturnTime(),
-                        SCHEDULE_STATUSES,
-                        excludeId);
-
-        if (conflicts > 0) {
-            throw new IllegalStateException(
-                    "Excursion schedule overlaps another excursion " + "at the same cruise stop.");
-        }
+        // Independent shore programs may run concurrently at the same port call.
 
         if (stop.getTenderTransferMinutes() != null && stop.getTenderTransferMinutes() > 0) {
             Instant earliestStart =
@@ -358,7 +347,8 @@ public class ShoreExcursionService {
 
         ShoreExcursion excursion = getById(id);
         long registered = countRegisteredParticipants(id);
-        long available = excursion.getMaximumCapacity() - registered;
+        long available = excursion.getMaximumCapacity() == null
+                ? 0 : Math.max(0, excursion.getMaximumCapacity() - registered);
 
         if (excursion.getStatus() != ShoreExcursionStatus.OPEN
                 || requestedParticipants > available) {

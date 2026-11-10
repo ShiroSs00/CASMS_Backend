@@ -28,6 +28,7 @@ public class CruiseMainflowService {
     private final ObjectMapper mapper;
     private final PortWindowEvaluator portWindowEvaluator;
     private final org.springframework.beans.factory.ObjectProvider<CruiseService> cruiseServices;
+    private final ItineraryProgramPolicy programPolicy;
 
     @org.springframework.beans.factory.annotation.Autowired
     private org.springframework.beans.factory.ObjectProvider<CruisePricingPolicyService>
@@ -418,6 +419,8 @@ public class CruiseMainflowService {
 
     private List<String> planBlockers(UUID id, Map<String, Object> c, List<ProgramIssue> issues) {
         List<String> b = new ArrayList<>();
+        programPolicy.issues(id).stream()
+                .map(ItineraryProgramPolicy.Issue::code).distinct().forEach(b::add);
         var windowChecks = portWindowEvaluator.cruise(id);
         if (windowChecks.isEmpty()) b.add("WINDOW_NOT_CONFIGURED");
         else
