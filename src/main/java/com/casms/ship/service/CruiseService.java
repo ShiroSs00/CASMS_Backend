@@ -148,6 +148,7 @@ public class CruiseService {
     private final CruiseAuditService cruiseAuditService;
     private final CruisePackageService cruisePackageService;
     private final CruiseMainflowService mainflow;
+    private final org.springframework.jdbc.core.JdbcTemplate jdbc;
 
     @Transactional
     public CruiseResponse create(CruiseCreateRequest request) {
@@ -597,6 +598,22 @@ public class CruiseService {
                     "SOURCE_CONFIGURATION_LOCKED",
                     "Thời lượng chuyến khởi hành được kế thừa từ nguồn, không thể ghi đè trực"
                         + " tiếp.");
+        }
+        if (!Objects.equals(oldDep, effectiveDeparture)
+                || !Objects.equals(cruise.getReturnDatetime(), effectiveReturn)) {
+            var zone = PortTimeZoneHelper.SHIP_TIME_ZONE;
+            long expectedDays = ChronoUnit.DAYS.between(
+                    effectiveDeparture.atZone(zone).toLocalDate(),
+                    effectiveReturn.atZone(zone).toLocalDate()) + 1;
+            itineraryRepository.findByCruiseCruiseId(cruiseId).ifPresent(itinerary -> {
+                var days = itineraryDayRepository.findByItineraryItineraryIdOrderByDayNumberAsc(
+                        itinerary.getItineraryId());
+                if (!days.isEmpty() && days.size() != expectedDays) {
+                    throw new BusinessException(HttpStatus.UNPROCESSABLE_ENTITY,
+                            "DRAFT_ITINERARY_DAY_COUNT_MISMATCH",
+                            "Giờ mới làm thay đổi số ngày lịch trình theo giờ Việt Nam.");
+                }
+            });
         }
         if (request.getCruiseName() != null) cruise.setCruiseName(request.getCruiseName());
         if (request.getCruiseType() != null) cruise.setCruiseType(request.getCruiseType());
@@ -2220,7 +2237,22 @@ public class CruiseService {
         boolean hasInfrastructureError = false;
         if (!mainflow.isReady(cruiseId)) {
             blockers.add("READY_CONFIRMATION_REQUIRED");
-            issues.add("OPS Ready confirmation required");
+            issues.add("Kế hoạch và điều kiện mở bán chưa được Quản lý vận hành xác nhận sẵn sàng tại Bước 2");
+            details.add(
+                    ReadinessIssueDetail.builder()
+                            .code("READY_CONFIRMATION_REQUIRED")
+                            .targetType("CRUISE")
+                            .targetId(cruiseId)
+                            .scope("WHOLE_CRUISE")
+                            .severity(ReadinessSeverity.BLOCKER)
+                            .message("Chuyến khởi hành chưa được Quản lý vận hành xác nhận sẵn sàng tại Bước 2")
+                            .evidence("CruisePlanReview.ready_at is null")
+                            .ownerRole("OPERATIONS_MANAGER")
+                            .allowedAction("Xác nhận sẵn sàng mở bán tại Bước 2")
+                            .requiredPermission("CRUISE_VALIDATE")
+                            .remediationUrl("/admin/cruises/" + cruiseId + "?step=ready")
+                            .remediationOperation("POST")
+                            .build());
         }
         blockers.addAll(mainflow.commercialBlockers(cruiseId));
 
@@ -3164,12 +3196,13 @@ public class CruiseService {
         response.setUnconfirmedPreparationSectionsCount((int) unconfirmedCount);
 
         if (!prep.isAllConfirmed()) {
+            response.getBlockers().add("PREPARATION_CONFIRMATION_REQUIRED");
             response.getBlockers().add("PREPARATION_SECTIONS_NOT_CONFIRMED");
             response.getIssues()
                     .add(
                             "Còn "
                                     + unconfirmedCount
-                                    + " phân hệ chuẩn bị liên phòng ban chưa được ký duyệt");
+                                    + " phân hệ chuẩn bị liên phòng ban chưa được xác nhận");
             for (CruisePreparationSectionResponse sec : prep.getSections()) {
                 if (!"CONFIRMED".equalsIgnoreCase(sec.getStatus())) {
                     response.getDetails()
@@ -3185,7 +3218,7 @@ public class CruiseService {
                                                             + sec.getSectionName()
                                                             + " ("
                                                             + sec.getSectionCode()
-                                                            + ") chưa được ký duyệt (Trạng thái: "
+                                                            + ") chưa được xác nhận (Trạng thái: "
                                                             + sec.getStatus()
                                                             + ")")
                                             .evidence(
@@ -3195,7 +3228,7 @@ public class CruiseService {
                                                             + sec.getStatus())
                                             .ownerRole(sec.getOwnerRole())
                                             .allowedAction(
-                                                    "Hoàn thành công tác chuẩn bị và ký duyệt phân"
+                                                    "Hoàn thành công tác chuẩn bị và xác nhận phân"
                                                         + " hệ")
                                             .requiredPermission("CRUISE_PREPARATION_CONFIRM")
                                             .remediationUrl(
@@ -3208,6 +3241,66 @@ public class CruiseService {
                                             .build());
                 }
             }
+            response.setReady(false);
+            response.setStatus(ReadinessStatus.NOT_READY);
+        }
+
+        // Khâu chuẩn bị xuất bến 2: Nhân sự Onboard Staff trên tàu
+        boolean onboardAssigned = cruiseStaffRepository.existsActiveOnboardStaff(cruiseId);
+        if (!onboardAssigned) {
+            if (!response.getBlockers().contains("ONBOARD_STAFF_REQUIRED")) {
+                response.getBlockers().add("ONBOARD_STAFF_REQUIRED");
+            }
+            if (!response.getBlockers().contains("MISSING_ONBOARD_STAFF")) {
+                response.getBlockers().add("MISSING_ONBOARD_STAFF");
+            }
+            response.getIssues().add("Chưa phân công nhân viên trên tàu (Onboard Staff) cho chuyến khởi hành trước giờ xuất bến");
+            response.getDetails().add(
+                    ReadinessIssueDetail.builder()
+                            .code("ONBOARD_STAFF_REQUIRED")
+                            .targetType("CRUISE")
+                            .targetId(cruiseId)
+                            .scope("CRUISE")
+                            .severity(ReadinessSeverity.BLOCKER)
+                            .message("Chưa phân công Onboard Staff cho chuyến khởi hành trước giờ xuất bến")
+                            .evidence("Active Onboard Staff assignment = 0")
+                            .ownerRole("OPERATIONS_MANAGER")
+                            .allowedAction("Phân công nhân sự trên tàu tại mục Nhân sự chuyến khởi hành")
+                            .requiredPermission(Permission.CRUISE_STAFF_ASSIGN.name())
+                            .remediationUrl("/api/cruise/" + cruiseId + "/staff")
+                            .remediationOperation("POST")
+                            .build());
+            response.setReady(false);
+            response.setStatus(ReadinessStatus.NOT_READY);
+        }
+
+        // Khâu chuẩn bị xuất bến 3: Buổi hướng dẫn an toàn trước chuyến khởi hành
+        Boolean guidance =
+                jdbc.queryForObject(
+                        "SELECT EXISTS(SELECT 1 FROM \"GuidanceSession\" WHERE cruise_id=? AND"
+                            + " status IN ('Published','Completed') AND published_at IS NOT NULL"
+                            + " AND content IS NOT NULL AND length(trim(content))>0 AND"
+                            + " instructor_user_id IS NOT NULL)",
+                        Boolean.class,
+                        cruiseId);
+        if (!Boolean.TRUE.equals(guidance)) {
+            response.getBlockers().add("GUIDANCE_PUBLICATION_REQUIRED");
+            response.getIssues().add("Buổi hướng dẫn an toàn chưa được công bố hoặc chưa hoàn thiện người phụ trách");
+            response.getDetails().add(
+                    ReadinessIssueDetail.builder()
+                            .code("GUIDANCE_PUBLICATION_REQUIRED")
+                            .targetType("CRUISE")
+                            .targetId(cruiseId)
+                            .scope("CRUISE")
+                            .severity(ReadinessSeverity.BLOCKER)
+                            .message("Buổi hướng dẫn chưa được công bố. Quản lý vận hành cần hoàn thiện nội dung và phân công người phụ trách")
+                            .evidence("GuidanceSession not published or instructor missing")
+                            .ownerRole("OPERATIONS_MANAGER")
+                            .allowedAction("Công bố buổi hướng dẫn trước chuyến đi")
+                            .requiredPermission("GUIDANCE_MANAGE")
+                            .remediationUrl("/api/cruise/" + cruiseId + "/guidance")
+                            .remediationOperation("POST")
+                            .build());
             response.setReady(false);
             response.setStatus(ReadinessStatus.NOT_READY);
         }
