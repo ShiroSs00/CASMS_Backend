@@ -17,6 +17,7 @@ import lombok.RequiredArgsConstructor;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
@@ -149,7 +150,7 @@ public class ActivityController {
             BigDecimal price,
             String currencyCode,
             String status,
-            UUID cruiseId, boolean catalogEntry, UUID sourceActivityId,
+            UUID cruiseId, boolean catalogEntry, UUID sourceActivityId, UUID areaId,
             com.casms.activity.enums.OnboardActivityCategory category, UUID responsibleUserId) {
         public static ActivityView of(OnboardActivity a) {
             return new ActivityView(
@@ -170,7 +171,7 @@ public class ActivityController {
                     a.getPrice(),
                     a.getCurrencyCode(),
                     a.getStatus().name(),
-                    a.getCruise() != null ? a.getCruise().getCruiseId() : null, a.isCatalogEntry(), a.getSourceActivityId(), a.getCategory(), a.getResponsibleUserId());
+                    a.getCruise() != null ? a.getCruise().getCruiseId() : null, a.isCatalogEntry(), a.getSourceActivityId(), a.getAreaObjectId(), a.getCategory(), a.getResponsibleUserId());
         }
     }
 
@@ -236,6 +237,7 @@ public class ActivityController {
     @Operation(summary = "Chi tiết hoạt động", description = "Lấy thông tin một hoạt động theo ID")
     @PreAuthorize("hasAuthority('ACTIVITY_READ')")
     @GetMapping("/{id}")
+    @Transactional(readOnly = true)
     public ApiResponse<ActivityView> get(
             @Parameter(description = "ID hoạt động", required = true) @PathVariable UUID id) {
         return ApiResponse.success(ActivityView.of(service.activity(id)));

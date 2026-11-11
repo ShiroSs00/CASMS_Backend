@@ -43,6 +43,7 @@ import java.util.*;
 public class CruiseScopedProgramsController {
     private final CruiseMainflowService plans;
     private final ActivityService activities;
+    private final com.casms.ship.service.ItineraryProgramPolicy programPolicy;
     private final ShoreExcursionService excursions;
     private final ServicepackageService packages;
     private final CruisePricingPolicyService pricing;
@@ -51,13 +52,40 @@ public class CruiseScopedProgramsController {
     private final com.casms.servicepackage.service.ServiceScheduleManagementService schedules;
 
     public record ResponsibleUserInput(UUID userId) {}
+    public record ActivityAreaInput(@NotNull UUID areaId) {}
+
+    private void setActivityArea(OnboardActivity activity, UUID areaId) {
+        if (areaId == null) return;
+        UUID deckId = programPolicy.prepareActivityArea(areaId, activity.getCruise().getShip() == null
+                ? null : activity.getCruise().getShip().getShipId());
+        if (activity.getDeck() != null && !deckId.equals(activity.getDeck().getDeckId())) {
+            throw new BusinessException(HttpStatus.UNPROCESSABLE_ENTITY, "ACTIVITY_AREA_DECK_MISMATCH",
+                    "Khu vực hoạt động phải thuộc boong đã chọn.");
+        }
+        if (activity.getDeck() == null) {
+            activity.setDeck(em.getReference(com.casms.ship.entity.Deck.class, deckId));
+        }
+        activity.setAreaObjectId(areaId);
+    }
+
+    @PutMapping("/activities/{id}/area")
+    public ApiResponse<ActivityView> assignActivityArea(@PathVariable UUID cruiseId, @PathVariable UUID id,
+            @RequestHeader("If-Match") Long expected, @Valid @RequestBody ActivityAreaInput input) {
+        start(cruiseId, expected);
+        var activity = activities.activity(id);
+        scope(activity.getCruise() != null && cruiseId.equals(activity.getCruise().getCruiseId()));
+        setActivityArea(activity, input.areaId());
+        finish(cruiseId);
+        return ApiResponse.success(ActivityView.of(activity));
+    }
 
     @PostMapping("/activities/from-catalog")
     public ApiResponse<ActivityView> scheduleCatalogActivity(@PathVariable UUID cruiseId,
             @RequestHeader("If-Match") Long expected,
-            @Valid @RequestBody com.casms.activity.controller.ActivityController.ActivityScheduleRequest input) {
+            @RequestParam(required = false) UUID areaId, @Valid @RequestBody com.casms.activity.controller.ActivityController.ActivityScheduleRequest input) {
         start(cruiseId, expected);
         var saved = activities.scheduleCatalog(cruiseId, input);
+        setActivityArea(saved, areaId);
         finish(cruiseId);
         return ApiResponse.success(ActivityView.of(saved));
     }
@@ -131,6 +159,19 @@ public class CruiseScopedProgramsController {
                                             + " c.ship_id=b.ship_id WHERE c.cruise_id=?"
                                             + " ORDER BY d.deck_number,b.cabin_number,b.cabin_id",
                                         cruiseId),
+                        "activityAreas",
+                                jdbc.queryForList("""
+                                        SELECT o.ship_model_object_id AS id, o.display_name AS name, o.deck_id AS "deckId", o.area_usage AS usage
+                                        FROM "Cruise" c JOIN "ShipModel" m ON m.ship_id=c.ship_id
+                                        JOIN "ShipModelObject" o USING(ship_model_id)
+                                        JOIN "Deck" d ON d.deck_id=o.deck_id AND d.ship_id=c.ship_id
+                                        WHERE c.cruise_id=? AND m.status IN ('DRAFT','READY')
+                                          AND o.object_type='FACILITY' AND o.area_usage IN ('ACTIVITY_SPACE','OTHER')
+                                          AND o.cabin_id IS NULL AND NOT EXISTS(
+                                            SELECT 1 FROM "AreaServiceAssignment" a
+                                            WHERE a.area_object_id=o.ship_model_object_id AND a.enabled)
+                                        ORDER BY d.deck_number,o.display_name,o.ship_model_object_id
+                                        """, cruiseId),
                         "services",
                                 jdbc.queryForList(
                                         "SELECT s.service_id AS id,s.service_name AS"
@@ -638,16 +679,15 @@ public class CruiseScopedProgramsController {
     public ApiResponse<ActivityView> create(
             @PathVariable UUID cruiseId,
             @RequestHeader("If-Match") Long expected,
+            @RequestParam(required = false) UUID areaId,
             @Valid @RequestBody ActivityRequest input) {
         start(cruiseId, expected);
         price(input.price(), input.currencyCode());
         scope(cruiseId.equals(input.cruiseId()));
-        OnboardActivity a = activity(input);
-        ActivityView result =
-                ActivityView.of(
-                        activities.createActivity(a, cruiseId, input.deckId(), input.cabinId()));
+        var saved = activities.createActivity(activity(input), cruiseId, input.deckId(), input.cabinId());
+        setActivityArea(saved, areaId);
         finish(cruiseId);
-        return ApiResponse.success(result);
+        return ApiResponse.success(ActivityView.of(saved));
     }
 
     @PutMapping("/activities/{id}")

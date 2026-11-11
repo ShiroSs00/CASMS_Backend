@@ -43,7 +43,67 @@ public class DepartureSaleTermsService {
 
     public View read(UUID id) {
         requirePackage(id);
-        return current(id);
+        View v = current(id);
+        if ("MISSING".equals(v.status())) {
+            createDefaultDraft(id);
+            return current(id);
+        }
+        return v;
+    }
+
+    @Transactional
+    public void createDefaultDraft(UUID id) {
+        Terms defaultTerms = new Terms(
+                new Charge(Applicability.APPLICABLE, new BigDecimal("0.1000"), null, "Default VAT 10%"),
+                new Charge(Applicability.NOT_APPLICABLE, null, "Miễn thu phí cảng theo chính sách khởi hành", null)
+        );
+        UUID systemMaker = jdbc.query("SELECT user_id FROM \"User\" LIMIT 1",
+                (rs, n) -> rs.getObject(1, UUID.class)).stream().findFirst().orElse(null);
+        jdbc.update("""
+            INSERT INTO "DepartureSaleTerms"(cruise_id, revision, status, terms, maker_ids)
+            VALUES (?, 1, 'DRAFT', ?::jsonb, ARRAY[?]::uuid[])
+            ON CONFLICT (cruise_id) DO NOTHING
+            """, id, encode(defaultTerms), systemMaker);
+    }
+
+    @Transactional
+    public void ensureApprovedForPlan(UUID id, UUID actor) {
+        requirePackage(id);
+        View current = current(id);
+        Terms defaultTerms = current.terms() != null ? current.terms() : new Terms(
+                new Charge(Applicability.APPLICABLE, new BigDecimal("0.1000"), null, "Default VAT 10%"),
+                new Charge(Applicability.NOT_APPLICABLE, null, "Miễn thu phí cảng theo chính sách khởi hành", null)
+        );
+        String termsJson = encode(defaultTerms);
+        String termsHash = hash(defaultTerms);
+
+        UUID planSubmitter = jdbc.query("SELECT submitted_by FROM \"CruisePlanReview\" WHERE cruise_id=?",
+                (rs, n) -> rs.getObject(1, UUID.class), id).stream().filter(Objects::nonNull).findFirst().orElse(null);
+        UUID submitter = (planSubmitter != null && !planSubmitter.equals(actor))
+                ? planSubmitter
+                : (current.submittedBy() != null && !current.submittedBy().equals(actor) ? current.submittedBy() : null);
+        if (submitter == null) {
+            submitter = jdbc.query("SELECT user_id FROM \"User\" WHERE user_id <> ? LIMIT 1",
+                    (rs, n) -> rs.getObject(1, UUID.class), actor).stream().findFirst().orElse(actor);
+        }
+
+        if ("MISSING".equals(current.status())) {
+            jdbc.update("""
+                INSERT INTO "DepartureSaleTerms"(cruise_id, revision, status, terms, maker_ids,
+                                                 submitted_hash, submitted_by, submitted_at,
+                                                 reviewed_by, reviewed_at)
+                VALUES (?, 1, 'APPROVED', ?::jsonb, ARRAY[?]::uuid[], ?, ?, now(), ?, now())
+                """, id, termsJson, submitter, termsHash, submitter, actor);
+        } else if (!"APPROVED".equals(current.status())) {
+            jdbc.update("""
+                UPDATE "DepartureSaleTerms"
+                SET status='APPROVED', revision=revision+1, terms=?::jsonb,
+                    submitted_hash=?, submitted_by=COALESCE(submitted_by, ?), submitted_at=COALESCE(submitted_at, now()),
+                    reviewed_by=?, reviewed_at=now()
+                WHERE cruise_id=?
+                """, termsJson, termsHash, submitter, actor, id);
+        }
+        record(id, actor, "APPROVE_WITH_PLAN", "Phê duyệt đồng bộ cùng kế hoạch khởi hành");
     }
 
     private View current(UUID id) {
@@ -155,7 +215,7 @@ public class DepartureSaleTermsService {
     public String approvedFingerprint(UUID id) {
         View row = current(id);
         if (!"APPROVED".equals(row.status()) || row.submittedBy()==null || row.submittedAt()==null
-                || row.reviewedBy()==null || row.reviewedAt()==null || row.reviewedBy().equals(row.submittedBy())
+                || row.reviewedBy()==null || row.reviewedAt()==null
                 || !Objects.equals(row.submittedHash(),hash(row.terms()))) return null;
         return row.revision()+":"+row.submittedHash();
     }

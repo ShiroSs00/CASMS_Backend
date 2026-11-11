@@ -25,7 +25,7 @@ public class ShipAreaUsageController {
     @Transactional(readOnly=true)
     public ApiResponse<List<Map<String,Object>>> list(@PathVariable UUID shipId) {
         return ApiResponse.success(jdbc.queryForList("""
-                SELECT o.ship_model_object_id AS id,o.display_name,o.area_usage,o.deck_id,m.status AS model_status,
+                SELECT o.ship_model_object_id AS id,o.display_name,o.area_usage,o.deck_id,o.cabin_id,m.status AS model_status,
                   EXISTS(SELECT 1 FROM "AreaServiceAssignment" a WHERE a.area_object_id=o.ship_model_object_id AND a.enabled) AS has_services
                 FROM "ShipModelObject" o JOIN "ShipModel" m USING(ship_model_id)
                 WHERE m.ship_id=? AND o.object_type='FACILITY' ORDER BY o.display_name,o.ship_model_object_id

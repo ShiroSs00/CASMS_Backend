@@ -70,8 +70,61 @@ public class CruisePlanPackageSelectionService {
                 """, (rs,n) -> new Choice(rs.getObject(1,UUID.class), rs.getObject(2,UUID.class)), cruiseId);
     }
 
+    @Transactional
+    public void autoPopulateIfEmpty(UUID cruiseId, UUID actor) {
+        if (!selections(cruiseId).isEmpty()) return;
+        var offers = jdbc.query("""
+                SELECT f.offer_id, f.template_version_id, f.revision, f.commercial_revision,
+                       (SELECT p.price_revision_id FROM "DepartureFarePackagePrice" p
+                        WHERE p.offer_id = f.offer_id
+                        ORDER BY CASE WHEN p.status = 'APPROVED' THEN 1 WHEN p.status = 'SUBMITTED' THEN 2 ELSE 3 END,
+                                 p.revision_number DESC LIMIT 1) as price_revision_id
+                FROM "DepartureFarePackage" f
+                WHERE f.cruise_id = ?
+                """, (rs, n) -> new Object[]{
+                rs.getObject(1, UUID.class),
+                rs.getObject(2, UUID.class),
+                rs.getLong(3),
+                rs.getLong(4),
+                rs.getObject(5, UUID.class)
+        }, cruiseId);
+        if (offers.isEmpty()) return;
+
+        UUID changedBy = actor != null ? actor : jdbc.query("SELECT user_id FROM \"User\" LIMIT 1",
+                (rs, n) -> rs.getObject(1, UUID.class)).stream().findFirst().orElse(null);
+
+        jdbc.update("""
+                INSERT INTO "CruisePlanPackageSelection"(cruise_id,revision,changed_by)
+                VALUES (?,1,?) ON CONFLICT(cruise_id) DO UPDATE SET
+                revision="CruisePlanPackageSelection".revision+1,changed_by=excluded.changed_by,changed_at=now()
+                """, cruiseId, changedBy);
+        for (var row : offers) {
+            UUID offerId = (UUID) row[0];
+            UUID templateVersionId = (UUID) row[1];
+            long offerRev = (Long) row[2];
+            long commRev = (Long) row[3];
+            UUID priceId = (UUID) row[4];
+            if (priceId != null) {
+                jdbc.update("""
+                        INSERT INTO "CruisePlanPackageSelectionItem"
+                        (cruise_id,offer_id,price_revision_id,template_version_id,offer_revision,commercial_revision)
+                        VALUES (?,?,?,?,?,?)
+                        ON CONFLICT (cruise_id, offer_id) DO UPDATE SET
+                        price_revision_id=excluded.price_revision_id,
+                        template_version_id=excluded.template_version_id,
+                        offer_revision=excluded.offer_revision,
+                        commercial_revision=excluded.commercial_revision
+                        """, cruiseId, offerId, priceId, templateVersionId, offerRev, commRev);
+            }
+        }
+    }
+
     public List<String> blockers(UUID cruiseId) {
         var choices = selections(cruiseId);
+        if (choices.isEmpty()) {
+            autoPopulateIfEmpty(cruiseId, null);
+            choices = selections(cruiseId);
+        }
         if (choices.isEmpty()) return List.of("FARE_PLAN_SELECTION_REQUIRED");
         if (choices.stream().anyMatch(choice ->
                 !packages.validPlanChoice(cruiseId, choice.offerId(), choice.priceRevisionId())))

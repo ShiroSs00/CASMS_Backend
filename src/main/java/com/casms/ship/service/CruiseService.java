@@ -1964,6 +1964,8 @@ public class CruiseService {
             res.setCompletionActorUsername(cruise.getCompletionActor().getUsername());
         }
         res.setClosureNotes(cruise.getClosureNotes());
+        res.setBookingOpensAt(cruise.getBookingOpensAt());
+        res.setBookingClosesAt(cruise.getBookingClosesAt());
         res.setCreatedAt(cruise.getCreatedAt());
         res.setUpdatedAt(cruise.getUpdatedAt());
         return res;
