@@ -842,17 +842,112 @@ public class SepayService {
                                 matchedPayment.getRequestedAmount(), processorRef);
                 paymentService.confirmPayment(matchedPayment.getPaymentId(), confirmReq);
 
+                // --- XỬ LÝ THANH TOÁN GỘP & TIỀN THỪA (SURPLUS / BUNDLED ALLOCATION) ---
+                int surplusStagesAllocated = 0;
+                BigDecimal receivedUsd =
+                        isVndCurrency
+                                ? receivedVnd
+                                : receivedVnd.divide(exchangeRate, 4, RoundingMode.HALF_UP);
+                BigDecimal confirmedUsd = matchedPayment.getRequestedAmount();
+                BigDecimal surplusUsd = receivedUsd.subtract(confirmedUsd);
+
+                if (surplusUsd.compareTo(BigDecimal.valueOf(0.01)) > 0 && matchedBooking != null) {
+                    List<Installment> installments =
+                            installmentRepository.findByBookingBookingIdOrderBySequenceNoAsc(
+                                    matchedBooking.getBookingId());
+                    Map<UUID, BigDecimal> paidMap =
+                            calculateWaterfallInstallmentPaidAmounts(
+                                    matchedBooking.getBookingId(), installments);
+
+                    for (Installment inst : installments) {
+                        if (surplusUsd.compareTo(BigDecimal.valueOf(0.01)) <= 0) {
+                            break;
+                        }
+                        BigDecimal paid =
+                                paidMap.getOrDefault(inst.getInstallmentId(), BigDecimal.ZERO);
+                        BigDecimal needed = inst.getRequiredAmount().subtract(paid);
+                        if (needed.compareTo(BigDecimal.ZERO) <= 0) {
+                            continue;
+                        }
+                        BigDecimal alloc = surplusUsd.min(needed);
+                        if (alloc.compareTo(BigDecimal.ZERO) > 0) {
+                            surplusStagesAllocated++;
+                            String cleanRef =
+                                    matchedBooking.getBookingReference().replaceAll("[^A-Za-z0-9]", "");
+                            String surplusKey =
+                                    "SEPAY-SURPLUS-"
+                                            + (payload.getId() != null
+                                                    ? payload.getId()
+                                                    : UUID.randomUUID().toString())
+                                            + "-S"
+                                            + inst.getSequenceNo();
+
+                            Payment surplusPayment = new Payment();
+                            surplusPayment.setBooking(matchedBooking);
+                            surplusPayment.setInstallment(inst);
+                            surplusPayment.setOperationType(PaymentOperationType.Collect);
+                            surplusPayment.setPaymentMethod(PaymentMethod.Sepay);
+                            surplusPayment.setRequestedAmount(alloc);
+                            surplusPayment.setConfirmedAmount(alloc);
+                            surplusPayment.setCurrency(matchedPayment.getCurrency());
+                            surplusPayment.setRequestedAt(Instant.now());
+                            surplusPayment.setConfirmedAt(Instant.now());
+                            surplusPayment.setStatus(PaymentStatus.Confirmed);
+                            surplusPayment.setProcessorReference(processorRef + "-S" + inst.getSequenceNo());
+                            surplusPayment.setInternalReceiptReference("CASMS " + cleanRef + "S" + inst.getSequenceNo());
+                            surplusPayment.setIdempotencyKey(surplusKey);
+                            paymentRepository.save(surplusPayment);
+
+                            paidMap.put(inst.getInstallmentId(), paid.add(alloc));
+                            surplusUsd = surplusUsd.subtract(alloc);
+                            log.info(
+                                    "Allocated surplus {} {} to installment {} (Seq {}) for booking {}",
+                                    alloc,
+                                    matchedPayment.getCurrency(),
+                                    inst.getInstallmentId(),
+                                    inst.getSequenceNo(),
+                                    matchedBooking.getBookingReference());
+                        }
+                    }
+
+                    if (surplusStagesAllocated > 0) {
+                        paymentService.allocateInstallmentsAndSync(matchedBooking);
+                    }
+
+                    if (surplusUsd.compareTo(BigDecimal.valueOf(0.01)) > 0) {
+                        log.info(
+                                "Booking {} has total overpayment surplus of {} {} beyond all installments",
+                                matchedBooking.getBookingReference(),
+                                surplusUsd,
+                                matchedPayment.getCurrency());
+                        tx.setDescription(
+                                (tx.getDescription() != null ? tx.getDescription() + " | " : "")
+                                        + "Khách chuyển dư: "
+                                        + surplusUsd
+                                        + " "
+                                        + matchedPayment.getCurrency());
+                    }
+                }
+
                 tx.setStatus(SepayTransactionStatus.PROCESSED);
                 tx.setMatchedAt(Instant.now());
                 sepayTransactionRepository.save(tx);
 
+                String successMsg =
+                        surplusStagesAllocated > 0
+                                ? "Payment confirmed with surplus automatically allocated to "
+                                        + surplusStagesAllocated
+                                        + " subsequent stage(s)"
+                                : "Payment confirmed successfully";
+
                 log.info(
-                        "Successfully confirmed payment {} for booking {}",
+                        "Successfully confirmed payment {} for booking {}: {}",
                         matchedPayment.getPaymentId(),
-                        bookingRef);
+                        bookingRef,
+                        successMsg);
                 return SepayWebhookResponse.builder()
                         .success(true)
-                        .message("Payment confirmed successfully")
+                        .message(successMsg)
                         .paymentId(matchedPayment.getPaymentId())
                         .bookingReference(bookingRef)
                         .build();
@@ -1038,7 +1133,7 @@ public class SepayService {
      * Bất kể khoản thanh toán được gắn nhãn đợt nào hoặc thanh toán gộp 100%, số tiền thu được sẽ ưu tiên
      * thanh toán đủ cho Đợt 1 (Cọc), sau đó đến các đợt tiếp theo theo thứ tự sequenceNo ASC.
      */
-    private Map<UUID, BigDecimal> calculateWaterfallInstallmentPaidAmounts(
+    public Map<UUID, BigDecimal> calculateWaterfallInstallmentPaidAmounts(
             UUID bookingId, List<Installment> installments) {
         Map<UUID, BigDecimal> allocated = new HashMap<>();
         if (installments == null || installments.isEmpty()) {

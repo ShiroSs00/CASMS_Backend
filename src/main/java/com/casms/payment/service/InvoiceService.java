@@ -150,10 +150,8 @@ public class InvoiceService {
             line.setInvoice(savedInvoice);
             line.setLineNo(lineNo++);
             String passengerName =
-                    c.getPassenger() != null
-                            ? (c.getPassenger().getFirstName()
-                                    + " "
-                                    + c.getPassenger().getLastName())
+                    c.getPassenger() != null && c.getPassenger().getFullName() != null
+                            ? c.getPassenger().getFullName()
                             : "Khách hàng";
             line.setDescriptionSnapshot(
                     c.getSourceType()
