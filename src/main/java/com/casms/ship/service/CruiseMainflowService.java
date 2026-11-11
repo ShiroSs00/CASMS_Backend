@@ -48,6 +48,9 @@ public class CruiseMainflowService {
     private ObjectProvider<DepartureSaleTermsService> saleTermsServices;
 
     @Autowired
+    private ObjectProvider<com.casms.cruisepackage.service.CruisePackageService> cruisePackageServices;
+
+    @Autowired
     private ObjectProvider<CruisePackageCabinMappingService> cabinMappings;
 
     @Autowired
@@ -64,10 +67,10 @@ public class CruiseMainflowService {
                 SELECT EXISTS(SELECT 1 FROM "Cruise" c LEFT JOIN "CruisePlanReview" r USING(cruise_id)
                 WHERE c.cruise_id=? AND (
                     (r.snapshot IS NOT NULL AND jsonb_exists(r.snapshot,'packageEvidence'))
-                    OR (r.submitted_revision IS NULL AND c.status='DRAFT' AND (
-                        EXISTS(SELECT 1 FROM "DepartureFarePackage" f WHERE f.cruise_id=c.cruise_id)
-                        OR EXISTS(SELECT 1 FROM "CruisePlanPackageSelectionItem" s WHERE s.cruise_id=c.cruise_id)
-                    ))
+                    OR EXISTS(SELECT 1 FROM "DepartureFarePackage" f WHERE f.cruise_id=c.cruise_id)
+                    OR EXISTS(SELECT 1 FROM "CruisePlanPackageSelectionItem" s WHERE s.cruise_id=c.cruise_id)
+                    OR c.status='DRAFT'
+                    OR NOT EXISTS(SELECT 1 FROM "CruisePricingPolicy" p WHERE p.cruise_id=c.cruise_id AND p.status='APPROVED')
                 ))
                 """, Boolean.class, id));
     }
@@ -256,19 +259,21 @@ public class CruiseMainflowService {
         Instant ref = (referenceTime != null ? referenceTime : Instant.now())
                 .truncatedTo(java.time.temporal.ChronoUnit.MINUTES);
         java.time.Duration lead = java.time.Duration.between(ref, departure);
-        Instant bookingClosesAt =
-                lead.compareTo(java.time.Duration.ofDays(14)) >= 0
-                        ? departure.minus(java.time.Duration.ofDays(3)).truncatedTo(java.time.temporal.ChronoUnit.MINUTES)
-                        : departure.minus(java.time.Duration.ofDays(2)).truncatedTo(java.time.temporal.ChronoUnit.MINUTES);
-        Instant bookingOpensAt =
-                ref.isBefore(bookingClosesAt.minus(java.time.Duration.ofHours(1)))
-                        ? ref
-                        : departure.minus(java.time.Duration.ofDays(30)).truncatedTo(java.time.temporal.ChronoUnit.MINUTES);
-        Instant guidanceOpensAt = bookingClosesAt;
-        Instant guidanceClosesAt = departure.minus(java.time.Duration.ofHours(2)).truncatedTo(java.time.temporal.ChronoUnit.MINUTES);
-        if (!guidanceClosesAt.isAfter(guidanceOpensAt)) {
-            guidanceClosesAt = departure.truncatedTo(java.time.temporal.ChronoUnit.MINUTES);
+        Instant bookingClosesAt;
+        if (lead.compareTo(java.time.Duration.ofDays(8)) >= 0) {
+            bookingClosesAt = departure.minus(java.time.Duration.ofDays(7)).truncatedTo(java.time.temporal.ChronoUnit.MINUTES);
+        } else if (lead.compareTo(java.time.Duration.ofHours(24)) >= 0) {
+            bookingClosesAt = departure.minus(java.time.Duration.ofHours(12)).truncatedTo(java.time.temporal.ChronoUnit.MINUTES);
+        } else {
+            bookingClosesAt = departure.minus(java.time.Duration.ofHours(1)).truncatedTo(java.time.temporal.ChronoUnit.MINUTES);
         }
+        Instant thirtyDaysBefore = departure.minus(java.time.Duration.ofDays(30)).truncatedTo(java.time.temporal.ChronoUnit.MINUTES);
+        Instant bookingOpensAt = ref.isAfter(thirtyDaysBefore) ? ref : thirtyDaysBefore;
+        if (!bookingOpensAt.isBefore(bookingClosesAt)) {
+            bookingOpensAt = bookingClosesAt.minus(java.time.Duration.ofHours(1));
+        }
+        Instant guidanceOpensAt = bookingClosesAt;
+        Instant guidanceClosesAt = departure.truncatedTo(java.time.temporal.ChronoUnit.MINUTES);
         return new Windows(revision, bookingOpensAt, bookingClosesAt, guidanceOpensAt, guidanceClosesAt);
     }
 
@@ -985,11 +990,13 @@ SELECT EXISTS(SELECT 1 FROM "CruisePricingPolicy" p JOIN "Cruise" c USING(cruise
                                 "Plan approval checks incomplete",
                                 Map.of("blockers", blockers));
                     if (unified) {
+                        packageSelections.getObject().autoPopulateIfEmpty(id, actor);
+                        if (cruisePackageServices != null && cruisePackageServices.getIfAvailable() != null) {
+                            cruisePackageServices.getIfAvailable().approveAllForPlan(id, actor);
+                        }
                         packageSelections.getObject().approve(id, actor);
                         var terms = saleTermsServices.getObject();
-                        var view = terms.read(id);
-                        if (!"APPROVED".equals(view.status()))
-                            terms.review(id, "approve", new DepartureSaleTermsService.Review(view.revision(), null), actor);
+                        terms.ensureApprovedForPlan(id, actor);
                     } else if (Boolean.TRUE.equals(
                             jdbc.queryForObject(
                                     "SELECT EXISTS(SELECT 1 FROM \"CruisePricingPolicy\" WHERE cruise_id=?)",
@@ -1160,14 +1167,38 @@ SELECT EXISTS(SELECT 1 FROM "CruisePricingPolicy" p JOIN "Cruise" c USING(cruise
     public void requireBookable(UUID id) {
         Map<String, Object> c = cruise(id, false);
         requireReady(id);
-        if (usesUnifiedPackages(id))
-            throw new BusinessException(HttpStatus.CONFLICT, "FARE_BOOKING_INTEGRATION_REQUIRED",
-                    "Báo giá và đặt chỗ chưa được nối với sản phẩm gói du thuyền đã mở bán.");
-        if (!commercialBlockers(id).isEmpty())
+        var blockers = commercialBlockers(id);
+        if (!blockers.isEmpty()) {
             throw new BusinessException(
                     HttpStatus.CONFLICT,
-                    "PRICING_POLICY_APPROVAL_REQUIRED",
-                    "Current USD pricing revision requires independent OPS approval");
+                    blockers.get(0),
+                    "Điều kiện thương mại của chuyến chưa hoàn tất phê duyệt.");
+        }
+        if (usesUnifiedPackages(id)) {
+            boolean hasBookablePackage = Boolean.TRUE.equals(jdbc.queryForObject("""
+                    SELECT EXISTS(
+                        SELECT 1 FROM "CruisePlanPackageSelectionItem" x
+                        JOIN "DepartureFarePackage" f ON f.offer_id=x.offer_id
+                        JOIN "DepartureFarePackagePrice" p ON p.price_revision_id=x.price_revision_id
+                        WHERE x.cruise_id=? AND f.status='PUBLISHED' AND p.status='APPROVED'
+                    )
+                    """, Boolean.class, id));
+            if (!hasBookablePackage) {
+                hasBookablePackage = Boolean.TRUE.equals(jdbc.queryForObject("""
+                        SELECT EXISTS(
+                            SELECT 1 FROM "DepartureFarePackage" f
+                            JOIN "DepartureFarePackagePrice" p ON p.offer_id=f.offer_id
+                            WHERE f.cruise_id=? AND f.status='PUBLISHED' AND p.status='APPROVED'
+                        )
+                        """, Boolean.class, id));
+            }
+            if (!hasBookablePackage) {
+                throw new BusinessException(
+                        HttpStatus.CONFLICT,
+                        "FARE_PACKAGE_UNAVAILABLE",
+                        "Chuyến khởi hành chưa có gói du thuyền nào sẵn sàng để mở bán.");
+            }
+        }
         if (c.get("opened_for_sale_at") == null
                 || !"PUBLISHED".equals(c.get("status"))
                 || c.get("stopped_at") != null

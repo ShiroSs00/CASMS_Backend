@@ -673,9 +673,18 @@ public class CruisePreparationService {
 
     @Transactional
     public void invalidateSignoffs(UUID cruiseId, String reason) {
+        invalidateSignoffs(cruiseId, null, reason);
+    }
+
+    @Transactional
+    public void invalidateSignoffs(UUID cruiseId, String targetSectionCode, String reason) {
         List<CruisePreparationSection> sections =
                 preparationSectionRepository.findByCruiseCruiseIdOrderBySectionCodeAsc(cruiseId);
         for (CruisePreparationSection section : sections) {
+            if (targetSectionCode != null
+                    && !targetSectionCode.equalsIgnoreCase(section.getSectionCode())) {
+                continue;
+            }
             if ("CONFIRMED".equalsIgnoreCase(section.getStatus())) {
                 section.setStatus("RETURNED");
                 section.setReturnReason(

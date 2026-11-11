@@ -20,6 +20,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
@@ -52,6 +53,34 @@ public class CruiseStaffService {
     private final CruiseRepository cruiseRepository;
     private final UserRepository userRepository;
     private final CruisePreparationService cruisePreparationService;
+
+    public record StaffCandidate(UUID userId, String username, List<String> allowedRoles) {}
+
+    public record StaffOptions(List<String> roles, List<StaffCandidate> users) {}
+
+    @Transactional(readOnly = true)
+    public StaffOptions staffOptions(UUID cruiseId) {
+        if (!cruiseRepository.existsById(cruiseId)) {
+            throw new ResourceNotFoundException("Cruise not found with id: " + cruiseId);
+        }
+        List<String> roles = ALLOWED_ASSIGNMENT_ROLES.stream().sorted().toList();
+        List<StaffCandidate> candidates = userRepository.findByStatus(UserStatus.ACTIVE).stream()
+                .filter(CruiseStaffService::canReceiveAssignment)
+                .sorted(Comparator.comparing(User::getUsername, String.CASE_INSENSITIVE_ORDER))
+                .map(user -> new StaffCandidate(user.getUserId(), user.getUsername(),
+                        roles.stream().filter(role -> canReceiveRole(user, role)).toList()))
+                .toList();
+        return new StaffOptions(roles, candidates);
+    }
+
+    private static boolean canReceiveAssignment(User user) {
+        return user.getRoles() != null && user.isStaff()
+                && user.getRoles().stream().anyMatch(STAFF_ROLES::contains);
+    }
+
+    private static boolean canReceiveRole(User user, String role) {
+        return !"ONBOARD_STAFF".equals(role) || user.hasRole(Role.ONBOARD_STAFF);
+    }
 
     @Transactional
     public CruiseStaffResponse assignStaff(
@@ -96,17 +125,14 @@ public class CruiseStaffService {
                     "INVALID_CRUISE_STAFF_ROLE",
                     "Unsupported operational role in cruise assignment");
         }
-        if (!user.isStaff()
-                || user.getRoles() == null
-                || user.getRoles().stream().noneMatch(STAFF_ROLES::contains)) {
+        if (!canReceiveAssignment(user)) {
             throw new BusinessException(
                     "INVALID_CRUISE_STAFF_ROLE",
                     "Only an existing staff account can receive a cruise assignment; assignment"
                         + " does not grant system roles");
         }
 
-        if ("ONBOARD_STAFF".equals(assignmentRole)
-                && !user.hasRole(com.casms.identity.enums.Role.ONBOARD_STAFF)) {
+        if (!canReceiveRole(user, assignmentRole)) {
             throw new BusinessException(
                     "INVALID_CRUISE_STAFF_ROLE",
                     "Onboard assignment requires an Onboard Staff account");
@@ -147,9 +173,6 @@ public class CruiseStaffService {
                                 () -> new ResourceNotFoundException("Assigning user not found")));
 
         CruiseStaff saved = cruiseStaffRepository.save(staff);
-        cruisePreparationService.invalidateSignoffs(
-                cruiseId,
-                "Phân công nhân sự mới: " + user.getUsername() + " (" + assignmentRole + ")");
         return toResponse(saved);
     }
 
@@ -184,8 +207,14 @@ public class CruiseStaffService {
                         .orElseThrow(
                                 () -> new ResourceNotFoundException("Removing user not found")));
         cruiseStaffRepository.save(staff);
-        cruisePreparationService.invalidateSignoffs(
-                cruiseId, "Gỡ bỏ phân công nhân sự: " + staff.getUser().getUsername());
+        if (!cruiseStaffRepository.existsActiveOnboardStaff(cruiseId)) {
+            cruisePreparationService.invalidateSignoffs(
+                    cruiseId,
+                    "SAFETY_CREW",
+                    "Gỡ bỏ phân công nhân sự: "
+                            + staff.getUser().getUsername()
+                            + " dẫn đến thiếu Onboard Staff");
+        }
         log.info("Relieved staff user {} from cruise {}", userId, cruiseId);
     }
 

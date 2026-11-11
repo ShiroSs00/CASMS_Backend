@@ -5,6 +5,7 @@ import com.casms.activity.enums.OnboardActivityStatus;
 
 import jakarta.persistence.LockModeType;
 
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
@@ -23,6 +24,7 @@ public interface OnboardActivityRepository extends JpaRepository<OnboardActivity
     boolean isReferencedSource(@Param("id") UUID id);
 
     List<OnboardActivity> findByCatalogEntryTrue();
+    @EntityGraph(attributePaths = {"cruise", "deck", "cabin"})
     List<OnboardActivity> findByCatalogEntryFalse();
 
     Optional<OnboardActivity> findByActivityCode(String activityCode);

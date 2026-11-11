@@ -40,21 +40,35 @@ public class ItineraryProgramPolicy {
                     "Provide ordered times fully inside the cruise/port-call window");
     }
 
-    public void requireActivityArea(UUID area, UUID ship, boolean lock) {
+    public UUID requireActivityArea(UUID area, UUID ship, boolean lock) {
+        return activityAreaDeck(area, ship, lock, false);
+    }
+
+    @Transactional
+    public UUID prepareActivityArea(UUID area, UUID ship) {
+        return activityAreaDeck(area, ship, true, true);
+    }
+
+    private UUID activityAreaDeck(UUID area, UUID ship, boolean lock, boolean allowUnclassified) {
         var rows = jdbc.queryForList("""
-                SELECT o.area_usage, o.object_type, o.cabin_id, d.ship_id,
+                SELECT o.area_usage, o.object_type, o.cabin_id, d.deck_id, d.ship_id,
                        EXISTS(SELECT 1 FROM "AreaServiceAssignment" s
                               WHERE s.area_object_id=o.ship_model_object_id AND s.enabled) AS service_assigned
                 FROM "ShipModelObject" o JOIN "ShipModel" m USING(ship_model_id)
                 JOIN "Deck" d ON d.deck_id=o.deck_id AND d.ship_id=m.ship_id
                 WHERE o.ship_model_object_id=? AND m.ship_id=? AND m.status IN ('DRAFT','READY')
                 """ + (lock ? " FOR UPDATE OF o" : ""), area, ship);
+        boolean unclassified = rows.size() == 1 && "OTHER".equals(rows.getFirst().get("area_usage"));
         if (rows.size() != 1 || !"FACILITY".equals(rows.getFirst().get("object_type"))
-                || !"ACTIVITY_SPACE".equals(rows.getFirst().get("area_usage"))
+                || (!"ACTIVITY_SPACE".equals(rows.getFirst().get("area_usage")) && !(allowUnclassified && unclassified))
                 || rows.getFirst().get("cabin_id") != null
                 || Boolean.TRUE.equals(rows.getFirst().get("service_assigned")))
             throw new BusinessException(HttpStatus.UNPROCESSABLE_ENTITY, "ACTIVITY_AREA_REQUIRED",
-                    "Choose an ACTIVITY_SPACE on this ship without an enabled service assignment");
+                    "Chọn khu vực hoạt động hợp lệ trên tàu đã phân công.");
+        if (unclassified) {
+            jdbc.update("UPDATE \"ShipModelObject\" SET area_usage='ACTIVITY_SPACE' WHERE ship_model_object_id=?", area);
+        }
+        return (UUID) rows.getFirst().get("deck_id");
     }
 
     public void requireDestination(UUID stop, UUID destination) {

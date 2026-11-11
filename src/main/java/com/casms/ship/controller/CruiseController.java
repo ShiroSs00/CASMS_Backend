@@ -458,6 +458,12 @@ public class CruiseController {
 
     // ==================== CRUISE STAFF ASSIGNMENT ====================
 
+    @GetMapping("/{cruiseId}/staff/options")
+    @PreAuthorize("hasAuthority('CRUISE_STAFF_ASSIGN')")
+    public ApiResponse<CruiseStaffService.StaffOptions> staffOptions(@PathVariable UUID cruiseId) {
+        return ApiResponse.success(staffService.staffOptions(cruiseId));
+    }
+
     @Operation(
             summary = "Phân công nhân viên / thủy thủ đoàn vào chuyến khởi hành",
             description =

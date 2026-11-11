@@ -130,6 +130,12 @@ public class CruiseResponse {
     @Schema(description = "Ghi chú đóng chuyến và quyết toán")
     private String closureNotes;
 
+    @Schema(description = "Thời điểm mở nhận đặt chỗ (ISO-8601)")
+    private Instant bookingOpensAt;
+
+    @Schema(description = "Thời điểm đóng nhận đặt chỗ (ISO-8601)")
+    private Instant bookingClosesAt;
+
     @Schema(description = "Thời điểm tạo")
     private Instant createdAt;
 

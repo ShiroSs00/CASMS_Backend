@@ -74,6 +74,9 @@ public class OnboardActivity {
     @JoinColumn(name = "cabin_id")
     private Cabin cabin;
 
+    @Column(name = "area_object_id")
+    private UUID areaObjectId;
+
     @Column(name = "capacity")
     private Integer capacity;
 
