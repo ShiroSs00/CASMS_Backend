@@ -1,6 +1,7 @@
 package com.casms.booking.dto.request;
 
-import jakarta.validation.constraints.NotNull;
+import com.casms.booking.enums.CabinSelectionMode;
+import jakarta.validation.constraints.Size;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -14,8 +15,17 @@ import java.util.UUID;
 @NoArgsConstructor
 @AllArgsConstructor
 public class PassengerQuoteItem {
-    @NotNull(message = "Cabin ID is required")
     private UUID cabinId;
 
     private UUID tourPackageId;
+    private UUID farePackageOfferId;
+    private UUID farePackagePriceRevisionId;
+    private CabinSelectionMode cabinSelectionMode;
+    @Size(max = 100)
+    private String cabinGroupKey;
+
+    public PassengerQuoteItem(UUID cabinId, UUID tourPackageId) {
+        this.cabinId = cabinId;
+        this.tourPackageId = tourPackageId;
+    }
 }

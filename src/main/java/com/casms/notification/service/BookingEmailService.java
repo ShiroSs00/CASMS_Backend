@@ -22,6 +22,10 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 public class BookingEmailService {
+    public static final int MIN_ACTIVATION_PASSWORD_LENGTH = 8;
+    public static final int MAX_ACTIVATION_PASSWORD_LENGTH = 24;
+    public static final int MAX_ACTIVATION_TOKEN_LENGTH = 128;
+
     private final JdbcTemplate jdbc;
     private final PasswordEncoder passwordEncoder;
     @Value("${casms.booking-email.portal-url:http://localhost:3000}")
@@ -70,12 +74,21 @@ public class BookingEmailService {
 
     @Transactional
     public void activate(String token, String password) {
-        if (password.getBytes(StandardCharsets.UTF_8).length > 72) {
+        if (password != null && password.getBytes(StandardCharsets.UTF_8).length > 72) {
             throw new BusinessException(HttpStatus.BAD_REQUEST, "PASSWORD_TOO_LONG", "Password must fit 72 UTF-8 bytes");
+        }
+        if (password == null || password.isBlank()
+                || password.length() < MIN_ACTIVATION_PASSWORD_LENGTH
+                || password.length() > MAX_ACTIVATION_PASSWORD_LENGTH) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "INVALID_PASSWORD_LENGTH",
+                    "Password must be 8–24 characters and cannot be blank");
+        }
+        if (token == null || token.isBlank() || token.length() > MAX_ACTIVATION_TOKEN_LENGTH) {
+            throw invalidSetupToken();
         }
         var users = jdbc.queryForList("SELECT user_id FROM \"BookingAccountSetup\" WHERE token_hash = ? AND activated_at IS NULL AND expires_at > now() FOR UPDATE",
                 UUID.class, hash(token));
-        if (users.isEmpty()) throw new BusinessException(HttpStatus.BAD_REQUEST, "ACCOUNT_SETUP_INVALID", "Setup token is invalid or expired");
+        if (users.isEmpty()) throw invalidSetupToken();
         UUID userId = users.get(0);
         int updated = jdbc.update("UPDATE \"User\" SET password_hash = ?, updated_at = now() WHERE user_id = ? AND status = 'ACTIVE'",
                 passwordEncoder.encode(password), userId);
@@ -83,6 +96,10 @@ public class BookingEmailService {
         jdbc.update("UPDATE \"BookingAccountSetup\" SET activated_at = now(), token_hash = NULL WHERE user_id = ?", userId);
         // Remove the bearer setup link from retained outbox bodies after successful activation.
         jdbc.update("UPDATE \"BookingEmailOutbox\" SET body = 'Account setup completed' WHERE booking_id IN (SELECT booking_id FROM \"Booking\" WHERE booked_by_user_id = ?) AND body LIKE '%activate-booking-account#token=%'", userId);
+    }
+
+    private BusinessException invalidSetupToken() {
+        return new BusinessException(HttpStatus.BAD_REQUEST, "ACCOUNT_SETUP_INVALID", "Setup token is invalid or expired");
     }
 
     private String hash(String token) {
