@@ -151,9 +151,7 @@ public class InvoiceService {
             line.setLineNo(lineNo++);
             String passengerName =
                     c.getPassenger() != null
-                            ? (c.getPassenger().getFirstName()
-                                    + " "
-                                    + c.getPassenger().getLastName())
+                            ? c.getPassenger().getFullName()
                             : "Khách hàng";
             line.setDescriptionSnapshot(
                     c.getSourceType()
