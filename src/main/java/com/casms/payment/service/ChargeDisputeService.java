@@ -163,8 +163,8 @@ public class ChargeDisputeService {
 
     private ChargeDisputeResponse toDisputeResponse(ChargeDispute d) {
         String passengerName =
-                d.getPassenger() != null
-                        ? (d.getPassenger().getFirstName() + " " + d.getPassenger().getLastName())
+                d.getPassenger() != null && d.getPassenger().getFullName() != null
+                        ? d.getPassenger().getFullName()
                         : "N/A";
 
         return ChargeDisputeResponse.builder()
