@@ -1148,6 +1148,17 @@ public class BookingService {
             }
         } else {
             signerId = booking.getRepresentativeBookingPassengerId();
+            if (signerId == null && !passengers.isEmpty()) {
+                signerId =
+                        passengers.stream()
+                                .filter(
+                                        bp ->
+                                                bp.getParticipationStatus()
+                                                        == BookingPassengerParticipationStatus.Active)
+                                .map(BookingPassenger::getBookingPassengerId)
+                                .findFirst()
+                                .orElse(null);
+            }
         }
         final UUID effectiveSignerId = signerId;
         if (passengers.stream().noneMatch(bp -> Objects.equals(bp.getBookingPassengerId(), effectiveSignerId)
@@ -2888,9 +2899,11 @@ public class BookingService {
                 (passengers != null && !passengers.isEmpty()) ? passengers.get(0) : null;
 
         String repName =
-                primary != null && primary.getFullName() != null
+                primary != null && primary.getFullName() != null && !primary.getFullName().isBlank()
                         ? escapeHtml(primary.getFullName())
-                        : escapeHtml(detail.getBookedByUsername());
+                        : (detail.getBookedByUsername() != null && !detail.getBookedByUsername().isBlank()
+                                ? escapeHtml(detail.getBookedByUsername())
+                                : "Đại diện hành khách");
         String repDoc =
                 (primary != null && primary.getDocumentNumber() != null)
                         ? escapeHtml(primary.getDocumentNumber())
@@ -3050,10 +3063,14 @@ public class BookingService {
                                 ? escapeHtml(p.getTourPackageName())
                                 : "Cơ bản";
 
+                String passName =
+                        p.getFullName() != null && !p.getFullName().isBlank()
+                                ? escapeHtml(p.getFullName())
+                                : ("Hành khách " + stt);
                 sb.append("      <tr>\n");
                 sb.append("        <td class=\"center\">").append(stt++).append("</td>\n");
                 sb.append("        <td><strong>")
-                        .append(escapeHtml(p.getFullName()))
+                        .append(passName)
                         .append("</strong></td>\n");
                 sb.append("        <td class=\"center\">")
                         .append(formatDate(p.getDateOfBirth()))
@@ -3214,6 +3231,8 @@ public class BookingService {
                 + "      </div>\n"
                 + "      <strong>"
                 + (detail.getPassengers() != null && !detail.getPassengers().isEmpty()
+                        && detail.getPassengers().get(0).getFullName() != null
+                        && !detail.getPassengers().get(0).getFullName().isBlank()
                         ? escapeHtml(detail.getPassengers().get(0).getFullName())
                         : "ĐẠI DIỆN HÀNH KHÁCH")
                 + "</strong>\n"
