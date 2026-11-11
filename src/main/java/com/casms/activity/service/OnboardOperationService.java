@@ -21,6 +21,7 @@ import com.casms.payment.enums.TransactionType;
 import com.casms.payment.repository.OnboardTransactionRepository;
 import com.casms.pos.PosDtos;
 import com.casms.pos.PosLedgerService;
+import com.casms.servicepackage.repository.BookingPassengerPackageRepository;
 import com.casms.servicepackage.repository.TourPackageActivityRepository;
 
 import lombok.RequiredArgsConstructor;
@@ -32,6 +33,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -52,6 +54,7 @@ public class OnboardOperationService {
     private final RegistrationRepository registrations;
     private final BookingPassengerRepository bookingPassengers;
     private final TourPackageActivityRepository packageActivities;
+    private final BookingPassengerPackageRepository bookingPassengerPackageRepository;
     private final PosLedgerService posLedgerService;
     private final OnboardTransactionRepository onboardTransactionRepository;
     private final NotificationRepository notificationRepository;
@@ -99,6 +102,12 @@ public class OnboardOperationService {
         BookingPassenger bp = bookingPassengers.findById(bookingPassengerId)
                 .orElseThrow(() -> new ResourceNotFoundException("BookingPassenger", bookingPassengerId));
 
+        // Kiểm tra chống đặt trùng lặp (Duplicate Registration Protection)
+        if (registrations.existsByBookingPassenger_BookingPassengerIdAndOnboardActivity_OnboardActivityIdAndStatusIn(
+                bookingPassengerId, activityId, List.of(RegistrationStatus.PENDING, RegistrationStatus.CONFIRMED))) {
+            throw new BusinessException("ALREADY_REGISTERED", "Hành khách đã đăng ký tham gia hoạt động này rồi.");
+        }
+
         // 2. Mô hình 3: Khóa sức chứa bi quan (Pessimistic Lock) trên dòng OnboardActivity
         OnboardActivity activity = activities.lockActivity(activityId)
                 .orElseThrow(() -> new ResourceNotFoundException("OnboardActivity", activityId));
@@ -107,15 +116,26 @@ public class OnboardOperationService {
             throw new BusinessException("ACTIVITY_NOT_OPEN", "Hoạt động giải trí không mở nhận đăng ký.");
         }
 
+        int maxCapacity = activity.getCapacity() != null ? activity.getCapacity() : Integer.MAX_VALUE;
         long occupied = registrations.sumOnboardParticipants(
                 activityId, List.of(RegistrationStatus.PENDING, RegistrationStatus.CONFIRMED));
 
-        if (occupied + effectiveQuantity > activity.getCapacity()) {
+        if (occupied + effectiveQuantity > maxCapacity) {
             throw new BusinessException("CAPACITY_EXCEEDED", "Sức chứa hoạt động đã đầy, không thể đăng ký thêm.");
         }
 
-        // 3. Mô hình 4: Kiểm tra quyền lợi gói dịch vụ (All-Inclusive vs Add-on)
-        boolean isIncludedInPackage = packageActivities.existsByOnboardActivity_OnboardActivityId(activityId);
+        // 3. Mô hình 4: Kiểm tra quyền lợi gói dịch vụ của chính hành khách (All-Inclusive vs Add-on)
+        boolean isIncludedInPackage = false;
+        var bppOpt = bookingPassengerPackageRepository.lockByBookingPassengerId(bookingPassengerId);
+        if (bppOpt.isPresent() && bppOpt.get().getTourPackage() != null) {
+            UUID tourPkgId = bppOpt.get().getTourPackage().getTourPackageId();
+            isIncludedInPackage = packageActivities.existsByTourPackage_TourPackageIdAndOnboardActivity_OnboardActivityId(
+                    tourPkgId, activityId);
+        } else {
+            // Fallback: Kiểm tra chung nếu hoạt động nằm trong gói mặc định
+            isIncludedInPackage = packageActivities.existsByOnboardActivity_OnboardActivityId(activityId);
+        }
+
         BigDecimal unitPrice = isIncludedInPackage
                 ? BigDecimal.ZERO
                 : (activity.getPrice() != null ? activity.getPrice() : BigDecimal.ZERO);
@@ -154,7 +174,8 @@ public class OnboardOperationService {
             tx.setSourceReferenceId(activity.getOnboardActivityId());
             tx.setSyncStatus(TransactionSyncStatus.PENDING); // Offline Edge readiness
             tx.setDescription("Phí đăng ký hoạt động: " + activity.getActivityName());
-            tx.setCreatedByUser(operator);
+            User creator = operator != null ? operator : (bp.getBooking() != null ? bp.getBooking().getBookedByUser() : null);
+            tx.setCreatedByUser(creator);
             OnboardTransaction savedTx = onboardTransactionRepository.save(tx);
             folioTxId = savedTx.getTransactionId();
         }
@@ -171,7 +192,7 @@ public class OnboardOperationService {
         Registration savedReg = registrations.save(reg);
 
         // Cập nhật trạng thái FULL nếu đã hết chỗ
-        if (occupied + effectiveQuantity >= activity.getCapacity()) {
+        if (activity.getCapacity() != null && occupied + effectiveQuantity >= maxCapacity) {
             activity.setStatus(OnboardActivityStatus.FULL);
         }
 
@@ -224,12 +245,18 @@ public class OnboardOperationService {
 
         for (Registration reg : registeredList) {
             if (reg.getStatus() == RegistrationStatus.CONFIRMED || reg.getStatus() == RegistrationStatus.PENDING) {
-                if (reg.getBookingPassenger() != null
-                        && reg.getBookingPassenger().getPassenger() != null
-                        && reg.getBookingPassenger().getPassenger().getUser() != null) {
+                User recipient = null;
+                if (reg.getBookingPassenger() != null) {
+                    if (reg.getBookingPassenger().getPassenger() != null && reg.getBookingPassenger().getPassenger().getUser() != null) {
+                        recipient = reg.getBookingPassenger().getPassenger().getUser();
+                    } else if (reg.getBookingPassenger().getBooking() != null && reg.getBookingPassenger().getBooking().getBookedByUser() != null) {
+                        recipient = reg.getBookingPassenger().getBooking().getBookedByUser();
+                    }
+                }
 
+                if (recipient != null) {
                     Notification notification = new Notification();
-                    notification.setRecipientUser(reg.getBookingPassenger().getPassenger().getUser());
+                    notification.setRecipientUser(recipient);
                     notification.setBookingPassengerId(reg.getBookingPassenger().getBookingPassengerId());
                     notification.setNotificationType("WEATHER_RESCHEDULE");
                     notification.setTitle("Cập nhật địa điểm hoạt động: " + activity.getActivityName());
@@ -286,3 +313,4 @@ public class OnboardOperationService {
         return new SyncResult(pendingList.size(), processed, now);
     }
 }
+

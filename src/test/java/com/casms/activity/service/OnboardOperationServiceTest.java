@@ -24,6 +24,9 @@ import com.casms.payment.enums.TransactionSyncStatus;
 import com.casms.payment.repository.OnboardTransactionRepository;
 import com.casms.pos.PosDtos;
 import com.casms.pos.PosLedgerService;
+import com.casms.servicepackage.entity.BookingPassengerPackage;
+import com.casms.servicepackage.entity.TourPackage;
+import com.casms.servicepackage.repository.BookingPassengerPackageRepository;
 import com.casms.servicepackage.repository.TourPackageActivityRepository;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -46,6 +49,7 @@ class OnboardOperationServiceTest {
     @Mock RegistrationRepository registrations;
     @Mock BookingPassengerRepository bookingPassengers;
     @Mock TourPackageActivityRepository packageActivities;
+    @Mock BookingPassengerPackageRepository bookingPassengerPackageRepository;
     @Mock PosLedgerService posLedgerService;
     @Mock OnboardTransactionRepository onboardTransactionRepository;
     @Mock NotificationRepository notificationRepository;
@@ -90,9 +94,19 @@ class OnboardOperationServiceTest {
     @Test
     void bookActivity_whenIncludedInPackage_chargesZero() {
         when(bookingPassengers.findById(bpId)).thenReturn(Optional.of(bookingPassenger));
+        when(registrations.existsByBookingPassenger_BookingPassengerIdAndOnboardActivity_OnboardActivityIdAndStatusIn(
+                eq(bpId), eq(activityId), anyList())).thenReturn(false);
         when(activities.lockActivity(activityId)).thenReturn(Optional.of(activity));
         when(registrations.sumOnboardParticipants(eq(activityId), anyList())).thenReturn(2L);
-        when(packageActivities.existsByOnboardActivity_OnboardActivityId(activityId)).thenReturn(true);
+
+        TourPackage tourPackage = new TourPackage();
+        UUID pkgId = UUID.randomUUID();
+        tourPackage.setTourPackageId(pkgId);
+        BookingPassengerPackage bpp = new BookingPassengerPackage();
+        bpp.setTourPackage(tourPackage);
+        when(bookingPassengerPackageRepository.lockByBookingPassengerId(bpId)).thenReturn(Optional.of(bpp));
+        when(packageActivities.existsByTourPackage_TourPackageIdAndOnboardActivity_OnboardActivityId(pkgId, activityId))
+                .thenReturn(true);
 
         when(registrations.save(any(Registration.class))).thenAnswer(invocation -> {
             Registration r = invocation.getArgument(0);
@@ -110,8 +124,20 @@ class OnboardOperationServiceTest {
     }
 
     @Test
+    void bookActivity_whenAlreadyRegistered_throwsBusinessException() {
+        when(bookingPassengers.findById(bpId)).thenReturn(Optional.of(bookingPassenger));
+        when(registrations.existsByBookingPassenger_BookingPassengerIdAndOnboardActivity_OnboardActivityIdAndStatusIn(
+                eq(bpId), eq(activityId), anyList())).thenReturn(true);
+
+        assertThrows(BusinessException.class, () ->
+                service.bookActivityWithFolio(bpId, activityId, 1, operator));
+    }
+
+    @Test
     void bookActivity_whenCapacityExceeded_throwsBusinessException() {
         when(bookingPassengers.findById(bpId)).thenReturn(Optional.of(bookingPassenger));
+        when(registrations.existsByBookingPassenger_BookingPassengerIdAndOnboardActivity_OnboardActivityIdAndStatusIn(
+                eq(bpId), eq(activityId), anyList())).thenReturn(false);
         when(activities.lockActivity(activityId)).thenReturn(Optional.of(activity));
         when(registrations.sumOnboardParticipants(eq(activityId), anyList())).thenReturn(10L);
 
@@ -165,3 +191,4 @@ class OnboardOperationServiceTest {
         verify(onboardTransactionRepository, times(1)).saveAll(anyList());
     }
 }
+
