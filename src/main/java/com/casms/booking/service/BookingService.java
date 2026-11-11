@@ -36,6 +36,7 @@ import com.casms.cruisepackage.dto.CruisePackagePurchaseSelection;
 import com.casms.identity.entity.Passenger;
 import com.casms.identity.entity.User;
 import com.casms.identity.enums.Role;
+import com.casms.ship.repository.BookingAgentCruiseScope;
 import com.casms.identity.enums.UserStatus;
 import com.casms.identity.repository.PassengerRepository;
 import com.casms.identity.repository.UserRepository;
@@ -408,6 +409,7 @@ public class BookingService {
     @Transactional
     public BookingDetailResponse createBooking(
             BookingCreateRequest request, CasmsPrincipal principal) {
+        requireAssignedCruise(request.getCruiseId(), principal);
         log.info("Creating new booking for cruise: {}", request.getCruiseId());
         if (request.getCurrency() != null && !request.getCurrency().isBlank())
             com.casms.common.util.NewWriteCurrency.requireUsd(
@@ -1059,6 +1061,11 @@ public class BookingService {
         if (principal == null || principal.getUserId() == null) {
             throw new BusinessException(HttpStatus.UNAUTHORIZED, "AUTH_REQUIRED", "Authentication required");
         }
+        UUID agentId = BookingAgentCruiseScope.assignee(principal);
+        if (agentId != null) {
+            return bookingRepository.searchAssignedBookings(cruiseId, status, agentId, pageable)
+                    .map(this::mapToSummaryResponse);
+        }
         boolean isStaffOrAgent =
                 principal != null
                         && (principal.isAdmin()
@@ -1110,6 +1117,7 @@ public class BookingService {
                 bookingRepository
                         .findByIdForUpdate(bookingId)
                         .orElseThrow(() -> new ResourceNotFoundException("Booking", bookingId));
+        requireAssignedCruise(booking.getCruise().getCruiseId(), principal);
 
         if (booking.getBookingStatus() == BookingStatus.Cancelled) {
             throw new BusinessException(
@@ -1200,6 +1208,9 @@ public class BookingService {
                     HttpStatus.FORBIDDEN,
                     "BOOKING_CONFIRM_FORBIDDEN",
                     "Booking confirmation requires the BOOKING_CONFIRM permission");
+        }
+        if (BookingAgentCruiseScope.assignee(principal) != null) {
+            requireAssignedCruise(getBooking(bookingId).getCruise().getCruiseId(), principal);
         }
         return confirmInternal(bookingId);
     }
@@ -2081,6 +2092,7 @@ public class BookingService {
             throw new BusinessException(
                     HttpStatus.BAD_REQUEST, "CRUISE_ID_REQUIRED", "Cruise ID không được để trống");
         }
+        requireAssignedCruise(request.getCruiseId(), principal);
         if (request.getPassengers() == null || request.getPassengers().isEmpty()) {
             throw new BusinessException(
                     HttpStatus.BAD_REQUEST,
@@ -2519,6 +2531,9 @@ public class BookingService {
                 bookingQuoteRepository
                         .findById(quoteId)
                         .orElseThrow(() -> new ResourceNotFoundException("BookingQuote", quoteId));
+        if (BookingAgentCruiseScope.assignee(principal) != null) {
+            requireAssignedCruise(quote.getCruise().getCruiseId(), principal);
+        }
 
         boolean isStaff =
                 principal != null
@@ -2936,10 +2951,17 @@ public class BookingService {
         return paid.subtract(refunds).max(BigDecimal.ZERO);
     }
 
+    public void requireAssignedCruise(UUID cruiseId, CasmsPrincipal principal) {
+        BookingAgentCruiseScope.requireAssigned(cruiseRepository, cruiseId, BookingAgentCruiseScope.assignee(principal));
+    }
+
     private void validateAccess(Booking booking, CasmsPrincipal principal) {
         if (principal == null || principal.getUserId() == null) {
             throw new BusinessException(
                     HttpStatus.UNAUTHORIZED, "AUTH_REQUIRED", "Authentication required");
+        }
+        if (BookingAgentCruiseScope.assignee(principal) != null) {
+            requireAssignedCruise(booking.getCruise().getCruiseId(), principal);
         }
         boolean isStaff =
                 principal.isAdmin()

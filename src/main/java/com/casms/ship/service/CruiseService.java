@@ -374,9 +374,22 @@ public class CruiseService {
             UUID sourceTripId,
             UUID sourceVersionId,
             Pageable pageable) {
+        return list(status, shipId, unassigned, cruiseType, sourceTripId, sourceVersionId, pageable, null, null);
+    }
+
+    private Page<CruiseResponse> list(
+            CruiseStatus status, UUID shipId, Boolean unassigned, CruiseCruiseType cruiseType,
+            UUID sourceTripId, UUID sourceVersionId, Pageable pageable, UUID bookingAgentId,
+            List<UUID> receivedPlans) {
         Specification<Cruise> spec =
                 (root, query, cb) -> {
                     List<Predicate> predicates = new ArrayList<>();
+                    if (bookingAgentId != null) {
+                        predicates.add(com.casms.ship.repository.BookingAgentCruiseScope.assigned(root, query, cb, bookingAgentId));
+                    }
+                    if (receivedPlans != null) {
+                        predicates.add(root.get("cruiseId").in(receivedPlans));
+                    }
                     if (status != null) {
                         predicates.add(cb.equal(root.get("status"), status));
                     }
@@ -415,16 +428,18 @@ public class CruiseService {
             UUID sourceTripId,
             UUID sourceVersionId,
             Pageable pageable) {
-        List<CruiseResponse> open =
-                list(
-                                CruiseStatus.PUBLISHED,
-                                shipId,
-                                unassigned,
-                                cruiseType,
-                                sourceTripId,
-                                sourceVersionId,
-                                Pageable.unpaged(pageable.getSort()))
-                        .stream()
+        return listOpenForSale(shipId, unassigned, cruiseType, sourceTripId, sourceVersionId, pageable, null);
+    }
+
+    @Transactional(readOnly = true)
+    public Page<CruiseResponse> listOpenForSale(
+            UUID shipId, Boolean unassigned, CruiseCruiseType cruiseType, UUID sourceTripId,
+            UUID sourceVersionId, Pageable pageable, UUID bookingAgentId) {
+        Pageable all = Pageable.unpaged(pageable.getSort());
+        Page<CruiseResponse> published = bookingAgentId == null
+                ? list(CruiseStatus.PUBLISHED, shipId, unassigned, cruiseType, sourceTripId, sourceVersionId, all)
+                : list(CruiseStatus.PUBLISHED, shipId, unassigned, cruiseType, sourceTripId, sourceVersionId, all, bookingAgentId, null);
+        List<CruiseResponse> open = published.stream()
                         .filter(
                                 c ->
                                         "OPEN_FOR_SALE"
@@ -437,6 +452,18 @@ public class CruiseService {
         int end = (int) Math.min((long) start + pageable.getPageSize(), open.size());
         return new org.springframework.data.domain.PageImpl<>(
                 open.subList(start, end), pageable, open.size());
+    }
+
+    public void requireBookingAgentAssignment(UUID cruiseId, UUID bookingAgentId) {
+        com.casms.ship.repository.BookingAgentCruiseScope.requireAssigned(cruiseRepository, cruiseId, bookingAgentId);
+    }
+
+    @Transactional(readOnly = true)
+    public Page<CruiseResponse> listReceivedForOperations(CruiseStatus status, UUID shipId, Boolean unassigned,
+            CruiseCruiseType cruiseType, UUID sourceTripId, UUID sourceVersionId, Pageable pageable) {
+        List<UUID> ids = jdbc.queryForList(CruisePlanOperationsAccess.RECEIVED_PLANS, UUID.class);
+        if (ids.isEmpty()) return Page.empty(pageable);
+        return list(status, shipId, unassigned, cruiseType, sourceTripId, sourceVersionId, pageable, null, ids);
     }
 
     // Overloads for backward compat

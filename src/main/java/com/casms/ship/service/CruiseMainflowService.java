@@ -794,6 +794,12 @@ SELECT EXISTS(SELECT 1 FROM "CruisePricingPolicy" p JOIN "Cruise" c USING(cruise
                 .toList();
     }
 
+    public List<View> operationsWorkspace() {
+        return jdbc.queryForList(CruisePlanOperationsAccess.RECEIVED_PLANS + """
+                ORDER BY CASE WHEN status='SUBMITTED' THEN 0 ELSE 1 END, submitted_at DESC
+                """, UUID.class).stream().map(this::get).toList();
+    }
+
     private void expected(Map<String, Object> r, Long expected) {
         if (expected == null || expected != revision(r))
             throw new BusinessException(

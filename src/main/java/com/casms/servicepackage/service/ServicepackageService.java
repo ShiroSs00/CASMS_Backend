@@ -315,6 +315,28 @@ public class ServicepackageService {
         return assignmentRepo.findByBookingPassenger_Passenger_User_UserId(userId);
     }
 
+    public void requireBookingAgentAssignment(UUID bookingId, UUID passengerId, UUID agentId) {
+        if (agentId == null) return;
+        boolean assigned;
+        if (passengerId != null) {
+            assigned = Boolean.TRUE.equals(jdbc.queryForObject("""
+                    SELECT EXISTS(SELECT 1 FROM "BookingPassenger" bp
+                      JOIN "Booking" b ON b.booking_id=bp.booking_id
+                      JOIN "CruiseStaff" cs ON cs.cruise_id=b.cruise_id
+                      WHERE bp.booking_passenger_id=? AND cs.user_id=?
+                        AND cs.role_in_cruise='BOOKING_AGENT' AND cs.status='ACTIVE')
+                    """, Boolean.class, passengerId, agentId));
+        } else {
+            assigned = bookingId != null && Boolean.TRUE.equals(jdbc.queryForObject("""
+                    SELECT EXISTS(SELECT 1 FROM "Booking" b
+                      JOIN "CruiseStaff" cs ON cs.cruise_id=b.cruise_id
+                      WHERE b.booking_id=? AND cs.user_id=?
+                        AND cs.role_in_cruise='BOOKING_AGENT' AND cs.status='ACTIVE')
+                    """, Boolean.class, bookingId, agentId));
+        }
+        if (!assigned) throw new AccessDeniedException("Chuyến khởi hành chưa được phân công cho bạn");
+    }
+
     public BookingPassengerPackage assignPackage(
             UUID bpId, UUID packageId, UUID userId, boolean staff) {
         guardNewLegacyAssignment(bpId, userId, staff);

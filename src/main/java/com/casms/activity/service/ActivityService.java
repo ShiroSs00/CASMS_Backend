@@ -170,6 +170,9 @@ public class ActivityService {
             a.setPrice(BigDecimal.ZERO);
         }
         resolveDeckAndCabin(a, deckId, cabinId);
+        if (a.getMeetingPoint() != null) {
+            a.setMeetingPoint(a.getMeetingPoint().isBlank() ? null : a.getMeetingPoint().trim());
+        }
         validateActivity(a, null);
         a.setStatus(OnboardActivityStatus.PLANNED);
         return activities.save(a);
@@ -214,6 +217,9 @@ public class ActivityService {
         a.setStartTime(input.getStartTime());
         a.setEndTime(input.getEndTime());
         a.setLocation(input.getLocation());
+        if (input.getMeetingPoint() != null) {
+            a.setMeetingPoint(input.getMeetingPoint().isBlank() ? null : input.getMeetingPoint().trim());
+        }
         a.setCapacity(input.getCapacity());
         a.setPrice(input.getPrice());
         a.setCurrencyCode(input.getCurrencyCode());
