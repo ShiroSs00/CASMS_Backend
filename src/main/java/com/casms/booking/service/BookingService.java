@@ -1627,6 +1627,10 @@ public class BookingService {
         res.setShipName(cruise.getShip() != null ? cruise.getShip().getShipName() : null);
         res.setDepartureDatetime(cruise.getDepartureDatetime());
         res.setReturnDatetime(cruise.getReturnDatetime());
+        String scope = cruise.getPlannedScope() != null ? cruise.getPlannedScope() : "DOMESTIC";
+        boolean isInter = "INTERNATIONAL".equalsIgnoreCase(scope);
+        res.setPlannedScope(scope);
+        res.setIsInternational(isInter);
 
         res.setAgreedFareAmount(booking.getAgreedFareAmount());
         res.setCurrency(booking.getCurrency());
@@ -2841,14 +2845,17 @@ public class BookingService {
                 .append("  </div>\n")
                 .append("</div>\n");
 
+        boolean isInternational = Boolean.TRUE.equals(detail.getIsInternational())
+                || "INTERNATIONAL".equalsIgnoreCase(detail.getPlannedScope());
+
         html.append("<div class=\"contract-paper\">\n");
-        html.append(buildContractHeader(detail, contractRef, bookingRef));
+        html.append(buildContractHeader(detail, contractRef, bookingRef, isInternational));
         html.append(buildPartiesSection(detail));
         html.append(buildCruiseSection(detail));
         html.append(buildPassengerTable(detail.getPassengers()));
         html.append(buildFinancialAndInstallmentSection(detail));
-        html.append(buildCommitmentsSection());
-        html.append(buildNotesAndAdvisoriesSection());
+        html.append(buildCommitmentsSection(isInternational));
+        html.append(buildNotesAndAdvisoriesSection(isInternational));
         html.append(buildTermsAndSignatures(detail, contractRef));
         html.append("</div>\n");
 
@@ -2857,10 +2864,20 @@ public class BookingService {
     }
 
     private String buildContractHeader(
-            BookingDetailResponse detail, String contractRef, String bookingRef) {
+            BookingDetailResponse detail, String contractRef, String bookingRef, boolean isInternational) {
         boolean isAccepted = detail.getContractStatus() == BookingContractStatus.Accepted;
         String statusLabel = isAccepted ? "ĐÃ KÝ KẾT &amp; XÁC NHẬN" : "BẢN THẢO CHỜ XÁC NHẬN";
         String statusClass = isAccepted ? "badge-success" : "badge-warning";
+
+        String contractTitle = isInternational
+                ? "HỢP ĐỒNG DỊCH VỤ VẬN CHUYỂN HẢI TRÌNH DU THUYỀN QUỐC TẾ"
+                : "HỢP ĐỒNG DỊCH VỤ VẬN CHUYỂN HÀNH KHÁCH ĐƯỜNG BIỂN NỘI ĐỊA";
+        String contractSubTitle = isInternational
+                ? "(V/v Cung cấp dịch vụ vận chuyển hành khách &amp; lưu trú hải trình quốc tế rời lãnh hải Việt Nam)"
+                : "(V/v Cung cấp dịch vụ vận chuyển hành khách &amp; lưu trú hải trình du thuyền trong lãnh hải Việt Nam)";
+        String scopeBadge = isInternational
+                ? "<span class=\"badge badge-scope-international\">🌐 HẢI TRÌNH QUỐC TẾ (INTERNATIONAL)</span>\n"
+                : "<span class=\"badge badge-scope-domestic\">🇻🇳 HẢI TRÌNH NỘI ĐỊA (DOMESTIC)</span>\n";
 
         return "<div class=\"contract-header\">\n"
                 + "  <div class=\"header-left\">\n"
@@ -2876,9 +2893,8 @@ public class BookingService {
                 + "  </div>\n"
                 + "</div>\n"
                 + "<div class=\"contract-title\">\n"
-                + "  <h1>HỢP ĐỒNG DỊCH VỤ VẬN CHUYỂN HÀNH KHÁCH ĐƯỜNG BIỂN</h1>\n"
-                + "  <p>(V/v Cung cấp dịch vụ vận tải hành khách &amp; lưu trú hải trình du thuyền"
-                + " cao cấp)</p>\n"
+                + "  <h1>" + contractTitle + "</h1>\n"
+                + "  <p>" + contractSubTitle + "</p>\n"
                 + "  <div class=\"meta-badges\">\n"
                 + "    <span class=\"badge\">Mã Hợp Đồng: <strong>"
                 + contractRef
@@ -2886,6 +2902,7 @@ public class BookingService {
                 + "    <span class=\"badge\">Mã Đặt Chỗ: <strong>"
                 + bookingRef
                 + "</strong></span>\n"
+                + scopeBadge
                 + "    <span class=\"badge "
                 + statusClass
                 + "\">"
@@ -3172,44 +3189,84 @@ public class BookingService {
         return sb.toString();
     }
 
-    private String buildCommitmentsSection() {
-        return "<div class=\"section\">\n"
-                + "  <div class=\"section-title\">ĐIỀU 4: CAM KẾT CHUNG GIỮA HAI BÊN (QUYỀN LỢI &amp; NGHĨA VỤ)</div>\n"
-                + "  <div class=\"commit-grid\">\n"
-                + "    <div class=\"commit-box\">\n"
-                + "      <h5>1. CAM KẾT CỦA BÊN A (HÃNG TÀU CASMS CRUISE)</h5>\n"
-                + "      <ul class=\"commit-list\">\n"
-                + "        <li><strong>Đảm bảo an toàn hàng hải:</strong> Du thuyền vận hành đạt chuẩn đăng kiểm quốc gia, tuân thủ tuyệt đối quy định an toàn sinh mạng hàng hải quốc tế (SOLAS) và phòng cháy chữa cháy.</li>\n"
-                + "        <li><strong>Đúng tiêu chuẩn dịch vụ:</strong> Bố trí đúng buồng phòng (cabin), tiện nghi và các gói dịch vụ trên du thuyền như đã thỏa thuận trong hợp đồng.</li>\n"
-                + "        <li><strong>Bảo hiểm hành khách:</strong> 100% hành khách trên tàu được thụ hưởng bảo hiểm du lịch và bảo hiểm trách nhiệm dân sự đối với hành khách đường biển theo quy định của pháp luật.</li>\n"
-                + "        <li><strong>Bảo mật thông tin:</strong> Cam kết bảo mật tuyệt đối dữ liệu thông tin cá nhân của hành khách; không chia sẻ cho bên thứ ba ngoại trừ cơ quan Cảng vụ, Biên phòng theo luật định.</li>\n"
-                + "        <li><strong>Bảo vệ quyền lợi khi bất khả kháng:</strong> Khi có giông bão, thiên tai hoặc lệnh cấm biển vì an toàn sinh mạng, Bên A cam kết hỗ trợ bảo lưu, đổi lịch hoặc hoàn cước theo chính sách an toàn hàng hải.</li>\n"
-                + "      </ul>\n"
-                + "    </div>\n"
-                + "    <div class=\"commit-box\">\n"
-                + "      <h5>2. CAM KẾT CỦA BÊN B (ĐẠI DIỆN HÀNH KHÁCH / ĐOÀN)</h5>\n"
-                + "      <ul class=\"commit-list\">\n"
-                + "        <li><strong>Thông tin chuẩn xác:</strong> Cung cấp danh sách hành khách chính xác (Họ tên, ngày sinh, quốc tịch, CCCD/Hộ chiếu) và chịu trách nhiệm pháp lý về tính hợp lệ của giấy tờ.</li>\n"
-                + "        <li><strong>Nghĩa vụ thanh toán:</strong> Thực hiện thanh toán đúng hạn và đủ số tiền theo tiến độ thỏa thuận tại Điều 3.</li>\n"
-                + "        <li><strong>Tuân thủ quy chế an toàn:</strong> Chấp hành nghiêm túc nội quy du thuyền, mệnh lệnh của Thuyền trưởng và hướng dẫn an toàn của thủy thủ đoàn; không gây mất an ninh trật tự.</li>\n"
-                + "        <li><strong>Hợp tác thiện chí:</strong> Hai bên cam kết hợp tác thiện chí, giải quyết mọi vướng mắc qua thương lượng hòa nhã, tạo tâm lý an tâm tuyệt đối để tận hưởng trọn vẹn chuyến hải trình.</li>\n"
-                + "      </ul>\n"
-                + "    </div>\n"
-                + "  </div>\n"
-                + "</div>\n";
+    private String buildCommitmentsSection(boolean isInternational) {
+        if (isInternational) {
+            return "<div class=\"section\">\n"
+                    + "  <div class=\"section-title\">ĐIỀU 4: CAM KẾT CHUNG GIỮA HAI BÊN (HẢI TRÌNH QUỐC TẾ)</div>\n"
+                    + "  <div class=\"commit-grid\">\n"
+                    + "    <div class=\"commit-box\">\n"
+                    + "      <h5>1. CAM KẾT CỦA BÊN A (HÃNG TÀU CASMS CRUISE)</h5>\n"
+                    + "      <ul class=\"commit-list\">\n"
+                    + "        <li><strong>Chuẩn mực hàng hải quốc tế:</strong> Du thuyền vận hành đạt quy chuẩn đăng kiểm quốc tế, tuân thủ tuyệt đối các Công ước SOLAS (An toàn sinh mạng), MARPOL (Bảo vệ môi trường biển), MLC 2006 và luật hàng hải của các quốc gia sở tại ghé cảng.</li>\n"
+                    + "        <li><strong>Đúng tiện nghi &amp; hải trình:</strong> Bố trí đúng buồng phòng (cabin) đã ký kết, thực hiện hải trình quốc tế theo đúng lịch trình đã được phê duyệt.</li>\n"
+                    + "        <li><strong>Bảo hiểm du lịch quốc tế:</strong> Cung cấp bảo hiểm du lịch quốc tế toàn diện cho hành khách (bao gồm bảo hiểm tai nạn, ốm đau ở nước ngoài và cứu trợ y tế khẩn cấp/hồi hương).</li>\n"
+                    + "        <li><strong>Hỗ trợ thủ tục xuất nhập cảnh:</strong> Phối hợp với đại lý cảng và cơ quan biên phòng hỗ trợ hành khách làm thủ tục xuất nhập cảnh nhanh chóng, an toàn.</li>\n"
+                    + "        <li><strong>Bảo mật &amp; Bất khả kháng:</strong> Bảo mật thông tin cá nhân; trong trường hợp thời tiết giông bão, dịch bệnh hoặc lệnh cấm cảng quốc tế vì an toàn, Bên A cam kết hỗ trợ đổi cảng dự phòng, bảo lưu hoặc hoàn trả chi phí thỏa đáng.</li>\n"
+                    + "      </ul>\n"
+                    + "    </div>\n"
+                    + "    <div class=\"commit-box\">\n"
+                    + "      <h5>2. CAM KẾT CỦA BÊN B (ĐẠI DIỆN HÀNH KHÁCH / ĐOÀN)</h5>\n"
+                    + "      <ul class=\"commit-list\">\n"
+                    + "        <li><strong>Hồ sơ xuất nhập cảnh hợp lệ:</strong> Chịu trách nhiệm hoàn toàn về tính hợp pháp của Hộ chiếu (còn hạn trên 6 tháng) và Thị thực (Visa) hợp lệ vào các quốc gia trong hải trình.</li>\n"
+                    + "        <li><strong>Nghĩa vụ tài chính:</strong> Thanh toán đầy đủ cước phí và các phụ phí hải trình quốc tế (thuế cảng nước ngoài, phụ phí nhiên liệu nếu có) đúng thời hạn.</li>\n"
+                    + "        <li><strong>Tuân thủ luật pháp quốc tế:</strong> Chấp hành nghiêm túc pháp luật của các quốc gia du thuyền cập cảng, nội quy du thuyền và mệnh lệnh an toàn của Thuyền trưởng.</li>\n"
+                    + "        <li><strong>Tinh thần hợp tác:</strong> Cam kết hợp tác thiện chí, tôn trọng văn hóa nước sở tại và giải quyết mọi tranh chấp qua thương lượng văn minh.</li>\n"
+                    + "      </ul>\n"
+                    + "    </div>\n"
+                    + "  </div>\n"
+                    + "</div>\n";
+        } else {
+            return "<div class=\"section\">\n"
+                    + "  <div class=\"section-title\">ĐIỀU 4: CAM KẾT CHUNG GIỮA HAI BÊN (HẢI TRÌNH NỘI ĐỊA)</div>\n"
+                    + "  <div class=\"commit-grid\">\n"
+                    + "    <div class=\"commit-box\">\n"
+                    + "      <h5>1. CAM KẾT CỦA BÊN A (HÃNG TÀU CASMS CRUISE)</h5>\n"
+                    + "      <ul class=\"commit-list\">\n"
+                    + "        <li><strong>An toàn đăng kiểm quốc gia:</strong> Du thuyền vận hành đạt chuẩn kỹ thuật đăng kiểm thủy nội địa và hàng hải Việt Nam, tuân thủ quy định PCCC và SOLAS.</li>\n"
+                    + "        <li><strong>Đúng chất lượng dịch vụ:</strong> Bố trí đúng buồng phòng (cabin), thực đơn và các tiện ích trên du thuyền theo thỏa thuận tại Điều 1 và Điều 2.</li>\n"
+                    + "        <li><strong>Bảo hiểm hành khách nội địa:</strong> 100% hành khách được thụ hưởng quyền lợi bảo hiểm du lịch đường biển theo quy định của pháp luật Việt Nam.</li>\n"
+                    + "        <li><strong>Bảo mật thông tin:</strong> Cam kết bảo mật dữ liệu hành khách, chỉ cung cấp cho Cảng vụ Hàng hải và Bộ đội Biên phòng theo danh sách khai báo rời bến.</li>\n"
+                    + "        <li><strong>Hỗ trợ thiên tai, bão gió:</strong> Khi Cảng vụ cấm biển vì thời tiết xấu, cam kết thông báo ngay và hỗ trợ bảo lưu lịch trình hoặc hoàn tiền thỏa đáng.</li>\n"
+                    + "      </ul>\n"
+                    + "    </div>\n"
+                    + "    <div class=\"commit-box\">\n"
+                    + "      <h5>2. CAM KẾT CỦA BÊN B (ĐẠI DIỆN HÀNH KHÁCH / ĐOÀN)</h5>\n"
+                    + "      <ul class=\"commit-list\">\n"
+                    + "        <li><strong>Thông tin nhân thân chuẩn xác:</strong> Cung cấp danh sách hành khách chính xác (Họ tên, ngày sinh, số CCCD/Hộ chiếu) để khai báo xuất bến theo quy định an ninh cảng.</li>\n"
+                    + "        <li><strong>Nghĩa vụ thanh toán:</strong> Thực hiện thanh toán đúng hạn và đủ số tiền theo tiến độ thỏa thuận tại Điều 3.</li>\n"
+                    + "        <li><strong>Tuân thủ quy chế du thuyền:</strong> Chấp hành nội quy trên tàu, hướng dẫn của thủy thủ đoàn, giữ gìn vệ sinh và bảo vệ môi trường biển Việt Nam.</li>\n"
+                    + "        <li><strong>Hợp tác hòa nhã:</strong> Giải quyết các phát sinh trên tinh thần tôn trọng, không để tranh chấp làm ảnh hưởng tới không khí nghỉ dưỡng của chuyến đi.</li>\n"
+                    + "      </ul>\n"
+                    + "    </div>\n"
+                    + "  </div>\n"
+                    + "</div>\n";
+        }
     }
 
-    private String buildNotesAndAdvisoriesSection() {
-        return "<div class=\"section\">\n"
-                + "  <div class=\"section-title\">ĐIỀU 5: CÁC LƯU Ý QUAN TRỌNG KHI THAM GIA HẢI TRÌNH</div>\n"
-                + "  <div class=\"advisory-card\">\n"
-                + "    <div class=\"advisory-item\">📌 <strong>1. Thời gian tập trung &amp; Check-in:</strong> Quý khách cần có mặt tại Nhà ga đón khách (Terminal) trước giờ tàu khởi hành tối thiểu <strong>90 phút</strong> để hoàn tất thủ tục an ninh cảng và nhận phòng. Quầy làm thủ tục sẽ đóng cửa trước giờ khởi hành <strong>30 phút</strong>. Quý khách đi trễ giờ vì lý do cá nhân sẽ tự chịu trách nhiệm.</div>\n"
-                + "    <div class=\"advisory-item\">📌 <strong>2. Giấy tờ tùy thân bắt buộc:</strong> Hành khách người lớn phải mang theo bản gốc CCCD hoặc Hộ chiếu (còn hạn tối thiểu 6 tháng). Trẻ em dưới 14 tuổi bắt buộc mang theo Giấy khai sinh (bản gốc hoặc bản sao trích lục/công chứng) và phải có người giám hộ hợp pháp đi cùng.</div>\n"
-                + "    <div class=\"advisory-item\">📌 <strong>3. Quy định hành lý &amp; Vật phẩm cấm:</strong> Nghiêm cấm mang lên tàu các loại vũ khí, chất nổ, chất dễ cháy, ma túy, hóa chất độc hại, thiết bị bay không người lái (Flycam/Drone chưa được cấp phép) hoặc động vật sống/thú cưng.</div>\n"
-                + "    <div class=\"advisory-item\">📌 <strong>4. Tình trạng sức khỏe &amp; Khách cần lưu ý:</strong> Hành khách mang thai trên 24 tuần hoặc có tiền sử bệnh tim mạch/huyết áp nặng cần có xác nhận y tế và thông báo trước cho Ban Y tế du thuyền khi làm thủ tục check-in để được hỗ trợ chuyên biệt.</div>\n"
-                + "    <div class=\"advisory-item\">📌 <strong>5. Diễn tập cứu sinh bắt buộc (Muster Drill):</strong> Theo Công ước Quốc tế SOLAS, 100% hành khách bắt buộc phải tham gia buổi diễn tập an toàn cứu hộ trên biển trước khi du thuyền nhổ neo rời cảng.</div>\n"
-                + "  </div>\n"
-                + "</div>\n";
+    private String buildNotesAndAdvisoriesSection(boolean isInternational) {
+        if (isInternational) {
+            return "<div class=\"section\">\n"
+                    + "  <div class=\"section-title\">ĐIỀU 5: CÁC LƯU Ý QUAN TRỌNG KHI THAM GIA HẢI TRÌNH QUỐC TẾ</div>\n"
+                    + "  <div class=\"advisory-card international\">\n"
+                    + "    <div class=\"advisory-item\">🛂 <strong>1. Hộ chiếu &amp; Thị thực (Visa) bắt buộc:</strong> Bắt buộc mang theo bản gốc <strong>Hộ chiếu (Passport) còn hạn trên 06 tháng</strong> tính từ ngày kết thúc chuyến đi và còn tối thiểu 2-4 trang trống. <em>Hành khách không được dùng CCCD để xuất cảnh</em>. Quý khách tự chịu trách nhiệm về Visa nhập cảnh các nước trong hải trình và Visa tái nhập cảnh Việt Nam (đối với khách mang hộ chiếu nước ngoài).</div>\n"
+                    + "    <div class=\"advisory-item\">⏰ <strong>2. Thời gian làm thủ tục xuất cảnh:</strong> Quý khách phải có mặt tại Nhà ga Cảng biển Quốc tế trước giờ khởi hành tối thiểu <strong>180 phút (03 tiếng)</strong> để hoàn tất thủ tục xuất cảnh và kiểm tra an ninh quốc tế (ISPS Code). Cổng soát vé và thủ tục xuất cảnh sẽ đóng trước giờ khởi hành <strong>60 phút</strong>.</div>\n"
+                    + "    <div class=\"advisory-item\">💵 <strong>3. Ngoại tệ &amp; Khai báo Hải quan:</strong> Trường hợp mang theo tiền mặt trên <strong>5.000 USD</strong> (hoặc ngoại tệ tương đương trên 15.000.000 VNĐ), quý khách bắt buộc phải khai báo hải quan cửa khẩu cảng theo quy định của Ngân hàng Nhà nước. Khuyến khích sử dụng thẻ tín dụng quốc tế (Visa/Mastercard) để chi tiêu trên tàu.</div>\n"
+                    + "    <div class=\"advisory-item\">🚫 <strong>4. Kiểm dịch nông sản &amp; Hành lý cấm:</strong> Nghiêm cấm mang theo nông sản tươi sống, hạt giống, hoa quả tươi, thịt/thực phẩm chưa qua chế biến vào các quốc gia sở tại theo luật kiểm dịch sinh học quốc tế. Cấm vũ khí, chất cháy nổ, ma túy, flycam chưa được cấp phép.</div>\n"
+                    + "    <div class=\"advisory-item\">🏥 <strong>5. Bảo hiểm y tế quốc tế &amp; SOLAS:</strong> Quý khách được cấp chứng thư bảo hiểm du lịch quốc tế hỗ trợ y tế nước ngoài. Tất cả hành khách bắt buộc tham gia buổi diễn tập an toàn cứu sinh (Muster Drill) trên tàu trước giờ rời cảng.</div>\n"
+                    + "  </div>\n"
+                    + "</div>\n";
+        } else {
+            return "<div class=\"section\">\n"
+                    + "  <div class=\"section-title\">ĐIỀU 5: CÁC LƯU Ý QUAN TRỌNG KHI THAM GIA HẢI TRÌNH NỘI ĐỊA</div>\n"
+                    + "  <div class=\"advisory-card domestic\">\n"
+                    + "    <div class=\"advisory-item\">🪪 <strong>1. Giấy tờ tùy thân hợp lệ:</strong> Hành khách người lớn phải mang theo bản gốc <strong>CCCD / Căn cước</strong> hoặc Hộ chiếu còn hạn. Trẻ em dưới 14 tuổi bắt buộc mang theo bản gốc <strong>Giấy khai sinh</strong> (hoặc bản sao trích lục/công chứng hợp lệ) và phải có người giám hộ đi kèm.</div>\n"
+                    + "    <div class=\"advisory-item\">⏰ <strong>2. Thời gian tập trung &amp; Check-in:</strong> Quý khách có mặt tại Nhà ga đón khách trước giờ tàu khởi hành tối thiểu <strong>90 phút</strong> để làm thủ tục nhận phòng và kiểm tra an ninh cảng. Quầy làm thủ tục sẽ đóng trước giờ tàu chạy <strong>30 phút</strong>.</div>\n"
+                    + "    <div class=\"advisory-item\">🇻🇳 <strong>3. Tiền tệ &amp; Thanh toán:</strong> Giao dịch trên du thuyền và tại các điểm dừng chân trong nước sử dụng tiền Đồng Việt Nam (VND), chấp nhận chuyển khoản, quét mã VietQR và thẻ thanh toán nội địa.</div>\n"
+                    + "    <div class=\"advisory-item\">🚫 <strong>4. Quy định hành lý cấm:</strong> Nghiêm cấm mang theo vũ khí, chất nổ, pháo sáng, chất dễ cháy, ma túy, hóa chất độc hại, flycam/drone chưa có giấy phép hoặc vật nuôi/thú cưng lên tàu.</div>\n"
+                    + "    <div class=\"advisory-item\">🦺 <strong>5. Diễn tập an toàn cứu sinh (SOLAS):</strong> 100% hành khách trên tàu bắt buộc phải lắng nghe hướng dẫn an toàn và tham gia buổi diễn tập an toàn cứu hộ trên biển trước khi du thuyền rời bến.</div>\n"
+                    + "  </div>\n"
+                    + "</div>\n";
+        }
     }
 
     private String buildTermsAndSignatures(BookingDetailResponse detail, String contractRef) {
@@ -3362,6 +3419,8 @@ public class BookingService {
                 + " }\n"
                 + ".badge-warning { background: #fef9c3; color: #854d0e; border: 1px solid #fde047;"
                 + " }\n"
+                + ".badge-scope-domestic { background: #e0f2fe; color: #0369a1; border: 1px solid #7dd3fc; font-weight: bold; }\n"
+                + ".badge-scope-international { background: #ede9fe; color: #6d28d9; border: 1px solid #c4b5fd; font-weight: bold; }\n"
                 + ".section { margin-bottom: 20px; }\n"
                 + ".section-title { font-size: 13.5px; font-weight: bold; text-transform:"
                 + " uppercase; color: #1e293b; margin-bottom: 8px; border-left: 4px solid #2563eb;"

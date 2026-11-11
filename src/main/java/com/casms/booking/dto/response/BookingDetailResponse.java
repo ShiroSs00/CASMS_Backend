@@ -53,6 +53,12 @@ public class BookingDetailResponse {
     @Schema(description = "Thời gian kết thúc chuyến")
     private Instant returnDatetime;
 
+    @Schema(description = "Phạm vi địa lý của hải trình (DOMESTIC hoặc INTERNATIONAL)", example = "DOMESTIC")
+    private String plannedScope;
+
+    @Schema(description = "Xác định chuyến đi là hải trình quốc tế hay nội địa", example = "false")
+    private Boolean isInternational;
+
     // Tài chính & Thanh toán
     @Schema(description = "Tổng giá vé đã chốt (Agreed Fare Amount)", example = "1200.0000")
     private BigDecimal agreedFareAmount;
