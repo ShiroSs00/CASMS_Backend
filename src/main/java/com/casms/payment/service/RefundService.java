@@ -33,6 +33,7 @@ public class RefundService {
     private final PaymentRepository paymentRepository;
     private final FinalSettlementRepository finalSettlementRepository;
     private final InvoiceLineRepository invoiceLineRepository;
+    private final InvoiceRepository invoiceRepository;
     private final UserRepository userRepository;
     private final InvoiceService invoiceService;
 
@@ -47,6 +48,14 @@ public class RefundService {
                 return toRefundResponse(
                         ref, refundLineRepository.findByRefund_RefundId(ref.getRefundId()));
             }
+        }
+
+        if (request.getRequestedAmount() == null
+                || request.getRequestedAmount().compareTo(BigDecimal.ZERO) <= 0) {
+            throw new BusinessException(
+                    HttpStatus.BAD_REQUEST,
+                    "INVALID_REQUESTED_AMOUNT",
+                    "Requested refund amount must be strictly greater than 0");
         }
 
         Payment payment =
@@ -68,11 +77,39 @@ public class RefundService {
                 payment.getConfirmedAmount() != null
                         ? payment.getConfirmedAmount()
                         : payment.getRequestedAmount();
-        if (request.getRequestedAmount().compareTo(maxRefundable) > 0) {
+
+        // Kiểm tra tổng số tiền đã yêu cầu hoặc đã hoàn của giao dịch thanh toán này (loại trừ các đợt bị từ chối Rejected)
+        List<Refund> existingRefunds =
+                refundRepository.findByOriginalPayment_PaymentIdOrderByRequestedAtDesc(
+                        payment.getPaymentId());
+        BigDecimal alreadyRefunded =
+                existingRefunds.stream()
+                        .filter(r -> r.getStatus() != RefundStatus.Rejected)
+                        .map(
+                                r ->
+                                        r.getApprovedAmount() != null
+                                                ? r.getApprovedAmount()
+                                                : r.getRequestedAmount())
+                        .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        BigDecimal remainingRefundable = maxRefundable.subtract(alreadyRefunded);
+        if (remainingRefundable.compareTo(BigDecimal.ZERO) < 0) {
+            remainingRefundable = BigDecimal.ZERO;
+        }
+
+        if (request.getRequestedAmount().compareTo(remainingRefundable) > 0) {
             throw new BusinessException(
                     HttpStatus.BAD_REQUEST,
                     "REFUND_EXCEEDS_PAYMENT",
-                    "Requested refund amount exceeds confirmed payment amount of " + maxRefundable);
+                    "Requested refund amount of "
+                            + request.getRequestedAmount()
+                            + " exceeds remaining refundable balance of "
+                            + remainingRefundable
+                            + " (Confirmed: "
+                            + maxRefundable
+                            + ", already requested/refunded: "
+                            + alreadyRefunded
+                            + ")");
         }
 
         FinalSettlement settlement = null;
@@ -139,6 +176,14 @@ public class RefundService {
                     "Can only approve refunds in Requested status, current: " + refund.getStatus());
         }
 
+        if (request.getApprovedAmount() == null
+                || request.getApprovedAmount().compareTo(BigDecimal.ZERO) <= 0) {
+            throw new BusinessException(
+                    HttpStatus.BAD_REQUEST,
+                    "INVALID_APPROVED_AMOUNT",
+                    "Approved amount must be strictly greater than 0");
+        }
+
         if (request.getApprovedAmount().compareTo(refund.getRequestedAmount()) > 0) {
             throw new BusinessException(
                     HttpStatus.BAD_REQUEST,
@@ -184,17 +229,34 @@ public class RefundService {
 
         // If there are attached refund lines, generate adjustment statement
         List<RefundLine> lines = refundLineRepository.findByRefund_RefundId(refundId);
+        BigDecimal refundAmt =
+                saved.getApprovedAmount() != null
+                        ? saved.getApprovedAmount()
+                        : saved.getRequestedAmount();
+
         if (!lines.isEmpty()) {
             UUID invoiceId = lines.get(0).getInvoiceLine().getInvoice().getInvoiceId();
-            BigDecimal refundAmt =
-                    saved.getApprovedAmount() != null
-                            ? saved.getApprovedAmount()
-                            : saved.getRequestedAmount();
             try {
                 invoiceService.generateAdjustmentInvoice(
                         invoiceId, refundAmt, saved.getRefundReason());
             } catch (Exception ex) {
                 log.warn("Adjustment invoice generation skipped or failed: {}", ex.getMessage());
+            }
+        } else if (saved.getOriginalPayment() != null
+                && saved.getOriginalPayment().getBooking() != null) {
+            UUID bookingId = saved.getOriginalPayment().getBooking().getBookingId();
+            Optional<Invoice> latestInv =
+                    invoiceRepository.findFirstByBooking_BookingIdOrderByVersionNoDesc(bookingId);
+            if (latestInv.isPresent()) {
+                try {
+                    invoiceService.generateAdjustmentInvoice(
+                            latestInv.get().getInvoiceId(), refundAmt, saved.getRefundReason());
+                } catch (Exception ex) {
+                    log.warn(
+                            "Adjustment invoice generation skipped or failed for booking {}: {}",
+                            bookingId,
+                            ex.getMessage());
+                }
             }
         }
 

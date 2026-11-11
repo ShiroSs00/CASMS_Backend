@@ -1,6 +1,7 @@
 package com.casms.payment.service;
 
 import com.casms.booking.entity.Booking;
+import com.casms.booking.enums.BookingStatus;
 import com.casms.booking.repository.BookingRepository;
 import com.casms.common.exception.BusinessException;
 import com.casms.common.exception.ResourceNotFoundException;
@@ -52,6 +53,11 @@ public class InvoiceService {
                         + "-"
                         + UUID.randomUUID().toString().substring(0, 4).toUpperCase();
 
+        BigDecimal fare =
+                booking.getAgreedFareAmount() != null
+                        ? booking.getAgreedFareAmount()
+                        : BigDecimal.ZERO;
+
         Invoice invoice = new Invoice();
         invoice.setBooking(booking);
         invoice.setInvoiceReference(reference);
@@ -60,8 +66,8 @@ public class InvoiceService {
         invoice.setIssuedAt(Instant.now());
         invoice.setSourceCutoffAt(Instant.now());
         invoice.setCurrency(booking.getCurrency() != null ? booking.getCurrency() : "USD");
-        invoice.setSnapshotTotalAmount(booking.getAgreedFareAmount());
-        invoice.setSnapshotNetAmountDue(booking.getAgreedFareAmount());
+        invoice.setSnapshotTotalAmount(fare);
+        invoice.setSnapshotNetAmountDue(fare);
         invoice.setStatus(InvoiceStatus.Issued);
         invoice.setDocumentReference("DOC-" + reference);
 
@@ -74,10 +80,10 @@ public class InvoiceService {
                 "Giá vé du thuyền trọn gói (Cruise Tour Fare) - Mã đặt chỗ: "
                         + booking.getBookingReference());
         line.setQuantitySnapshot(BigDecimal.ONE);
-        line.setBaseAmountSnapshot(booking.getAgreedFareAmount());
+        line.setBaseAmountSnapshot(fare);
         line.setTaxAmountSnapshot(BigDecimal.ZERO);
-        line.setTotalAmountSnapshot(booking.getAgreedFareAmount());
-        line.setBookingFareAmountSnapshot(booking.getAgreedFareAmount());
+        line.setTotalAmountSnapshot(fare);
+        line.setBookingFareAmountSnapshot(fare);
         line.setSourceCharge(null);
 
         InvoiceLine savedLine = invoiceLineRepository.save(line);
@@ -128,6 +134,17 @@ public class InvoiceService {
             totalAmount = totalAmount.add(c.getNetAmount());
         }
 
+        String onboardCurrency =
+                charges.stream()
+                        .filter(
+                                c ->
+                                        c.getTransaction() != null
+                                                && c.getTransaction().getCurrencyCode() != null
+                                                && !c.getTransaction().getCurrencyCode().isBlank())
+                        .map(c -> c.getTransaction().getCurrencyCode().trim())
+                        .findFirst()
+                        .orElse("USD");
+
         Invoice invoice = new Invoice();
         invoice.setOnboardAccount(account);
         invoice.setInvoiceReference(reference);
@@ -135,7 +152,7 @@ public class InvoiceService {
         invoice.setVersionNo(versionNo);
         invoice.setIssuedAt(Instant.now());
         invoice.setSourceCutoffAt(Instant.now());
-        invoice.setCurrency("USD");
+        invoice.setCurrency(onboardCurrency);
         invoice.setSnapshotTotalAmount(totalAmount);
         invoice.setSnapshotNetAmountDue(totalAmount);
         invoice.setStatus(InvoiceStatus.Issued);
@@ -240,6 +257,25 @@ public class InvoiceService {
             newLines.add(invoiceLineRepository.save(newLine));
         }
 
+        // Thêm dòng điều chỉnh giảm / hoàn tiền để tổng giá trị các dòng khớp chính xác với snapshotTotalAmount
+        if (adjustmentAmount != null && adjustmentAmount.compareTo(BigDecimal.ZERO) > 0) {
+            InvoiceLine adjLine = new InvoiceLine();
+            adjLine.setInvoice(saved);
+            adjLine.setLineNo(lineNo);
+            adjLine.setDescriptionSnapshot(
+                    "Điều chỉnh giảm / Hoàn tiền (Adjustment Reversal) - Lý do: "
+                            + (reason != null && !reason.isBlank()
+                                    ? reason.trim()
+                                    : "Hoàn phí hoặc miễn giảm hóa đơn"));
+            adjLine.setQuantitySnapshot(BigDecimal.ONE);
+            adjLine.setBaseAmountSnapshot(adjustmentAmount.negate());
+            adjLine.setTaxAmountSnapshot(BigDecimal.ZERO);
+            adjLine.setTotalAmountSnapshot(adjustmentAmount.negate());
+            adjLine.setSourceCharge(null);
+            adjLine.setBookingFareAmountSnapshot(null);
+            newLines.add(invoiceLineRepository.save(adjLine));
+        }
+
         return toInvoiceResponse(saved, newLines);
     }
 
@@ -254,10 +290,25 @@ public class InvoiceService {
         return toInvoiceResponse(invoice, lines);
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public List<InvoiceResponse> getInvoicesForBooking(UUID bookingId) {
         List<Invoice> invoices =
                 invoiceRepository.findByBooking_BookingIdOrderByIssuedAtDesc(bookingId);
+        if (invoices.isEmpty()) {
+            Booking booking = bookingRepository.findById(bookingId).orElse(null);
+            if (booking != null
+                    && (booking.getBookingStatus() == BookingStatus.Confirmed
+                            || booking.getAgreedFareAmount() != null)) {
+                try {
+                    return List.of(generateBookingInvoice(bookingId));
+                } catch (Exception e) {
+                    log.warn(
+                            "Could not auto-generate booking invoice for booking {}: {}",
+                            bookingId,
+                            e.getMessage());
+                }
+            }
+        }
         return invoices.stream()
                 .map(
                         inv ->

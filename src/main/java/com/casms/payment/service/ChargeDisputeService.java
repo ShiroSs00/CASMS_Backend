@@ -54,6 +54,14 @@ public class ChargeDisputeService {
                                         new ResourceNotFoundException(
                                                 "Passenger", request.getPassengerId()));
 
+        if (request.getDisputedAmount() == null
+                || request.getDisputedAmount().compareTo(BigDecimal.ZERO) <= 0) {
+            throw new BusinessException(
+                    HttpStatus.BAD_REQUEST,
+                    "INVALID_DISPUTED_AMOUNT",
+                    "Disputed amount must be strictly greater than 0");
+        }
+
         if (request.getDisputedAmount().compareTo(charge.getNetAmount()) > 0) {
             throw new BusinessException(
                     HttpStatus.BAD_REQUEST,
@@ -89,6 +97,22 @@ public class ChargeDisputeService {
                     HttpStatus.BAD_REQUEST,
                     "DISPUTE_ALREADY_CLOSED",
                     "Dispute is already " + dispute.getStatus());
+        }
+
+        if (request.getApprovedAmount() != null) {
+            if (request.getApprovedAmount().compareTo(BigDecimal.ZERO) < 0) {
+                throw new BusinessException(
+                        HttpStatus.BAD_REQUEST,
+                        "INVALID_APPROVED_AMOUNT",
+                        "Approved amount cannot be negative");
+            }
+            if (request.getApprovedAmount().compareTo(dispute.getDisputedAmount()) > 0) {
+                throw new BusinessException(
+                        HttpStatus.BAD_REQUEST,
+                        "APPROVED_AMOUNT_EXCEEDED",
+                        "Approved resolution amount cannot exceed disputed amount of "
+                                + dispute.getDisputedAmount());
+            }
         }
 
         User staff = null;
