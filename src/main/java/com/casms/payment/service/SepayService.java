@@ -83,6 +83,9 @@ public class SepayService {
                         ? booking.getAgreedFareAmount()
                         : BigDecimal.ZERO;
         BigDecimal exchangeRate = sepayProperties.getUsdToVndRate();
+        if (exchangeRate == null || exchangeRate.compareTo(BigDecimal.ZERO) <= 0) {
+            exchangeRate = BigDecimal.valueOf(25400);
+        }
 
         BigDecimal totalPaid =
                 paymentRepository.findForBooking(bookingId).stream()
@@ -793,6 +796,9 @@ public class SepayService {
                                     : "N/A");
 
             BigDecimal exchangeRate = sepayProperties.getUsdToVndRate();
+            if (exchangeRate == null || exchangeRate.compareTo(BigDecimal.ZERO) <= 0) {
+                exchangeRate = BigDecimal.valueOf(25400);
+            }
             boolean isVndCurrency =
                     "VND".equalsIgnoreCase(matchedPayment.getCurrency())
                             || (matchedBooking != null
@@ -981,7 +987,14 @@ public class SepayService {
         BigDecimal receivedVnd =
                 payload.getTransferAmount() != null ? payload.getTransferAmount() : BigDecimal.ZERO;
         BigDecimal exchangeRate = sepayProperties.getUsdToVndRate();
-        BigDecimal receivedUsd = receivedVnd.divide(exchangeRate, 4, RoundingMode.HALF_UP);
+        if (exchangeRate == null || exchangeRate.compareTo(BigDecimal.ZERO) <= 0) {
+            exchangeRate = BigDecimal.valueOf(25400);
+        }
+        boolean isVndCurrency = "VND".equalsIgnoreCase(matchedBooking.getCurrency());
+        BigDecimal receivedInBookingCurrency =
+                isVndCurrency
+                        ? receivedVnd
+                        : receivedVnd.divide(exchangeRate, 4, RoundingMode.HALF_UP);
 
         List<Installment> installments =
                 installmentRepository.findByBookingBookingIdOrderBySequenceNoAsc(
@@ -1000,8 +1013,9 @@ public class SepayService {
         newPayment.setInstallment(nextUnpaid);
         newPayment.setOperationType(PaymentOperationType.Collect);
         newPayment.setPaymentMethod(PaymentMethod.Sepay);
-        newPayment.setRequestedAmount(receivedUsd);
-        newPayment.setCurrency(matchedBooking.getCurrency());
+        newPayment.setRequestedAmount(receivedInBookingCurrency);
+        newPayment.setCurrency(
+                matchedBooking.getCurrency() != null ? matchedBooking.getCurrency() : "USD");
         newPayment.setRequestedAt(Instant.now());
         newPayment.setStatus(PaymentStatus.Pending);
         newPayment.setIdempotencyKey(autoIdempotencyKey);
@@ -1012,7 +1026,7 @@ public class SepayService {
         try {
             paymentService.confirmPayment(
                     newPayment.getPaymentId(),
-                    new PaymentConfirmRequest(receivedUsd, processorRef));
+                    new PaymentConfirmRequest(receivedInBookingCurrency, processorRef));
 
             tx.setPayment(newPayment);
             tx.setStatus(SepayTransactionStatus.PROCESSED);

@@ -119,7 +119,7 @@ public class PaymentScheduler {
 
         for (Installment inst : upcomingInstallments) {
             Booking booking = inst.getBooking();
-            if (booking == null || booking.getBookingStatus() == BookingStatus.Cancelled) {
+            if (booking == null || booking.getBookingStatus() != BookingStatus.Confirmed) {
                 continue;
             }
 
