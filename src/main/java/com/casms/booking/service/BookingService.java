@@ -2730,6 +2730,8 @@ public class BookingService {
             guestUser.setStatus(UserStatus.ACTIVE);
             guestUser.setRoles(EnumSet.of(Role.PASSENGER));
             User saved = userRepository.save(guestUser);
+            // Flush the user insert before JdbcTemplate writes its foreign key.
+            userRepository.flush();
             bookingEmailService.markProvisioned(saved);
             return saved;
         }
