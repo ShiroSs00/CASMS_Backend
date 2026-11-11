@@ -2,8 +2,10 @@ package com.casms.cruisepackage.service;
 
 import com.casms.booking.entity.Booking;
 import com.casms.booking.entity.BookingPassenger;
+import com.casms.booking.dto.response.QuoteLineItem;
 import com.casms.booking.enums.BookingPassengerParticipationStatus;
 import com.casms.booking.enums.BookingStatus;
+import com.casms.booking.enums.CabinSelectionMode;
 import com.casms.booking.repository.BookingPassengerRepository;
 import com.casms.booking.repository.BookingRepository;
 import com.casms.common.exception.BusinessException;
@@ -19,6 +21,8 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 /** Only invoked inside the real Booking confirmation transaction; no HTTP purchase/backfill writer. */
 @Service @RequiredArgsConstructor
@@ -42,6 +46,7 @@ public class CruisePackagePurchaseSnapshotService {
     }
 
     public record PurchasedCruisePackage(BookingCruisePackageSnapshot fare,List<BookingCruisePackageBenefitSnapshot> benefits) {}
+    private record QuotedFare(CabinSelectionMode mode, String group, CruisePackagePurchaseSelection fare) {}
     @Transactional(readOnly=true)
     public PurchasedCruisePackage purchased(UUID passengerId) {
         var fare=repository.find(BookingCruisePackageSnapshot.class,passengerId,false);
@@ -54,16 +59,27 @@ public class CruisePackagePurchaseSnapshotService {
         Booking booking=bookings.findByIdForUpdate(bookingId).orElseThrow(()->new BusinessException("BOOKING_NOT_FOUND","Không tìm thấy đặt chỗ cần xác nhận."));
         if(booking.getBookingStatus()!=BookingStatus.Confirmed||booking.getConfirmedAt()==null||booking.getQuote()==null)
             throw new BusinessException("FARE_CONFIRMATION_REQUIRED","Chỉ ghi gói vé đã mua trong xác nhận đặt chỗ thực tế có báo giá.");
-        java.util.List<com.casms.booking.dto.response.QuoteLineItem> quotedLines;
+        List<QuoteLineItem> quotedLines;
         try {quotedLines=mapper.readValue(booking.getQuote().getQuotePayloadJson(),new com.fasterxml.jackson.core.type.TypeReference<>(){});}
         catch(JsonProcessingException|IllegalArgumentException e){throw new BusinessException("FARE_PURCHASE_QUOTE_INVALID","Không đọc được nội dung báo giá gốc; không dựng lại quyền lợi từ danh mục hiện tại.");}
-        if(quotedLines==null)throw new BusinessException("FARE_PURCHASE_QUOTE_INVALID","Thiếu nội dung báo giá gốc.");
-        for(var passenger:passengers.findByBookingBookingId(bookingId)) {
+        var bookingPassengers = passengers.findByBookingBookingId(bookingId);
+        if (quotedLines == null || quotedLines.isEmpty() || quotedLines.size() != bookingPassengers.size()
+                || quotedLines.stream().anyMatch(line -> line == null || line.getFareSelection() == null
+                        || line.getCabinSelectionMode() == null || line.getCabinGroupKey() == null)
+                || bookingPassengers.stream().anyMatch(passenger -> passenger.getFareOfferId() == null))
+            throw new BusinessException("FARE_PURCHASE_QUOTE_INVALID", "Thiếu nội dung báo giá gốc hoặc gói vé của hành khách.");
+        var quoted = quotedLines.stream()
+                .map(line -> new QuotedFare(line.getCabinSelectionMode(), line.getCabinGroupKey(), line.getFareSelection()))
+                .collect(Collectors.groupingBy(Function.identity(), Collectors.counting()));
+        var booked = bookingPassengers.stream()
+                .map(passenger -> new QuotedFare(passenger.getCabinSelectionMode(), passenger.getCabinGroupKey(), intent(passenger)))
+                .collect(Collectors.groupingBy(Function.identity(), Collectors.counting()));
+        if (!quoted.equals(booked))
+            throw new BusinessException("FARE_PURCHASE_QUOTE_MISMATCH", "Gói vé và nhóm cabin đã giữ không khớp báo giá gốc.");
+        for(var passenger:bookingPassengers) {
             if(passenger.getFareOfferId()==null||passenger.getParticipationStatus()!=BookingPassengerParticipationStatus.Active)continue;
             CruisePackagePurchaseSelection selection=intent(passenger);
             cabinMappings.requirePurchasedCabins(selection);
-            if(quotedLines.stream().noneMatch(line->selection.equals(line.getFareSelection())))
-                throw new BusinessException("FARE_PURCHASE_QUOTE_MISMATCH","Nội dung gói vé đã giữ không có trong báo giá gốc của đặt chỗ.");
             if(!Objects.equals(selection.offerId(),passenger.getFareOfferId())
                     ||!Objects.equals(selection.templateVersionId(),passenger.getFareTemplateVersionId())
                     ||!Objects.equals(selection.priceRevisionId(),passenger.getFarePriceRevisionId())

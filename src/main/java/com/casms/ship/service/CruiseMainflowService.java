@@ -990,10 +990,6 @@ SELECT EXISTS(SELECT 1 FROM "CruisePricingPolicy" p JOIN "Cruise" c USING(cruise
                                 "Plan approval checks incomplete",
                                 Map.of("blockers", blockers));
                     if (unified) {
-                        packageSelections.getObject().autoPopulateIfEmpty(id, actor);
-                        if (cruisePackageServices != null && cruisePackageServices.getIfAvailable() != null) {
-                            cruisePackageServices.getIfAvailable().approveAllForPlan(id, actor);
-                        }
                         packageSelections.getObject().approve(id, actor);
                         var terms = saleTermsServices.getObject();
                         terms.ensureApprovedForPlan(id, actor);
@@ -1164,6 +1160,8 @@ SELECT EXISTS(SELECT 1 FROM "CruisePricingPolicy" p JOIN "Cruise" c USING(cruise
                 : List.of("PRICING_POLICY_APPROVAL_REQUIRED");
     }
 
+    // Quote readback converts an expected sale rejection into the persisted quote's INVALIDATED view.
+    @Transactional(readOnly = true, noRollbackFor = BusinessException.class)
     public void requireBookable(UUID id) {
         Map<String, Object> c = cruise(id, false);
         requireReady(id);
@@ -1180,18 +1178,14 @@ SELECT EXISTS(SELECT 1 FROM "CruisePricingPolicy" p JOIN "Cruise" c USING(cruise
                         SELECT 1 FROM "CruisePlanPackageSelectionItem" x
                         JOIN "DepartureFarePackage" f ON f.offer_id=x.offer_id
                         JOIN "DepartureFarePackagePrice" p ON p.price_revision_id=x.price_revision_id
-                        WHERE x.cruise_id=? AND f.status='PUBLISHED' AND p.status='APPROVED'
+                        WHERE x.cruise_id=? AND f.cruise_id=x.cruise_id
+                          AND f.status='PUBLISHED' AND f.sale_requested AND f.sale_enabled
+                          AND p.status='APPROVED' AND p.offer_id=f.offer_id
+                          AND p.template_version_id=f.template_version_id
+                          AND p.offer_commercial_revision=f.commercial_revision
+                          AND now() >= f.sales_start AND now() < f.sales_end
                     )
                     """, Boolean.class, id));
-            if (!hasBookablePackage) {
-                hasBookablePackage = Boolean.TRUE.equals(jdbc.queryForObject("""
-                        SELECT EXISTS(
-                            SELECT 1 FROM "DepartureFarePackage" f
-                            JOIN "DepartureFarePackagePrice" p ON p.offer_id=f.offer_id
-                            WHERE f.cruise_id=? AND f.status='PUBLISHED' AND p.status='APPROVED'
-                        )
-                        """, Boolean.class, id));
-            }
             if (!hasBookablePackage) {
                 throw new BusinessException(
                         HttpStatus.CONFLICT,
@@ -1221,6 +1215,13 @@ SELECT EXISTS(SELECT 1 FROM "CruisePricingPolicy" p JOIN "Cruise" c USING(cruise
         return packageSelections.getObject().selections(id).stream()
                 .map(CruisePlanPackageSelectionService.Choice::offerId)
                 .collect(java.util.stream.Collectors.toUnmodifiableSet());
+    }
+
+    public boolean isApprovedFareRevision(UUID cruiseId, UUID offerId, UUID priceId) {
+        return approvedOfferIds(cruiseId).contains(offerId)
+                && packageSelections.getObject().selections(cruiseId).stream()
+                        .anyMatch(choice -> choice.offerId().equals(offerId)
+                                && choice.priceRevisionId().equals(priceId));
     }
 
     public boolean isReady(UUID id) {

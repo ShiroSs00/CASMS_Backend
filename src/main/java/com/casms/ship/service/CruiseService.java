@@ -3997,7 +3997,7 @@ public class CruiseService {
                 .departureDatetime(cruise.getDepartureDatetime())
                 .returnDatetime(cruise.getReturnDatetime())
                 .sellable(sellable)
-                .transactionReady(sellable && !unified)
+                .transactionReady(sellable)
                 .publicDisplayEligible(sellable)
                 .publicSaleState(saleState)
                 .openedForSaleAt(cruise.getOpenedForSaleAt())

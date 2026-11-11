@@ -1,5 +1,6 @@
 package com.casms.booking.dto.request;
 
+import com.casms.booking.enums.CabinSelectionMode;
 import com.casms.identity.enums.PassengerDocumentType;
 
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -54,13 +55,16 @@ public class PassengerBookingItemRequest {
 
     @Schema(
             description = "ID phòng hành khách tự chọn",
-            example = "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-            requiredMode = Schema.RequiredMode.REQUIRED)
-    @NotNull(message = "Cabin ID is required for passenger self-selection")
+            example = "a1b2c3d4-e5f6-7890-abcd-ef1234567890")
     private UUID cabinId;
 
     @Schema(
             description = "ID gói dịch vụ đã chọn (VD: BASIC, PLUS, PREMIUM)",
             example = "b2c3d4e5-f6a7-8901-bcde-f12345678901")
     private UUID tourPackageId;
+    private UUID farePackageOfferId;
+    private UUID farePackagePriceRevisionId;
+    private CabinSelectionMode cabinSelectionMode;
+    @Size(max = 100)
+    private String cabinGroupKey;
 }
