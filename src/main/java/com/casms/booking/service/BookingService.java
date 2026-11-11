@@ -2847,6 +2847,8 @@ public class BookingService {
         html.append(buildCruiseSection(detail));
         html.append(buildPassengerTable(detail.getPassengers()));
         html.append(buildFinancialAndInstallmentSection(detail));
+        html.append(buildCommitmentsSection());
+        html.append(buildNotesAndAdvisoriesSection());
         html.append(buildTermsAndSignatures(detail, contractRef));
         html.append("</div>\n");
 
@@ -3170,6 +3172,46 @@ public class BookingService {
         return sb.toString();
     }
 
+    private String buildCommitmentsSection() {
+        return "<div class=\"section\">\n"
+                + "  <div class=\"section-title\">ĐIỀU 4: CAM KẾT CHUNG GIỮA HAI BÊN (QUYỀN LỢI &amp; NGHĨA VỤ)</div>\n"
+                + "  <div class=\"commit-grid\">\n"
+                + "    <div class=\"commit-box\">\n"
+                + "      <h5>1. CAM KẾT CỦA BÊN A (HÃNG TÀU CASMS CRUISE)</h5>\n"
+                + "      <ul class=\"commit-list\">\n"
+                + "        <li><strong>Đảm bảo an toàn hàng hải:</strong> Du thuyền vận hành đạt chuẩn đăng kiểm quốc gia, tuân thủ tuyệt đối quy định an toàn sinh mạng hàng hải quốc tế (SOLAS) và phòng cháy chữa cháy.</li>\n"
+                + "        <li><strong>Đúng tiêu chuẩn dịch vụ:</strong> Bố trí đúng buồng phòng (cabin), tiện nghi và các gói dịch vụ trên du thuyền như đã thỏa thuận trong hợp đồng.</li>\n"
+                + "        <li><strong>Bảo hiểm hành khách:</strong> 100% hành khách trên tàu được thụ hưởng bảo hiểm du lịch và bảo hiểm trách nhiệm dân sự đối với hành khách đường biển theo quy định của pháp luật.</li>\n"
+                + "        <li><strong>Bảo mật thông tin:</strong> Cam kết bảo mật tuyệt đối dữ liệu thông tin cá nhân của hành khách; không chia sẻ cho bên thứ ba ngoại trừ cơ quan Cảng vụ, Biên phòng theo luật định.</li>\n"
+                + "        <li><strong>Bảo vệ quyền lợi khi bất khả kháng:</strong> Khi có giông bão, thiên tai hoặc lệnh cấm biển vì an toàn sinh mạng, Bên A cam kết hỗ trợ bảo lưu, đổi lịch hoặc hoàn cước theo chính sách an toàn hàng hải.</li>\n"
+                + "      </ul>\n"
+                + "    </div>\n"
+                + "    <div class=\"commit-box\">\n"
+                + "      <h5>2. CAM KẾT CỦA BÊN B (ĐẠI DIỆN HÀNH KHÁCH / ĐOÀN)</h5>\n"
+                + "      <ul class=\"commit-list\">\n"
+                + "        <li><strong>Thông tin chuẩn xác:</strong> Cung cấp danh sách hành khách chính xác (Họ tên, ngày sinh, quốc tịch, CCCD/Hộ chiếu) và chịu trách nhiệm pháp lý về tính hợp lệ của giấy tờ.</li>\n"
+                + "        <li><strong>Nghĩa vụ thanh toán:</strong> Thực hiện thanh toán đúng hạn và đủ số tiền theo tiến độ thỏa thuận tại Điều 3.</li>\n"
+                + "        <li><strong>Tuân thủ quy chế an toàn:</strong> Chấp hành nghiêm túc nội quy du thuyền, mệnh lệnh của Thuyền trưởng và hướng dẫn an toàn của thủy thủ đoàn; không gây mất an ninh trật tự.</li>\n"
+                + "        <li><strong>Hợp tác thiện chí:</strong> Hai bên cam kết hợp tác thiện chí, giải quyết mọi vướng mắc qua thương lượng hòa nhã, tạo tâm lý an tâm tuyệt đối để tận hưởng trọn vẹn chuyến hải trình.</li>\n"
+                + "      </ul>\n"
+                + "    </div>\n"
+                + "  </div>\n"
+                + "</div>\n";
+    }
+
+    private String buildNotesAndAdvisoriesSection() {
+        return "<div class=\"section\">\n"
+                + "  <div class=\"section-title\">ĐIỀU 5: CÁC LƯU Ý QUAN TRỌNG KHI THAM GIA HẢI TRÌNH</div>\n"
+                + "  <div class=\"advisory-card\">\n"
+                + "    <div class=\"advisory-item\">📌 <strong>1. Thời gian tập trung &amp; Check-in:</strong> Quý khách cần có mặt tại Nhà ga đón khách (Terminal) trước giờ tàu khởi hành tối thiểu <strong>90 phút</strong> để hoàn tất thủ tục an ninh cảng và nhận phòng. Quầy làm thủ tục sẽ đóng cửa trước giờ khởi hành <strong>30 phút</strong>. Quý khách đi trễ giờ vì lý do cá nhân sẽ tự chịu trách nhiệm.</div>\n"
+                + "    <div class=\"advisory-item\">📌 <strong>2. Giấy tờ tùy thân bắt buộc:</strong> Hành khách người lớn phải mang theo bản gốc CCCD hoặc Hộ chiếu (còn hạn tối thiểu 6 tháng). Trẻ em dưới 14 tuổi bắt buộc mang theo Giấy khai sinh (bản gốc hoặc bản sao trích lục/công chứng) và phải có người giám hộ hợp pháp đi cùng.</div>\n"
+                + "    <div class=\"advisory-item\">📌 <strong>3. Quy định hành lý &amp; Vật phẩm cấm:</strong> Nghiêm cấm mang lên tàu các loại vũ khí, chất nổ, chất dễ cháy, ma túy, hóa chất độc hại, thiết bị bay không người lái (Flycam/Drone chưa được cấp phép) hoặc động vật sống/thú cưng.</div>\n"
+                + "    <div class=\"advisory-item\">📌 <strong>4. Tình trạng sức khỏe &amp; Khách cần lưu ý:</strong> Hành khách mang thai trên 24 tuần hoặc có tiền sử bệnh tim mạch/huyết áp nặng cần có xác nhận y tế và thông báo trước cho Ban Y tế du thuyền khi làm thủ tục check-in để được hỗ trợ chuyên biệt.</div>\n"
+                + "    <div class=\"advisory-item\">📌 <strong>5. Diễn tập cứu sinh bắt buộc (Muster Drill):</strong> Theo Công ước Quốc tế SOLAS, 100% hành khách bắt buộc phải tham gia buổi diễn tập an toàn cứu hộ trên biển trước khi du thuyền nhổ neo rời cảng.</div>\n"
+                + "  </div>\n"
+                + "</div>\n";
+    }
+
     private String buildTermsAndSignatures(BookingDetailResponse detail, String contractRef) {
         boolean isAccepted = detail.getContractStatus() == BookingContractStatus.Accepted;
         String acceptedTime = formatInstant(detail.getContractAcceptedAt());
@@ -3178,24 +3220,8 @@ public class BookingService {
                         ? escapeHtml(detail.getContractDocumentReference())
                         : "Lưu trữ số điện tử CASMS";
 
-        return "<div class=\"section\">\n"
-                + "  <div class=\"section-title\">ĐIỀU 4: QUY ĐỊNH AN TOÀN HÀNG HẢI (SOLAS) &amp;"
-                + " ĐIỀU KHOẢN VẬN TẢI</div>\n"
-                + "  <div style=\"font-size: 12px; line-height: 1.6; color: #334155;\">\n"
-                + "    1. <strong>An toàn sinh mạng trên biển:</strong> Hành khách có nghĩa vụ chấp"
-                + " hành nghiêm túc quy định của Công ước quốc tế SOLAS và hướng dẫn cứu hộ của"
-                + " Thuyền trưởng. Tất cả hành khách phải tham gia buổi diễn tập an toàn (Muster"
-                + " Drill) trước khi tàu rời cảng.<br>\n"
-                + "    2. <strong>Giấy tờ tùy thân:</strong> Hành khách phải xuất trình bản gốc giấy"
-                + " tờ tùy thân hợp lệ (CCCD / Hộ chiếu còn hạn trên 6 tháng) khi làm thủ tục"
-                + " check-in lên tàu.<br>\n"
-                + "    3. <strong>Hành lý &amp; Hàng cấm:</strong> Nghiêm cấm mang theo vũ khí, chất"
-                + " nổ, chất dễ cháy, ma túy và các hóa chất độc hại lên tàu theo quy định của Luật"
-                + " Hàng hải Việt Nam.\n"
-                + "  </div>\n"
-                + "</div>\n"
-                + "<div class=\"section\" style=\"page-break-inside: avoid;\">\n"
-                + "  <div class=\"section-title\">ĐIỀU 5: HIỆU LỰC HỢP ĐỒNG &amp; KÝ KẾT XÁC"
+        return "<div class=\"section\" style=\"page-break-inside: avoid;\">\n"
+                + "  <div class=\"section-title\">ĐIỀU 6: HIỆU LỰC HỢP ĐỒNG &amp; KÝ KẾT XÁC"
                 + " NHẬN</div>\n"
                 + "  <div style=\"font-size: 12px; margin-bottom: 12px;\">\n"
                 + "    Hợp đồng này được xác lập có hiệu lực kể từ ngày phát hành/ký kết. Hai bên"
@@ -3357,6 +3383,15 @@ public class BookingService {
                 + " 600; text-align: center; }\n"
                 + "table.data-table td.center { text-align: center; }\n"
                 + "table.data-table td.right { text-align: right; }\n"
+                + ".commit-grid { display: flex; gap: 14px; font-size: 11.5px; margin-top: 6px; }\n"
+                + ".commit-box { flex: 1; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 9px 12px; }\n"
+                + ".commit-box h5 { margin: 0 0 6px 0; font-size: 11.5px; color: #1e3a8a; text-transform: uppercase; border-bottom: 1px solid #cbd5e1; padding-bottom: 3px; }\n"
+                + ".commit-list { margin: 0; padding-left: 15px; line-height: 1.55; color: #334155; }\n"
+                + ".commit-list li { margin-bottom: 4px; }\n"
+                + ".advisory-card { background: #fffbeb; border: 1px solid #fde68a; border-radius: 6px; padding: 10px 14px; font-size: 11.5px; line-height: 1.6; color: #78350f; }\n"
+                + ".advisory-item { margin-bottom: 5px; }\n"
+                + ".advisory-item:last-child { margin-bottom: 0; }\n"
+                + ".advisory-item strong { color: #92400e; }\n"
                 + ".signature-grid { display: flex; justify-content: space-between; margin-top:"
                 + " 30px; page-break-inside: avoid; }\n"
                 + ".signature-box { width: 46%; text-align: center; font-size: 12.5px; }\n"
