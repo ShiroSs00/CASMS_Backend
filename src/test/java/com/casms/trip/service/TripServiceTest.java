@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
+import com.casms.audit.AuditService;
 import com.casms.common.exception.BusinessException;
 import com.casms.common.service.BusinessCodeGenerator;
 import com.casms.identity.entity.User;
@@ -44,7 +45,7 @@ class TripServiceTest {
 
     @Mock private BusinessCodeGenerator businessCodeGenerator;
 
-    @Mock private com.casms.audit.AuditService auditService;
+    @Mock private AuditService auditService;
 
     @InjectMocks private TripService tripService;
 

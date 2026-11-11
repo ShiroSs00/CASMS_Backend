@@ -2,6 +2,8 @@ package com.casms.servicepackage.controller;
 
 import com.casms.common.exception.ResourceNotFoundException;
 import com.casms.common.response.ApiResponse;
+import com.casms.cruisepackage.service.CruisePackageEntitlementService;
+import com.casms.cruisepackage.service.CruisePackageEntitlementService.OperationEntitlement;
 import com.casms.security.principal.CasmsPrincipal;
 import com.casms.servicepackage.entity.*;
 import com.casms.servicepackage.entity.Service;
@@ -39,12 +41,12 @@ public class ServicepackageController {
     private final ServiceCatalogReadService catalogReads;
     private final ServiceScheduleManagementService scheduleManagement;
     private final ServiceCategoryRepository categoryRepository;
-    private final com.casms.cruisepackage.service.CruisePackageEntitlementService fareEntitlements;
+    private final CruisePackageEntitlementService fareEntitlements;
  @PreAuthorize("hasAnyAuthority('SERVICE_REQUEST_READ','SERVICE_REQUEST_CREATE','SERVICE_REQUEST_EXECUTE')")
  @GetMapping("/requests/{id}/fare-entitlement")
- public ApiResponse<com.casms.cruisepackage.service.CruisePackageEntitlementService.OperationEntitlement> requestEntitlement(@PathVariable UUID id,Authentication auth){
+ public ApiResponse<OperationEntitlement> requestEntitlement(@PathVariable UUID id,Authentication auth){
   var principal=(CasmsPrincipal)auth.getPrincipal();var request=serviceRequests.get(id,principal.getUserId(),principal.isStaff());
-  return ApiResponse.success(new com.casms.cruisepackage.service.CruisePackageEntitlementService.OperationEntitlement(id,fareEntitlements.operationGrant(request.getFareBenefitSnapshotId(),request.getBookingPassenger()==null?null:request.getBookingPassenger().getBookingPassengerId())));
+  return ApiResponse.success(new OperationEntitlement(id,fareEntitlements.operationGrant(request.getFareBenefitSnapshotId(),request.getBookingPassenger()==null?null:request.getBookingPassenger().getBookingPassengerId())));
  }
 
 

@@ -4,6 +4,7 @@ import com.casms.audit.AuditLog;
 import com.casms.audit.AuditRepository;
 import com.casms.common.exception.BusinessException;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
@@ -81,7 +82,7 @@ public class DepartureSaleTermsService {
                 row.getObject(3,OffsetDateTime.class).toInstant(),decodeEvidence(row.getString(4))),id);
     }
 
-    private com.fasterxml.jackson.databind.JsonNode decodeEvidence(String value) {
+    private JsonNode decodeEvidence(String value) {
         try { return mapper.readTree(value); }
         catch (JsonProcessingException ex) { throw new IllegalStateException("Cannot decode sale terms evidence",ex); }
     }

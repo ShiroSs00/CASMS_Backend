@@ -2,11 +2,14 @@ package com.casms.ship.service;
 
 import com.casms.common.exception.BusinessException;
 import com.casms.common.exception.ResourceNotFoundException;
+import com.casms.cruisepackage.service.CruisePackageCabinMappingService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import lombok.RequiredArgsConstructor;
 
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -27,28 +30,28 @@ public class CruiseMainflowService {
     private final JdbcTemplate jdbc;
     private final ObjectMapper mapper;
     private final PortWindowEvaluator portWindowEvaluator;
-    private final org.springframework.beans.factory.ObjectProvider<CruiseService> cruiseServices;
+    private final ObjectProvider<CruiseService> cruiseServices;
     private final ItineraryProgramPolicy programPolicy;
 
-    @org.springframework.beans.factory.annotation.Autowired
-    private org.springframework.beans.factory.ObjectProvider<CruisePricingPolicyService>
+    @Autowired
+    private ObjectProvider<CruisePricingPolicyService>
             pricingServices;
 
-    @org.springframework.beans.factory.annotation.Autowired
-    private org.springframework.beans.factory.ObjectProvider<CruisePreparationService>
+    @Autowired
+    private ObjectProvider<CruisePreparationService>
             preparationServices;
 
-    @org.springframework.beans.factory.annotation.Autowired
-    private org.springframework.beans.factory.ObjectProvider<CruisePlanPackageSelectionService> packageSelections;
+    @Autowired
+    private ObjectProvider<CruisePlanPackageSelectionService> packageSelections;
 
-    @org.springframework.beans.factory.annotation.Autowired
-    private org.springframework.beans.factory.ObjectProvider<DepartureSaleTermsService> saleTermsServices;
+    @Autowired
+    private ObjectProvider<DepartureSaleTermsService> saleTermsServices;
 
-    @org.springframework.beans.factory.annotation.Autowired
-    private org.springframework.beans.factory.ObjectProvider<com.casms.cruisepackage.service.CruisePackageCabinMappingService> cabinMappings;
+    @Autowired
+    private ObjectProvider<CruisePackageCabinMappingService> cabinMappings;
 
-    @org.springframework.beans.factory.annotation.Autowired
-    private org.springframework.beans.factory.ObjectProvider<CruiseShipAssignmentPolicy> shipAssignmentPolicies;
+    @Autowired
+    private ObjectProvider<CruiseShipAssignmentPolicy> shipAssignmentPolicies;
 
     private CruiseShipAssignmentPolicy shipAssignmentPolicy() {
         CruiseShipAssignmentPolicy provided =

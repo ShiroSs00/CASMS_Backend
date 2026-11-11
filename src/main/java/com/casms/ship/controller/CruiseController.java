@@ -56,9 +56,11 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
 
@@ -238,11 +240,11 @@ public class CruiseController {
                     HttpStatus.BAD_REQUEST, "INVALID_INPUT", "saleState must be OPEN_FOR_SALE");
     }
 
-    private boolean bookingOnly(org.springframework.security.core.Authentication auth) {
+    private boolean bookingOnly(Authentication auth) {
         if (auth == null) return false;
         var authorities = auth.getAuthorities().stream().map(a -> a.getAuthority()).toList();
         return authorities.contains("ROLE_BOOKING_AGENT")
-                && java.util.Collections.disjoint(
+                && Collections.disjoint(
                         authorities,
                         List.of(
                                 "ROLE_ADMIN",

@@ -6,6 +6,7 @@ import com.casms.cruisepackage.dto.CruisePackageContracts.Blocker;
 import com.casms.cruisepackage.dto.CruisePackageContracts.ResourceType;
 import com.casms.cruisepackage.entity.BookingCruisePackageBenefitSnapshot;
 import com.casms.cruisepackage.repository.CruisePackageRepository;
+import com.casms.servicepackage.entity.ServiceSchedule;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -41,7 +42,7 @@ public class CruisePackageEntitlementService {
         return view(grant);
     }
 
-    public void validateServiceWindow(UUID grantId,com.casms.servicepackage.entity.ServiceSchedule schedule) {
+    public void validateServiceWindow(UUID grantId,ServiceSchedule schedule) {
         if(grantId==null)return;
         var grant=repository.find(BookingCruisePackageBenefitSnapshot.class,grantId,false);
         if(grant==null)throw business("ENTITLEMENT_NOT_FOUND","Không tìm thấy grant cho lịch phục vụ.");

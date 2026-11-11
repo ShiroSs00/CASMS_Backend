@@ -1,6 +1,7 @@
 package com.casms.cruisepackage.service;
 
 import com.casms.booking.entity.Booking;
+import com.casms.booking.entity.BookingPassenger;
 import com.casms.booking.enums.BookingPassengerParticipationStatus;
 import com.casms.booking.enums.BookingStatus;
 import com.casms.booking.repository.BookingPassengerRepository;
@@ -15,6 +16,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -28,7 +30,7 @@ public class CruisePackagePurchaseSnapshotService {
     private final CruisePackageBenefitUsagePolicy usagePolicy;
     private final CruisePackageCabinMappingService cabinMappings;
 
-    public CruisePackagePurchaseSelection intent(com.casms.booking.entity.BookingPassenger passenger) {
+    public CruisePackagePurchaseSelection intent(BookingPassenger passenger) {
         if(passenger.getFareOfferId()==null)return null;
         try {
             var selection=mapper.readValue(passenger.getFareSelectionPayload(),CruisePackagePurchaseSelection.class);
@@ -39,7 +41,7 @@ public class CruisePackagePurchaseSnapshotService {
         }
     }
 
-    public record PurchasedCruisePackage(BookingCruisePackageSnapshot fare,java.util.List<BookingCruisePackageBenefitSnapshot> benefits) {}
+    public record PurchasedCruisePackage(BookingCruisePackageSnapshot fare,List<BookingCruisePackageBenefitSnapshot> benefits) {}
     @Transactional(readOnly=true)
     public PurchasedCruisePackage purchased(UUID passengerId) {
         var fare=repository.find(BookingCruisePackageSnapshot.class,passengerId,false);

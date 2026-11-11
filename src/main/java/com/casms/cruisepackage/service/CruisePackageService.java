@@ -2,12 +2,16 @@ package com.casms.cruisepackage.service;
 
 import com.casms.common.exception.BusinessException;
 import com.casms.cruisepackage.dto.CruisePackageContracts.*;
+import com.casms.cruisepackage.dto.CruisePackagePurchaseSelection;
 import com.casms.cruisepackage.entity.*;
 import com.casms.cruisepackage.repository.CruisePackageRepository;
 import com.casms.identity.enums.Role;
 import com.casms.security.principal.CasmsPrincipal;
+import com.casms.ship.enums.CabinType;
 import com.casms.ship.service.CruiseMainflowService;
+import com.casms.ship.service.CruiseService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -23,7 +27,7 @@ public class CruisePackageService {
     private final CruiseMainflowService plans;
     private final CruisePackageBenefitUsagePolicy benefitUsage;
     private final CruisePackageCabinMappingService cabinMappings;
-    private final org.springframework.beans.factory.ObjectProvider<com.casms.ship.service.CruiseService> cruiseServices;
+    private final ObjectProvider<CruiseService> cruiseServices;
 
     public List<CruisePackageTemplate> templates() { requireRead(); return repository.templates(); }
     public List<VersionView> versions(UUID templateId) {
@@ -384,11 +388,11 @@ public class CruisePackageService {
     public boolean requiresFareSelection(UUID cruiseId) {
         return repository.offers(cruiseId).stream().anyMatch(DepartureCruisePackage::isSaleRequested);
     }
-    public Set<com.casms.ship.enums.CabinType> sellableCategories(UUID cruiseId) {
-        Set<com.casms.ship.enums.CabinType> result=new HashSet<>();
+    public Set<CabinType> sellableCategories(UUID cruiseId) {
+        Set<CabinType> result=new HashSet<>();
         for(UUID id:saleScopeCabinIds(cruiseId)){
             String type=jdbc.queryForObject("SELECT cabin_type::text FROM \"Cabin\" WHERE cabin_id=?",String.class,id);
-            result.add(com.casms.ship.enums.CabinType.valueOf(type));
+            result.add(CabinType.valueOf(type));
         }
         return Set.copyOf(result);
     }
@@ -399,7 +403,7 @@ public class CruisePackageService {
         return new CruisePackageCatalog(cruiseId,requiresFareSelection(cruiseId),offers);
     }
     /** Booking/quote callers already serialize on Cruise. Never interpret TourPackage as a Fare Offer. */
-    public com.casms.cruisepackage.dto.CruisePackagePurchaseSelection preparePurchase(UUID cruiseId,UUID offerId,UUID priceId) {
+    public CruisePackagePurchaseSelection preparePurchase(UUID cruiseId,UUID offerId,UUID priceId) {
         var offer=offer(cruiseId,offerId,false);
         if(!offer.isSaleEnabled()||!"PUBLISHED".equals(offer.getStatus()))
             throw new BusinessException(HttpStatus.NOT_FOUND,"FARE_OFFER_NOT_AVAILABLE","Gói vé không khả dụng để mua trên chuyến khởi hành này.");
@@ -412,21 +416,21 @@ public class CruisePackageService {
         var view=offerView(offer); var version=view.template().version();
         var benefits=view.template().benefits().stream().map(benefit -> {
             var occurrences=view.bindings().stream().filter(b->b.getBenefitId().equals(benefit.getId()))
-                    .map(b->new com.casms.cruisepackage.dto.CruisePackagePurchaseSelection.Occurrence(resourceType(benefit).name(),
+                    .map(b->new CruisePackagePurchaseSelection.Occurrence(resourceType(benefit).name(),
                             b.getOnboardActivityId()!=null?b.getOnboardActivityId():b.getShoreExcursionId()!=null?b.getShoreExcursionId():b.getServiceId(),
                             view.bindingNames().get(b.getId()))).toList();
-            return new com.casms.cruisepackage.dto.CruisePackagePurchaseSelection.Benefit(benefit.getId(),benefit.getInclusion(),
+            return new CruisePackagePurchaseSelection.Benefit(benefit.getId(),benefit.getInclusion(),
                     benefit.getOnboardActivityId(),benefit.getShoreExcursionId(),benefit.getServiceId(),benefit.getQuantityLimit(),
                     benefit.getEligibility(),view.template().resourceNames().get(benefit.getId()),occurrences,
                     benefit.getUsageUnit(),benefit.getRequiresReservation(),benefit.getUsageStartsAt(),benefit.getUsageEndsAt(),benefit.getUsagePolicy(),benefit.getServiceUnitCode());
         }).toList();
-        return new com.casms.cruisepackage.dto.CruisePackagePurchaseSelection(offerId,version.getId(),priceId,offer.getShipId(),
-                offer.getLogicalCategory(),com.casms.ship.enums.CabinType.valueOf(offer.getProposedCabinType()),price.getAmount(),
+        return new CruisePackagePurchaseSelection(offerId,version.getId(),priceId,offer.getShipId(),
+                offer.getLogicalCategory(),CabinType.valueOf(offer.getProposedCabinType()),price.getAmount(),
                 version.getName(),version.getDescription(),version.getVersionNumber(),price.getRevisionNumber(),offer.getCommercialRevision(),benefits,
                 offer.getLogicalCategoryId(),view.cabinMapping().mappingId(),view.cabinMapping().cabinIds());
     }
     /** Caller holds the Cruise lock and validates this booking's existing allocation separately. */
-    public void validateHeldPurchase(UUID cruiseId,com.casms.cruisepackage.dto.CruisePackagePurchaseSelection selection) {
+    public void validateHeldPurchase(UUID cruiseId,CruisePackagePurchaseSelection selection) {
         var offer=offer(cruiseId,selection.offerId(),false);
         if(!offer.isSaleEnabled()||!"PUBLISHED".equals(offer.getStatus())
                 ||!eligibility(offer,false,false).eligible())

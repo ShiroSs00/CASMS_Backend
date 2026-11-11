@@ -166,3 +166,4 @@ class InvoiceServiceTest {
         assertEquals("BK-TEST-01", list.get(0).getBookingReference());
     }
 }
+

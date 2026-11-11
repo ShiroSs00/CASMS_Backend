@@ -3,17 +3,23 @@ package com.casms.ship.service;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
+import com.casms.activity.repository.OnboardActivityRepository;
+import com.casms.activity.repository.ShoreExcursionRepository;
 import com.casms.common.exception.BusinessException;
 import com.casms.identity.enums.Role;
+import com.casms.identity.repository.UserRepository;
 import com.casms.security.principal.CasmsPrincipal;
+import com.casms.servicepackage.repository.ServiceScheduleRepository;
 import com.casms.ship.dto.request.*;
 import com.casms.ship.entity.*;
 import com.casms.ship.repository.*;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.*;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 
@@ -26,16 +32,16 @@ class PreparationServiceAuthorizationTest {
     @Mock CruiseStaffRepository staff;
     @Mock DeckRepository decks;
     @Mock CabinRepository cabins;
-    @Mock com.casms.activity.repository.ShoreExcursionRepository tours;
-    @Mock com.casms.activity.repository.OnboardActivityRepository activities;
-    @Mock com.casms.servicepackage.repository.ServiceScheduleRepository schedules;
-    @Mock com.casms.identity.repository.UserRepository users;
-    @Mock org.springframework.jdbc.core.JdbcTemplate jdbc;
+    @Mock ShoreExcursionRepository tours;
+    @Mock OnboardActivityRepository activities;
+    @Mock ServiceScheduleRepository schedules;
+    @Mock UserRepository users;
+    @Mock JdbcTemplate jdbc;
     @Mock ItineraryProgramPolicy programPolicy;
 
     @Spy
-    com.fasterxml.jackson.databind.ObjectMapper mapper =
-            new com.fasterxml.jackson.databind.ObjectMapper().findAndRegisterModules();
+    ObjectMapper mapper =
+            new ObjectMapper().findAndRegisterModules();
 
     @InjectMocks CruisePreparationService service;
 

@@ -2,6 +2,7 @@ package com.casms.ship.service;
 
 import com.casms.common.exception.BusinessException;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.function.Executable;
 import org.springframework.jdbc.core.JdbcTemplate;
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -44,7 +45,7 @@ class ItineraryProgramPolicyTest {
         assertCode("PROGRAM_DETAILS_REQUIRED", () -> ItineraryProgramPolicy.requireDetails(20, BigDecimal.ZERO, "USD", "  "));
     }
 
-    private void assertCode(String code, org.junit.jupiter.api.function.Executable action) {
+    private void assertCode(String code, Executable action) {
         assertEquals(code, assertThrows(BusinessException.class, action).getCode());
     }
 }

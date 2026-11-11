@@ -39,6 +39,7 @@ import com.casms.identity.repository.PassengerRepository;
 import com.casms.identity.repository.UserRepository;
 import com.casms.notification.entity.Notification;
 import com.casms.notification.repository.NotificationRepository;
+import com.casms.notification.service.BookingEmailService;
 import com.casms.payment.entity.Installment;
 import com.casms.payment.entity.Payment;
 import com.casms.payment.entity.Refund;
@@ -76,6 +77,7 @@ import com.casms.ship.repository.CruiseTourPackageRepository;
 import com.casms.ship.repository.ItineraryRepository;
 import com.casms.ship.repository.ShipModelObjectRepository;
 import com.casms.ship.repository.ShipModelRepository;
+import com.casms.ship.service.CruiseMainflowService;
 import com.casms.trip.entity.IdempotencyRecord;
 import com.casms.trip.repository.IdempotencyRecordRepository;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -134,10 +136,10 @@ public class BookingService {
     private final BookingQuoteRepository bookingQuoteRepository;
     private final IdempotencyRecordRepository idempotencyRecordRepository;
     private final ObjectMapper objectMapper;
-    private final com.casms.notification.service.BookingEmailService bookingEmailService;
+    private final BookingEmailService bookingEmailService;
 
     /** Tra cứu danh sách các phòng còn trống trên tàu của chuyến đi để khách hàng tự chọn. */
-    private final com.casms.ship.service.CruiseMainflowService mainflow;
+    private final CruiseMainflowService mainflow;
 
     @Transactional(readOnly = true)
     public List<AvailableCabinResponse> getAvailableCabins(

@@ -2,6 +2,8 @@ package com.casms.ship.service;
 
 import com.casms.common.exception.BusinessException;
 
+import jakarta.persistence.EntityManager;
+
 import lombok.RequiredArgsConstructor;
 
 import org.aspectj.lang.ProceedingJoinPoint;
@@ -30,7 +32,7 @@ public class CruisePlanMutationGuard {
     private final CruiseMainflowService plans;
     private final JdbcTemplate jdbc;
     private final PlatformTransactionManager transactions;
-    private final jakarta.persistence.EntityManager em;
+    private final EntityManager em;
     private static final Map<String, Set<String>> WRITERS =
             Map.ofEntries(
                     Map.entry(

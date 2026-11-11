@@ -1,13 +1,19 @@
 package com.casms.ship.controller;
 
+import com.casms.audit.AuditLog;
 import com.casms.common.response.ApiResponse;
 import com.casms.ship.dto.PortWindowContract.*;
 import com.casms.ship.service.PortWindowService;
+
+import io.swagger.v3.oas.annotations.tags.Tag;
 
 import jakarta.validation.Valid;
 
 import lombok.RequiredArgsConstructor;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
@@ -16,7 +22,7 @@ import java.util.UUID;
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/ports/{portId}/call-windows")
-@io.swagger.v3.oas.annotations.tags.Tag(
+@Tag(
         name = "Port Call Windows",
         description =
                 "OPS source-verified Port-local arrival/departure hours and closures. Read-only CRM"
@@ -32,24 +38,24 @@ public class PortWindowController {
 
     @GetMapping("/{id}/history")
     @PreAuthorize("hasRole('OPERATIONS_MANAGER') and hasAuthority('PORT_CALL_WINDOW_READ')")
-    public ApiResponse<org.springframework.data.domain.Page<com.casms.audit.AuditLog>> history(
+    public ApiResponse<Page<AuditLog>> history(
             @PathVariable UUID portId,
             @PathVariable UUID id,
-            org.springframework.data.domain.Pageable pageable) {
+            Pageable pageable) {
         return ApiResponse.success(service.history(portId, id, false, pageable));
     }
 
     @GetMapping("/exceptions/{id}/history")
     @PreAuthorize("hasRole('OPERATIONS_MANAGER') and hasAuthority('PORT_CALL_WINDOW_READ')")
-    public ApiResponse<org.springframework.data.domain.Page<com.casms.audit.AuditLog>>
+    public ApiResponse<Page<AuditLog>>
             exceptionHistory(
                     @PathVariable UUID portId,
                     @PathVariable UUID id,
-                    org.springframework.data.domain.Pageable pageable) {
+                    Pageable pageable) {
         return ApiResponse.success(service.history(portId, id, true, pageable));
     }
 
-    @ResponseStatus(org.springframework.http.HttpStatus.CREATED)
+    @ResponseStatus(HttpStatus.CREATED)
     @PostMapping
     @PreAuthorize("hasRole('OPERATIONS_MANAGER') and hasAuthority('PORT_CALL_WINDOW_CREATE')")
     public ApiResponse<Window> create(

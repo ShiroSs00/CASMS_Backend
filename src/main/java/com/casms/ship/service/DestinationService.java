@@ -1,5 +1,6 @@
 package com.casms.ship.service;
 
+import com.casms.audit.AuditService;
 import com.casms.common.exception.BusinessException;
 import com.casms.common.exception.ResourceNotFoundException;
 import com.casms.ship.dto.request.DestinationCreateRequest;
@@ -16,6 +17,7 @@ import com.casms.ship.util.PortTimeZoneHelper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -33,8 +35,8 @@ public class DestinationService {
     private final DestinationRepository destinationRepository;
     private final PortRepository portRepository;
 
-    @org.springframework.beans.factory.annotation.Autowired
-    private com.casms.audit.AuditService auditService;
+    @Autowired
+    private AuditService auditService;
 
     @Transactional
     public DestinationResponse create(DestinationCreateRequest request) {

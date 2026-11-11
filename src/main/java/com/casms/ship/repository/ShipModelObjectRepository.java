@@ -1,7 +1,9 @@
 package com.casms.ship.repository;
 
 import com.casms.ship.entity.ShipModelObject;
+import com.casms.ship.enums.ShipModelObjectType;
 
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.List;
@@ -10,11 +12,11 @@ import java.util.UUID;
 
 public interface ShipModelObjectRepository extends JpaRepository<ShipModelObject, UUID> {
     long countByShipModelShipModelIdAndObjectTypeAndDeckIsNotNull(
-            UUID modelId, com.casms.ship.enums.ShipModelObjectType type);
+            UUID modelId, ShipModelObjectType type);
 
-    @org.springframework.data.jpa.repository.EntityGraph(attributePaths = {"deck", "deck.ship"})
+    @EntityGraph(attributePaths = {"deck", "deck.ship"})
     List<ShipModelObject> findByShipModelShipModelIdAndObjectTypeAndDeckIsNotNull(
-            UUID modelId, com.casms.ship.enums.ShipModelObjectType type);
+            UUID modelId, ShipModelObjectType type);
 
     List<ShipModelObject> findByShipModelShipModelId(UUID shipModelId);
 

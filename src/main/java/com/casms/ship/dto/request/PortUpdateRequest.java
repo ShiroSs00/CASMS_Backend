@@ -1,9 +1,13 @@
 package com.casms.ship.dto.request;
 
+import com.casms.ship.dto.PortCoordinateSource;
 import com.casms.ship.enums.PortLocationType;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.DecimalMax;
+import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Size;
 
 import lombok.Data;
@@ -30,20 +34,20 @@ public class PortUpdateRequest {
     private UUID destinationId;
 
     @Schema(description = "Vĩ độ", example = "35.4522")
-    @jakarta.validation.constraints.DecimalMin("-90")
-    @jakarta.validation.constraints.DecimalMax("90")
+    @DecimalMin("-90")
+    @DecimalMax("90")
     private BigDecimal latitude;
 
     @Schema(
             description =
                     "Chỉ gửi cùng đủ latitude/longitude khi chọn mới kết quả Geocoding. Bỏ trường"
                         + " này ở PATCH thông tin khác để giữ nguyên nguồn, kể cả legacy null.")
-    @jakarta.validation.Valid
-    private com.casms.ship.dto.PortCoordinateSource coordinateSource;
+    @Valid
+    private PortCoordinateSource coordinateSource;
 
     @Schema(description = "Kinh độ", example = "139.6486")
-    @jakarta.validation.constraints.DecimalMin("-180")
-    @jakarta.validation.constraints.DecimalMax("180")
+    @DecimalMin("-180")
+    @DecimalMax("180")
     private BigDecimal longitude;
 
     @Schema(description = "Múi giờ (IANA time zone)", example = "Asia/Tokyo")

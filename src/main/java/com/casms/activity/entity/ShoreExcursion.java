@@ -2,6 +2,7 @@ package com.casms.activity.entity;
 
 import com.casms.activity.enums.ShoreExcursionStatus;
 import com.casms.ship.entity.CruiseStop;
+import com.casms.ship.entity.Destination;
 import com.casms.ship.entity.Port;
 
 import jakarta.persistence.*;
@@ -62,7 +63,7 @@ public class ShoreExcursion {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "destination_id")
-    private com.casms.ship.entity.Destination destination;
+    private Destination destination;
 
     @Column(name = "meeting_point", nullable = false, length = 250)
     private String meetingPoint;

@@ -14,6 +14,7 @@ import jakarta.persistence.EntityNotFoundException;
 
 import lombok.RequiredArgsConstructor;
 
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -29,7 +30,7 @@ public class ServiceScheduleManagementService {
     private final CruiseRepository cruises;
     private final CruiseStopRepository stops;
     private final SupplierRepository suppliers;
-    private final org.springframework.jdbc.core.JdbcTemplate jdbc;
+    private final JdbcTemplate jdbc;
     private final ShipServiceAvailability shipServices;
 
     public ServiceSchedule create(
