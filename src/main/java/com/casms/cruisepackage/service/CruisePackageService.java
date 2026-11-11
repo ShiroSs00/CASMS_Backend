@@ -72,7 +72,17 @@ public class CruisePackageService {
             case EXCURSION -> cruiseId==null
                     ? jdbc.query("SELECT shore_excursion_id,excursion_name FROM \"ShoreExcursion\" WHERE cruise_stop_id IS NULL ORDER BY excursion_name,shore_excursion_id",(r,n)->new ResourceOption(r.getObject(1,UUID.class),r.getString(2)))
                     : jdbc.query("SELECT e.shore_excursion_id,e.excursion_name FROM \"ShoreExcursion\" e JOIN \"CruiseStop\" s USING(cruise_stop_id) JOIN \"Itinerary\" i USING(itinerary_id) WHERE i.cruise_id=? ORDER BY e.excursion_name,e.shore_excursion_id",(r,n)->new ResourceOption(r.getObject(1,UUID.class),r.getString(2)),cruiseId);
-            case SERVICE -> jdbc.query("SELECT service_id,service_name,unit_code FROM \"Service\" ORDER BY service_name,service_id",(r,n)->new ResourceOption(r.getObject(1,UUID.class),r.getString(2),r.getString(3)));
+            case SERVICE -> cruiseId == null
+                    ? jdbc.query("SELECT service_id,service_name,unit_code FROM \"Service\" ORDER BY service_name,service_id",
+                            (r,n)->new ResourceOption(r.getObject(1,UUID.class),r.getString(2),r.getString(3)))
+                    : jdbc.query("""
+                            SELECT s.service_id,s.service_name,s.unit_code FROM "Service" s
+                            WHERE s.status='ACTIVE' AND EXISTS(
+                                SELECT 1 FROM "DeckServiceAssignment" a JOIN "Deck" d USING(deck_id)
+                                JOIN "Cruise" c ON c.ship_id=d.ship_id
+                                WHERE c.cruise_id=? AND a.service_id=s.service_id)
+                            ORDER BY s.service_name,s.service_id
+                            """, (r,n)->new ResourceOption(r.getObject(1,UUID.class),r.getString(2),r.getString(3)), cruiseId);
         };
     }
     public List<String> cabinOptions(UUID cruiseId) {

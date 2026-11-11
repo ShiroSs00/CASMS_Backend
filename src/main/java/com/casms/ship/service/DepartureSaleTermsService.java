@@ -41,6 +41,49 @@ public class DepartureSaleTermsService {
     public record Review(@NotNull Long expectedRevision, String reason) {}
     public record View(long revision, String status, Terms terms, String submittedHash,
                        UUID submittedBy, OffsetDateTime submittedAt, UUID reviewedBy, OffsetDateTime reviewedAt, String planStatus) {}
+    public record SetupRequest(UUID cruiseId, String cruiseCode, String cruiseName,
+                               String departurePort, String returnPort, java.util.List<String> ports) {}
+
+    @Transactional
+    public boolean requestSetup(UUID id, UUID actor) {
+        jdbc.queryForObject("SELECT cruise_id FROM \"Cruise\" WHERE cruise_id=? FOR UPDATE", UUID.class, id);
+        requirePackage(id);
+        View view = current(id);
+        if (!java.util.Set.of("DRAFT", "WITHDRAWN", "REVISION_REQUESTED").contains(view.planStatus())
+                || !java.util.Set.of("MISSING", "RETURNED").contains(view.status())) {
+            throw conflict("INVALID_SALE_TERMS_TRANSITION");
+        }
+        jdbc.update("""
+                INSERT INTO "CruiseSaleTermsRequest"(cruise_id, requested_by) VALUES (?,?)
+                ON CONFLICT (cruise_id) DO UPDATE SET requested_by=excluded.requested_by,
+                    requested_at=now(), completed_at=NULL
+                WHERE "CruiseSaleTermsRequest".completed_at IS NOT NULL
+                """, id, actor);
+        return true;
+    }
+
+    public boolean pendingSetup(UUID id) {
+        return Boolean.TRUE.equals(jdbc.queryForObject("""
+                SELECT EXISTS(SELECT 1 FROM "CruiseSaleTermsRequest" r JOIN "Cruise" c USING(cruise_id)
+                  WHERE r.cruise_id=? AND r.completed_at IS NULL AND c.status IN ('DRAFT','PUBLISHED'))
+                """, Boolean.class, id));
+    }
+
+    public java.util.List<SetupRequest> setupRequests() {
+        return jdbc.query("""
+                SELECT c.cruise_id, c.cruise_code, c.cruise_name, departure.port_name, returning.port_name,
+                    ARRAY(SELECT DISTINCT p.port_name FROM "Itinerary" i
+                          JOIN "CruiseStop" s USING(itinerary_id) JOIN "Port" p ON p.port_id=s.port_id
+                          WHERE i.cruise_id=c.cruise_id ORDER BY p.port_name)
+                FROM "CruiseSaleTermsRequest" r JOIN "Cruise" c USING(cruise_id)
+                JOIN "Port" departure ON departure.port_id=c.departure_port_id
+                JOIN "Port" returning ON returning.port_id=c.return_port_id
+                WHERE r.completed_at IS NULL AND c.status IN ('DRAFT','PUBLISHED')
+                ORDER BY r.requested_at
+                """, (row, index) -> new SetupRequest(row.getObject(1, UUID.class), row.getString(2),
+                    row.getString(3), row.getString(4), row.getString(5),
+                    java.util.Arrays.asList((String[]) row.getArray(6).getArray())));
+    }
 
     public View read(UUID id) {
         requirePackage(id);
@@ -145,6 +188,9 @@ public class DepartureSaleTermsService {
                 THEN "DepartureSaleTerms".maker_ids || excluded.maker_ids ELSE excluded.maker_ids END,
             submitted_hash=NULL,submitted_by=NULL,submitted_at=NULL,reviewed_by=NULL,reviewed_at=NULL
             """,id,encode(input.terms()),actor);
+        jdbc.update("""
+                UPDATE "CruiseSaleTermsRequest" SET completed_at=now() WHERE cruise_id=? AND completed_at IS NULL
+                """, id);
         return record(id,actor,"SAVE",null);
     }
 

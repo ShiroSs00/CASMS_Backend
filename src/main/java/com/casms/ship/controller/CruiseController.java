@@ -35,9 +35,11 @@ import com.casms.ship.dto.response.ShipChangeImpactResponse;
 import com.casms.ship.dto.response.ShipCompatibilityResponse;
 import com.casms.ship.enums.CruiseCruiseType;
 import com.casms.ship.enums.CruiseStatus;
+import com.casms.ship.repository.BookingAgentCruiseScope;
 import com.casms.ship.service.CruiseAuditService;
 import com.casms.ship.service.CruiseImpactAssessmentService;
 import com.casms.ship.service.CruisePackageService;
+import com.casms.ship.service.CruisePlanOperationsAccess;
 import com.casms.ship.service.CruiseService;
 import com.casms.ship.service.CruiseStaffService;
 import com.casms.ship.service.OperationalProgramMappingService;
@@ -112,7 +114,8 @@ public class CruiseController {
     @GetMapping("/{cruiseId}/schedule")
     public ApiResponse<CruiseSchedulePreviewResponse> getCruiseSchedule(
             @Parameter(description = "ID chuyến khởi hành", required = true) @PathVariable
-                    UUID cruiseId) {
+                    UUID cruiseId, Authentication auth) {
+        service.requireBookingAgentAssignment(cruiseId, BookingAgentCruiseScope.assignee(auth));
         return ApiResponse.success(scheduleMaterializationService.getCruiseSchedule(cruiseId));
     }
 
@@ -181,9 +184,13 @@ public class CruiseController {
                         && auth.getAuthorities().stream()
                                 .anyMatch(a -> a.getAuthority().equals("CRUISE_READ"));
         validateSaleState(saleState);
+        UUID bookingAgentId = BookingAgentCruiseScope.assignee(auth);
         boolean bookingView = !hasCruiseRead || bookingOnly(auth) || saleState != null;
         Page<CruiseResponse> page =
-                bookingView
+                bookingAgentId != null
+                        ? service.listOpenForSale(shipId, unassigned, cruiseType, sourceTripId,
+                                sourceVersionId, pageable, bookingAgentId)
+                        : bookingView
                         ? service.listOpenForSale(
                                 shipId,
                                 unassigned,
@@ -191,7 +198,10 @@ public class CruiseController {
                                 sourceTripId,
                                 sourceVersionId,
                                 pageable)
-                        : service.list(
+                        : CruisePlanOperationsAccess.operationsOnly(auth)
+                                ? service.listReceivedForOperations(status, shipId, unassigned, cruiseType,
+                                        sourceTripId, sourceVersionId, pageable)
+                                : service.list(
                                 status,
                                 shipId,
                                 unassigned,
@@ -216,6 +226,8 @@ public class CruiseController {
             @RequestParam(required = false) String saleState,
             org.springframework.security.core.Authentication auth) {
         validateSaleState(saleState);
+        UUID bookingAgentId = BookingAgentCruiseScope.assignee(auth);
+        if (bookingAgentId != null) service.requireBookingAgentAssignment(cruiseId, bookingAgentId);
         CruiseResponse response = service.detail(cruiseId);
         boolean hasCruiseRead =
                 auth != null
@@ -530,7 +542,8 @@ public class CruiseController {
     @GetMapping("/{cruiseId}/packages")
     public ApiResponse<List<CruiseTourPackageResponse>> listPackages(
             @Parameter(description = "ID chuyến khởi hành", required = true) @PathVariable
-                    UUID cruiseId) {
+                    UUID cruiseId, Authentication auth) {
+        service.requireBookingAgentAssignment(cruiseId, BookingAgentCruiseScope.assignee(auth));
         return ApiResponse.success(packageService.listPackages(cruiseId));
     }
 
@@ -735,7 +748,8 @@ public class CruiseController {
     @PreAuthorize("hasAnyAuthority('CRUISE_READ', 'BOOKING_READ')")
     @GetMapping("/{cruiseId}/inventory-summary")
     public ApiResponse<CruiseInventorySummaryResponse> getInventorySummary(
-            @PathVariable UUID cruiseId) {
+            @PathVariable UUID cruiseId, Authentication auth) {
+        service.requireBookingAgentAssignment(cruiseId, BookingAgentCruiseScope.assignee(auth));
         return ApiResponse.success(service.getInventorySummary(cruiseId));
     }
 
@@ -846,7 +860,8 @@ public class CruiseController {
     @GetMapping("/{cruiseId}/sellability")
     public ApiResponse<CruiseSellabilityResponse> getPublicSellability(
             @Parameter(description = "ID chuyến khởi hành", required = true) @PathVariable
-                    UUID cruiseId) {
+                    UUID cruiseId, Authentication auth) {
+        service.requireBookingAgentAssignment(cruiseId, BookingAgentCruiseScope.assignee(auth));
         return ApiResponse.success(service.getPublicSellability(cruiseId));
     }
 

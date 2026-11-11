@@ -64,7 +64,8 @@ public class BookingController {
                     @RequestParam(required = false)
                     CabinType cabinType,
             @Parameter(description = "Sức chứa tối thiểu yêu cầu") @RequestParam(required = false)
-                    Integer minCapacity) {
+                    Integer minCapacity, @AuthenticationPrincipal CasmsPrincipal principal) {
+        if (principal != null) bookingService.requireAssignedCruise(cruiseId, principal);
         return ApiResponse.success(
                 bookingService.getAvailableCabins(cruiseId, deckId, cabinType, minCapacity));
     }
@@ -83,7 +84,8 @@ public class BookingController {
             @Parameter(description = "Loại cabin (tùy chọn)") @RequestParam(required = false)
                     CabinType cabinType,
             @Parameter(description = "Sức chứa còn trống tối thiểu") @RequestParam(required = false)
-                    Integer minCapacity) {
+                    Integer minCapacity, @AuthenticationPrincipal CasmsPrincipal principal) {
+        if (principal != null) bookingService.requireAssignedCruise(cruiseId, principal);
         return ApiResponse.success(
                 bookingService.getThreeDimensionalAvailableCabins(
                         cruiseId, deckId, cabinType, minCapacity));

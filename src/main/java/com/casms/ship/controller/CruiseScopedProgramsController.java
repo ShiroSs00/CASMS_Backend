@@ -738,6 +738,7 @@ public class CruiseScopedProgramsController {
         a.setStartTime(r.startTime());
         a.setEndTime(r.endTime());
         a.setLocation(r.location());
+        a.setMeetingPoint(r.meetingPoint());
         a.setCapacity(r.capacity());
         a.setPrice(r.price());
         a.setCurrencyCode(r.currencyCode());

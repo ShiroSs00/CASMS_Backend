@@ -5,6 +5,7 @@ import com.casms.common.response.ApiResponse;
 import com.casms.cruisepackage.service.CruisePackageEntitlementService;
 import com.casms.cruisepackage.service.CruisePackageEntitlementService.OperationEntitlement;
 import com.casms.security.principal.CasmsPrincipal;
+import com.casms.ship.repository.BookingAgentCruiseScope;
 import com.casms.servicepackage.entity.*;
 import com.casms.servicepackage.entity.Service;
 import com.casms.servicepackage.enums.*;
@@ -730,6 +731,7 @@ public class ServicepackageController {
     public ApiResponse<List<AssignmentView>> packageAssignments(
             @RequestParam(required = false) UUID bookingId, Authentication auth) {
         var p = (CasmsPrincipal) auth.getPrincipal();
+        service.requireBookingAgentAssignment(bookingId, null, BookingAgentCruiseScope.assignee(p));
         return ApiResponse.success(
                 service.packageAssignments(bookingId, p.getUserId(), p.isStaff()).stream()
                         .map(AssignmentView::of)
@@ -741,6 +743,7 @@ public class ServicepackageController {
     public ApiResponse<AssignmentView> packageAssignment(
             @PathVariable UUID bookingPassengerId, Authentication auth) {
         var p = (CasmsPrincipal) auth.getPrincipal();
+        service.requireBookingAgentAssignment(null, bookingPassengerId, BookingAgentCruiseScope.assignee(p));
         return ApiResponse.success(
                 AssignmentView.of(
                         service.packageAssignment(bookingPassengerId, p.getUserId(), p.isStaff())));
@@ -754,6 +757,7 @@ public class ServicepackageController {
             @Valid @RequestBody PackageAssignmentDto r,
             Authentication auth) {
         var p = (CasmsPrincipal) auth.getPrincipal();
+        service.requireBookingAgentAssignment(null, bookingPassengerId, BookingAgentCruiseScope.assignee(p));
         return ApiResponse.success(
                 AssignmentView.of(
                         service.assignPackage(
@@ -770,6 +774,7 @@ public class ServicepackageController {
             @Valid @RequestBody PackageAssignmentDto r,
             Authentication auth) {
         var p = (CasmsPrincipal) auth.getPrincipal();
+        service.requireBookingAgentAssignment(null, bookingPassengerId, BookingAgentCruiseScope.assignee(p));
         return ApiResponse.success(
                 AssignmentView.of(
                         service.changePackage(
@@ -784,6 +789,7 @@ public class ServicepackageController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void removePackage(@PathVariable UUID bookingPassengerId, Authentication auth) {
         var p = (CasmsPrincipal) auth.getPrincipal();
+        service.requireBookingAgentAssignment(null, bookingPassengerId, BookingAgentCruiseScope.assignee(p));
         service.removePackageAssignment(bookingPassengerId, p.getUserId(), p.isStaff());
     }
 

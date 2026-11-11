@@ -66,6 +66,7 @@ public class ActivityController {
             @Schema(description = "Thời gian bắt đầu (ISO-8601)") @NotNull Instant startTime,
             @Schema(description = "Thời gian kết thúc (ISO-8601)") @NotNull Instant endTime,
             @Schema(description = "Địa điểm tổ chức (text)") @Size(max = 250) String location,
+            @Size(max = 255) String meetingPoint,
             @Schema(description = "ID tầng (deck) nơi diễn ra — VD: tầng có spa, nhà hàng")
                     UUID deckId,
             @Schema(description = "ID phòng/cabin cụ thể nơi diễn ra — VD: phòng spa 201")
@@ -472,6 +473,7 @@ public class ActivityController {
         a.setStartTime(r.startTime());
         a.setEndTime(r.endTime());
         a.setLocation(r.location());
+        a.setMeetingPoint(r.meetingPoint());
         a.setCapacity(r.capacity());
         a.setPrice(r.price());
         a.setCurrencyCode(r.currencyCode());
