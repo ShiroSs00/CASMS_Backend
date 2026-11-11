@@ -1,10 +1,12 @@
 package com.casms.cruisepackage.entity;
 
+import com.casms.cruisepackage.dto.CruisePackagePurchaseSelection;
 import jakarta.persistence.*;
 import lombok.Getter;
 import org.hibernate.annotations.Immutable;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -12,7 +14,7 @@ import java.util.UUID;
 @Entity @Table(name="\"BookingFareBenefitSnapshot\"") @Immutable @Getter
 public class BookingCruisePackageBenefitSnapshot {
     protected BookingCruisePackageBenefitSnapshot() {}
-    public static BookingCruisePackageBenefitSnapshot capture(UUID passengerId,com.casms.cruisepackage.dto.CruisePackagePurchaseSelection.Benefit source,java.time.Instant purchasedAt) {
+    public static BookingCruisePackageBenefitSnapshot capture(UUID passengerId,CruisePackagePurchaseSelection.Benefit source,Instant purchasedAt) {
         var snapshot=new BookingCruisePackageBenefitSnapshot(); snapshot.id=UUID.randomUUID(); snapshot.bookingPassengerId=passengerId;
         snapshot.sourceBenefitId=source.sourceBenefitId(); snapshot.inclusion=source.inclusion();
         snapshot.onboardActivityId=source.onboardActivityId(); snapshot.shoreExcursionId=source.shoreExcursionId();
@@ -21,7 +23,7 @@ public class BookingCruisePackageBenefitSnapshot {
         snapshot.usageUnit=source.usageUnit();snapshot.requiresReservation=source.requiresReservation();
         snapshot.usagePolicy=source.usagePolicy();snapshot.serviceUnitCode=source.serviceUnitCode();
         snapshot.usageStartsAt=source.usageStartsAt();snapshot.usageEndsAt=source.usageEndsAt();
-        if(java.util.List.of("INCLUDED","LIMITED_INCLUDED").contains(source.inclusion()))snapshot.entitlementGrantedAt=purchasedAt;
+        if(List.of("INCLUDED","LIMITED_INCLUDED").contains(source.inclusion()))snapshot.entitlementGrantedAt=purchasedAt;
         snapshot.occurrenceBindings=source.occurrences().stream().map(o->Map.<String,Object>of(
                 "resourceType",o.resourceType(),"resourceId",o.resourceId().toString(),"name",o.name())).toList();
         return snapshot;

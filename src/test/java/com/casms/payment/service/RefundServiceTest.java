@@ -6,6 +6,7 @@ import static org.mockito.Mockito.*;
 
 import com.casms.booking.entity.Booking;
 import com.casms.common.exception.BusinessException;
+import com.casms.identity.repository.UserRepository;
 import com.casms.payment.dto.request.RefundApproveRequest;
 import com.casms.payment.dto.request.RefundCompleteRequest;
 import com.casms.payment.dto.request.RefundCreateRequest;
@@ -38,7 +39,7 @@ class RefundServiceTest {
     @Mock private FinalSettlementRepository finalSettlementRepository;
     @Mock private InvoiceLineRepository invoiceLineRepository;
     @Mock private InvoiceRepository invoiceRepository;
-    @Mock private com.casms.identity.repository.UserRepository userRepository;
+    @Mock private UserRepository userRepository;
     @Mock private InvoiceService invoiceService;
 
     @InjectMocks private RefundService refundService;

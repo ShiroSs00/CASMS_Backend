@@ -27,9 +27,12 @@ import com.casms.common.service.BusinessCodeGenerator;
 import com.casms.identity.entity.Passenger;
 import com.casms.identity.entity.User;
 import com.casms.identity.enums.PassengerDocumentType;
+import com.casms.identity.enums.Role;
+import com.casms.identity.enums.UserStatus;
 import com.casms.identity.repository.PassengerRepository;
 import com.casms.identity.repository.UserRepository;
 import com.casms.notification.repository.NotificationRepository;
+import com.casms.notification.service.BookingEmailService;
 import com.casms.payment.entity.Payment;
 import com.casms.payment.enums.PaymentMethod;
 import com.casms.payment.enums.PaymentOperationType;
@@ -54,6 +57,10 @@ import com.casms.ship.enums.PricingPolicyStatus;
 import com.casms.ship.repository.CabinRepository;
 import com.casms.ship.repository.CruisePricingPolicyRepository;
 import com.casms.ship.repository.CruiseRepository;
+import com.casms.ship.repository.CruiseTourPackageRepository;
+import com.casms.ship.repository.ItineraryRepository;
+import com.casms.ship.service.CruiseMainflowService;
+import com.casms.trip.repository.IdempotencyRecordRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -91,14 +98,14 @@ class BookingServiceTest {
     @Mock private PaymentRepository paymentRepository;
     @Mock private RefundRepository refundRepository;
     @Mock private NotificationRepository notificationRepository;
-    @Mock private com.casms.notification.service.BookingEmailService bookingEmailService;
-    @Mock private com.casms.trip.repository.IdempotencyRecordRepository idempotencyRecordRepository;
+    @Mock private BookingEmailService bookingEmailService;
+    @Mock private IdempotencyRecordRepository idempotencyRecordRepository;
     @Mock private BusinessCodeGenerator businessCodeGenerator;
-    @Mock private com.casms.ship.repository.CruiseTourPackageRepository cruiseTourPackageRepository;
-    @Mock private com.casms.ship.repository.ItineraryRepository itineraryRepository;
+    @Mock private CruiseTourPackageRepository cruiseTourPackageRepository;
+    @Mock private ItineraryRepository itineraryRepository;
     @Mock private CruisePricingPolicyRepository cruisePricingPolicyRepository;
     @Mock private BookingQuoteRepository bookingQuoteRepository;
-    @Mock private com.casms.ship.service.CruiseMainflowService mainflow;
+    @Mock private CruiseMainflowService mainflow;
     @Spy private ObjectMapper objectMapper = new ObjectMapper();
 
     @InjectMocks private BookingService bookingService;
@@ -106,8 +113,8 @@ class BookingServiceTest {
     private User passengerAccount() {
         User user = new User();
         user.setUserId(UUID.randomUUID());
-        user.setRoles(EnumSet.of(com.casms.identity.enums.Role.PASSENGER));
-        user.setStatus(com.casms.identity.enums.UserStatus.ACTIVE);
+        user.setRoles(EnumSet.of(Role.PASSENGER));
+        user.setStatus(UserStatus.ACTIVE);
         return user;
     }
 

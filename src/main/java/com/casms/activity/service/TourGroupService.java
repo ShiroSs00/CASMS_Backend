@@ -24,6 +24,7 @@ import jakarta.persistence.EntityNotFoundException;
 
 import lombok.RequiredArgsConstructor;
 
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -43,7 +44,7 @@ public class TourGroupService {
     private final PassengerRepository passengerRepository;
     private final UserRepository userRepository;
     private final BusinessCodeGenerator businessCodeGenerator;
-    private final org.springframework.jdbc.core.JdbcTemplate jdbc;
+    private final JdbcTemplate jdbc;
 
     private static final List<TourGroupPassengerAssignmentStatus> CAPACITY_STATUSES =
             List.of(

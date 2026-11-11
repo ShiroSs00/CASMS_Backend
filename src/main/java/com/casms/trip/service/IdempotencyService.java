@@ -5,6 +5,7 @@ import com.casms.common.exception.BusinessException;
 import com.casms.ship.dto.response.CruiseResponse;
 import com.casms.trip.dto.response.TripDetailResponse;
 import com.casms.trip.entity.IdempotencyRecord;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import lombok.RequiredArgsConstructor;
@@ -13,10 +14,12 @@ import lombok.extern.slf4j.Slf4j;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.TreeSet;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -32,7 +35,7 @@ public class IdempotencyService {
     @Setter private Function<UUID, Object> entityRecoveryFunction;
 
     /** Booking and its replay result must be durable together, including guest requests. */
-    @org.springframework.transaction.annotation.Transactional(rollbackFor = Exception.class)
+    @Transactional(rollbackFor = Exception.class)
     public BookingDetailResponse executeBookingCreate(
             String key, UUID actorId, Object payload, Supplier<BookingDetailResponse> action) {
         if (key == null || key.isBlank() || key.trim().length() > 255) {
@@ -67,7 +70,7 @@ public class IdempotencyService {
      * Cruise + itinerary + completed replay record commit or roll back together. Other operations
      * keep their existing contract.
      */
-    @org.springframework.transaction.annotation.Transactional(rollbackFor = Exception.class)
+    @Transactional(rollbackFor = Exception.class)
     public CruiseResponse executeCruiseCreate(
             String key, UUID actorId, Object payload, Supplier<CruiseResponse> action) {
         if (actorId == null || key == null || key.isBlank()) {
@@ -313,11 +316,11 @@ public class IdempotencyService {
         }
     }
 
-    private com.fasterxml.jackson.databind.JsonNode sortedJson(
-            com.fasterxml.jackson.databind.JsonNode node) {
+    private JsonNode sortedJson(
+            JsonNode node) {
         if (node.isObject()) {
             var result = objectMapper.createObjectNode();
-            var fields = new java.util.TreeSet<String>();
+            var fields = new TreeSet<String>();
             node.fieldNames().forEachRemaining(fields::add);
             fields.forEach(key -> result.set(key, sortedJson(node.get(key))));
             return result;

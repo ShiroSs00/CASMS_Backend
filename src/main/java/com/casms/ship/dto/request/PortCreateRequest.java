@@ -1,11 +1,16 @@
 package com.casms.ship.dto.request;
 
+import com.casms.ship.dto.PortCoordinateSource;
 import com.casms.ship.enums.PortLocationType;
 import com.casms.ship.enums.PortStatus;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.DecimalMax;
+import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
 import lombok.Data;
@@ -57,9 +62,9 @@ public class PortCreateRequest {
     private String description;
 
     @Schema(description = "Vĩ độ", example = "35.4522")
-    @jakarta.validation.constraints.DecimalMin("-90")
-    @jakarta.validation.constraints.DecimalMax("90")
-    @jakarta.validation.constraints.NotNull(message = "Latitude is required")
+    @DecimalMin("-90")
+    @DecimalMax("90")
+    @NotNull(message = "Latitude is required")
     private BigDecimal latitude;
 
     @Schema(
@@ -67,14 +72,14 @@ public class PortCreateRequest {
                     "Nguồn tọa độ thành phố/đảo bắt buộc khi tạo Port."
                         + " provider=OPEN_METEO_GEOCODING, dataset=GEONAMES,"
                         + " coordinateReferenceType=GEOCODED_LOCALITY; recordedAt do server ghi.")
-    @jakarta.validation.constraints.NotNull(message = "Select a Geocoding result for a new port")
-    @jakarta.validation.Valid
-    private com.casms.ship.dto.PortCoordinateSource coordinateSource;
+    @NotNull(message = "Select a Geocoding result for a new port")
+    @Valid
+    private PortCoordinateSource coordinateSource;
 
     @Schema(description = "Kinh độ", example = "139.6486")
-    @jakarta.validation.constraints.DecimalMin("-180")
-    @jakarta.validation.constraints.DecimalMax("180")
-    @jakarta.validation.constraints.NotNull(message = "Longitude is required")
+    @DecimalMin("-180")
+    @DecimalMax("180")
+    @NotNull(message = "Longitude is required")
     private BigDecimal longitude;
 
     @Schema(description = "Loại vị trí cảng/neo đậu (PORT, PIER, ANCHORAGE)", example = "PORT")

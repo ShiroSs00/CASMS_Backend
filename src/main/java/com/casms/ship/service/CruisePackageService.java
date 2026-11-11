@@ -14,6 +14,7 @@ import com.casms.servicepackage.repository.TourPackageActivityRepository;
 import com.casms.servicepackage.repository.TourPackageExcursionRepository;
 import com.casms.servicepackage.repository.TourPackageRepository;
 import com.casms.servicepackage.repository.TourPackageServiceRepository;
+import com.casms.servicepackage.service.ShipServiceAvailability;
 import com.casms.ship.dto.request.CruiseTourPackageRequest;
 import com.casms.ship.dto.response.CruiseTourPackageResponse;
 import com.casms.ship.entity.Cruise;
@@ -50,7 +51,7 @@ public class CruisePackageService {
     private final BookingPassengerRepository bookingPassengerRepository;
 
     private final CruiseMainflowService mainflow;
-    private final com.casms.servicepackage.service.ShipServiceAvailability shipServices;
+    private final ShipServiceAvailability shipServices;
 
     @Transactional
     public CruiseTourPackageResponse assignPackage(

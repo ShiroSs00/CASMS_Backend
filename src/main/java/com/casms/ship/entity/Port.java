@@ -1,5 +1,6 @@
 package com.casms.ship.entity;
 
+import com.casms.ship.dto.PortCoordinateSource;
 import com.casms.ship.enums.PortLocationType;
 import com.casms.ship.enums.PortStatus;
 
@@ -41,7 +42,7 @@ public class Port {
 
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "coordinate_source", columnDefinition = "jsonb")
-    private com.casms.ship.dto.PortCoordinateSource coordinateSource;
+    private PortCoordinateSource coordinateSource;
 
     @Column(name = "latitude", columnDefinition = "numeric")
     private BigDecimal latitude;

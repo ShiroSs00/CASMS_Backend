@@ -5,6 +5,7 @@ import com.casms.common.service.BusinessCodeGenerator;
 import com.casms.ship.dto.request.ShipCreateRequest;
 import com.casms.ship.dto.request.ShipModelCabinMappingRequest;
 import com.casms.ship.dto.request.ShipModelDeckMappingRequest;
+import com.casms.ship.dto.response.PublicShipModelResponse;
 import com.casms.ship.dto.response.ShipModelAssetResponse;
 import com.casms.ship.dto.response.ShipModelAssetUploadResponse;
 import com.casms.ship.dto.response.ShipModelManifestRegistrationResponse;
@@ -373,7 +374,7 @@ public class ShipModelAssetService {
     }
 
     @Transactional(readOnly = true)
-    public com.casms.ship.dto.response.PublicShipModelResponse publicModel(UUID shipId) {
+    public PublicShipModelResponse publicModel(UUID shipId) {
         ShipModel current =
                 models
                         .findByShipShipIdAndModelKeyIsNotNullAndStatusOrderByCreatedAtDesc(

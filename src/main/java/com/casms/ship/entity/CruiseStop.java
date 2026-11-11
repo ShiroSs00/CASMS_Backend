@@ -1,5 +1,7 @@
 package com.casms.ship.entity;
 
+import com.casms.ship.dto.PortFacts;
+import com.casms.ship.dto.PortWindowContract.Check;
 import com.casms.ship.enums.CruiseStopArrivalMethod;
 import com.casms.ship.enums.CruiseStopCallType;
 import com.casms.ship.enums.CruiseStopStatus;
@@ -9,7 +11,12 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
 
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
+
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 @Getter
@@ -25,20 +32,20 @@ public class CruiseStop {
     @Column(name = "cruise_stop_id")
     private UUID cruiseStopId;
 
-    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.JSON)
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "port_facts", columnDefinition = "jsonb")
-    private com.casms.ship.dto.PortFacts portFacts;
+    private PortFacts portFacts;
 
     @Column(name = "source_stop_id")
     private UUID sourceStopId;
 
     @OneToMany(mappedBy = "stop", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("sequence ASC")
-    private java.util.List<CruiseDestinationVisit> visits = new java.util.ArrayList<>();
+    private List<CruiseDestinationVisit> visits = new ArrayList<>();
 
-    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.JSON)
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "port_window_evidence", columnDefinition = "jsonb")
-    private java.util.List<com.casms.ship.dto.PortWindowContract.Check> portWindowEvidence;
+    private List<Check> portWindowEvidence;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "itinerary_id", nullable = false)

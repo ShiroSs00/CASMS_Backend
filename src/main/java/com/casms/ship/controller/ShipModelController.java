@@ -16,8 +16,10 @@ import com.casms.ship.dto.response.ShipModelManifestRegistrationResponse;
 import com.casms.ship.dto.response.ShipModelObjectResponse;
 import com.casms.ship.dto.response.ShipModelResponse;
 import com.casms.ship.service.ShipModelAssetService;
+import com.casms.ship.service.ShipModelAssetStore;
 import com.casms.ship.service.ShipModelImportService;
 import com.casms.ship.service.ShipModelService;
+import com.fasterxml.jackson.databind.JsonNode;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -106,14 +108,14 @@ public class ShipModelController {
 
     @PreAuthorize("hasAuthority('SHIP_MODEL_CREATE') and hasAuthority('SHIP_CREATE')")
     @GetMapping("/ship-model-assets")
-    public ApiResponse<List<com.casms.ship.service.ShipModelAssetStore.StoredBundle>>
+    public ApiResponse<List<ShipModelAssetStore.StoredBundle>>
             storedAssets() {
         return ApiResponse.success(assetService.listStoredBundles());
     }
 
     @PreAuthorize("hasAuthority('SHIP_MODEL_CREATE') and hasAuthority('SHIP_CREATE')")
     @GetMapping("/ship-model-assets/{modelKey}/preview")
-    public ApiResponse<com.fasterxml.jackson.databind.JsonNode> previewStoredAsset(
+    public ApiResponse<JsonNode> previewStoredAsset(
             @PathVariable String modelKey) {
         return ApiResponse.success(assetService.previewStoredBundle(modelKey));
     }

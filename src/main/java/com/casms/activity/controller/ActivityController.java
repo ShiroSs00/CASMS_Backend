@@ -3,6 +3,8 @@ package com.casms.activity.controller;
 import com.casms.activity.entity.*;
 import com.casms.activity.service.ActivityService;
 import com.casms.common.response.ApiResponse;
+import com.casms.cruisepackage.service.CruisePackageEntitlementService;
+import com.casms.cruisepackage.service.CruisePackageEntitlementService.OperationEntitlement;
 import com.casms.security.principal.CasmsPrincipal;
 
 import io.swagger.v3.oas.annotations.Operation;
@@ -33,14 +35,14 @@ import java.util.UUID;
         description = "Quản lý hoạt động trên tàu, đăng ký tham gia và điểm danh hành khách")
 public class ActivityController {
     private final ActivityService service;
-    private final com.casms.cruisepackage.service.CruisePackageEntitlementService fareEntitlements;
+    private final CruisePackageEntitlementService fareEntitlements;
 
     @GetMapping("/registrations/{id}/fare-entitlement")
     @PreAuthorize("hasAnyAuthority('ACTIVITY_REGISTRATION','ACTIVITY_ATTENDANCE','REGISTRATION_MANAGE')")
-    public ApiResponse<com.casms.cruisepackage.service.CruisePackageEntitlementService.OperationEntitlement> fareEntitlement(@PathVariable UUID id,Authentication auth) {
+    public ApiResponse<OperationEntitlement> fareEntitlement(@PathVariable UUID id,Authentication auth) {
         var principal=(CasmsPrincipal)auth.getPrincipal();
         var registration=service.getRegistration(id,principal.getUserId(),principal.isStaff());
-        return ApiResponse.success(new com.casms.cruisepackage.service.CruisePackageEntitlementService.OperationEntitlement(id,
+        return ApiResponse.success(new OperationEntitlement(id,
                 fareEntitlements.operationGrant(registration.getFareBenefitSnapshotId(),registration.getBookingPassenger().getBookingPassengerId())));
     }
 

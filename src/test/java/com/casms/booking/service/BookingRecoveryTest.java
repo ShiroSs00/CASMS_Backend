@@ -1,11 +1,17 @@
 package com.casms.booking.service;
 
 import com.casms.booking.entity.*;
+import com.casms.booking.enums.BookingStatus;
 import com.casms.booking.repository.*;
 import com.casms.common.exception.BusinessException;
 import com.casms.identity.entity.User;
+import com.casms.payment.entity.Payment;
+import com.casms.payment.enums.PaymentMethod;
+import com.casms.payment.enums.PaymentOperationType;
+import com.casms.payment.enums.PaymentStatus;
 import com.casms.payment.repository.*;
 import com.casms.security.principal.CasmsPrincipal;
+import com.casms.servicepackage.repository.BookingPassengerPackageRepository;
 import com.casms.ship.entity.Cruise;
 import com.casms.trip.entity.IdempotencyRecord;
 import com.casms.trip.repository.IdempotencyRecordRepository;
@@ -15,6 +21,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.*;
 import org.mockito.junit.jupiter.MockitoExtension;
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.*;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
@@ -25,7 +32,7 @@ class BookingRecoveryTest {
     @Mock BookingRepository bookingRepository;
     @Mock BookingContractRepository bookingContractRepository;
     @Mock BookingPassengerRepository bookingPassengerRepository;
-    @Mock com.casms.servicepackage.repository.BookingPassengerPackageRepository bookingPassengerPackageRepository;
+    @Mock BookingPassengerPackageRepository bookingPassengerPackageRepository;
     @Mock InstallmentRepository installmentRepository;
     @Mock PaymentRepository paymentRepository;
     @Mock RefundRepository refundRepository;
@@ -104,15 +111,15 @@ class BookingRecoveryTest {
         when(paymentRepository.findForBooking(booking.getBookingId())).thenReturn(List.of(payment(booking, "100", "settled")));
         var response = service.recoverBookingByIdempotencyKey("key", null, "original-token");
         assertTrue(response.isFullyPaid());
-        assertEquals(com.casms.booking.enums.BookingStatus.Draft, response.getBookingStatus());
+        assertEquals(BookingStatus.Draft, response.getBookingStatus());
     }
 
-    private com.casms.payment.entity.Payment payment(Booking booking, String amount, String reference) {
-        var payment = new com.casms.payment.entity.Payment(); payment.setBooking(booking);
-        payment.setStatus(com.casms.payment.enums.PaymentStatus.Confirmed);
-        payment.setOperationType(com.casms.payment.enums.PaymentOperationType.Collect);
-        payment.setPaymentMethod(com.casms.payment.enums.PaymentMethod.Sepay);
-        payment.setConfirmedAt(java.time.Instant.now()); payment.setConfirmedAmount(new BigDecimal(amount));
+    private Payment payment(Booking booking, String amount, String reference) {
+        var payment = new Payment(); payment.setBooking(booking);
+        payment.setStatus(PaymentStatus.Confirmed);
+        payment.setOperationType(PaymentOperationType.Collect);
+        payment.setPaymentMethod(PaymentMethod.Sepay);
+        payment.setConfirmedAt(Instant.now()); payment.setConfirmedAmount(new BigDecimal(amount));
         payment.setCurrency("USD"); payment.setProcessorReference(reference); return payment;
     }
 

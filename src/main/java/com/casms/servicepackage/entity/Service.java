@@ -1,6 +1,7 @@
 package com.casms.servicepackage.entity;
 
 import com.casms.servicepackage.enums.ServiceStatus;
+import com.casms.servicepackage.enums.ServiceUsagePolicy;
 
 import jakarta.persistence.*;
 
@@ -58,7 +59,7 @@ public class Service {
 
     @Enumerated(EnumType.STRING)
     @Column(name = "pre_cruise_usage_policy", nullable = false, length = 20)
-    private com.casms.servicepackage.enums.ServiceUsagePolicy preCruiseUsagePolicy = com.casms.servicepackage.enums.ServiceUsagePolicy.UNLIMITED;
+    private ServiceUsagePolicy preCruiseUsagePolicy = ServiceUsagePolicy.UNLIMITED;
 
     @Column(name = "pre_cruise_usage_limit")
     private Integer preCruiseUsageLimit;

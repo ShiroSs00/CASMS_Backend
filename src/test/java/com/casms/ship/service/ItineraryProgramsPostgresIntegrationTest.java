@@ -1,12 +1,16 @@
 package com.casms.ship.service;
 
 import com.casms.common.exception.BusinessException;
+import com.casms.identity.entity.User;
+import com.casms.identity.enums.Role;
+import com.casms.identity.enums.UserStatus;
 import com.casms.ship.entity.*;
 import com.casms.ship.enums.*;
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
+import org.junit.jupiter.api.function.Executable;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -117,13 +121,13 @@ class ItineraryProgramsPostgresIntegrationTest {
     private ItineraryProgramService.ActivitySchedule activitySchedule(UUID area) {
         return new ItineraryProgramService.ActivitySchedule(arrival,arrival.plusSeconds(3600),area,"Event deck",20,BigDecimal.ZERO);
     }
-    private void assertCode(String expected, org.junit.jupiter.api.function.Executable action) {
+    private void assertCode(String expected, Executable action) {
         assertEquals(expected,assertThrows(BusinessException.class,action).getCode());
     }
-    private String token(com.casms.identity.enums.Role role) {
-        var user=new com.casms.identity.entity.User();
+    private String token(Role role) {
+        var user=new User();
         user.setUsername("casms75-"+UUID.randomUUID()); user.setPasswordHash("unused-synthetic-password-hash");
-        user.setStatus(com.casms.identity.enums.UserStatus.ACTIVE); user.setRoles(Set.of(role));
+        user.setStatus(UserStatus.ACTIVE); user.setRoles(Set.of(role));
         em.persist(user); em.flush();
         return "Bearer "+jwt.generateToken(user.getUsername(),user.getUserId());
     }

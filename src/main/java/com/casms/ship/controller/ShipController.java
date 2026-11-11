@@ -4,10 +4,12 @@ import com.casms.common.response.ApiResponse;
 import com.casms.ship.dto.request.ShipCreateRequest;
 import com.casms.ship.dto.request.ShipUpdateRequest;
 import com.casms.ship.dto.response.CruiseSummaryResponse;
+import com.casms.ship.dto.response.ShipAreaResponse;
 import com.casms.ship.dto.response.ShipCapacitySummaryResponse;
 import com.casms.ship.dto.response.ShipReadinessAssessmentResponse;
 import com.casms.ship.dto.response.ShipResponse;
 import com.casms.ship.enums.ShipStatus;
+import com.casms.ship.service.ShipAreaService;
 import com.casms.ship.service.ShipService;
 
 import io.swagger.v3.oas.annotations.Operation;
@@ -36,12 +38,12 @@ import java.util.UUID;
 public class ShipController {
 
     private final ShipService service;
-    private final com.casms.ship.service.ShipAreaService shipAreas;
+    private final ShipAreaService shipAreas;
 
     @Operation(summary = "Danh sách khu vực dịch vụ đã nhập của tàu")
     @PreAuthorize("hasAuthority('SHIP_CONFIGURATION_READ')")
     @GetMapping("/{shipId}/areas")
-    public ApiResponse<List<com.casms.ship.dto.response.ShipAreaResponse>> areas(
+    public ApiResponse<List<ShipAreaResponse>> areas(
             @PathVariable UUID shipId) {
         service.detail(shipId);
         return ApiResponse.success(shipAreas.list(shipId));

@@ -1,5 +1,6 @@
 package com.casms.ship.dto.response;
 
+import com.casms.ship.dto.PortCoordinateSource;
 import com.casms.ship.enums.PortLocationType;
 import com.casms.ship.enums.PortStatus;
 
@@ -51,7 +52,7 @@ public class PortResponse {
             description =
                     "Nguồn tọa độ địa danh; không phải xác minh vị trí chính xác của cảng. Null cho"
                         + " dữ liệu legacy; externalLocationId độc lập với portId.")
-    private com.casms.ship.dto.PortCoordinateSource coordinateSource;
+    private PortCoordinateSource coordinateSource;
 
     @Schema(description = "Kinh độ", example = "106.6881")
     private BigDecimal longitude;

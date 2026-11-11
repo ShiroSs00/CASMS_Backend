@@ -88,10 +88,13 @@ import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.http.HttpStatus;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -148,7 +151,7 @@ public class CruiseService {
     private final CruiseAuditService cruiseAuditService;
     private final CruisePackageService cruisePackageService;
     private final CruiseMainflowService mainflow;
-    private final org.springframework.jdbc.core.JdbcTemplate jdbc;
+    private final JdbcTemplate jdbc;
 
     @Transactional
     public CruiseResponse create(CruiseCreateRequest request) {
@@ -2204,8 +2207,8 @@ public class CruiseService {
                 .build();
     }
 
-    @org.springframework.beans.factory.annotation.Autowired
-    private org.springframework.beans.factory.ObjectProvider<com.casms.cruisepackage.service.CruisePackageService>
+    @Autowired
+    private ObjectProvider<com.casms.cruisepackage.service.CruisePackageService>
             commercialPackages;
 
     private com.casms.cruisepackage.service.CruisePackageService cruisePackageCommercialService() {

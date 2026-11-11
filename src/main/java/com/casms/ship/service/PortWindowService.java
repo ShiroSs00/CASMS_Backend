@@ -1,5 +1,7 @@
 package com.casms.ship.service;
 
+import com.casms.audit.AuditLog;
+import com.casms.audit.AuditRepository;
 import com.casms.audit.AuditService;
 import com.casms.common.exception.*;
 import com.casms.security.principal.CasmsPrincipal;
@@ -7,8 +9,13 @@ import com.casms.ship.dto.PortWindowContract.*;
 import com.casms.ship.entity.*;
 import com.casms.ship.repository.*;
 
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
+
 import lombok.RequiredArgsConstructor;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,14 +31,14 @@ public class PortWindowService {
     private final PortCallWindowRepository windows;
     private final PortCallWindowExceptionRepository closures;
     private final AuditService audit;
-    @jakarta.persistence.PersistenceContext private jakarta.persistence.EntityManager entityManager;
-    private final com.casms.audit.AuditRepository auditRepository;
+    @PersistenceContext private EntityManager entityManager;
+    private final AuditRepository auditRepository;
 
-    public org.springframework.data.domain.Page<com.casms.audit.AuditLog> history(
+    public Page<AuditLog> history(
             UUID portId,
             UUID id,
             boolean exception,
-            org.springframework.data.domain.Pageable pageable) {
+            Pageable pageable) {
         if (exception) closure(portId, id);
         else window(portId, id);
         return auditRepository.findByEntityIdOrderByOccurredAtDesc(id, pageable);

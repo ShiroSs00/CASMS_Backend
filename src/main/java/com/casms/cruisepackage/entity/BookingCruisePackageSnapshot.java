@@ -1,10 +1,16 @@
 package com.casms.cruisepackage.entity;
 
+import com.casms.cruisepackage.dto.CruisePackagePurchaseSelection;
+import com.fasterxml.jackson.annotation.JsonFormat;
 import jakarta.persistence.*;
 import lombok.Getter;
 import org.hibernate.annotations.Immutable;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
+
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 /** Prepared storage for real confirmation only. No mutable template lookup substitutes for this history. */
@@ -12,7 +18,7 @@ import java.util.UUID;
 public class BookingCruisePackageSnapshot {
     protected BookingCruisePackageSnapshot() {}
     public static BookingCruisePackageSnapshot capture(UUID passengerId,UUID bookingId,
-            com.casms.cruisepackage.dto.CruisePackagePurchaseSelection selection,Instant purchasedAt) {
+            CruisePackagePurchaseSelection selection,Instant purchasedAt) {
         var snapshot=new BookingCruisePackageSnapshot(); snapshot.bookingPassengerId=passengerId; snapshot.bookingId=bookingId;
         snapshot.offerId=selection.offerId(); snapshot.templateVersionId=selection.templateVersionId();
         snapshot.priceRevisionId=selection.priceRevisionId(); snapshot.shipId=selection.shipId();
@@ -31,10 +37,10 @@ public class BookingCruisePackageSnapshot {
     @Column(name="logical_category",nullable=false,length=100) private String logicalCategory;
     @Column(name="logical_category_id") private UUID logicalCategoryId;
     @Column(name="cabin_mapping_id") private UUID cabinMappingId;
-    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.JSON)
-    @Column(name="physical_cabin_ids",columnDefinition="jsonb") private java.util.List<UUID> physicalCabinIds;
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name="physical_cabin_ids",columnDefinition="jsonb") private List<UUID> physicalCabinIds;
     @Column(name="cabin_type",nullable=false,length=30) private String cabinType;
-    @com.fasterxml.jackson.annotation.JsonFormat(shape=com.fasterxml.jackson.annotation.JsonFormat.Shape.STRING)
+    @JsonFormat(shape=JsonFormat.Shape.STRING)
     @Column(nullable=false,precision=19,scale=4) private BigDecimal amount;
     @Column(name="currency_code",nullable=false,length=3) private String currencyCode;
     @Column(name="price_unit",nullable=false,length=10) private String priceUnit;
