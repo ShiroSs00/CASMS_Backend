@@ -4,6 +4,8 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
+import com.casms.activity.repository.OnboardActivityRepository;
+import com.casms.activity.repository.ShoreExcursionRepository;
 import com.casms.common.exception.BusinessException;
 import com.casms.ship.dto.response.CruiseSchedulePreviewResponse;
 import com.casms.ship.entity.*;
@@ -41,11 +43,11 @@ class ScheduleMaterializationServiceTest {
     @Mock private PortWindowEvaluator portWindowEvaluator;
 
     @Mock
-    private com.casms.ship.service.OperationalProgramMappingService
+    private OperationalProgramMappingService
             operationalProgramMappingService;
 
-    @Mock private com.casms.activity.repository.OnboardActivityRepository onboardActivityRepository;
-    @Mock private com.casms.activity.repository.ShoreExcursionRepository shoreExcursionRepository;
+    @Mock private OnboardActivityRepository onboardActivityRepository;
+    @Mock private ShoreExcursionRepository shoreExcursionRepository;
 
     @InjectMocks private ScheduleMaterializationService materializationService;
 

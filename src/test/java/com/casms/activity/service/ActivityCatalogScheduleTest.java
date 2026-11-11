@@ -41,7 +41,7 @@ class ActivityCatalogScheduleTest {
         when(businessCodeGenerator.next("AC")).thenReturn("AC-TEST");
         when(activities.save(any())).thenAnswer(i -> i.getArgument(0));
         var input = new ActivityScheduleRequest(source.getOnboardActivityId(),
-                Instant.parse("2030-01-01T01:00:00Z"), Instant.parse("2030-01-01T02:00:00Z"), "Deck 1", null, null, 15);
+                Instant.parse("2030-01-01T01:00:00Z"), Instant.parse("2030-01-01T02:00:00Z"), "Deck 1", null, null, 15, null);
         var occurrence = service.scheduleCatalog(cruise.getCruiseId(), input);
         assertFalse(occurrence.isCatalogEntry()); assertEquals(source.getOnboardActivityId(), occurrence.getSourceActivityId());
         assertSame(cruise, occurrence.getCruise()); assertEquals(15, occurrence.getCapacity());

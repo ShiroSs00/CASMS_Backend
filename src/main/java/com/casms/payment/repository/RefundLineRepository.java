@@ -5,7 +5,12 @@ import com.casms.payment.entity.RefundLine;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
+import java.util.List;
 import java.util.UUID;
 
 @Repository
-public interface RefundLineRepository extends JpaRepository<RefundLine, UUID> {}
+public interface RefundLineRepository extends JpaRepository<RefundLine, UUID> {
+    List<RefundLine> findByRefund_RefundId(UUID refundId);
+
+    void deleteByRefund_RefundId(UUID refundId);
+}

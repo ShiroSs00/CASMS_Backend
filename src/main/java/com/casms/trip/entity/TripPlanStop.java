@@ -1,5 +1,6 @@
 package com.casms.trip.entity;
 
+import com.casms.ship.dto.PortFacts;
 import com.casms.ship.entity.Destination;
 import com.casms.ship.entity.Port;
 import com.casms.ship.enums.CruiseStopArrivalMethod;
@@ -9,6 +10,9 @@ import jakarta.persistence.*;
 
 import lombok.Getter;
 import lombok.Setter;
+
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.time.LocalTime;
 import java.util.ArrayList;
@@ -92,7 +96,7 @@ public class TripPlanStop {
     @OrderBy("sequence ASC, clientKey ASC")
     private List<DestinationVisit> visits = new ArrayList<>();
 
-    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.JSON)
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "port_facts", columnDefinition = "jsonb")
-    private com.casms.ship.dto.PortFacts portFacts;
+    private PortFacts portFacts;
 }

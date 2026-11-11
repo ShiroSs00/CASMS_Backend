@@ -1,10 +1,13 @@
 package com.casms.ship.dto.response;
 
 import com.casms.activity.enums.OnboardActivityCategory;
+import com.casms.ship.dto.PortFacts;
+import com.casms.ship.dto.PortWindowContract.Check;
 import com.casms.ship.enums.CruiseStopArrivalMethod;
 import com.casms.ship.enums.CruiseStopCallType;
 import com.casms.ship.enums.ItineraryDayRole;
 import com.casms.ship.enums.ItineraryDayType;
+import com.casms.trip.dto.response.DestinationVisitResponse;
 import com.casms.trip.enums.TripPlanEntryKind;
 
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -101,7 +104,7 @@ public class CruiseSchedulePreviewResponse {
                         + " cầu cảng.")
     private String portCallWindowStatus;
 
-    private java.util.List<com.casms.ship.dto.PortWindowContract.Check> portWindowChecks;
+    private List<Check> portWindowChecks;
     private List<String> materializationBlockers;
     private String dependency;
     private String sourceContentHash;
@@ -165,9 +168,9 @@ public class CruiseSchedulePreviewResponse {
                             + " preview")
         private UUID cruiseStopId;
 
-        private com.casms.ship.dto.PortFacts portFacts;
-        private java.util.List<com.casms.ship.dto.PortWindowContract.Check> portWindowChecks;
-        private java.util.List<com.casms.trip.dto.response.DestinationVisitResponse> visits;
+        private PortFacts portFacts;
+        private List<Check> portWindowChecks;
+        private List<DestinationVisitResponse> visits;
 
         @Schema(description = "ID của điểm dừng mẫu nguồn")
         private UUID sourceStopId;

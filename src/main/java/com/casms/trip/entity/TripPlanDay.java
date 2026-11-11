@@ -1,5 +1,6 @@
 package com.casms.trip.entity;
 
+import com.casms.ship.dto.PortFacts;
 import com.casms.ship.entity.Port;
 import com.casms.ship.enums.ItineraryDayRole;
 import com.casms.ship.enums.ItineraryDayType;
@@ -8,6 +9,9 @@ import jakarta.persistence.*;
 
 import lombok.Getter;
 import lombok.Setter;
+
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.time.LocalTime;
 import java.util.ArrayList;
@@ -25,9 +29,9 @@ import java.util.UUID;
                         columnNames = {"version_id", "day_number"}))
 public class TripPlanDay {
 
-    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.JSON)
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "departure_port_facts", columnDefinition = "jsonb")
-    private com.casms.ship.dto.PortFacts departurePortFacts;
+    private PortFacts departurePortFacts;
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)

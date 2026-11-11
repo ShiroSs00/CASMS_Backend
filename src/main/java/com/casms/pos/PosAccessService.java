@@ -11,6 +11,7 @@ import lombok.RequiredArgsConstructor;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.RowMapper;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -35,7 +36,7 @@ public class PosAccessService {
             "SELECT a.*,cs.user_id,cs.cruise_id FROM \"AreaStaffAssignment\" a JOIN \"CruiseStaff\""
                 + " cs ON cs.cruise_staff_id=a.cruise_staff_id JOIN \"Cruise\" c ON"
                 + " c.cruise_id=cs.cruise_id ";
-    private static final org.springframework.jdbc.core.RowMapper<PosDtos.AreaStaff> STAFF =
+    private static final RowMapper<PosDtos.AreaStaff> STAFF =
             (r, n) ->
                     new PosDtos.AreaStaff(
                             PosRepository.uuid(r, "assignment_id"),

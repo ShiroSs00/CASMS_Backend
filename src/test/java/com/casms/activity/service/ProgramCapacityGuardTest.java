@@ -9,7 +9,9 @@ import com.casms.activity.enums.*;
 import com.casms.activity.repository.*;
 import com.casms.common.exception.BusinessException;
 import com.casms.ship.entity.*;
+import com.casms.ship.repository.CabinRepository;
 import com.casms.ship.repository.CruiseStopRepository;
+import com.casms.ship.repository.DeckRepository;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -46,8 +48,8 @@ class ProgramCapacityGuardTest {
     @Mock RegistrationRepository registrationRepository;
     @Mock SupplierRepository supplierRepository;
     @Mock CruiseStopRepository cruiseStopRepository;
-    @Mock com.casms.ship.repository.DeckRepository deckRepository;
-    @Mock com.casms.ship.repository.CabinRepository cabinRepository;
+    @Mock DeckRepository deckRepository;
+    @Mock CabinRepository cabinRepository;
     @InjectMocks ActivityService onboard;
     @InjectMocks ShoreExcursionService shore;
 

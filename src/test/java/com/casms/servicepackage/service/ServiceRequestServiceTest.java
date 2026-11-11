@@ -4,10 +4,12 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 import com.casms.booking.repository.BookingPassengerRepository;
+import com.casms.cruisepackage.service.CruisePackageEntitlementService;
 import com.casms.identity.entity.Passenger;
 import com.casms.identity.entity.User;
 import com.casms.identity.repository.PassengerRepository;
 import com.casms.identity.repository.UserRepository;
+import com.casms.pos.PosLedgerService;
 import com.casms.servicepackage.entity.Service;
 import com.casms.servicepackage.entity.ServiceRequest;
 import com.casms.servicepackage.entity.ServiceSchedule;
@@ -15,6 +17,7 @@ import com.casms.servicepackage.enums.ServiceRequestStatus;
 import com.casms.servicepackage.repository.ServiceRepository;
 import com.casms.servicepackage.repository.ServiceRequestRepository;
 import com.casms.servicepackage.repository.ServiceScheduleRepository;
+import com.casms.servicepackage.repository.ServiceUsageRepository;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -34,10 +37,10 @@ class ServiceRequestServiceTest {
     @Mock PassengerRepository passengers;
     @Mock UserRepository users;
     @Mock ServiceScheduleRepository schedules;
-    @Mock com.casms.pos.PosLedgerService posLedger;
+    @Mock PosLedgerService posLedger;
     @Mock ServiceUsageQuotaService usageQuotas;
-    @Mock com.casms.servicepackage.repository.ServiceUsageRepository usages;
-    @Mock com.casms.cruisepackage.service.CruisePackageEntitlementService fareEntitlements;
+    @Mock ServiceUsageRepository usages;
+    @Mock CruisePackageEntitlementService fareEntitlements;
     @Mock ShipServiceAvailability shipServices;
     @InjectMocks ServiceRequestService service;
 

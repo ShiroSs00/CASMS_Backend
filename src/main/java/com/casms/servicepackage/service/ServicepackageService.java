@@ -17,6 +17,7 @@ import jakarta.persistence.EntityNotFoundException;
 
 import lombok.RequiredArgsConstructor;
 
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -51,7 +52,7 @@ public class ServicepackageService {
     private final FeedbackRepository feedbackRepo;
     private final BusinessCodeGenerator businessCodeGenerator;
     private final ShipServiceAvailability shipServices;
-    private final org.springframework.jdbc.core.JdbcTemplate jdbc;
+    private final JdbcTemplate jdbc;
 
     @Transactional(readOnly = true)
     public List<Service> services() {

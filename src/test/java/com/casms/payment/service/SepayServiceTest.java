@@ -682,4 +682,66 @@ class SepayServiceTest {
         assertEquals(0, stages.get(1).getRemainingAmountUsd().compareTo(new BigDecimal("700.0000")));
         assertTrue(stages.get(1).isCurrentDue());
     }
+
+    @Test
+    @DisplayName("Webhook: Khách chuyển khoản thừa tiền (gộp đợt 1 + đợt 2), hệ thống tự động sinh Payment đợt kế tiếp")
+    void processWebhook_SurplusPayment_AllocatesToSubsequentStage() {
+        when(sepayProperties.isEnabled()).thenReturn(true);
+        when(sepayProperties.getApiKey()).thenReturn(null);
+        when(sepayProperties.getUsdToVndRate()).thenReturn(new BigDecimal("25400"));
+
+        Payment pendingPayment1 = new Payment();
+        pendingPayment1.setPaymentId(UUID.randomUUID());
+        pendingPayment1.setBooking(booking);
+        pendingPayment1.setInstallment(inst1);
+        pendingPayment1.setOperationType(PaymentOperationType.Collect);
+        pendingPayment1.setPaymentMethod(PaymentMethod.Sepay);
+        pendingPayment1.setCurrency("USD");
+        pendingPayment1.setRequestedAmount(new BigDecimal("300.0000"));
+        pendingPayment1.setRequestedAt(Instant.now());
+        pendingPayment1.setStatus(PaymentStatus.Pending);
+        pendingPayment1.setInternalReceiptReference("CASMS BK0001S1");
+        pendingPayment1.setIdempotencyKey("SEPAY-BK0001-S1");
+
+        when(paymentRepository.findByStatusAndPaymentMethod(PaymentStatus.Pending, PaymentMethod.Sepay))
+                .thenReturn(List.of(pendingPayment1));
+
+        // Khách chuyển 25,400,000 VND (~1,000 USD, thừa 700 USD so với yêu cầu 300 USD của đợt 1)
+        SepayWebhookPayload payload = new SepayWebhookPayload();
+        payload.setId(99998888L);
+        payload.setTransferType("in");
+        payload.setTransferAmount(new BigDecimal("25400000"));
+        payload.setContent("CASMS BK0001S1 THANH TOAN GOP");
+        payload.setReferenceCode("REF-BANK-9999");
+
+        when(sepayTransactionRepository.existsBySepayId(99998888L)).thenReturn(false);
+        when(sepayTransactionRepository.save(any(SepayTransaction.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+        when(paymentService.confirmPayment(any(), any())).thenAnswer(inv -> {
+            pendingPayment1.setStatus(PaymentStatus.Confirmed);
+            pendingPayment1.setConfirmedAmount(pendingPayment1.getRequestedAmount());
+            return null;
+        });
+        when(installmentRepository.findByBookingBookingIdOrderBySequenceNoAsc(bookingId))
+                .thenReturn(List.of(inst1, inst2));
+        when(paymentRepository.findForBooking(bookingId)).thenReturn(List.of(pendingPayment1));
+
+        SepayWebhookResponse resp = sepayService.processWebhook(payload, null);
+
+        assertNotNull(resp);
+        assertTrue(resp.isSuccess());
+        assertTrue(resp.getMessage().contains("surplus automatically allocated"));
+
+        // Kiểm tra đã lưu bản ghi surplus payment vào paymentRepository
+        ArgumentCaptor<Payment> paymentCaptor = ArgumentCaptor.forClass(Payment.class);
+        verify(paymentRepository, atLeastOnce()).save(paymentCaptor.capture());
+        Payment savedSurplus = paymentCaptor.getValue();
+        assertNotNull(savedSurplus);
+        assertEquals(0, savedSurplus.getConfirmedAmount().compareTo(new BigDecimal("700.0000")));
+        assertEquals(inst2, savedSurplus.getInstallment());
+        assertEquals(PaymentStatus.Confirmed, savedSurplus.getStatus());
+
+        // Kiểm tra đã đồng bộ lại installments
+        verify(paymentService, times(1)).allocateInstallmentsAndSync(booking);
+    }
 }

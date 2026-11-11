@@ -8,6 +8,24 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.casms.activity.repository.SupplierRepository;
+import com.casms.identity.entity.User;
+import com.casms.identity.enums.Role;
+import com.casms.identity.enums.UserStatus;
+import com.casms.identity.repository.UserRepository;
+import com.casms.security.jwt.JwtService;
+import com.casms.servicepackage.repository.ServiceRepository;
+import com.casms.ship.entity.Port;
+import com.casms.ship.enums.PortStatus;
+import com.casms.ship.repository.CabinRepository;
+import com.casms.ship.repository.CruiseRepository;
+import com.casms.ship.repository.DeckRepository;
+import com.casms.ship.repository.PortRepository;
+import com.casms.ship.repository.ShipRepository;
+import com.casms.ship.service.ScheduleMaterializationService;
+import com.casms.trip.entity.TripScheduleVersion;
+import com.casms.trip.repository.TripScheduleVersionRepository;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import org.junit.jupiter.api.Test;
@@ -16,10 +34,16 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.test.web.servlet.ResultActions;
+import org.springframework.transaction.PlatformTransactionManager;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Set;
+import java.util.UUID;
 
 /** Dedicated disposable-test container only. Never falls back to the developer's datasource. */
 @EnabledIfEnvironmentVariable(named = "OCVVIET_V4_TEST", matches = "true")
@@ -41,39 +65,39 @@ class MainflowRuntimePostgresTest {
     @Autowired JdbcTemplate jdbc;
     @Autowired MockMvc mvc;
     @Autowired ObjectMapper mapper;
-    @Autowired com.casms.identity.repository.UserRepository users;
-    @Autowired com.casms.security.jwt.JwtService jwt;
-    @Autowired com.casms.ship.repository.PortRepository ports;
-    @Autowired com.casms.trip.repository.TripScheduleVersionRepository versions;
-    @Autowired com.casms.ship.repository.ShipRepository ships;
-    @Autowired org.springframework.security.crypto.password.PasswordEncoder passwords;
-    @Autowired com.casms.ship.repository.DeckRepository decks;
-    @Autowired com.casms.ship.repository.CabinRepository cabins;
-    @Autowired com.casms.servicepackage.repository.ServiceRepository services;
-    @Autowired com.casms.activity.repository.SupplierRepository suppliers;
-    @Autowired com.casms.ship.repository.CruiseRepository cruises;
-    @Autowired com.casms.ship.service.ScheduleMaterializationService materialization;
-    @Autowired org.springframework.transaction.PlatformTransactionManager transactions;
+    @Autowired UserRepository users;
+    @Autowired JwtService jwt;
+    @Autowired PortRepository ports;
+    @Autowired TripScheduleVersionRepository versions;
+    @Autowired ShipRepository ships;
+    @Autowired PasswordEncoder passwords;
+    @Autowired DeckRepository decks;
+    @Autowired CabinRepository cabins;
+    @Autowired ServiceRepository services;
+    @Autowired SupplierRepository suppliers;
+    @Autowired CruiseRepository cruises;
+    @Autowired ScheduleMaterializationService materialization;
+    @Autowired PlatformTransactionManager transactions;
 
-    private String token(com.casms.identity.enums.Role... roles) {
-        var u = new com.casms.identity.entity.User();
-        u.setUsername("v4-" + roles[0] + "-" + java.util.UUID.randomUUID());
+    private String token(Role... roles) {
+        var u = new User();
+        u.setUsername("v4-" + roles[0] + "-" + UUID.randomUUID());
         u.setPasswordHash(passwords.encode("OcvViet-v4-test-only!"));
-        u.setRoles(java.util.Set.of(roles));
-        u.setStatus(com.casms.identity.enums.UserStatus.ACTIVE);
+        u.setRoles(Set.of(roles));
+        u.setStatus(UserStatus.ACTIVE);
         u = users.save(u);
         return jwt.generateToken(u.getUsername(), u.getUserId());
     }
 
-    private com.fasterxml.jackson.databind.JsonNode response(
-            org.springframework.test.web.servlet.ResultActions request, int expected)
+    private JsonNode response(
+            ResultActions request, int expected)
             throws Exception {
         var result = request.andExpect(status().is(expected)).andReturn();
         return recordHttpResult(result);
     }
 
-    private com.fasterxml.jackson.databind.JsonNode recordHttpResult(
-            org.springframework.test.web.servlet.MvcResult result) throws Exception {
+    private JsonNode recordHttpResult(
+            MvcResult result) throws Exception {
         String text = result.getResponse().getContentAsString();
         var evidence = mapper.createObjectNode();
         evidence.put("method", result.getRequest().getMethod());
@@ -2281,7 +2305,7 @@ class MainflowRuntimePostgresTest {
                         java.util.UUID.fromString(wid)));
     }
 
-    private com.casms.trip.entity.TripScheduleVersion finalizedSource(String crm) throws Exception {
+    private TripScheduleVersion finalizedSource(String crm) throws Exception {
         return finalizedSource(crm, false);
     }
 
@@ -2684,7 +2708,7 @@ class MainflowRuntimePostgresTest {
                 versions.findById(source.getVersionId()).orElseThrow().getContentHash());
     }
 
-    private com.casms.trip.entity.TripScheduleVersion finalizedSource(
+    private TripScheduleVersion finalizedSource(
             String crm, boolean inlineActivity) throws Exception {
         return finalizedSource(crm, inlineActivity, false);
     }
@@ -2905,15 +2929,15 @@ class MainflowRuntimePostgresTest {
                 mapper.writerWithDefaultPrettyPrinter().writeValueAsString(proof));
     }
 
-    private com.casms.trip.entity.TripScheduleVersion finalizedSource(
+    private TripScheduleVersion finalizedSource(
             String crm, boolean inlineActivity, boolean repeated) throws Exception {
-        var p = new com.casms.ship.entity.Port();
-        p.setPortCode("V4-" + java.util.UUID.randomUUID());
+        var p = new Port();
+        p.setPortCode("V4-" + UUID.randomUUID());
         p.setPortName("Isolated copy port");
         p.setCountryCode("VN");
         p.setDomesticRegion("BAC_BO");
         p.setTimeZoneId("Asia/Ho_Chi_Minh");
-        p.setStatus(com.casms.ship.enums.PortStatus.ACTIVE);
+        p.setStatus(PortStatus.ACTIVE);
         p = ports.save(p);
         var trip =
                 response(

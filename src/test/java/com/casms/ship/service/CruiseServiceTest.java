@@ -4,16 +4,24 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
+import com.casms.activity.repository.OnboardActivityRepository;
+import com.casms.activity.repository.ShoreExcursionRepository;
 import com.casms.booking.repository.BookingPassengerRepository;
 import com.casms.booking.repository.BookingRepository;
+import com.casms.booking.repository.CabinAssignmentRepository;
+import com.casms.checkin.repository.CruiseCheckinRepository;
 import com.casms.common.exception.BusinessException;
 import com.casms.common.service.BusinessCodeGenerator;
+import com.casms.identity.repository.UserRepository;
+import com.casms.servicepackage.repository.TourPackageRepository;
 import com.casms.ship.dto.request.CruiseCreateRequest;
 import com.casms.ship.dto.response.CruiseReadinessResponse;
 import com.casms.ship.dto.response.CruiseResponse;
 import com.casms.ship.entity.*;
 import com.casms.ship.enums.*;
 import com.casms.ship.repository.*;
+import com.casms.trip.repository.TripScheduleVersionRepository;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -43,18 +51,30 @@ class CruiseServiceTest {
     @Mock private BusinessCodeGenerator businessCodeGenerator;
 
     @Mock
-    private com.casms.trip.repository.TripScheduleVersionRepository tripScheduleVersionRepository;
+    private TripScheduleVersionRepository tripScheduleVersionRepository;
 
     @Mock private ScheduleMaterializationService scheduleMaterializationService;
     @Mock private CruiseStaffRepository cruiseStaffRepository;
     @Mock private CruiseRegulationService cruiseRegulationService;
-    @Mock private com.casms.activity.repository.OnboardActivityRepository onboardActivityRepository;
+    @Mock private OnboardActivityRepository onboardActivityRepository;
     @Mock private CruiseTourPackageRepository cruiseTourPackageRepository;
     @Mock private CruiseStopRepository cruiseStopRepository;
-    @Mock private com.casms.activity.repository.ShoreExcursionRepository shoreExcursionRepository;
+    @Mock private ShoreExcursionRepository shoreExcursionRepository;
     @Mock private CruiseRegulationRepository cruiseRegulationRepository;
     @Mock private CruiseImpactTaskRepository cruiseImpactTaskRepository;
-    @Mock private com.casms.servicepackage.repository.TourPackageRepository tourPackageRepository;
+    @Mock private TourPackageRepository tourPackageRepository;
+    @Mock private CabinAssignmentRepository cabinAssignmentRepository;
+    @Mock private CruiseCheckinRepository checkinRepository;
+    @Mock private UserRepository userRepository;
+    @Mock private ItineraryDayRepository itineraryDayRepository;
+    @Mock private CruiseImpactAssessmentService cruiseImpactAssessmentService;
+    @Mock private CruisePreparationService cruisePreparationService;
+    @Mock private CruisePricingPolicyRepository cruisePricingPolicyRepository;
+    @Mock private OperationalIssueRepository operationalIssueRepository;
+    @Mock private CruiseAuditService cruiseAuditService;
+    @Mock private CruisePackageService cruisePackageService;
+    @Mock private CruiseMainflowService mainflow;
+    @Mock private JdbcTemplate jdbc;
 
     @InjectMocks private CruiseService cruiseService;
 
@@ -190,7 +210,7 @@ class CruiseServiceTest {
         BusinessException ex =
                 assertThrows(
                         BusinessException.class, () -> cruiseService.assignShip(cruiseId, shipId));
-        assertEquals("SHIP_NOT_ACTIVE", ex.getCode());
+        assertEquals("SHIP_IN_MAINTENANCE", ex.getCode());
     }
 
     @Test
@@ -231,8 +251,10 @@ class CruiseServiceTest {
         when(cabinRepository.countByShipShipId(shipId)).thenReturn(50L);
         when(itineraryRepository.findByCruiseCruiseId(cruiseId)).thenReturn(Optional.of(itinerary));
         when(cruiseStaffRepository.findByCruise_CruiseId(cruiseId)).thenReturn(List.of(captain));
+        when(cruiseStaffRepository.existsActiveOnboardStaff(cruiseId)).thenReturn(true);
         when(cruiseStaffRepository.findConflictingAssignments(any(), any(), any(), any()))
                 .thenReturn(List.of());
+        when(mainflow.isPlanApproved(cruiseId)).thenReturn(true);
         when(cruiseRepository.save(any(Cruise.class))).thenAnswer(i -> i.getArgument(0));
 
         CruiseResponse response = cruiseService.publish(cruiseId);

@@ -12,12 +12,17 @@ import static org.mockito.Mockito.when;
 
 import com.casms.common.exception.BusinessException;
 import com.casms.common.response.ApiResponse;
+import com.casms.notification.service.NotificationService;
 import com.casms.security.principal.CasmsPrincipal;
 import com.casms.ship.dto.request.CruiseCreateRequest;
 import com.casms.ship.dto.response.CruiseResponse;
+import com.casms.ship.service.CruiseAuditService;
+import com.casms.ship.service.CruiseImpactAssessmentService;
 import com.casms.ship.service.CruisePackageService;
 import com.casms.ship.service.CruiseService;
 import com.casms.ship.service.CruiseStaffService;
+import com.casms.ship.service.OperationalProgramMappingService;
+import com.casms.ship.service.ScheduleMaterializationService;
 import com.casms.trip.service.IdempotencyService;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -37,17 +42,17 @@ class CruiseControllerTest {
     @Mock private IdempotencyService idempotencyService;
 
     @Mock
-    private com.casms.ship.service.ScheduleMaterializationService scheduleMaterializationService;
+    private ScheduleMaterializationService scheduleMaterializationService;
 
     @Mock
-    private com.casms.ship.service.OperationalProgramMappingService
+    private OperationalProgramMappingService
             operationalProgramMappingService;
 
     @Mock
-    private com.casms.ship.service.CruiseImpactAssessmentService cruiseImpactAssessmentService;
+    private CruiseImpactAssessmentService cruiseImpactAssessmentService;
 
-    @Mock private com.casms.notification.service.NotificationService notificationService;
-    @Mock private com.casms.ship.service.CruiseAuditService cruiseAuditService;
+    @Mock private NotificationService notificationService;
+    @Mock private CruiseAuditService cruiseAuditService;
     @Mock private CasmsPrincipal principal;
 
     private CruiseController controller;
@@ -85,12 +90,10 @@ class CruiseControllerTest {
         CruiseResponse expected = new CruiseResponse();
         expected.setCruiseId(UUID.randomUUID());
         when(principal.getUserId()).thenReturn(actorId);
-        when(idempotencyService.execute(
+        when(idempotencyService.executeCruiseCreate(
                         eq("cruise-create-001"),
                         eq(actorId),
-                        eq("CREATE_CRUISE"),
                         same(request),
-                        eq(CruiseResponse.class),
                         any()))
                 .thenReturn(expected);
 

@@ -5,6 +5,8 @@ import com.casms.booking.entity.BookingPassenger;
 import com.casms.identity.entity.Passenger;
 import com.casms.identity.entity.User;
 import com.casms.servicepackage.enums.ServiceRequestStatus;
+import com.casms.servicepackage.enums.ServiceUsagePolicy;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 
 import jakarta.persistence.*;
 
@@ -16,6 +18,8 @@ import org.hibernate.type.SqlTypes;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 @Getter
@@ -32,7 +36,7 @@ public class ServiceRequest {
     private String usageMode = "LEGACY";
     @Enumerated(EnumType.STRING)
     @Column(name="usage_policy_snapshot", nullable=false, length=20)
-    private com.casms.servicepackage.enums.ServiceUsagePolicy usagePolicySnapshot = com.casms.servicepackage.enums.ServiceUsagePolicy.UNLIMITED;
+    private ServiceUsagePolicy usagePolicySnapshot = ServiceUsagePolicy.UNLIMITED;
     @Column(name="usage_limit_snapshot")
     private Integer usageLimitSnapshot;
     @Column(name="usage_time_zone_snapshot", nullable=false, length=100)
@@ -41,8 +45,8 @@ public class ServiceRequest {
     @Column(name="fare_benefit_snapshot_id")
     private UUID fareBenefitSnapshotId;
     @OneToMany(mappedBy="serviceRequest")
-    @com.fasterxml.jackson.annotation.JsonIgnore
-    private java.util.List<ServiceUsage> usageRecords=new java.util.ArrayList<>();
+    @JsonIgnore
+    private List<ServiceUsage> usageRecords=new ArrayList<>();
 
     @Transient public Integer getFareFulfilledQuantity() {
         return fareBenefitSnapshotId==null?null:usageRecords.stream().filter(u->fareBenefitSnapshotId.equals(u.getFareBenefitSnapshotId())).mapToInt(ServiceUsage::getQuantity).sum();

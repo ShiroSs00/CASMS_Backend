@@ -7,6 +7,8 @@ import static org.mockito.Mockito.*;
 import com.casms.activity.entity.ShoreExcursion;
 import com.casms.activity.repository.OnboardActivityRepository;
 import com.casms.activity.repository.ShoreExcursionRepository;
+import com.casms.audit.AuditRepository;
+import com.casms.audit.AuditService;
 import com.casms.common.exception.BusinessException;
 import com.casms.common.response.ApiResponse;
 import com.casms.common.service.BusinessCodeGenerator;
@@ -78,9 +80,9 @@ public class TripAndCruiseP0PortValidationTest {
 
     @Mock private UserRepository userRepository;
 
-    @Mock private com.casms.audit.AuditRepository auditRepository;
+    @Mock private AuditRepository auditRepository;
 
-    @Mock private com.casms.audit.AuditService auditService;
+    @Mock private AuditService auditService;
 
     // Mocks for TripService
     @Mock private BusinessCodeGenerator businessCodeGenerator;

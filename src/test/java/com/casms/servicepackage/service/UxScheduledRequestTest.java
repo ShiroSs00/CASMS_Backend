@@ -9,6 +9,7 @@ import com.casms.booking.entity.BookingPassenger;
 import com.casms.booking.enums.BookingStatus;
 import com.casms.booking.repository.BookingPassengerRepository;
 import com.casms.common.exception.BusinessException;
+import com.casms.cruisepackage.service.CruisePackageEntitlementService;
 import com.casms.identity.entity.Passenger;
 import com.casms.identity.entity.User;
 import com.casms.identity.repository.PassengerRepository;
@@ -43,8 +44,8 @@ class UxScheduledRequestTest {
     @Mock ServiceScheduleRepository schedules;
     @Mock PosLedgerService posLedger;
     @Mock ServiceUsageQuotaService usageQuotas;
-    @Mock com.casms.servicepackage.repository.ServiceUsageRepository usages;
-    @Mock com.casms.cruisepackage.service.CruisePackageEntitlementService fareEntitlements;
+    @Mock ServiceUsageRepository usages;
+    @Mock CruisePackageEntitlementService fareEntitlements;
     @Mock ShipServiceAvailability shipServices;
     @InjectMocks ServiceRequestService service;
     final UUID userId = UUID.randomUUID(),

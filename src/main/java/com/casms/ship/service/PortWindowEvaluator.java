@@ -1,9 +1,13 @@
 package com.casms.ship.service;
 
+import com.casms.audit.AuditService;
 import com.casms.common.exception.BusinessException;
 import com.casms.ship.dto.PortWindowContract.*;
 import com.casms.ship.entity.Port;
 import com.casms.ship.enums.PortStatus;
+import com.casms.ship.repository.CruiseStopRepository;
+import com.casms.ship.repository.ItineraryRepository;
+import com.casms.ship.repository.PortRepository;
 
 import lombok.RequiredArgsConstructor;
 
@@ -23,10 +27,10 @@ import java.util.*;
 @Transactional(readOnly = true)
 public class PortWindowEvaluator {
     private final PortWindowService directory;
-    private final com.casms.ship.repository.PortRepository ports;
-    private final com.casms.ship.repository.CruiseStopRepository stops;
-    private final com.casms.ship.repository.ItineraryRepository itineraries;
-    private final com.casms.audit.AuditService audit;
+    private final PortRepository ports;
+    private final CruiseStopRepository stops;
+    private final ItineraryRepository itineraries;
+    private final AuditService audit;
 
     public List<Check> cruise(UUID id) {
         var itinerary = itineraries.findByCruiseCruiseId(id).orElse(null);

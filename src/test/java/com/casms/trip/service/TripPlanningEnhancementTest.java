@@ -7,6 +7,8 @@ import static org.mockito.Mockito.*;
 import com.casms.activity.entity.OnboardActivity;
 import com.casms.activity.repository.OnboardActivityRepository;
 import com.casms.activity.repository.ShoreExcursionRepository;
+import com.casms.audit.AuditRepository;
+import com.casms.audit.AuditService;
 import com.casms.common.exception.BusinessException;
 import com.casms.common.response.ApiResponse;
 import com.casms.common.service.BusinessCodeGenerator;
@@ -62,7 +64,7 @@ public class TripPlanningEnhancementTest {
 
     @Mock private BusinessCodeGenerator businessCodeGenerator;
 
-    @Mock private com.casms.audit.AuditService auditService;
+    @Mock private AuditService auditService;
 
     @Mock private DestinationRepository destinationRepository;
 
@@ -74,7 +76,7 @@ public class TripPlanningEnhancementTest {
 
     @Mock private IdempotencyRecordRepository idempotencyRepository;
 
-    @Mock private com.casms.audit.AuditRepository auditRepository;
+    @Mock private AuditRepository auditRepository;
 
     @Mock private DeckRepository deckRepository;
 

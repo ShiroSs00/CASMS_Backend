@@ -4,10 +4,12 @@ import com.casms.booking.entity.BookingPassenger;
 import com.casms.booking.enums.BookingStatus;
 import com.casms.booking.repository.BookingPassengerRepository;
 import com.casms.common.exception.BusinessException;
+import com.casms.cruisepackage.service.CruisePackageEntitlementService;
 import com.casms.identity.entity.Passenger;
 import com.casms.identity.entity.User;
 import com.casms.identity.repository.PassengerRepository;
 import com.casms.identity.repository.UserRepository;
+import com.casms.pos.PosLedgerService;
 import com.casms.servicepackage.entity.Service;
 import com.casms.servicepackage.entity.ServiceRequest;
 import com.casms.servicepackage.entity.ServiceSchedule;
@@ -16,6 +18,7 @@ import com.casms.servicepackage.enums.ServiceStatus;
 import com.casms.servicepackage.repository.ServiceRepository;
 import com.casms.servicepackage.repository.ServiceRequestRepository;
 import com.casms.servicepackage.repository.ServiceScheduleRepository;
+import com.casms.servicepackage.repository.ServiceUsageRepository;
 
 import jakarta.persistence.EntityNotFoundException;
 
@@ -40,11 +43,11 @@ public class ServiceRequestService {
     private final PassengerRepository passengers;
     private final UserRepository users;
     private final ServiceScheduleRepository schedules;
-    private final com.casms.pos.PosLedgerService posLedger;
+    private final PosLedgerService posLedger;
 
     private final ServiceUsageQuotaService usageQuotas;
-    private final com.casms.servicepackage.repository.ServiceUsageRepository usages;
-    private final com.casms.cruisepackage.service.CruisePackageEntitlementService fareEntitlements;
+    private final ServiceUsageRepository usages;
+    private final CruisePackageEntitlementService fareEntitlements;
     private final ShipServiceAvailability shipServices;
 
     public List<ServiceRequest> list(UUID passengerId, boolean staff) {

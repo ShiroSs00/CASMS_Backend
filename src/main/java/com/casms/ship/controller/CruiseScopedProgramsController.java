@@ -13,8 +13,10 @@ import com.casms.security.principal.CasmsPrincipal;
 import com.casms.servicepackage.entity.TourPackage;
 import com.casms.servicepackage.enums.BenefitType;
 import com.casms.servicepackage.enums.TourPackageType;
+import com.casms.servicepackage.service.ServiceScheduleManagementService;
 import com.casms.servicepackage.service.ServicepackageService;
 import com.casms.ship.dto.request.CruisePricingPolicyRequest;
+import com.casms.ship.dto.response.CruisePricingPolicyResponse;
 import com.casms.ship.service.CruiseMainflowService;
 import com.casms.ship.service.CruisePricingPolicyService;
 
@@ -49,7 +51,7 @@ public class CruiseScopedProgramsController {
     private final CruisePricingPolicyService pricing;
     private final JdbcTemplate jdbc;
     private final EntityManager em;
-    private final com.casms.servicepackage.service.ServiceScheduleManagementService schedules;
+    private final ServiceScheduleManagementService schedules;
 
     public record ResponsibleUserInput(UUID userId) {}
     public record ActivityAreaInput(@NotNull UUID areaId) {}
@@ -890,7 +892,7 @@ public class CruiseScopedProgramsController {
     }
 
     @PutMapping("/pricing-policy")
-    public ApiResponse<com.casms.ship.dto.response.CruisePricingPolicyResponse> policy(
+    public ApiResponse<CruisePricingPolicyResponse> policy(
             @PathVariable UUID cruiseId,
             @RequestHeader("If-Match") Long expected,
             @Valid @RequestBody CruisePricingPolicyRequest input,

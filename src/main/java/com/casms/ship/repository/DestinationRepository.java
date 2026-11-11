@@ -4,6 +4,7 @@ import com.casms.ship.entity.Destination;
 import com.casms.ship.enums.DestinationStatus;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -52,7 +53,7 @@ SELECT EXISTS (SELECT 1 FROM "DestinationVisit" WHERE destination_id=:id)
 
     // Bulk delete deliberately bypasses Destination.ports cascade; FK constraints protect
     // concurrent references.
-    @org.springframework.data.jpa.repository.Modifying
+    @Modifying
     @Query(value = "DELETE FROM \"Destination\" WHERE destination_id=:id", nativeQuery = true)
     int deleteDirectoryRow(@Param("id") UUID id);
 }
