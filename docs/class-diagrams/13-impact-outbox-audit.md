@@ -1,13 +1,90 @@
-# Phân Hệ Biến Động Hải Trình, Outbox Thông Báo & Kiểm Toán Hệ Thống (Impact Tasks, Outbox & Audit)
+# Sơ Đồ Lớp Thiết Kế Chi Tiết: Biến Động Hải Trình, Outbox & Kiểm Toán (Impact, Outbox & Audit Design Class Diagram)
 
-Quản lý các tác vụ xử lý sự cố hải trình (thời tiết biển xấu, tàu trễ giờ cập cảng), mô hình giao vận bất đồng bộ Outbox Pattern để gửi thông báo đẩy đến khách hàng, và nhật ký kiểm toán hệ thống.
+Mô hình hóa chi tiết đầy đủ 4 tầng kiến trúc: **Controller ➔ Service ➔ Repository ➔ Entity** cho xử lý sự cố trễ tàu, mô hình giao vận bảo đảm Transactional Outbox Pattern và nhật ký kiểm toán hệ thống.
 
-## Mã Mermaid UML
+## Mã Mermaid UML (Tối ưu chuẩn Draw.io không bị đè dòng)
 
 ```mermaid
 classDiagram
     direction TB
 
+    %% 1. Controller Layer
+    class CruiseDelayController {
+        -CruiseDelayService delayService
+        -CruiseImpactAssessmentService impactService
+        +previewDelayImpact(cruiseId, newEta) ApiResponse
+        +recordDepartureDelay(cruiseId, request) ApiResponse
+        +listDelayEvents(cruiseId) ApiResponse
+    }
+
+    class NotificationController {
+        -NotificationService notificationService
+        +getMyNotifications(principal) ApiResponse~Page~NotificationResponse~~
+        +markAsRead(notificationId) ApiResponse
+        +getUnreadCount(principal) ApiResponse~Long~
+    }
+
+    class CruiseController {
+        -CruiseAuditService auditService
+        +getAuditEvents(cruiseId) ApiResponse~List~CruiseAuditEventResponse~~
+    }
+
+    %% 2. Service Layer
+    class CruiseDelayService {
+        -CruiseRepository cruiseRepo
+        -CruiseImpactTaskRepository taskRepo
+        -ImpactNotificationOutboxRepository outboxRepo
+        +applyDelay(cruiseId, delayedMinutes, reason) CruiseImpactTask
+        +generateOutboxNotifications(taskId, affectedBookings) void
+    }
+
+    class CruiseImpactAssessmentService {
+        -CruiseStopRepository stopRepo
+        -ItineraryChangeHistoryRepository historyRepo
+        +assessImpact(cruiseId, delayDuration) CruiseChangeImpactResponse
+        +recalculatePortWindows(cruiseId) void
+    }
+
+    class NotificationService {
+        -NotificationRepository notificationRepo
+        -ImpactNotificationOutboxRepository outboxRepo
+        +dispatchPendingOutboxMessages() int
+        +deliverNotification(userId, title, content) Notification
+        +markNotificationRead(id) void
+    }
+
+    class AuditService {
+        -AuditLogRepository auditRepo
+        +logAction(entityName, entityId, action, username) void
+        +queryAuditTrail(entityName, entityId) List~AuditLog~
+    }
+
+    %% 3. Repository Layer
+    class CruiseImpactTaskRepository {
+        +findById(id) Optional~CruiseImpactTask~
+        +findByCruiseIdAndStatus(cruiseId, status) List~CruiseImpactTask~
+        +save(task) CruiseImpactTask
+    }
+
+    class ImpactNotificationOutboxRepository {
+        +findByStatusOrderByScheduledSendAtAsc(status) List~ImpactNotificationOutbox~
+        +findByTaskId(taskId) List~ImpactNotificationOutbox~
+        +save(outbox) ImpactNotificationOutbox
+        +saveAll(outboxList) List~ImpactNotificationOutbox~
+    }
+
+    class NotificationRepository {
+        +findByRecipientUserIdOrderByCreatedAtDesc(userId, pageable) Page~Notification~
+        +countByRecipientUserIdAndReadAtIsNull(userId) Long
+        +save(notification) Notification
+    }
+
+    class AuditLogRepository {
+        +findByEntityNameAndEntityId(name, id) List~AuditLog~
+        +save(log) AuditLog
+    }
+
+    %% 4. Entity Layer
     class CruiseImpactTask {
         +UUID taskId
         +String taskCode
@@ -64,32 +141,25 @@ classDiagram
         +Instant changedAt
     }
 
-    class ImpactSeverity {
-        <<enumeration>>
-        MINOR_DELAY
-        PORT_SKIPPED
-        WEATHER_DIVERT
-        EMERGENCY_STOP
-    }
+    %% Inter-Layer and Domain Relationships
+    CruiseDelayController --> CruiseDelayService : delegatesTo
+    CruiseDelayController --> CruiseImpactAssessmentService : delegatesTo
+    NotificationController --> NotificationService : delegatesTo
+    CruiseController --> AuditService : delegatesTo
 
-    class OutboxStatus {
-        <<enumeration>>
-        PENDING
-        IN_PROGRESS
-        SENT
-        DEAD_LETTER
-    }
+    CruiseDelayService --> CruiseImpactTaskRepository : accesses
+    CruiseDelayService --> ImpactNotificationOutboxRepository : accesses
+    NotificationService --> ImpactNotificationOutboxRepository : accesses
+    NotificationService --> NotificationRepository : accesses
+    AuditService --> AuditLogRepository : accesses
 
-    %% Relationships
+    CruiseImpactTaskRepository ..> CruiseImpactTask : manages
+    ImpactNotificationOutboxRepository ..> ImpactNotificationOutbox : manages
+    NotificationRepository ..> Notification : manages
+    AuditLogRepository ..> AuditLog : manages
+
     CruiseImpactTask "1" *-- "0..*" ImpactNotificationOutbox : generatesNotifications
     ImpactNotificationOutbox "1" ..> "1" Notification : deliversAs
     CruiseImpactTask "1" o-- "0..*" CruiseAuditEvent : logsEvents
     CruiseImpactTask "1" o-- "0..*" ItineraryChangeHistory : altersItinerary
-    CruiseImpactTask --> ImpactSeverity : severity
-    ImpactNotificationOutbox --> OutboxStatus : outboxState
 ```
-
-## Giải Thích Quan Hệ & Ràng Buộc
-- **Transactional Outbox Pattern**: Khi có sự cố dời giờ tàu, hệ thống lưu task sự cố và thông điệp vào bảng `ImpactNotificationOutbox` trong cùng một Database Transaction. Background worker sẽ đọc từ Outbox và gửi tin nhắn đẩy/email/SMS đến khách, đảm bảo tính bền vững (Guaranteed At-Least-Once Delivery) ngay cả khi mất kết nối mạng ngoài khơi.
-- **AuditLog & CruiseAuditEvent**: Cơ chế ghi lại vết thay đổi (Audit Trail) của toàn bộ dữ liệu quan trọng, phục vụ công tác thanh tra hàng hải và kiểm soát gian lận.
-

@@ -1,13 +1,83 @@
-# Phân Hệ Định Vị Trong Nhà Thời Gian Thực IoT BLE & Theo Dõi Hành Khách (Indoor Location & BLE Tracking)
+# Sơ Đồ Lớp Thiết Kế Chi Tiết: Định Vị Trong Nhà Thời Gian Thực IoT BLE (Indoor Location & BLE Tracking Design Class Diagram)
 
-Quản lý hạ tầng thiết bị định vị (Beacon, Scanner BLE), nhật ký tín hiệu di chuyển thời gian thực, và liên kết mã định danh BLE với hành khách trên du thuyền.
+Mô hình hóa chi tiết đầy đủ 4 tầng kiến trúc: **Controller ➔ Service ➔ Repository ➔ Entity** cho quản lý trạm phát sóng Anchor Beacon, dòng dữ liệu tọa độ thời gian thực (Real-time telemetry) và giám sát vị trí hành khách mang thẻ/vòng tay BLE.
 
-## Mã Mermaid UML
+## Mã Mermaid UML (Tối ưu chuẩn Draw.io không bị đè dòng)
 
 ```mermaid
 classDiagram
     direction TB
 
+    %% 1. Controller Layer
+    class BleAnchorController {
+        -BleAnchorService anchorService
+        +registerAnchor(request) ApiResponse~BleAnchorResponse~
+        +updateAnchor(anchorId, request) ApiResponse~BleAnchorResponse~
+        +listAnchorsByShip(shipId) ApiResponse~List~BleAnchorResponse~~
+        +calibrateAnchor(anchorId, rssiOffset) ApiResponse
+    }
+
+    class PassengerTrackingController {
+        -PassengerBleIdentityService trackingService
+        +getPassengerLastKnownLocation(passengerId) ApiResponse~PassengerTrackingResponse~
+        +getDeckHeatmap(deckId) ApiResponse
+        +triggerMissingChildAlert(passengerId) ApiResponse
+    }
+
+    class BleRuntimeController {
+        -BleRuntimeService runtimeService
+        +ingestTelemetryBatch(telemetryList) ApiResponse
+        +getDeviceHealthStatus(shipId) ApiResponse
+    }
+
+    %% 2. Service Layer
+    class BleAnchorService {
+        -LocationDeviceRepository deviceRepo
+        -ShipRepository shipRepo
+        +registerDevice(dto) LocationDevice
+        +updateDeviceStatus(deviceId, status) LocationDevice
+        +findOnlineDevices(shipId) List~LocationDevice~
+    }
+
+    class BleRuntimeService {
+        -LocationRecordRepository recordRepo
+        -LocationDeviceRepository deviceRepo
+        +processBeaconSignals(signals) void
+        +triangulateCoordinates(macAddress, signalList) LocationRecord
+        +cleanOldRecords(beforeInstant) int
+    }
+
+    class PassengerBleIdentityService {
+        -PassengerBleIdentityRepository identityRepo
+        -LocationRecordRepository recordRepo
+        +pairWristband(passengerId, macAddress) PassengerBleIdentity
+        +unpairWristband(passengerId) void
+        +locatePassenger(passengerId) Optional~LocationRecord~
+    }
+
+    %% 3. Repository Layer
+    class LocationDeviceRepository {
+        +findById(id) Optional~LocationDevice~
+        +findByDeviceCode(code) Optional~LocationDevice~
+        +findByShipIdAndStatus(shipId, status) List~LocationDevice~
+        +findByBleIdentifier(bleId) Optional~LocationDevice~
+        +save(device) LocationDevice
+    }
+
+    class LocationRecordRepository {
+        +findLatestByTagBleIdentifier(tagId) Optional~LocationRecord~
+        +findByDetectedDeckIdAndRecordedAtAfter(deckId, since) List~LocationRecord~
+        +save(record) LocationRecord
+        +saveAll(records) List~LocationRecord~
+    }
+
+    class PassengerBleIdentityRepository {
+        +findByPassengerIdAndIsActiveTrue(passengerId) Optional~PassengerBleIdentity~
+        +findByBleMacAddress(mac) Optional~PassengerBleIdentity~
+        +save(identity) PassengerBleIdentity
+    }
+
+    %% 4. Entity Layer
     class LocationDevice {
         +UUID locationDeviceId
         +String deviceCode
@@ -48,31 +118,22 @@ classDiagram
         +Instant issuedAt
     }
 
-    class LocationDeviceType {
-        <<enumeration>>
-        FIXED_ANCHOR_BEACON
-        GANGWAY_GATEWAY_SCANNER
-        MOBILE_CREW_HANDHELD
-    }
+    %% Inter-Layer and Domain Relationships
+    BleAnchorController --> BleAnchorService : delegatesTo
+    PassengerTrackingController --> PassengerBleIdentityService : delegatesTo
+    BleRuntimeController --> BleRuntimeService : delegatesTo
 
-    class LocationDeviceStatus {
-        <<enumeration>>
-        ONLINE
-        OFFLINE
-        CALIBRATING
-        MAINTENANCE
-    }
+    BleAnchorService --> LocationDeviceRepository : accesses
+    BleRuntimeService --> LocationRecordRepository : accesses
+    BleRuntimeService --> LocationDeviceRepository : accesses
+    PassengerBleIdentityService --> PassengerBleIdentityRepository : accesses
+    PassengerBleIdentityService --> LocationRecordRepository : accesses
 
-    %% Relationships
+    LocationDeviceRepository ..> LocationDevice : manages
+    LocationRecordRepository ..> LocationRecord : manages
+    PassengerBleIdentityRepository ..> PassengerBleIdentity : manages
+
     LocationDevice "1" ..> "0..*" LocationRecord : picksUpSignals
     PassengerBleIdentity "1" ..> "0..*" LocationRecord : trackedBy
     PassengerIdentifier "1" o-- "0..1" PassengerBleIdentity : bindsBleTag
-    LocationDevice --> LocationDeviceType : type
-    LocationDevice --> LocationDeviceStatus : status
 ```
-
-## Giải Thích Quan Hệ & Ràng Buộc
-- **LocationDevice**: Các trạm thu phát sóng Bluetooth Low Energy (BLE) cố định tại các góc boong tàu, hành lang, nhà hàng, hồ bơi.
-- **LocationRecord**: Dòng dữ liệu time-series lưu trữ tọa độ tính toán (X, Y, Z) và cường độ sóng (`signalRssi`) của vòng đeo tay thông minh.
-- **PassengerBleIdentity & PassengerIdentifier**: Liên kết vòng tay RFID/BLE với hồ sơ hành khách (`Passenger`), cho phép xác định vị trí hành khách trong các tình huống khẩn cấp (diễn tập cứu hộ, tìm trẻ em đi lạc, cảnh báo khu vực cấm).
-

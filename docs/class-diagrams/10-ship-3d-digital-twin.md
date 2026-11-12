@@ -1,21 +1,78 @@
-# Phân Hệ Mô Hình 3D Digital Twin Tàu & CAD/BIM (Ship 3D Model & Assets)
+# Sơ Đồ Lớp Thiết Kế Chi Tiết: Mô Hình 3D Digital Twin Tàu & CAD/BIM (Ship 3D Model & Assets Design Class Diagram)
 
-Lưu trữ mô hình 3D đa giác, cây phân cấp đối tượng không gian (Spatial Object Hierarchy), ánh xạ buồng phòng/boong tàu với các đối tượng 3D, và quy trình nhập file CAD/BIM/Asset bundle từ nhà sản xuất tàu.
+Mô hình hóa chi tiết đầy đủ 4 tầng kiến trúc: **Controller ➔ Service ➔ Repository ➔ Entity** cho quy trình quản lý file mô hình 3D đa giác, cây phân cấp đối tượng không gian (Spatial Object Nodes) và tiến trình nhập file CAD/BIM bất đồng bộ.
 
-## Mã Mermaid UML
+## Mã Mermaid UML (Tối ưu chuẩn Draw.io không bị đè dòng)
 
 ```mermaid
 classDiagram
     direction TB
 
-    class Ship {
-        +UUID shipId
-        +String shipCode
-        +String shipName
-        +Integer totalDecks
-        +ShipStatus status
+    %% 1. Controller Layer
+    class ShipModelController {
+        -ShipModelService modelService
+        -ShipModelAssetService assetService
+        +createModel(shipId, request) ApiResponse~ShipModelResponse~
+        +uploadAsset(modelId, file) ApiResponse~ShipModelAssetUploadResponse~
+        +listObjects(modelId) ApiResponse~List~ShipModelObjectResponse~~
+        +registerManifest(modelKey, request) ApiResponse
     }
 
+    class PublicShipModelController {
+        -ShipModelService modelService
+        +getPublicModel(shipId) ApiResponse~PublicShipModelResponse~
+        +getAssetBlob(blobKey) ResponseEntity~byte[]~
+    }
+
+    %% 2. Service Layer
+    class ShipModelService {
+        -ShipModelRepository modelRepo
+        -ShipModelObjectRepository objectRepo
+        -ShipRepository shipRepo
+        +createShipModel(shipId, dto) ShipModelResponse
+        +getActiveModelByShip(shipId) Optional~ShipModel~
+        +linkObjectToCabin(objectId, cabinId) void
+        +deprecateModel(modelId) void
+    }
+
+    class ShipModelAssetService {
+        -ShipModelAssetStore assetStore
+        -ModelImportJobRepository jobRepo
+        +uploadBlob(modelId, bytes, fileName) ShipModelAssetBlob
+        +streamBlob(blobKey) InputStream
+        +triggerImportJob(modelId) ModelImportJob
+    }
+
+    class ShipModelImportService {
+        -ModelImportJobRepository jobRepo
+        -ShipModelObjectRepository objectRepo
+        +processImportQueue() void
+        +parseGltfHierarchy(jobId, inputStream) void
+        +recordIssue(jobId, severity, message) void
+    }
+
+    %% 3. Repository Layer
+    class ShipModelRepository {
+        +findById(id) Optional~ShipModel~
+        +findByShipIdAndStatus(shipId, status) List~ShipModel~
+        +findByModelKey(modelKey) Optional~ShipModel~
+        +save(model) ShipModel
+    }
+
+    class ShipModelObjectRepository {
+        +findByShipModelId(modelId) List~ShipModelObject~
+        +findByNodeKey(nodeKey) Optional~ShipModelObject~
+        +saveAll(objects) List~ShipModelObject~
+        +save(object) ShipModelObject
+    }
+
+    class ModelImportJobRepository {
+        +findById(id) Optional~ModelImportJob~
+        +findByStatus(status) List~ModelImportJob~
+        +save(job) ModelImportJob
+    }
+
+    %% 4. Entity Layer
     class ShipModel {
         +UUID shipModelId
         +String version
@@ -64,35 +121,24 @@ classDiagram
         +String errorMessage
     }
 
-    class ShipModelStatus {
-        <<enumeration>>
-        DRAFT
-        ACTIVE
-        ARCHIVED
-        DEPRECATED
-    }
+    %% Inter-Layer and Domain Relationships
+    ShipModelController --> ShipModelService : delegatesTo
+    ShipModelController --> ShipModelAssetService : delegatesTo
+    PublicShipModelController --> ShipModelService : delegatesTo
+    ShipModelAssetService --> ShipModelImportService : triggersJob
 
-    class ImportJobStatus {
-        <<enumeration>>
-        QUEUED
-        PROCESSING
-        COMPLETED
-        FAILED
-    }
+    ShipModelService --> ShipModelRepository : accesses
+    ShipModelService --> ShipModelObjectRepository : accesses
+    ShipModelAssetService --> ModelImportJobRepository : accesses
+    ShipModelImportService --> ModelImportJobRepository : accesses
+    ShipModelImportService --> ShipModelObjectRepository : accesses
 
-    %% Relationships
-    Ship "1" *-- "0..*" ShipModel : has3DModels
+    ShipModelRepository ..> ShipModel : manages
+    ShipModelObjectRepository ..> ShipModelObject : manages
+    ModelImportJobRepository ..> ModelImportJob : manages
+
     ShipModel "1" *-- "0..*" ShipModelObject : containsObjects
     ShipModel "1" *-- "0..*" ShipModelAssetBlob : bundlesAssets
     ShipModel "1" o-- "0..*" ModelImportJob : importedThrough
     ModelImportJob "1" *-- "0..*" ModelImportIssue : logsIssues
-    ShipModel --> ShipModelStatus : status
-    ModelImportJob --> ImportJobStatus : jobStatus
 ```
-
-## Giải Thích Quan Hệ & Ràng Buộc
-- **Ship - ShipModel**: Một con tàu có thể có nhiều phiên bản mô hình 3D (`ShipModel`) theo thời gian (khi nâng cấp, sửa chữa, cải tạo boong tàu).
-- **ShipModel - ShipModelObject**: Cây đối tượng 3D chi tiết ánh xạ trực tiếp đến các thực thể logic như `Deck`, `Cabin`, `Area` thông qua thuộc tính `nodeKey` và ma trận chuyển đổi không gian 3 chiều (`transformMatrix`).
-- **ShipModelAssetBlob**: Lưu trữ nhị phân các file định dạng GLTF/GLB/Textures với mã băm bảo mật `checksumSha256`.
-- **ModelImportJob & ModelImportIssue**: Tiến trình nhập dữ liệu CAD/BIM bất đồng bộ, ghi nhận các lỗi sai lệch tọa độ hoặc thiếu vật liệu đồ họa khi import.
-

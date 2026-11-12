@@ -1,13 +1,81 @@
-# Phân Hệ Yêu Cầu Phục Vụ Buồng Phòng, Dịch Vụ Tiện Ích & Đánh Giá (Service Request & Guest Feedback)
+# Sơ Đồ Lớp Thiết Kế Chi Tiết: Phục Vụ Buồng Phòng & Đánh Giá (Service Request & Feedback Design Class Diagram)
 
-Quản lý các yêu cầu phục vụ phòng (Room Service, Housekeeping, Butler), theo dõi hạn mức tiêu dùng trong gói hoặc phụ thu phát sinh, và hệ thống khảo sát đánh giá độ hài lòng của khách.
+Mô hình hóa chi tiết đầy đủ 4 tầng kiến trúc: **Controller ➔ Service ➔ Repository ➔ Entity** cho các yêu cầu phục vụ phòng (Room Service, Housekeeping), kiểm soát định mức quyền lợi All-Inclusive và hệ thống thu thập đánh giá độ hài lòng.
 
-## Mã Mermaid UML
+## Mã Mermaid UML (Tối ưu chuẩn Draw.io không bị đè dòng)
 
 ```mermaid
 classDiagram
     direction TB
 
+    %% 1. Controller Layer
+    class ServicepackageController {
+        -ServiceRequestService requestService
+        -ServiceUsageQuotaService quotaService
+        +createServiceRequest(request) ApiResponse~ServiceRequestResponse~
+        +listRequestsByBooking(bookingId) ApiResponse
+        +updateStatus(requestId, status) ApiResponse
+        +submitFeedback(requestId, feedbackDto) ApiResponse
+    }
+
+    class PosController {
+        -PosService posService
+        +requests(terminalId) ApiResponse~List~ServiceRequestView~~
+        +action(requestId, actionDto) ApiResponse~ServiceRequestView~
+    }
+
+    %% 2. Service Layer
+    class ServiceRequestService {
+        -ServiceRequestRepository requestRepo
+        -ServiceRepository serviceRepo
+        -BookingRepository bookingRepo
+        +createRequest(bookingId, serviceId, count) ServiceRequest
+        +assignToStaff(requestId, staffUserId) ServiceRequest
+        +fulfillRequest(requestId) ServiceRequest
+        +cancelRequest(requestId, reason) ServiceRequest
+    }
+
+    class ServiceUsageQuotaService {
+        -ServiceUsageRepository usageRepo
+        -ServiceRequestRepository requestRepo
+        +checkQuotaAvailable(passengerId, serviceId) boolean
+        +deductQuotaOrSurcharge(requestId, quantity) ServiceUsage
+    }
+
+    class FeedbackService {
+        -FeedbackRepository feedbackRepo
+        -ServiceRequestRepository requestRepo
+        +submitRating(requestId, score, comments) Feedback
+        +getAverageScoreByService(serviceId) Double
+    }
+
+    %% 3. Repository Layer
+    class ServiceRequestRepository {
+        +findById(id) Optional~ServiceRequest~
+        +findByBookingPassengerId(passengerId) List~ServiceRequest~
+        +findByStatus(status) List~ServiceRequest~
+        +save(request) ServiceRequest
+    }
+
+    class ServiceUsageRepository {
+        +findByServiceRequestId(requestId) List~ServiceUsage~
+        +sumConsumedByPassengerAndService(passengerId, serviceId) Long
+        +save(usage) ServiceUsage
+    }
+
+    class FeedbackRepository {
+        +findByServiceRequestId(requestId) Optional~Feedback~
+        +findAverageScore(serviceId) Double
+        +save(feedback) Feedback
+    }
+
+    class ServiceRepository {
+        +findById(id) Optional~Service~
+        +findByServiceCode(code) Optional~Service~
+        +save(service) Service
+    }
+
+    %% 4. Entity Layer
     class ServiceRequest {
         +UUID serviceRequestId
         +String usageMode
@@ -58,35 +126,25 @@ classDiagram
         +Instant assignedDate
     }
 
-    class ServiceRequestStatus {
-        <<enumeration>>
-        SUBMITTED
-        ASSIGNED
-        IN_PROGRESS
-        FULFILLED
-        CANCELLED
-        REJECTED
-    }
+    %% Inter-Layer and Domain Relationships
+    ServicepackageController --> ServiceRequestService : delegatesTo
+    ServicepackageController --> ServiceUsageQuotaService : delegatesTo
+    ServicepackageController --> FeedbackService : delegatesTo
+    PosController --> ServiceRequestService : delegatesTo
 
-    class ServiceUsagePolicy {
-        <<enumeration>>
-        UNLIMITED
-        FIXED_QUOTA_PER_CRUISE
-        DAILY_ALLOWANCE
-        PAY_PER_USE
-    }
+    ServiceRequestService --> ServiceRequestRepository : accesses
+    ServiceRequestService --> ServiceRepository : accesses
+    ServiceUsageQuotaService --> ServiceUsageRepository : accesses
+    ServiceUsageQuotaService --> ServiceRequestRepository : accesses
+    FeedbackService --> FeedbackRepository : accesses
 
-    %% Relationships
+    ServiceRequestRepository ..> ServiceRequest : manages
+    ServiceUsageRepository ..> ServiceUsage : manages
+    FeedbackRepository ..> Feedback : manages
+    ServiceRepository ..> Product : manages
+
     ServiceRequest "1" *-- "0..*" ServiceUsage : consumesQuota
     ServiceRequest "1" *-- "0..*" ServiceAdditionalCharge : inccursSurcharges
     ServiceRequest "0..*" --> "1" Product : requestsProduct
     ServiceRequest "1" o-- "0..1" Feedback : reviewedBy
-    ServiceRequest --> ServiceRequestStatus : status
-    ServiceRequest --> ServiceUsagePolicy : policy
 ```
-
-## Giải Thích Quan Hệ & Ràng Buộc
-- **ServiceRequest - ServiceUsage**: Khi khách order dịch vụ ăn uống tại phòng hoặc giặt ủi, hệ thống kiểm tra chính sách (`usagePolicySnapshot`). Nếu khách thuộc gói All-Inclusive có hạn mức, số lượng tiêu thụ sẽ được trừ vào `ServiceUsage`. Nếu vượt hạn mức, hệ thống tự động sinh `ServiceAdditionalCharge` hạch toán vào tài khoản phòng Folio.
-- **DeckServiceAssignment**: Phân công nhân viên phục vụ phòng (`staffUserId`) chịu trách nhiệm theo từng tầng boong (`deckId`) và ca trực (`shiftName`).
-- **Feedback**: Đánh giá chất lượng dịch vụ từ 1 đến 5 sao kèm nhận xét chi tiết sau khi yêu cầu được hoàn thành (`FULFILLED`).
-
