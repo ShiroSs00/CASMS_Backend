@@ -940,7 +940,7 @@ class ShipModelImportPostgresIntegrationTest {
                         List.of(7.0, 3.0, 8.0),
                         false,
                         1,
-                        1,
+                        8,
                         4),
                 token);
         UUID secondModel = register(ship.getShipId(), firstKey, "v2", token);
@@ -1028,7 +1028,7 @@ class ShipModelImportPostgresIntegrationTest {
         assertEquals(key, createdShip.getManifestModelId());
         assertEquals("Mini Ship", createdShip.getShipName());
         assertEquals(2, createdShip.getTotalCapacity());
-        assertEquals(1, createdShip.getTotalDecks());
+        assertEquals(8, createdShip.getTotalDecks());
         assertEquals(1, createdShip.getDeckNumberLimit());
         assertEquals(100.0, createdShip.getLengthMeters());
         assertEquals(20.0, createdShip.getBeamMeters());
@@ -1170,6 +1170,74 @@ class ShipModelImportPostgresIntegrationTest {
     }
 
     @Test
+    void manualShipCreateAndUpdateValidatePassengerDeckCount() throws Exception {
+        String token = token(Role.ADMIN);
+        UUID legacyId = createShip(6).getShipId();
+        long before = ships.count();
+        for (String count : List.of("7", "25", "8.5", "null")) {
+            mockMvc.perform(post("/ships")
+                            .header("Authorization", "Bearer " + token)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"shipName\":\"Boundary ship\",\"totalCapacity\":100,\"totalDecks\":" + count + "}"))
+                    .andExpect(status().isBadRequest());
+            if (!count.equals("null")) {
+                mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                                .patch("/ships/{shipId}", legacyId)
+                                .header("Authorization", "Bearer " + token)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"totalDecks\":" + count + "}"))
+                        .andExpect(status().isBadRequest());
+            }
+        }
+        assertEquals(before, ships.count());
+        mockMvc.perform(get("/ships/{shipId}", legacyId).header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalDecks").value(6));
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .patch("/ships/{shipId}", legacyId)
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"shipName\":\"Legacy ship renamed\",\"totalDecks\":null}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalDecks").value(6));
+
+        for (int count : List.of(8, 12, 24)) {
+            var result = mockMvc.perform(post("/ships")
+                            .header("Authorization", "Bearer " + token)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(mapper.writeValueAsBytes(Map.of(
+                                    "shipName", "Boundary ship " + count,
+                                    "totalCapacity", 100, "totalDecks", count))))
+                    .andExpect(status().isCreated())
+                    .andExpect(jsonPath("$.data.totalDecks").value(count))
+                    .andReturn();
+            testShipIds.add(UUID.fromString(mapper.readTree(result.getResponse().getContentAsByteArray())
+                    .path("data").path("shipId").asText()));
+            mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                            .patch("/ships/{shipId}", legacyId)
+                            .header("Authorization", "Bearer " + token)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(mapper.writeValueAsBytes(Map.of("totalDecks", count))))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.totalDecks").value(count));
+        }
+    }
+
+    @Test
+    void invalidManifestCountDoesNotProvisionShip() throws Exception {
+        String token = token(Role.ADMIN);
+        for (int count : List.of(7, 25)) {
+            String key = uniqueKey("deck-count");
+            Path zip = smallBundle(key, "v1", "OCEAN_VIEW", "M-001", true, true,
+                    "Mini Deck", 1.0, List.of(5.0, 2.8, 6.5), false, 1, count);
+            upload(key, "v1", zip, token);
+            long before = ships.count();
+            createUsingModel(key, Map.of("totalDecks", 8), token, 400);
+            assertEquals(before, ships.count());
+        }
+    }
+
+    @Test
     void shipCreateUsesStoredModelAndGeneratesCodesAndDatesWithoutAnotherUpload() throws Exception {
         String token = token(Role.ADMIN), key = uniqueKey("reuse-create");
         upload(key, "v1", smallBundle(key, "v1", "OCEAN_VIEW", "M-REUSE", true), token);
@@ -1191,7 +1259,7 @@ class ShipModelImportPostgresIntegrationTest {
                                 "totalCapacity",
                                 999,
                                 "totalDecks",
-                                99),
+                                24),
                         token,
                         201);
         JsonNode second =
@@ -1209,7 +1277,7 @@ class ShipModelImportPostgresIntegrationTest {
         assertNotEquals(first.path("shipCode").asText(), second.path("shipCode").asText());
         assertEquals("Mini Ship", first.path("shipName").asText());
         assertEquals(2, first.path("totalCapacity").asInt());
-        assertEquals(1, first.path("totalDecks").asInt());
+        assertEquals(8, first.path("totalDecks").asInt());
         assertFalse(first.path("createdAt").asText().isBlank());
         assertEquals("2020-01-02", second.path("commissionDate").asText());
         assertEquals(
@@ -1275,13 +1343,15 @@ class ShipModelImportPostgresIntegrationTest {
                                 "Supplemented ship",
                                 "totalCapacity",
                                 20,
+                                "totalDecks",
+                                8,
                                 "lengthMeters",
                                 75.0),
                         token,
                         201);
         assertEquals("Supplemented ship", ship.path("shipName").asText());
         assertEquals(20, ship.path("totalCapacity").asInt());
-        assertEquals(1, ship.path("totalDecks").asInt());
+        assertEquals(8, ship.path("totalDecks").asInt());
         assertEquals(75.0, ship.path("lengthMeters").asDouble());
         assertTrue(ship.path("beamMeters").isNull());
         assertTrue(ship.path("commissionDate").isNull());
@@ -1296,7 +1366,9 @@ class ShipModelImportPostgresIntegrationTest {
                                                                 "shipName",
                                                                 "Second supplemented ship",
                                                                 "totalCapacity",
-                                                                30))))
+                                                                30,
+                                                                "totalDecks",
+                                                                8))))
                         .andExpect(status().isCreated())
                         .andReturn();
         UUID other =
@@ -1715,7 +1787,7 @@ class ShipModelImportPostgresIntegrationTest {
                 cabinSize,
                 false,
                 1,
-                1);
+                8);
     }
 
     private Path smallBundle(
@@ -1742,7 +1814,7 @@ class ShipModelImportPostgresIntegrationTest {
                 cabinSize,
                 duplicateCabinNumber,
                 1,
-                1);
+                8);
     }
 
     private Path smallBundle(

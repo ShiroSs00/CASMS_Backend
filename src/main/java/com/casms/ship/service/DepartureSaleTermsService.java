@@ -71,13 +71,13 @@ public class DepartureSaleTermsService {
 
     public java.util.List<SetupRequest> setupRequests() {
         return jdbc.query("""
-                SELECT c.cruise_id, c.cruise_code, c.cruise_name, departure.port_name, returning.port_name,
+                SELECT c.cruise_id, c.cruise_code, c.cruise_name, departure.port_name, return_port.port_name,
                     ARRAY(SELECT DISTINCT p.port_name FROM "Itinerary" i
                           JOIN "CruiseStop" s USING(itinerary_id) JOIN "Port" p ON p.port_id=s.port_id
                           WHERE i.cruise_id=c.cruise_id ORDER BY p.port_name)
                 FROM "CruiseSaleTermsRequest" r JOIN "Cruise" c USING(cruise_id)
                 JOIN "Port" departure ON departure.port_id=c.departure_port_id
-                JOIN "Port" returning ON returning.port_id=c.return_port_id
+                JOIN "Port" return_port ON return_port.port_id=c.return_port_id
                 WHERE r.completed_at IS NULL AND c.status IN ('DRAFT','PUBLISHED')
                 ORDER BY r.requested_at
                 """, (row, index) -> new SetupRequest(row.getObject(1, UUID.class), row.getString(2),

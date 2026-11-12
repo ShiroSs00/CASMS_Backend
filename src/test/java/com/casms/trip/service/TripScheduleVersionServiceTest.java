@@ -9,6 +9,7 @@ import com.casms.audit.AuditRepository;
 import com.casms.audit.AuditService;
 import com.casms.common.exception.BusinessException;
 import com.casms.identity.entity.User;
+import com.casms.identity.enums.Role;
 import com.casms.identity.repository.UserRepository;
 import com.casms.ship.entity.Port;
 import com.casms.ship.enums.ItineraryDayRole;
@@ -22,6 +23,7 @@ import com.casms.trip.dto.response.TripAuditResponse;
 import com.casms.trip.dto.response.TripScheduleVersionDetailResponse;
 import com.casms.trip.dto.response.ValidationReport;
 import com.casms.trip.entity.*;
+import com.casms.trip.enums.TripDurationGroup;
 import com.casms.trip.enums.TripPlanEntryKind;
 import com.casms.trip.enums.TripScheduleVersionStatus;
 import com.casms.trip.enums.TripStatus;
@@ -29,15 +31,18 @@ import com.casms.trip.repository.*;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.function.Executable;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.http.HttpStatus;
 
 import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 @ExtendWith(MockitoExtension.class)
@@ -67,11 +72,7 @@ class TripScheduleVersionServiceTest {
 
     private UUID tripId;
     private UUID creatorId;
-    private UUID submitterId;
-    private UUID approverId;
     private User creator;
-    private User submitter;
-    private User approver;
     private Trip trip;
     private TripScheduleVersion version;
     private Port samplePort;
@@ -80,20 +81,12 @@ class TripScheduleVersionServiceTest {
     void setUp() {
         tripId = UUID.randomUUID();
         creatorId = UUID.randomUUID();
-        submitterId = UUID.randomUUID();
-        approverId = UUID.randomUUID();
 
         creator = new User();
         creator.setUserId(creatorId);
         creator.setUsername("creator");
 
-        submitter = new User();
-        submitter.setUserId(submitterId);
-        submitter.setUsername("submitter");
-
-        approver = new User();
-        approver.setUserId(approverId);
-        approver.setUsername("approver");
+        creator.setRoles(Set.of(Role.CRUISE_MANAGER));
 
         trip = new Trip();
         trip.setTripId(tripId);
@@ -270,21 +263,21 @@ class TripScheduleVersionServiceTest {
     }
 
     @Test
-    void testSubmitForReviewRequiresDayType() {
-        when(versionRepository.findByTrip_TripIdAndVersionNumber(tripId, 1))
-                .thenReturn(Optional.of(version));
-        // day1 and day2 have dayType = null
+    void finalizeRejectsTemplateMissingDayTypeWithoutSaving() {
+        trip.setDurationGroup(TripDurationGroup.SHORT);
+        givenCurrentVersionAndCreator();
 
-        BusinessException ex =
-                assertThrows(
-                        BusinessException.class,
-                        () -> versionService.submitForReview(tripId, 1, submitterId));
-        assertEquals("DAY_TYPE_REQUIRED", ex.getCode());
+        var failure = assertThrows(BusinessException.class,
+                () -> versionService.finalizeVersion(version.getVersionId(), 1L, creatorId));
+        assertEquals(HttpStatus.UNPROCESSABLE_ENTITY, failure.getStatus());
+        assertEquals("DAY_TYPE_REQUIRED", failure.getCode());
+        assertEquals(TripScheduleVersionStatus.DRAFT, version.getStatus());
+        verify(versionRepository, never()).save(any());
     }
 
     @Test
-    void testSubmitForReviewRequiresEmbarkationOnDay1() {
-        when(versionRepository.findByTrip_TripIdAndVersionNumber(tripId, 1))
+    void validateReportsMissingEmbarkationForPortDayWithoutDeparturePort() {
+        when(versionRepository.findById(version.getVersionId()))
                 .thenReturn(Optional.of(version));
 
         version.getDays().get(0).setDayType(ItineraryDayType.PORT_DAY);
@@ -308,16 +301,15 @@ class TripScheduleVersionServiceTest {
         s2.setIsDisembarkation(true);
         version.getStops().add(s2);
 
-        BusinessException ex =
-                assertThrows(
-                        BusinessException.class,
-                        () -> versionService.submitForReview(tripId, 1, submitterId));
-        assertEquals("MISSING_EMBARKATION", ex.getCode());
+        var report = versionService.validateVersion(version.getVersionId());
+        assertFalse(report.getValidForSubmit());
+        assertTrue(report.getViolations().stream()
+                .anyMatch(v -> "MISSING_EMBARKATION".equals(v.getCode())), report.getViolations()::toString);
     }
 
     @Test
-    void testSubmitForReviewShoreExcursionExceedsAllAboard() {
-        when(versionRepository.findByTrip_TripIdAndVersionNumber(tripId, 1))
+    void validateReportsShoreExcursionAfterAllAboard() {
+        when(versionRepository.findById(version.getVersionId()))
                 .thenReturn(Optional.of(version));
 
         version.getDays().get(0).setDayType(ItineraryDayType.PORT_DAY);
@@ -358,103 +350,73 @@ class TripScheduleVersionServiceTest {
         shore.setMeetingPoint("Cổng cảng số 1");
         version.getEntries().add(shore);
 
-        BusinessException ex =
-                assertThrows(
-                        BusinessException.class,
-                        () -> versionService.submitForReview(tripId, 1, submitterId));
-        assertEquals("SHORE_AFTER_DEPARTURE", ex.getCode());
+        var report = versionService.validateVersion(version.getVersionId());
+        assertFalse(report.getValidForSubmit());
+        assertTrue(report.getViolations().stream()
+                .anyMatch(v -> "SHORE_AFTER_DEPARTURE".equals(v.getCode())), report.getViolations()::toString);
     }
 
     @Test
-    void testReturnToDraftRequiresReason() {
-        version.setStatus(TripScheduleVersionStatus.IN_REVIEW);
-        when(versionRepository.findByTrip_TripIdAndVersionNumber(tripId, 1))
-                .thenReturn(Optional.of(version));
+    void crmFinalizesOwnDraftAndLocksPublishedSource() {
+        trip.setDurationGroup(TripDurationGroup.SHORT);
+        TripPlanDay departure = version.getDays().getFirst();
+        departure.setDayType(ItineraryDayType.SEA_DAY);
+        departure.setDeparturePort(samplePort);
+        departure.setPlannedDepartureTime(LocalTime.of(8, 15));
+        version.getDays().getLast().setDayType(ItineraryDayType.PORT_DAY);
+        TripPlanStop arrival = new TripPlanStop();
+        arrival.setClientKey("arrival");
+        arrival.setVersion(version);
+        arrival.setPort(samplePort);
+        arrival.setStopOrder(1);
+        arrival.setArrivalDayNumber(2);
+        arrival.setDepartureDayNumber(2);
+        arrival.setPlannedArrivalTime(LocalTime.of(8, 0));
+        arrival.setPlannedDepartureTime(LocalTime.of(9, 0));
+        arrival.setIsDisembarkation(true);
+        version.getStops().add(arrival);
+        givenCurrentVersionAndCreator();
+        when(versionRepository.save(version)).thenReturn(version);
 
-        VersionReturnRequest emptyReq = new VersionReturnRequest();
-        emptyReq.setRejectionReason("");
+        var validation = versionService.validateVersion(version.getVersionId());
+        assertTrue(validation.getValidForSubmit(), validation.getViolations()::toString);
+        assertEquals(TripScheduleVersionStatus.DRAFT, version.getStatus());
+        var published = versionService.finalizeVersion(version.getVersionId(), 1L, creatorId);
 
-        BusinessException ex =
-                assertThrows(
-                        BusinessException.class,
-                        () -> versionService.returnToDraft(tripId, 1, emptyReq, approverId));
-        assertEquals("REJECTION_REASON_REQUIRED", ex.getCode());
-    }
-
-    @Test
-    void testPublishMakerCheckerForbiddenForCreator() {
-        version.setStatus(TripScheduleVersionStatus.IN_REVIEW);
-        version.setSubmitter(submitter);
-        when(versionRepository.findByTrip_TripIdAndVersionNumber(tripId, 1))
-                .thenReturn(Optional.of(version));
-
-        // Attempt approval by creator
-        BusinessException ex =
-                assertThrows(
-                        BusinessException.class,
-                        () -> versionService.publishVersion(tripId, 1, creatorId));
-        assertEquals("SELF_APPROVAL_FORBIDDEN", ex.getCode());
-    }
-
-    @Test
-    void testPublishMakerCheckerForbiddenForSubmitter() {
-        version.setStatus(TripScheduleVersionStatus.IN_REVIEW);
-        version.setSubmitter(submitter);
-        when(versionRepository.findByTrip_TripIdAndVersionNumber(tripId, 1))
-                .thenReturn(Optional.of(version));
-
-        // Attempt approval by submitter
-        BusinessException ex =
-                assertThrows(
-                        BusinessException.class,
-                        () -> versionService.publishVersion(tripId, 1, submitterId));
-        assertEquals("SELF_APPROVAL_FORBIDDEN", ex.getCode());
-    }
-
-    @Test
-    void testPublishSuccessForIndependentApprover() {
-        version.setStatus(TripScheduleVersionStatus.IN_REVIEW);
-        version.setSubmitter(submitter);
-        version.getDays().get(0).setDayType(ItineraryDayType.PORT_DAY);
-        version.getDays().get(1).setDayType(ItineraryDayType.PORT_DAY);
-
-        TripPlanStop s1 = new TripPlanStop();
-        s1.setClientKey("stop-01");
-        s1.setPort(samplePort);
-        s1.setStopOrder(1);
-        s1.setArrivalDayNumber(1);
-        s1.setDepartureDayNumber(1);
-        s1.setPlannedArrivalTime(LocalTime.of(8, 0));
-        s1.setPlannedDepartureTime(LocalTime.of(18, 0));
-        s1.setIsEmbarkation(true);
-        version.getStops().add(s1);
-
-        TripPlanStop s2 = new TripPlanStop();
-        s2.setClientKey("stop-02");
-        s2.setPort(samplePort);
-        s2.setStopOrder(2);
-        s2.setArrivalDayNumber(2);
-        s2.setDepartureDayNumber(2);
-        s2.setPlannedArrivalTime(LocalTime.of(8, 0));
-        s2.setPlannedDepartureTime(LocalTime.of(18, 0));
-        s2.setIsDisembarkation(true);
-        version.getStops().add(s2);
-
-        when(versionRepository.findByTrip_TripIdAndVersionNumber(tripId, 1))
-                .thenReturn(Optional.of(version));
-        when(userRepository.findById(approverId)).thenReturn(Optional.of(approver));
-        when(versionRepository.save(any(TripScheduleVersion.class)))
-                .thenAnswer(inv -> inv.getArgument(0));
-
-        TripScheduleVersionDetailResponse res =
-                versionService.publishVersion(tripId, 1, approverId);
-
-        assertNotNull(res);
-        assertEquals(TripScheduleVersionStatus.PUBLISHED, res.getStatus());
-        assertEquals(approverId, res.getPublishedBy());
-        assertNotNull(res.getPublishedAt());
+        assertEquals(TripScheduleVersionStatus.PUBLISHED, published.getStatus());
+        assertEquals(creatorId, published.getPublishedBy());
+        assertNotNull(published.getPublishedAt());
+        assertNotNull(version.getContentHash());
+        assertNotNull(arrival.getPortFacts());
+        assertNotNull(departure.getDeparturePortFacts());
         assertEquals(TripStatus.READY, trip.getStatus());
         assertNotNull(trip.getStructuralLockedAt());
+        assertEquals("VERSION_FROZEN", assertThrows(BusinessException.class,
+                () -> versionService.finalizeVersion(version.getVersionId(), 1L, creatorId)).getCode());
+        verify(versionRepository).save(version);
+    }
+
+    @Test
+    void retiredTemplateActionsReturnGoneWithoutChangingState() {
+        UUID versionId = version.getVersionId();
+        List<Executable> retiredActions = List.of(
+                () -> versionService.submitForReview(tripId, 1, creatorId),
+                () -> versionService.submitForReviewById(versionId, 1L, creatorId),
+                () -> versionService.returnToDraft(tripId, 1, new VersionReturnRequest(), creatorId),
+                () -> versionService.returnToDraftById(versionId, new VersionReturnRequest(), creatorId),
+                () -> versionService.publishVersion(tripId, 1, creatorId),
+                () -> versionService.publishVersionById(versionId, 1L, creatorId),
+                () -> versionService.withdraw(tripId, 1, new VersionWithdrawRequest(), creatorId),
+                () -> versionService.withdrawById(versionId, new VersionWithdrawRequest(), creatorId));
+
+        for (var action : retiredActions) {
+            var failure = assertThrows(BusinessException.class, action);
+            assertEquals(HttpStatus.GONE, failure.getStatus());
+            assertEquals("TEMPLATE_REVIEW_RETIRED", failure.getCode());
+        }
+        assertEquals(TripScheduleVersionStatus.DRAFT, version.getStatus());
+        assertEquals(1L, version.getRevision());
+        verifyNoInteractions(versionRepository, tripRepository);
     }
 
     @Test
@@ -522,67 +484,34 @@ class TripScheduleVersionServiceTest {
     }
 
     @Test
-    void testSubmitForReviewByIdStaleRevision() {
-        when(versionRepository.findById(version.getVersionId())).thenReturn(Optional.of(version));
-
-        BusinessException ex =
-                assertThrows(
-                        BusinessException.class,
-                        () ->
-                                versionService.submitForReviewById(
-                                        version.getVersionId(), 999L, submitterId));
-        assertEquals("STALE_REVISION", ex.getCode());
+    void finalizeRequiresMatchingRevision() {
+        givenCurrentVersionAndCreator();
+        var failure = assertThrows(BusinessException.class,
+                () -> versionService.finalizeVersion(version.getVersionId(), 999L, creatorId));
+        assertEquals(HttpStatus.CONFLICT, failure.getStatus());
+        assertEquals("STALE_REVISION", failure.getCode());
+        assertEquals(TripScheduleVersionStatus.DRAFT, version.getStatus());
+        verify(versionRepository, never()).save(any());
     }
 
     @Test
-    void testReturnToDraftByIdStaleRevision() {
-        version.setStatus(TripScheduleVersionStatus.IN_REVIEW);
+    void operationsManagerCannotFinalizeTemplate() {
+        var ops = new User();
+        UUID opsId = UUID.randomUUID();
+        ops.setRoles(Set.of(Role.OPERATIONS_MANAGER));
+        when(userRepository.findById(opsId)).thenReturn(Optional.of(ops));
         when(versionRepository.findById(version.getVersionId())).thenReturn(Optional.of(version));
 
-        VersionReturnRequest req = new VersionReturnRequest();
-        req.setExpectedRevision(999L);
-        req.setRejectionReason("Cần sửa đổi");
-
-        BusinessException ex =
-                assertThrows(
-                        BusinessException.class,
-                        () ->
-                                versionService.returnToDraftById(
-                                        version.getVersionId(), req, approverId));
-        assertEquals("STALE_REVISION", ex.getCode());
+        var failure = assertThrows(BusinessException.class,
+                () -> versionService.finalizeVersion(version.getVersionId(), 1L, opsId));
+        assertEquals(HttpStatus.FORBIDDEN, failure.getStatus());
+        assertEquals("FINALIZE_ROLE_REQUIRED", failure.getCode());
+        verify(versionRepository, never()).save(any());
     }
 
-    @Test
-    void testReturnToDraftByIdBlankReason() {
-        version.setStatus(TripScheduleVersionStatus.IN_REVIEW);
+    private void givenCurrentVersionAndCreator() {
         when(versionRepository.findById(version.getVersionId())).thenReturn(Optional.of(version));
-
-        VersionReturnRequest req = new VersionReturnRequest();
-        req.setExpectedRevision(1L);
-        req.setRejectionReason("");
-
-        BusinessException ex =
-                assertThrows(
-                        BusinessException.class,
-                        () ->
-                                versionService.returnToDraftById(
-                                        version.getVersionId(), req, approverId));
-        assertEquals("REJECTION_REASON_REQUIRED", ex.getCode());
-    }
-
-    @Test
-    void testPublishVersionByIdMakerCheckerForbidden() {
-        version.setStatus(TripScheduleVersionStatus.IN_REVIEW);
-        version.setSubmitter(submitter);
-        when(versionRepository.findById(version.getVersionId())).thenReturn(Optional.of(version));
-
-        BusinessException ex =
-                assertThrows(
-                        BusinessException.class,
-                        () ->
-                                versionService.publishVersionById(
-                                        version.getVersionId(), 1L, creatorId));
-        assertEquals("SELF_APPROVAL_FORBIDDEN", ex.getCode());
+        when(userRepository.findById(creatorId)).thenReturn(Optional.of(creator));
     }
 
     @Test
@@ -626,7 +555,9 @@ class TripScheduleVersionServiceTest {
         arrival.setPlannedDepartureTime(LocalTime.of(9, 0));
         arrival.setIsDisembarkation(true);
         version.getStops().add(arrival);
-        assertTrue(versionService.validateVersionInternal(version).isEmpty());
+        var violations = versionService.validateVersionInternal(version);
+        assertTrue(violations.isEmpty(), () -> violations.stream().map(v -> v.getCode()
+                + " @ " + v.getFieldPath()).toList().toString());
         assertEquals(
                 ItineraryDayRole.DEPARTURE,
                 versionService.mapToDayResponse(version.getDays().get(0)).getDayRole());
