@@ -146,7 +146,7 @@ class GlobalExceptionHandlerTest {
 
     @Test
     void handleGeneral_returns500WithTraceId() {
-        Exception ex = new RuntimeException("Unexpected db crash");
+        Exception ex = new RuntimeException("Unexpected db crash", new IllegalStateException("Private cause"));
 
         ResponseEntity<ApiResponse<Void>> response = handler.handleGeneral(ex);
 
@@ -154,6 +154,7 @@ class GlobalExceptionHandlerTest {
         assertNotNull(response.getBody());
         assertFalse(response.getBody().isSuccess());
         assertEquals("INTERNAL_ERROR", response.getBody().getCode());
+        assertEquals("Đã xảy ra lỗi nội bộ.", response.getBody().getError());
         assertNotNull(response.getBody().getTraceId());
     }
 }

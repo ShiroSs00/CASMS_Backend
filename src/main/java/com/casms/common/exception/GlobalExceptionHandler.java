@@ -17,6 +17,7 @@ import org.springframework.dao.QueryTimeoutException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.authentication.AuthenticationServiceException;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
@@ -129,9 +130,7 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(org.springframework.http.converter.HttpMessageNotReadableException.class)
     public ResponseEntity<ApiResponse<Void>> handleHttpMessageNotReadable(
             org.springframework.http.converter.HttpMessageNotReadableException ex) {
-        log.warn(
-                "HTTP message not readable (malformed JSON or invalid format): {}",
-                ex.getMessage());
+        log.warn("HTTP message not readable (malformed JSON or invalid format)");
         return ResponseEntity.badRequest()
                 .body(
                         ApiResponse.error(
@@ -174,9 +173,15 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.error(ex.getMessage(), "OPERATION_NOT_SUPPORTED"));
     }
 
+    @ExceptionHandler(AuthenticationServiceException.class)
+    public ResponseEntity<ApiResponse<Void>> handleAuthenticationService(
+            AuthenticationServiceException ex) {
+        return handleGeneral(ex);
+    }
+
     @ExceptionHandler(AuthenticationException.class)
     public ResponseEntity<ApiResponse<Void>> handleAuthentication(AuthenticationException ex) {
-        log.warn("Authentication required: {}", ex.getMessage());
+        log.warn("Authentication required");
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                 .body(ApiResponse.error("Authentication required", "AUTH_REQUIRED"));
     }
@@ -305,13 +310,11 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiResponse<Void>> handleGeneral(Exception ex) {
         String traceId = UUID.randomUUID().toString();
-        log.error("Unhandled exception [traceId: {}]", traceId, ex);
-        String msg = (ex.getMessage() != null ? ex.getMessage() : ex.getClass().getSimpleName());
-        if (ex.getCause() != null && ex.getCause().getMessage() != null) {
-            msg += " | Cause: " + ex.getCause().getMessage();
-        }
+        StackTraceElement[] stack = ex.getStackTrace();
+        log.error("Unhandled exception [traceId: {}, type: {}, location: {}]",
+                traceId, ex.getClass().getName(), stack.length == 0 ? "unknown" : stack[0]);
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(ApiResponse.error(msg, "INTERNAL_ERROR", traceId));
+                .body(ApiResponse.error("Đã xảy ra lỗi nội bộ.", "INTERNAL_ERROR", traceId));
     }
 
     private String resolveNotFoundCode(String message) {

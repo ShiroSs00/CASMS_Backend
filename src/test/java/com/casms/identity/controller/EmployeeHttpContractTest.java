@@ -1,5 +1,7 @@
 package com.casms.identity.controller;
 
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -23,6 +25,7 @@ import com.casms.identity.enums.Permission;
 import com.casms.identity.enums.Role;
 import com.casms.identity.enums.UserStatus;
 import com.casms.identity.repository.RolePermissionRepository;
+import com.casms.identity.repository.UserRepository;
 import com.casms.identity.service.EmployeeAccountService;
 import com.casms.identity.service.EmployeeImportService;
 import com.casms.identity.service.EmployeeWorkbook;
@@ -42,7 +45,6 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.mock.web.MockServletContext;
-import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.test.context.support.TestPropertySourceUtils;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
@@ -81,8 +83,8 @@ class EmployeeHttpContractTest {
         }
 
         @Bean
-        UserDetailsService userDetailsService() {
-            return mock(UserDetailsService.class);
+        UserRepository users() {
+            return mock(UserRepository.class);
         }
 
         @Bean
@@ -136,8 +138,20 @@ class EmployeeHttpContractTest {
                         .file(new MockMultipartFile("file", "employees.xlsx", EmployeeWorkbook.XLSX, new byte[] {1}))
                         .header(HttpHeaders.AUTHORIZATION, BEARER)
                         .with(csrf()))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
         verifyNoInteractions(imports);
+    }
+
+    @Test
+    void deletedIdentityCannotReadEmployeesWithAnOtherwiseValidBearerToken() throws Exception {
+        var userId = UUID.randomUUID();
+        when(context.getBean(JwtService.class).findValidUserId("test-token"))
+                .thenReturn(Optional.of(userId));
+
+        mvc.perform(get("/employees").header(HttpHeaders.AUTHORIZATION, BEARER))
+                .andExpect(status().isUnauthorized());
+        verify(context.getBean(UserRepository.class)).findById(userId);
+        verifyNoInteractions(accounts);
     }
 
     @Test
@@ -169,21 +183,21 @@ class EmployeeHttpContractTest {
 
     @Test
     void hrWithUpdatePermissionCanSubmitEmployeeChanges() throws Exception {
-        CasmsPrincipal hr = authenticate(Role.HR_MANAGER, Set.of(Permission.USER_READ, Permission.USER_UPDATE));
+        User hr = authenticate(Role.HR_MANAGER, Set.of(Permission.USER_READ, Permission.USER_UPDATE));
         UUID employeeId = UUID.randomUUID();
         mvc.perform(put("/employees/{employeeId}", employeeId)
                         .header(HttpHeaders.AUTHORIZATION, BEARER)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(UPDATE_INPUT))
                 .andExpect(status().isOk());
-        verify(accounts).update(employeeId, new EmployeeAccountService.UpdateInput(
-                "Employee", "employee@example.org", null, null, null, null, null, null), hr);
+        verify(accounts).update(eq(employeeId), eq(new EmployeeAccountService.UpdateInput(
+                "Employee", "employee@example.org", null, null, null, null, null, null)), principalFor(hr));
     }
 
     @Test
     void hrWithCreatePermissionCanReadAssignableRolesAndUploadWorkbook() throws Exception {
-        CasmsPrincipal hr = authenticate(Role.HR_MANAGER, Set.of(Permission.USER_CREATE));
-        when(accounts.assignableRoles(hr)).thenReturn(List.of(Role.BOOKING_AGENT));
+        User hr = authenticate(Role.HR_MANAGER, Set.of(Permission.USER_CREATE));
+        when(accounts.assignableRoles(principalFor(hr))).thenReturn(List.of(Role.BOOKING_AGENT));
         mvc.perform(get("/employees/assignable-roles").header(HttpHeaders.AUTHORIZATION, BEARER))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data[0]").value("BOOKING_AGENT"));
@@ -193,14 +207,14 @@ class EmployeeHttpContractTest {
                         .file(new MockMultipartFile("file", "employees.xlsx", EmployeeWorkbook.XLSX, workbook))
                         .header(HttpHeaders.AUTHORIZATION, BEARER))
                 .andExpect(status().isCreated());
-        verify(imports).upload(workbook, hr);
+        verify(imports).upload(eq(workbook), principalFor(hr));
     }
 
     @Test
     void adminWithCreatePermissionReceivesTemplateAttachment() throws Exception {
-        CasmsPrincipal admin = authenticate(Role.ADMIN, Set.of(Permission.USER_CREATE));
+        User admin = authenticate(Role.ADMIN, Set.of(Permission.USER_CREATE));
         byte[] workbook = {1, 2, 3};
-        when(imports.template(admin)).thenReturn(workbook);
+        when(imports.template(principalFor(admin))).thenReturn(workbook);
         mvc.perform(get("/employees/imports/template").header(HttpHeaders.AUTHORIZATION, BEARER))
                 .andExpect(status().isOk())
                 .andExpect(content().contentType(EmployeeWorkbook.XLSX))
@@ -240,11 +254,11 @@ class EmployeeHttpContractTest {
         verifyNoInteractions(accounts);
     }
 
-    private CasmsPrincipal authenticate(Role role, Set<Permission> permissions) {
+    private User authenticate(Role role, Set<Permission> permissions) {
         return authenticate(role, permissions, UserStatus.ACTIVE);
     }
 
-    private CasmsPrincipal authenticate(Role role, Set<Permission> permissions, UserStatus status) {
+    private User authenticate(Role role, Set<Permission> permissions, UserStatus status) {
         var repository = context.getBean(RolePermissionRepository.class);
         when(repository.findByRole(role)).thenReturn(Optional.of(new RolePermission(role, permissions)));
         User user = new User();
@@ -252,11 +266,14 @@ class EmployeeHttpContractTest {
         user.setUsername("employee");
         user.setStatus(status);
         user.setRoles(Set.of(role));
-        var principal = new CasmsPrincipal(user, repository);
         var jwt = context.getBean(JwtService.class);
-        when(jwt.isValid("test-token")).thenReturn(true);
-        when(jwt.extractUsername("test-token")).thenReturn(user.getUsername());
-        when(context.getBean(UserDetailsService.class).loadUserByUsername(user.getUsername())).thenReturn(principal);
-        return principal;
+        when(jwt.findValidUserId("test-token")).thenReturn(Optional.of(user.getUserId()));
+        when(context.getBean(UserRepository.class).findById(user.getUserId()))
+                .thenReturn(Optional.of(user));
+        return user;
+    }
+
+    private static CasmsPrincipal principalFor(User user) {
+        return argThat(principal -> principal != null && user.getUserId().equals(principal.getUserId()));
     }
 }

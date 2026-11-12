@@ -3,18 +3,17 @@ package com.casms.security.jwt;
 import io.jsonwebtoken.*;
 import io.jsonwebtoken.security.Keys;
 
-import lombok.extern.slf4j.Slf4j;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Date;
+import java.util.Optional;
 import java.util.UUID;
 
 import javax.crypto.SecretKey;
 
-@Slf4j
 @Service
 public class JwtService {
 
@@ -43,8 +42,21 @@ public class JwtService {
     }
 
     public UUID extractUserId(String token) {
-        String id = (String) parseClaims(token).get("userId");
-        return UUID.fromString(id);
+        return UUID.fromString(parseClaims(token).get("userId", String.class));
+    }
+
+    public Optional<UUID> findValidUserId(String token) {
+        JwtParser parser = parser();
+        try {
+            Claims claims = parser.parseSignedClaims(token).getPayload();
+            String id = claims.get("userId", String.class);
+            if (claims.getExpiration() == null || id == null) {
+                return Optional.empty();
+            }
+            return Optional.of(UUID.fromString(id));
+        } catch (JwtException | IllegalArgumentException e) {
+            return Optional.empty();
+        }
     }
 
     public boolean isValid(String token) {
@@ -52,7 +64,6 @@ public class JwtService {
             parseClaims(token);
             return true;
         } catch (JwtException | IllegalArgumentException e) {
-            log.debug("Invalid JWT token: {}", e.getMessage());
             return false;
         }
     }
@@ -66,6 +77,10 @@ public class JwtService {
     }
 
     private Claims parseClaims(String token) {
-        return Jwts.parser().verifyWith(key()).build().parseSignedClaims(token).getPayload();
+        return parser().parseSignedClaims(token).getPayload();
+    }
+
+    private JwtParser parser() {
+        return Jwts.parser().verifyWith(key()).build();
     }
 }

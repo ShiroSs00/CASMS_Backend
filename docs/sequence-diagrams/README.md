@@ -11,3 +11,7 @@ The CASMS-75 staged itinerary-program change is reviewed in [ITINERARY-PROGRAM-F
 When changing an API, update the inventory, affected route files and end-to-end flow together. Follow shared services to every affected caller, including POS and cruise-scoped endpoints. Record request/response changes, authorization (including class annotations and mutation guards), transaction boundaries, locks, quota and financial behavior, and important errors. Never label an untouched generated stub as reviewed.
 
 `python scripts/sequence_docs.py` regenerates files and can overwrite manual content; preserve reviewed files before using it.
+
+## Shared security and error flow
+
+See [Bearer authentication](BEARER-AUTHENTICATION.md) for JWT checks, route authorization and error responses.
