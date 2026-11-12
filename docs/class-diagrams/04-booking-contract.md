@@ -2,7 +2,7 @@
 
 Mô hình hóa chi tiết đầy đủ 4 tầng kiến trúc: **Controller ➔ Service ➔ Repository ➔ Entity** cho vòng đời đơn đặt chỗ, báo giá giữ phòng, phân bổ buồng phòng và ký hợp đồng vận tải điện tử.
 
-## Mã Mermaid UML (Full-Stack 4 Tầng)
+## Mã Mermaid UML (Tối ưu chuẩn Draw.io không bị đè dòng)
 
 ```mermaid
 classDiagram
@@ -43,7 +43,6 @@ classDiagram
 
     %% 3. Repository Layer
     class BookingRepository {
-        <<interface>>
         +findByBookingReference(reference) Optional~Booking~
         +findByUserId(userId, pageable) Page~Booking~
         +existsByCruiseIdAndStatus(cruiseId, status) boolean
@@ -52,26 +51,22 @@ classDiagram
     }
 
     class BookingPassengerRepository {
-        <<interface>>
         +findByBookingId(bookingId) List~BookingPassenger~
         +saveAll(passengers) List~BookingPassenger~
     }
 
     class BookingContractRepository {
-        <<interface>>
         +findByBookingId(bookingId) Optional~BookingContract~
         +save(contract) BookingContract
     }
 
     class CabinAssignmentRepository {
-        <<interface>>
         +findByBookingId(bookingId) List~CabinAssignment~
         +existsByCabinIdAndCruiseId(cabinId, cruiseId) boolean
         +save(assignment) CabinAssignment
     }
 
     class BookingQuoteRepository {
-        <<interface>>
         +findById(quoteId) Optional~BookingQuote~
         +save(quote) BookingQuote
     }

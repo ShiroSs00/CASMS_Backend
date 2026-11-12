@@ -2,7 +2,7 @@
 
 Mô hình hóa chi tiết đầy đủ 4 tầng kiến trúc: **Controller ➔ Service ➔ Repository ➔ Entity** cho lập kế hoạch lộ trình đường biển, các chặng dừng tại cảng và lịch trình chi tiết theo từng ngày của chuyến đi.
 
-## Mã Mermaid UML (Full-Stack 4 Tầng)
+## Mã Mermaid UML (Tối ưu chuẩn Draw.io không bị đè dòng)
 
 ```mermaid
 classDiagram
@@ -50,7 +50,6 @@ classDiagram
 
     %% 3. Repository Layer
     class CruiseRepository {
-        <<interface>>
         +findById(id) Optional~Cruise~
         +findByCruiseCode(code) Optional~Cruise~
         +findByShipIdAndStatus(shipId, status) List~Cruise~
@@ -58,21 +57,18 @@ classDiagram
     }
 
     class ItineraryRepository {
-        <<interface>>
         +findById(id) Optional~Itinerary~
         +findByStatus(status) List~Itinerary~
         +save(itinerary) Itinerary
     }
 
     class CruiseStopRepository {
-        <<interface>>
         +findByCruiseIdOrderBySequenceNumber(cruiseId) List~CruiseStop~
         +findByPortId(portId) List~CruiseStop~
         +save(stop) CruiseStop
     }
 
     class PortRepository {
-        <<interface>>
         +findById(id) Optional~Port~
         +findByPortCode(code) Optional~Port~
         +save(port) Port

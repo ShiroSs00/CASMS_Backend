@@ -2,7 +2,7 @@
 
 Mô hình hóa chi tiết đầy đủ 4 tầng kiến trúc: **Controller ➔ Service ➔ Repository ➔ Entity** cho quản lý thông số kỹ thuật tàu, các tầng boong, buồng phòng và khu vực công cộng.
 
-## Mã Mermaid UML (Full-Stack 4 Tầng)
+## Mã Mermaid UML (Tối ưu chuẩn Draw.io không bị đè dòng)
 
 ```mermaid
 classDiagram
@@ -60,7 +60,6 @@ classDiagram
 
     %% 3. Repository Layer
     class ShipRepository {
-        <<interface>>
         +findById(id) Optional~Ship~
         +findByShipCode(code) Optional~Ship~
         +findAllByStatus(status) List~Ship~
@@ -68,20 +67,17 @@ classDiagram
     }
 
     class CabinRepository {
-        <<interface>>
         +findByDeckId(deckId) List~Cabin~
         +findByCabinNumberAndShipId(number, shipId) Optional~Cabin~
         +save(cabin) Cabin
     }
 
     class DeckRepository {
-        <<interface>>
         +findByShipIdOrderByDeckNumber(shipId) List~Deck~
         +save(deck) Deck
     }
 
     class AreaRepository {
-        <<interface>>
         +findByDeckId(deckId) List~Area~
         +save(area) Area
     }

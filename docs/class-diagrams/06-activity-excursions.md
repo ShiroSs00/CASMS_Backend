@@ -2,7 +2,7 @@
 
 Mô hình hóa chi tiết đầy đủ 4 tầng kiến trúc: **Controller ➔ Service ➔ Repository ➔ Entity** cho các hoạt động biểu diễn nghệ thuật, thể thao trên tàu, tour tham quan bờ biển và vận hành linh hoạt thời tiết (Dynamic Rescheduling).
 
-## Mã Mermaid UML (Full-Stack 4 Tầng)
+## Mã Mermaid UML (Tối ưu chuẩn Draw.io không bị đè dòng)
 
 ```mermaid
 classDiagram
@@ -34,7 +34,6 @@ classDiagram
 
     %% 2. Service Layer
     class OnboardOperationService {
-        <<interface>>
         +registerActivity(bookingPassengerId, activityId, notes) Registration
         +rescheduleActivity(activityId, newStartTime, newLocation, isMovedIndoor) OnboardActivity
         +syncOfflineTransactions(offlineTransactions) List~OnboardTransaction~
@@ -61,7 +60,6 @@ classDiagram
 
     %% 3. Repository Layer
     class OnboardActivityRepository {
-        <<interface>>
         +findById(id) Optional~OnboardActivity~
         +findByStatus(status) List~OnboardActivity~
         +findByCruiseId(cruiseId) List~OnboardActivity~
@@ -69,7 +67,6 @@ classDiagram
     }
 
     class RegistrationRepository {
-        <<interface>>
         +countByOnboardActivityId(activityId) Long
         +existsByBookingPassengerAndActivity(passengerId, activityId) Boolean
         +findByBookingPassengerId(passengerId) List~Registration~
@@ -77,20 +74,17 @@ classDiagram
     }
 
     class ParticipationRepository {
-        <<interface>>
         +findByRegistrationId(registrationId) Optional~Participation~
         +save(participation) Participation
     }
 
     class ShoreExcursionRepository {
-        <<interface>>
         +findById(id) Optional~ShoreExcursion~
         +findByCruiseStopId(cruiseStopId) List~ShoreExcursion~
         +save(excursion) ShoreExcursion
     }
 
     class TourGroupRepository {
-        <<interface>>
         +findByShoreExcursionId(excursionId) List~TourGroup~
         +save(group) TourGroup
     }

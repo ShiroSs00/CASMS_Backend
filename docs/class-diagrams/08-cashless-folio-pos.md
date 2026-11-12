@@ -2,7 +2,7 @@
 
 Mô hình hóa chi tiết đầy đủ 4 tầng kiến trúc: **Controller ➔ Service ➔ Repository ➔ Entity** cho tài khoản tiêu dùng không tiền mặt trên tàu, thiết bị máy POS quầy bar/nhà hàng, định mức chi tiêu trẻ em và cơ chế đồng bộ ngoại tuyến (Offline Edge Sync).
 
-## Mã Mermaid UML (Full-Stack 4 Tầng)
+## Mã Mermaid UML (Tối ưu chuẩn Draw.io không bị đè dòng)
 
 ```mermaid
 classDiagram
@@ -35,7 +35,6 @@ classDiagram
     }
 
     class OnboardOperationService {
-        <<interface>>
         +syncOfflineTransactions(offlineList) List~OnboardTransaction~
         +registerActivity(passengerId, activityId, notes) Registration
     }
@@ -49,14 +48,12 @@ classDiagram
 
     %% 3. Repository Layer
     class OnboardAccountRepository {
-        <<interface>>
         +findById(id) Optional~OnboardAccount~
         +findByBookingId(bookingId) Optional~OnboardAccount~
         +save(account) OnboardAccount
     }
 
     class OnboardTransactionRepository {
-        <<interface>>
         +findBySyncStatus(status) List~OnboardTransaction~
         +findByOnboardAccountId(accountId) List~OnboardTransaction~
         +saveAll(transactions) List~OnboardTransaction~
@@ -64,13 +61,11 @@ classDiagram
     }
 
     class SpendingLimitRepository {
-        <<interface>>
         +findByAccountMemberId(memberId) List~SpendingLimit~
         +save(limit) SpendingLimit
     }
 
     class PosTerminalRepository {
-        <<interface>>
         +findByTerminalCode(code) Optional~PosTerminal~
         +save(terminal) PosTerminal
     }

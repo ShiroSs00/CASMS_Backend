@@ -2,7 +2,7 @@
 
 Mô hình hóa chi tiết đầy đủ 4 tầng kiến trúc: **Controller ➔ Service ➔ Repository ➔ Entity** cho thủ tục check-in tại nhà ga cảng, kiểm soát qua cầu tàu Gangway bằng NFC/RFID và điểm danh diễn tập an toàn bắt buộc SOLAS (Muster Drill).
 
-## Mã Mermaid UML (Full-Stack 4 Tầng)
+## Mã Mermaid UML (Tối ưu chuẩn Draw.io không bị đè dòng)
 
 ```mermaid
 classDiagram
@@ -44,27 +44,23 @@ classDiagram
 
     %% 3. Repository Layer
     class CruiseCheckinRepository {
-        <<interface>>
         +findById(id) Optional~CruiseCheckin~
         +findByBookingId(bookingId) Optional~CruiseCheckin~
         +save(checkin) CruiseCheckin
     }
 
     class GangwayEventRepository {
-        <<interface>>
         +findByCruiseIdOrderByEventTimeDesc(cruiseId) List~GangwayEvent~
         +countByCruiseIdAndDirection(cruiseId, direction) Long
         +save(event) GangwayEvent
     }
 
     class GuidanceSessionRepository {
-        <<interface>>
         +findByCruiseId(cruiseId) List~GuidanceSession~
         +save(session) GuidanceSession
     }
 
     class MusterStationRepository {
-        <<interface>>
         +findByShipId(shipId) List~MusterStation~
         +save(station) MusterStation
     }

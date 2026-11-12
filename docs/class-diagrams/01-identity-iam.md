@@ -2,7 +2,7 @@
 
 Mô hình hóa chi tiết đầy đủ 4 tầng kiến trúc: **Controller ➔ Service ➔ Repository ➔ Entity** cho quản lý tài khoản người dùng, đăng nhập JWT, ma trận phân quyền RBAC và hồ sơ hành khách.
 
-## Mã Mermaid UML (Full-Stack 4 Tầng)
+## Mã Mermaid UML (Tối ưu chuẩn Draw.io không bị đè dòng)
 
 ```mermaid
 classDiagram
@@ -45,7 +45,6 @@ classDiagram
 
     %% 3. Repository Layer
     class UserRepository {
-        <<interface>>
         +findByUsername(username) Optional~User~
         +findByEmail(email) Optional~User~
         +existsByUsername(username) boolean
@@ -53,20 +52,17 @@ classDiagram
     }
 
     class PassengerRepository {
-        <<interface>>
         +findById(id) Optional~Passenger~
         +findByDocumentNumber(docNum) Optional~Passenger~
         +save(passenger) Passenger
     }
 
     class RoleRepository {
-        <<interface>>
         +findByRoleName(roleName) Optional~Role~
         +save(role) Role
     }
 
     class PermissionRepository {
-        <<interface>>
         +findByResourceName(res) List~Permission~
     }
 

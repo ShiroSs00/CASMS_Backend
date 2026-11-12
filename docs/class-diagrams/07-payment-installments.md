@@ -2,7 +2,7 @@
 
 Mô hình hóa chi tiết đầy đủ 4 tầng kiến trúc: **Controller ➔ Service ➔ Repository ➔ Entity** cho việc tích hợp cổng thanh toán trực tuyến, xử lý Webhook ngân hàng VietQR/SePay, chia đợt trả góp và xuất hóa đơn điện tử.
 
-## Mã Mermaid UML (Full-Stack 4 Tầng)
+## Mã Mermaid UML (Tối ưu chuẩn Draw.io không bị đè dòng)
 
 ```mermaid
 classDiagram
@@ -57,7 +57,6 @@ classDiagram
 
     %% 3. Repository Layer
     class PaymentRepository {
-        <<interface>>
         +findById(id) Optional~Payment~
         +findByTransactionReference(ref) Optional~Payment~
         +findByBookingId(bookingId) List~Payment~
@@ -65,21 +64,18 @@ classDiagram
     }
 
     class SepayTransactionRepository {
-        <<interface>>
         +findByReferenceNumber(refNum) Optional~SepayTransaction~
         +existsBySepayId(sepayId) boolean
         +save(transaction) SepayTransaction
     }
 
     class InstallmentRepository {
-        <<interface>>
         +findByBookingIdOrderBySequenceNo(bookingId) List~Installment~
         +findOverdueInstallments(asOfDate) List~Installment~
         +save(installment) Installment
     }
 
     class InvoiceRepository {
-        <<interface>>
         +findByInvoiceNumber(invoiceNo) Optional~Invoice~
         +findByPaymentId(paymentId) Optional~Invoice~
         +save(invoice) Invoice
