@@ -33,8 +33,10 @@ public class EmployeeImportController {
 
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @ResponseStatus(HttpStatus.CREATED)
-    public ApiResponse<Batch> upload(@RequestParam MultipartFile file, @AuthenticationPrincipal CasmsPrincipal actor) {
-        if (file.isEmpty() || file.getSize() > EmployeeWorkbook.MAX_UPLOAD_BYTES) {
+    public ApiResponse<Batch> upload(
+            @RequestParam(name = "file", required = false) MultipartFile file,
+            @AuthenticationPrincipal CasmsPrincipal actor) {
+        if (file == null || file.isEmpty() || file.getSize() > EmployeeWorkbook.MAX_UPLOAD_BYTES) {
             throw new BusinessException(HttpStatus.BAD_REQUEST, "EMPLOYEE_XLSX_INVALID",
                     "File XLSX phải có dữ liệu và không vượt quá 2 MB.");
         }

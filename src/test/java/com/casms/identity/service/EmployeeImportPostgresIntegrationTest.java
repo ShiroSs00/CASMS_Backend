@@ -3,6 +3,7 @@ package com.casms.identity.service;
 import static org.junit.jupiter.api.Assertions.*;
 
 import com.casms.common.exception.BusinessException;
+import com.casms.common.exception.ResourceNotFoundException;
 import com.casms.identity.entity.User;
 import com.casms.identity.enums.Role;
 import com.casms.identity.enums.UserStatus;
@@ -47,7 +48,7 @@ class EmployeeImportPostgresIntegrationTest {
 
     @Test
     void concurrentConfirmCreatesOneAccountAndActivationAndReportsInvalidRows() throws Exception {
-        CasmsPrincipal admin = admin();
+        CasmsPrincipal admin = actor(Role.ADMIN);
         String suffix = UUID.randomUUID().toString();
         String employeeCode = "EMP-" + suffix;
         String email = suffix + "@example.org";
@@ -89,12 +90,35 @@ class EmployeeImportPostgresIntegrationTest {
                 () -> accounts.activate(linkToken, "Another-password-2026")).getCode());
     }
 
-    private CasmsPrincipal admin() {
+    @Test
+    void anotherHrCannotReadDownloadOrConfirmTheOwnersBatch() throws Exception {
+        CasmsPrincipal owner = actor(Role.HR_MANAGER);
+        CasmsPrincipal otherHr = actor(Role.HR_MANAGER);
+        CasmsPrincipal admin = actor(Role.ADMIN);
+        String suffix = UUID.randomUUID().toString();
+        String email = suffix + "@example.org";
+        var preview = imports.upload(workbook("EMP-" + suffix, email), owner);
+        UUID batchId = preview.batchId();
+
+        assertThrows(ResourceNotFoundException.class, () -> imports.read(batchId, otherHr));
+        assertThrows(ResourceNotFoundException.class, () -> imports.resultFile(batchId, otherHr));
+        assertThrows(ResourceNotFoundException.class, () -> imports.confirm(batchId, otherHr));
+        assertEquals(preview, imports.read(batchId, owner));
+        assertTrue(users.findByNormalizedEmail(email).isEmpty());
+
+        assertEquals(preview, imports.read(batchId, admin));
+        var confirmed = imports.confirm(batchId, admin);
+        assertEquals("CONFIRMED", confirmed.status());
+        assertEquals("CREATED", confirmed.rows().getFirst().result());
+        assertEquals(UserStatus.DISABLED, users.findByNormalizedEmail(email).orElseThrow().getStatus());
+    }
+
+    private CasmsPrincipal actor(Role role) {
         User user = new User();
         user.setUsername("hr-test-" + UUID.randomUUID());
         user.setStatus(UserStatus.ACTIVE);
         user.setPasswordHash(encoder.encode(UUID.randomUUID().toString()));
-        user.setRoles(EnumSet.of(Role.ADMIN));
+        user.setRoles(EnumSet.of(role));
         return new CasmsPrincipal(users.saveAndFlush(user), roles);
     }
 

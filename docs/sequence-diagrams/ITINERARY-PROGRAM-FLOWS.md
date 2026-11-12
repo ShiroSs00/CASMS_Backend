@@ -317,6 +317,8 @@ sequenceDiagram
 
 ## Tài khoản nhân viên và nhập Excel
 
+Xem [luồng xác thực bearer](BEARER-AUTHENTICATION.md) dùng chung trước bước kiểm tra quyền HR.
+
 ```mermaid
 sequenceDiagram
     actor HR as Admin / HR
@@ -331,9 +333,13 @@ sequenceDiagram
     Auth->>API: Admin hoặc HR có quyền theo thao tác
     API->>S: Validate request và quyền cấp role
     alt Upload XLSX
-        S->>R: Lưu batch, lỗi từng dòng và dữ liệu chờ xác nhận
-        R->>DB: INSERT batch, rows và audit
-        API-->>HR: 201 Preview
+        alt Thiếu file, file rỗng, quá 2 MiB hoặc không đọc được
+            API-->>HR: 400 EMPLOYEE_XLSX_INVALID
+        else File hợp lệ
+            S->>R: Lưu batch, lỗi từng dòng và dữ liệu chờ xác nhận
+            R->>DB: INSERT batch, rows và audit
+            API-->>HR: 201 Preview
+        end
     else Tạo thủ công hoặc Confirm
         opt Confirm
             S->>R: Kiểm tra chủ batch, khóa và xác thực lại từng dòng
