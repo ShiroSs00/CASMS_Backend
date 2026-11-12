@@ -94,3 +94,4 @@ classDiagram
 - **Itinerary - Cruise**: Một hải trình (`Itinerary`) có thể được dùng để khởi tạo nhiều chuyến tàu cụ thể (`Cruise`) với các mốc thời gian khởi hành (`departureDatetime`) khác nhau.
 - **Cruise - TripPlanDay - TripPlanEntry**: Mỗi chuyến đi được chia thành từng ngày (`TripPlanDay`), mỗi ngày có danh sách các mốc hoạt động chi tiết (`TripPlanEntry`).
 - **CruiseStop - DestinationVisit - Destination**: Khi tàu cập một cảng, hành khách có thể tham gia các chuyến tham quan điểm đến địa phương liên kết (`Destination`).
+

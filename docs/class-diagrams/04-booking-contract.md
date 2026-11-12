@@ -81,3 +81,4 @@ classDiagram
 - **Booking - BookingContract**: Hợp đồng vận tải du lịch điện tử ký kết giữa khách hàng và hãng tàu. Thuộc tính `isInternational` phân biệt hợp đồng nội địa (Tuân thủ Bộ luật Hàng hải Việt Nam, Luật Du lịch 2017) với hợp đồng quốc tế (Công ước Athens 1974, quy định xuất nhập cảnh và thị thực).
 - **BookingPassenger - CabinAssignment**: Phân bổ buồng phòng cụ thể cho hành khách dựa trên hạng phòng và nhóm cabin (`cabinGroupKey`).
 - **BookingFareSnapshot**: Lưu lại ảnh chụp giá vé tại thời điểm đặt phòng nhằm tránh biến động tỷ giá và bảo vệ quyền lợi người tiêu dùng.
+

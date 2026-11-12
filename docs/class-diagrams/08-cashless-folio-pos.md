@@ -104,3 +104,4 @@ classDiagram
 - **Hybrid Edge-to-Cloud Sync**: Cột `syncStatus` (`PENDING`, `SYNCED`, `FAILED`) trên `OnboardTransaction` cho phép máy POS hoạt động ngoại tuyến khi mất sóng biển, sau đó tự động đồng bộ lên máy chủ đám mây khi tàu kết nối lại vệ tinh hoặc cập cảng mà không gây gián đoạn phục vụ.
 - **SpendingLimit**: Giới hạn chi tiêu theo ngày hoặc theo chuyến dành cho trẻ em/người phụ thuộc trong phòng nhằm tránh phát sinh nợ ngoài dự kiến.
 - **FinalSettlement**: Quyết toán tổng thể số dư chi tiêu tại quầy lễ tân trước khi hành khách rời tàu (Disembarkation).
+

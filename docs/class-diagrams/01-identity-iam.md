@@ -86,3 +86,4 @@ classDiagram
     RolePermission --> Permission : grants
     User --> UserStatus : hasStatus
 ```
+

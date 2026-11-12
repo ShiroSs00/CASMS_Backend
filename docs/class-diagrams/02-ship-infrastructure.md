@@ -99,3 +99,4 @@ classDiagram
 - **Deck - Cabin / Area**: Boong tàu là không gian vật lý chứa các buồng phòng lưu trú (`Cabin`) và các khu chức năng công cộng (`Area` như nhà hàng, nhà hát, hồ bơi).
 - **Cabin - CabinCategory**: Mỗi buồng phòng thuộc một hạng phòng cụ thể (Interior, Ocean View, Balcony, Suite) với định mức giá vé chuẩn.
 - **Ship - CruisePreparationSection - PreparationItem**: Checklist kiểm định kỹ thuật (máy chính, phao cứu sinh, hệ thống PCCC) trước khi tàu đủ điều kiện xuất bến.
+

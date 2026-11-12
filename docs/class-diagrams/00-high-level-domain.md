@@ -120,3 +120,4 @@ classDiagram
     BookingPassenger "0..*" o-- "0..1" TourPackage : subscribedPackage
     OnboardActivity "0..*" o-- "0..*" TourPackage : includedIn
 ```
+

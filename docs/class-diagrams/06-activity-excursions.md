@@ -111,3 +111,4 @@ classDiagram
 - **Dynamic Rescheduling**: Thuộc tính `status` của `OnboardActivity` hỗ trợ trạng thái `MOVED_INDOOR` và `CANCELLED` khi thời tiết trên biển xấu, cho phép dời lịch hoặc đổi địa điểm mà vẫn giữ nguyên danh sách đăng ký.
 - **ShoreExcursion - TourGroup - TourGroupPassenger**: Tour tham quan cảng được chia thành các nhóm nhỏ (`TourGroup`) do hướng dẫn viên (`assignedGuideName`) phụ trách để đảm bảo an toàn và số lượng tối đa (`maxPax`).
 - **Supplier**: Nhà cung ứng dịch vụ tại điểm đến địa phương (xe đưa đón, cano cao tốc, nhà hàng đối tác).
+

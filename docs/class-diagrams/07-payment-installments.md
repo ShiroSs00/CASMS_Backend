@@ -101,3 +101,4 @@ classDiagram
 - **Installment**: Hỗ trợ chia nhỏ số tiền cọc và thanh toán nhiều đợt trước ngày khởi hành (ví dụ: Đợt 1 cọc 30%, Đợt 2 thanh toán 40% trước 30 ngày, Đợt 3 thanh toán 30% trước 7 ngày).
 - **Invoice - InvoiceLine**: Xuất hóa đơn VAT điện tử cho cơ quan thuế và khách hàng.
 - **ChargeDispute**: Cơ chế giải quyết khiếu nại sai lệch cước phí hoặc giao dịch trùng lặp.
+
