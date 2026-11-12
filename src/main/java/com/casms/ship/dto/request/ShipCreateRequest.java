@@ -1,5 +1,8 @@
 package com.casms.ship.dto.request;
 
+import com.casms.ship.ShipDeckCount;
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
+
 import com.casms.ship.enums.ShipStatus;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 
@@ -35,7 +38,9 @@ public class ShipCreateRequest {
     private Integer totalCapacity;
 
     @Schema(description = "Số boong hành khách; lấy từ mô hình nếu có", example = "12")
-    @Min(value = 1, message = "Total decks must be greater than 0")
+    @Min(value = ShipDeckCount.MIN, message = ShipDeckCount.MESSAGE)
+    @Max(value = ShipDeckCount.MAX, message = ShipDeckCount.MESSAGE)
+    @JsonDeserialize(using = ShipDeckCount.Deserializer.class)
     private Integer totalDecks;
 
     @Positive private Double lengthMeters;

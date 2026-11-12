@@ -1,5 +1,7 @@
 package com.casms.ship.service;
 
+import com.casms.ship.ShipDeckCount;
+
 import com.casms.common.exception.BusinessException;
 import com.casms.common.exception.ResourceNotFoundException;
 import com.casms.common.service.BusinessCodeGenerator;
@@ -126,10 +128,7 @@ public class ShipService {
             ship.setTotalCapacity(request.getTotalCapacity());
         }
         if (request.getTotalDecks() != null) {
-            if (request.getTotalDecks() < 1) {
-                throw new BusinessException(
-                        "INVALID_TOTAL_DECKS", "Total decks must be greater than zero");
-            }
+            validateDeckCount(request.getTotalDecks());
             long configuredDeckCount = deckRepository.countByShipShipIdAndServiceLevelFalse(shipId);
             if (request.getTotalDecks() < configuredDeckCount) {
                 throw new BusinessException(
@@ -328,9 +327,12 @@ public class ShipService {
             throw new BusinessException(
                     "INVALID_SHIP_CAPACITY", "Total capacity must be greater than zero");
         }
-        if (totalDecks == null || totalDecks < 1) {
-            throw new BusinessException(
-                    "INVALID_TOTAL_DECKS", "Total decks must be greater than zero");
+        validateDeckCount(totalDecks);
+    }
+
+    private void validateDeckCount(Integer count) {
+        if (!ShipDeckCount.isValid(count)) {
+            throw new BusinessException("INVALID_TOTAL_DECKS", ShipDeckCount.MESSAGE);
         }
     }
 

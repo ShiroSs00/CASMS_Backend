@@ -1,5 +1,8 @@
 package com.casms.ship.dto.request;
 
+import com.casms.ship.ShipDeckCount;
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
+
 import com.casms.ship.enums.ShipStatus;
 
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -16,7 +19,10 @@ public record ShipModelProvisionRequest(
         @Size(max = 100) String shipName,
         ShipStatus status,
         @Min(1) Integer totalCapacity,
-        @Min(1) Integer totalDecks,
+        @Min(value = ShipDeckCount.MIN, message = ShipDeckCount.MESSAGE)
+        @Max(value = ShipDeckCount.MAX, message = ShipDeckCount.MESSAGE)
+        @JsonDeserialize(using = ShipDeckCount.Deserializer.class)
+        Integer totalDecks,
         @Positive Double lengthMeters,
         @Positive Double beamMeters,
         @PastOrPresent LocalDate commissionDate,

@@ -1,5 +1,7 @@
 package com.casms.ship.service;
 
+import com.casms.ship.ShipDeckCount;
+
 import com.casms.common.exception.ResourceNotFoundException;
 import com.casms.common.service.BusinessCodeGenerator;
 import com.casms.ship.dto.request.ShipCreateRequest;
@@ -217,13 +219,24 @@ public class ShipModelAssetService {
             throw bad("Manifest name must be text");
         String name = manifest.path("name").asText("").trim();
         if (!name.isEmpty()) ship.setShipName(name);
-        Integer deckCount = positiveManifestInt(manifest, "deckCount");
+        int listedPassengerDecks = manifest.path("decks").size();
+        Integer deckCount = manifestInt(manifest, "deckCount");
+        if (manifest.hasNonNull("deckCount") && (deckCount == null || deckCount < 1))
+            throw bad(ShipDeckCount.MESSAGE);
+        Integer currentCount = ship.getTotalDecks();
+        Integer passengerDeckCount = deckCount != null ? deckCount : currentCount;
+        if (passengerDeckCount == null && listedPassengerDecks > 0)
+            passengerDeckCount = listedPassengerDecks;
+        if (passengerDeckCount == null || passengerDeckCount < 1
+                || ((requireCompleteMetadata || !passengerDeckCount.equals(currentCount))
+                        && !ShipDeckCount.isValid(passengerDeckCount)))
+            throw bad(ShipDeckCount.MESSAGE);
+        if (passengerDeckCount < listedPassengerDecks)
+            throw bad("Passenger deck count is lower than the number of passenger decks in the manifest");
         Integer passengerCapacity = positiveManifestInt(manifest, "passengerCapacity");
         Double length = positiveManifestDouble(manifest, "length");
         Double beam = positiveManifestDouble(manifest, "beam");
-        if (deckCount != null) ship.setTotalDecks(deckCount);
-        else if (ship.getTotalDecks() == null && !manifest.path("decks").isEmpty())
-            ship.setTotalDecks(manifest.path("decks").size());
+        ship.setTotalDecks(passengerDeckCount);
         if (passengerCapacity != null) ship.setTotalCapacity(passengerCapacity);
         if (length != null) ship.setLengthMeters(length);
         if (beam != null) ship.setBeamMeters(beam);
@@ -250,10 +263,6 @@ public class ShipModelAssetService {
         ship.setShipName(ship.getShipName().trim());
         if (ship.getTotalCapacity() == null || ship.getTotalCapacity() < 1)
             throw bad("Supply a positive totalCapacity when the model has no passengerCapacity");
-        if (ship.getTotalDecks() == null || ship.getTotalDecks() < 1)
-            throw bad(
-                    "Supply a positive totalDecks when the model has no passenger decks or"
-                        + " deckCount");
         if (ship.getLengthMeters() != null
                         && (!Double.isFinite(ship.getLengthMeters()) || ship.getLengthMeters() <= 0)
                 || ship.getBeamMeters() != null

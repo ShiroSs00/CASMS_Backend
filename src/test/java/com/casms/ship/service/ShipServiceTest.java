@@ -41,7 +41,7 @@ class ShipServiceTest {
         when(req.getShipName()).thenReturn("Test Ship");
         when(req.getStatus()).thenReturn(ShipStatus.values()[0]);
         when(req.getTotalCapacity()).thenReturn(100);
-        when(req.getTotalDecks()).thenReturn(5);
+        when(req.getTotalDecks()).thenReturn(12);
         when(req.getLengthMeters()).thenReturn(null);
         when(req.getBeamMeters()).thenReturn(null);
         when(shipRepository.save(any(Ship.class)))
@@ -55,6 +55,30 @@ class ShipServiceTest {
         assertEquals("SH-0001", res.getShipCode());
         assertEquals("Test Ship", res.getShipName());
         verify(shipRepository).save(any(Ship.class));
+    }
+
+    @Test
+    void writePathsRejectInvalidDeckCountsWithoutControllerValidation() {
+        var create = new ShipCreateRequest();
+        create.setShipName("Test Ship");
+        create.setTotalCapacity(100);
+        UUID id = UUID.randomUUID();
+        Ship ship = new Ship();
+        ship.setTotalDecks(6);
+        ship.setDeckNumberLimit(10);
+        when(shipRepository.findById(id)).thenReturn(Optional.of(ship));
+        for (int count : List.of(7, 25)) {
+            create.setTotalDecks(count);
+            assertEquals("INVALID_TOTAL_DECKS",
+                    assertThrows(BusinessException.class, () -> service.create(create)).getCode());
+            var update = new ShipUpdateRequest();
+            update.setTotalDecks(count);
+            assertEquals("INVALID_TOTAL_DECKS",
+                    assertThrows(BusinessException.class, () -> service.update(id, update)).getCode());
+        }
+        assertEquals(6, service.detail(id).getTotalDecks());
+        assertEquals(10, service.detail(id).getDeckNumberLimit());
+        verify(shipRepository, never()).save(any(Ship.class));
     }
 
     @Test
@@ -130,6 +154,8 @@ class ShipServiceTest {
         Ship s = new Ship();
         s.setShipId(id);
         s.setShipName("Old");
+        s.setTotalDecks(6);
+        s.setDeckNumberLimit(10);
         when(shipRepository.findById(id)).thenReturn(Optional.of(s));
         when(shipRepository.save(any(Ship.class))).thenAnswer(i -> i.getArgument(0));
         ShipUpdateRequest req = mock(ShipUpdateRequest.class);
@@ -139,7 +165,10 @@ class ShipServiceTest {
         when(req.getBeamMeters()).thenReturn(null);
         when(req.getTotalDecks()).thenReturn(null);
         when(req.getCommissionDate()).thenReturn(null);
-        assertEquals("New", service.update(id, req).getShipName());
+        var updated = service.update(id, req);
+        assertEquals("New", updated.getShipName());
+        assertEquals(6, updated.getTotalDecks());
+        assertEquals(10, updated.getDeckNumberLimit());
         verify(shipRepository).save(s);
     }
 
