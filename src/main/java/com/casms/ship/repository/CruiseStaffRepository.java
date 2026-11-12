@@ -43,9 +43,15 @@ SELECT EXISTS(SELECT 1 FROM "CruiseStaff" cs JOIN "User" u ON u.user_id=cs.user_
 
     long countByCruise_CruiseIdAndStatus(UUID cruiseId, String status);
 
-    void deleteByCruise_CruiseIdAndUser_UserId(UUID cruiseId, UUID userId);
+    boolean existsByCruise_CruiseId(UUID cruiseId);
 
-    void deleteByCruise_CruiseId(UUID cruiseId);
+    @Query("SELECT cs FROM CruiseStaff cs WHERE cs.user.userId = :userId AND cs.status = 'ACTIVE'")
+    Optional<CruiseStaff> findActiveAssignment(@Param("userId") UUID userId);
+
+    @Query("SELECT cs.user.userId FROM CruiseStaff cs WHERE cs.status = 'ACTIVE'")
+    List<UUID> findActiveUserIds();
+
+    Optional<CruiseStaff> findFirstByCruise_CruiseIdAndUser_UserIdOrderByAssignedAtDesc(UUID cruiseId, UUID userId);
 
     @Query(
             """

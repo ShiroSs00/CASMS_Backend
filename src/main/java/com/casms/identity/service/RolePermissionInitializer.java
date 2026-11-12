@@ -367,6 +367,16 @@ public class RolePermissionInitializer implements CommandLineRunner {
 
         // POS identifies a device account; it never grants employee or global business powers.
         saveRolePermission(Role.POS, EnumSet.noneOf(Permission.class));
+        saveRolePermission(
+                Role.HR_MANAGER,
+                EnumSet.of(
+                        Permission.USER_CREATE,
+                        Permission.USER_READ,
+                        Permission.USER_UPDATE,
+                        Permission.USER_STATUS_CHANGE,
+                        Permission.CRUISE_STAFF_ASSIGN,
+                        Permission.CRUISE_STAFF_READ,
+                        Permission.CRUISE_STAFF_REMOVE));
 
         // ACTIVITY_SERVICE_MANAGER: unified onboard activity/service and shore excursion management
         saveRolePermission(

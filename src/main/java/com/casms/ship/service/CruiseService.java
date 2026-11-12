@@ -707,7 +707,8 @@ public class CruiseService {
 
     @Transactional
     public void deleteDraft(UUID cruiseId) {
-        Cruise cruise = getCruiseById(cruiseId);
+        Cruise cruise = cruiseRepository.findByIdForUpdate(cruiseId)
+                .orElseThrow(() -> new ResourceNotFoundException("Cruise", cruiseId));
 
         if (cruise.getStatus() != CruiseStatus.DRAFT) {
             throw new BusinessException("CRUISE_NOT_DRAFT", "Only draft cruises can be deleted");
@@ -716,6 +717,10 @@ public class CruiseService {
         if (bookingRepository.existsByCruiseCruiseId(cruiseId)) {
             throw new BusinessException(
                     "CRUISE_HAS_BOOKINGS", "Cannot delete cruise because bookings already exist");
+        }
+        if (cruiseStaffRepository.existsByCruise_CruiseId(cruiseId)) {
+            throw new BusinessException(HttpStatus.CONFLICT, "CRUISE_HAS_STAFF_HISTORY",
+                    "Không thể xóa chuyến đã có lịch sử phân công nhân sự.");
         }
 
         // 1. Delete ShoreExcursions & OnboardActivities
@@ -741,9 +746,6 @@ public class CruiseService {
         // 3. Delete CruiseTourPackages, CruiseStaff, CruiseRegulations, CruiseImpactTasks
         if (cruiseTourPackageRepository != null) {
             cruiseTourPackageRepository.deleteByCruise_CruiseId(cruiseId);
-        }
-        if (cruiseStaffRepository != null) {
-            cruiseStaffRepository.deleteByCruise_CruiseId(cruiseId);
         }
         if (cruiseRegulationRepository != null) {
             cruiseRegulationRepository.deleteByCruise_CruiseId(cruiseId);

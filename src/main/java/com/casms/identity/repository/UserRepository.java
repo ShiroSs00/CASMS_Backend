@@ -25,5 +25,8 @@ public interface UserRepository extends JpaRepository<User, UUID> {
 
     boolean existsByEmail(String email);
 
+    @Query(value = "SELECT user_id FROM \"User\" WHERE user_id = :id FOR NO KEY UPDATE", nativeQuery = true)
+    Optional<UUID> lockForStaffAssignment(@Param("id") UUID id);
+
     List<User> findByStatus(UserStatus status);
 }
