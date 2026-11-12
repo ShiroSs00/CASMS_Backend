@@ -92,3 +92,4 @@ classDiagram
 ## Giải Thích Quan Hệ & Ràng Buộc
 - **Transactional Outbox Pattern**: Khi có sự cố dời giờ tàu, hệ thống lưu task sự cố và thông điệp vào bảng `ImpactNotificationOutbox` trong cùng một Database Transaction. Background worker sẽ đọc từ Outbox và gửi tin nhắn đẩy/email/SMS đến khách, đảm bảo tính bền vững (Guaranteed At-Least-Once Delivery) ngay cả khi mất kết nối mạng ngoài khơi.
 - **AuditLog & CruiseAuditEvent**: Cơ chế ghi lại vết thay đổi (Audit Trail) của toàn bộ dữ liệu quan trọng, phục vụ công tác thanh tra hàng hải và kiểm soát gian lận.
+

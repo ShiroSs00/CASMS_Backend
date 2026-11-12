@@ -1,20 +1,87 @@
-# Phân Hệ Tài Khoản Phòng Không Tiền Mặt & Điểm Bán Hàng (Cashless Folio & POS)
+# Sơ Đồ Lớp Thiết Kế Chi Tiết: Phân Hệ Tài Khoản Phòng & POS (Cashless Folio & POS Design Class Diagram)
 
-Mô hình tài khoản tiêu dùng buồng phòng (`OnboardAccount`), ủy quyền thành viên phòng (`OnboardAccountMember`), nhật ký chi tiêu (`OnboardTransaction`), định mức chi tiêu cá nhân (`SpendingLimit`) và thiết bị máy POS quầy bar/nhà hàng (`PosTerminal`).
+Mô hình hóa chi tiết đầy đủ 4 tầng kiến trúc: **Controller ➔ Service ➔ Repository ➔ Entity** cho tài khoản tiêu dùng không tiền mặt trên tàu, thiết bị máy POS quầy bar/nhà hàng, định mức chi tiêu trẻ em và cơ chế đồng bộ ngoại tuyến (Offline Edge Sync).
 
-## Mã Mermaid UML
+## Mã Mermaid UML (Full-Stack 4 Tầng)
 
 ```mermaid
 classDiagram
     direction TB
 
+    %% 1. Controller Layer
+    class PosController {
+        -PosService posService
+        +login(credentials) ApiResponse~PosSession~
+        +sell(saleRequest) ApiResponse~PosSale~
+        +statement(accountId) ApiResponse~PosStatement~
+        +allowance(bookingId) ApiResponse
+        +logout(sessionId) void
+    }
+
+    class OnboardOperationController {
+        -OnboardOperationService operationService
+        +syncOfflineTransactions(offlineBatch) ApiResponse
+        +registerActivity(passengerId, request) ApiResponse
+    }
+
+    %% 2. Service Layer
+    class PosService {
+        -OnboardAccountRepository accountRepo
+        -OnboardTransactionRepository transactionRepo
+        -PosTerminalRepository terminalRepo
+        +processCharge(terminalId, memberId, amount, itemDesc) OnboardTransaction
+        +verifySpendingLimit(memberId, amount) boolean
+        +closeAccount(accountId) FinalSettlement
+    }
+
+    class OnboardOperationService {
+        <<interface>>
+        +syncOfflineTransactions(offlineList) List~OnboardTransaction~
+        +registerActivity(passengerId, activityId, notes) Registration
+    }
+
+    class OnboardOperationServiceImpl {
+        -OnboardTransactionRepository transactionRepo
+        -OnboardActivityRepository activityRepo
+        +syncOfflineTransactions(offlineList) List~OnboardTransaction~
+        +registerActivity(passengerId, activityId, notes) Registration
+    }
+
+    %% 3. Repository Layer
+    class OnboardAccountRepository {
+        <<interface>>
+        +findById(id) Optional~OnboardAccount~
+        +findByBookingId(bookingId) Optional~OnboardAccount~
+        +save(account) OnboardAccount
+    }
+
+    class OnboardTransactionRepository {
+        <<interface>>
+        +findBySyncStatus(status) List~OnboardTransaction~
+        +findByOnboardAccountId(accountId) List~OnboardTransaction~
+        +saveAll(transactions) List~OnboardTransaction~
+        +save(transaction) OnboardTransaction
+    }
+
+    class SpendingLimitRepository {
+        <<interface>>
+        +findByAccountMemberId(memberId) List~SpendingLimit~
+        +save(limit) SpendingLimit
+    }
+
+    class PosTerminalRepository {
+        <<interface>>
+        +findByTerminalCode(code) Optional~PosTerminal~
+        +save(terminal) PosTerminal
+    }
+
+    %% 4. Entity Layer
     class OnboardAccount {
         +UUID onboardAccountId
         +BigDecimal creditLimit
         +OnboardAccountStatus status
         +Instant activatedAt
         +Instant closedAt
-        +Instant createdAt
     }
 
     class OnboardAccountMember {
@@ -22,8 +89,6 @@ classDiagram
         +MemberRole memberRole
         +ChargePermission chargePermission
         +AccountMemberStatus status
-        +Instant effectiveFrom
-        +Instant effectiveTo
     }
 
     class OnboardTransaction {
@@ -31,11 +96,7 @@ classDiagram
         +BigDecimal amount
         +String currencyCode
         +TransactionType transactionType
-        +TransactionStatus status
-        +String sourceType
-        +UUID sourceReferenceId
         +TransactionSyncStatus syncStatus
-        +Instant syncedAt
         +Instant transactionTime
         +String description
     }
@@ -45,63 +106,31 @@ classDiagram
         +BigDecimal limitAmount
         +String currencyCode
         +LimitStatus status
-        +Instant effectiveFrom
-        +Instant effectiveTo
     }
 
     class PosTerminal {
         +UUID terminalId
         +String terminalCode
         +String terminalName
-        +UUID areaId
         +Boolean enabled
     }
 
-    class PosSession {
-        +UUID sessionId
-        +String sessionTokenHash
-        +Instant openedAt
-        +Instant revokedAt
-    }
+    %% Inter-Layer and Domain Relationships
+    PosController --> PosService : delegatesTo
+    OnboardOperationController --> OnboardOperationService : delegatesTo
+    OnboardOperationService <|.. OnboardOperationServiceImpl : implements
 
-    class FinalSettlement {
-        +UUID settlementId
-        +BigDecimal totalCharges
-        +BigDecimal totalCredits
-        +BigDecimal finalPayable
-        +SettlementStatus status
-        +Instant settledAt
-    }
+    PosService --> OnboardAccountRepository : accesses
+    PosService --> OnboardTransactionRepository : accesses
+    PosService --> PosTerminalRepository : accesses
+    OnboardOperationServiceImpl --> OnboardTransactionRepository : accesses
 
-    class TransactionSyncStatus {
-        <<enumeration>>
-        PENDING
-        SYNCED
-        FAILED
-    }
+    OnboardAccountRepository ..> OnboardAccount : manages
+    OnboardTransactionRepository ..> OnboardTransaction : manages
+    SpendingLimitRepository ..> SpendingLimit : manages
+    PosTerminalRepository ..> PosTerminal : manages
 
-    class TransactionType {
-        <<enumeration>>
-        CHARGE
-        VOID
-        REFUND
-        ADJUSTMENT
-    }
-
-    %% Relationships
     OnboardAccount "1" *-- "1..*" OnboardAccountMember : authorizedGuests
     OnboardAccount "1" *-- "0..*" OnboardTransaction : ledgerEntries
     OnboardAccountMember "1" *-- "0..*" SpendingLimit : enforcedLimits
-    PosTerminal "1" *-- "0..*" PosSession : operationalSessions
-    PosSession "1" ..> OnboardTransaction : recordsTransactions
-    OnboardAccount "1" *-- "0..1" FinalSettlement : closesAtDisembarkation
-    OnboardTransaction --> TransactionSyncStatus : edgeSyncState
-    OnboardTransaction --> TransactionType : type
 ```
-
-## Giải Thích Quan Hệ & Ràng Buộc
-- **Cashless Folio (Tài khoản phòng)**: Hành khách trên tàu không cần mang tiền mặt. Mọi chi phí ăn uống, giải trí tại quầy bar hay spa được quẹt thẻ và hạch toán trực tiếp vào `OnboardAccount` của buồng phòng.
-- **Hybrid Edge-to-Cloud Sync**: Cột `syncStatus` (`PENDING`, `SYNCED`, `FAILED`) trên `OnboardTransaction` cho phép máy POS hoạt động ngoại tuyến khi mất sóng biển, sau đó tự động đồng bộ lên máy chủ đám mây khi tàu kết nối lại vệ tinh hoặc cập cảng mà không gây gián đoạn phục vụ.
-- **SpendingLimit**: Giới hạn chi tiêu theo ngày hoặc theo chuyến dành cho trẻ em/người phụ thuộc trong phòng nhằm tránh phát sinh nợ ngoài dự kiến.
-- **FinalSettlement**: Quyết toán tổng thể số dư chi tiêu tại quầy lễ tân trước khi hành khách rời tàu (Disembarkation).
-

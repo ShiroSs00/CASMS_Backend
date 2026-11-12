@@ -1,10 +1,76 @@
-# 01 — Identity & Access Management (IAM) Class Diagram
+# Sơ Đồ Lớp Thiết Kế Chi Tiết: Phân Hệ Xác Thực & Phân Quyền (Identity & IAM Design Class Diagram)
+
+Mô hình hóa chi tiết đầy đủ 4 tầng kiến trúc: **Controller ➔ Service ➔ Repository ➔ Entity** cho quản lý tài khoản người dùng, đăng nhập JWT, ma trận phân quyền RBAC và hồ sơ hành khách.
+
+## Mã Mermaid UML (Full-Stack 4 Tầng)
 
 ```mermaid
 classDiagram
     direction TB
-    title CASMS — Identity, Auth & Passenger Profile
 
+    %% 1. Controller Layer
+    class AuthController {
+        -AuthService authService
+        +login(request) ApiResponse~LoginResponse~
+        +refreshToken(refreshToken) ApiResponse~LoginResponse~
+        +me(principal) ApiResponse~UserMeResponse~
+        +logout() ApiResponse~Void~
+    }
+
+    class IdentityController {
+        -IdentityService identityService
+        +createPassenger(request) ApiResponse~PassengerResponse~
+        +getPassengerDetail(id) ApiResponse~PassengerResponse~
+        +updateRoles(userId, roleIds) ApiResponse
+    }
+
+    %% 2. Service Layer
+    class AuthService {
+        -UserRepository userRepo
+        -JwtService jwtService
+        -PasswordEncoder passwordEncoder
+        +authenticate(username, password) LoginResponse
+        +refreshAccessToken(refreshToken) LoginResponse
+        +validateToken(token) boolean
+    }
+
+    class IdentityService {
+        -UserRepository userRepo
+        -PassengerRepository passengerRepo
+        -RoleRepository roleRepo
+        +findUserById(userId) Optional~User~
+        +assignRolesToUser(userId, roleCodes) User
+        +registerPassengerProfile(userId, dto) Passenger
+    }
+
+    %% 3. Repository Layer
+    class UserRepository {
+        <<interface>>
+        +findByUsername(username) Optional~User~
+        +findByEmail(email) Optional~User~
+        +existsByUsername(username) boolean
+        +save(user) User
+    }
+
+    class PassengerRepository {
+        <<interface>>
+        +findById(id) Optional~Passenger~
+        +findByDocumentNumber(docNum) Optional~Passenger~
+        +save(passenger) Passenger
+    }
+
+    class RoleRepository {
+        <<interface>>
+        +findByRoleName(roleName) Optional~Role~
+        +save(role) Role
+    }
+
+    class PermissionRepository {
+        <<interface>>
+        +findByResourceName(res) List~Permission~
+    }
+
+    %% 4. Entity Layer
     class User {
         +UUID userId
         +String username
@@ -13,77 +79,46 @@ classDiagram
         +String phoneNumber
         +UserStatus status
         +Instant createdAt
-        +Instant updatedAt
-        +hasRole(Role role) boolean
-        +hasPermission(Permission perm) boolean
     }
 
     class Passenger {
         +UUID passengerId
         +String fullName
         +LocalDate dateOfBirth
-        +String gender
         +String nationality
-        +String documentType
         +String documentNumber
-        +String phoneNumber
-        +String email
-        +Instant createdAt
-    }
-
-    class PassengerBleIdentity {
-        +UUID bleIdentityId
-        +String beaconMacAddress
-        +String majorMinor
-        +String encryptionKey
-        +Boolean isActive
-        +Instant pairedAt
-    }
-
-    class RolePermission {
-        +UUID rolePermissionId
-        +Role role
-        +Permission permission
-    }
-
-    class UserStatus {
-        <<enumeration>>
-        ACTIVE
-        SUSPENDED
-        INACTIVE
-        PENDING_ACTIVATION
+        +LocalDate documentExpiryDate
     }
 
     class Role {
-        <<enumeration>>
-        ADMIN
-        CRUISE_MANAGER
-        SHIP_OPERATOR
-        ACTIVITY_SERVICE_MANAGER
-        CRUISE_STAFF
-        POS_STAFF
-        PASSENGER
+        +UUID roleId
+        +String roleName
+        +String description
+        +Boolean isSystemRole
     }
 
     class Permission {
-        <<enumeration>>
-        CRUISE_VIEW
-        CRUISE_MANAGE
-        BOOKING_VIEW
-        BOOKING_MANAGE
-        ACTIVITY_CREATE
-        ACTIVITY_REGISTRATION
-        PAYMENT_PROCESS
-        FOLIO_CHARGE
-        GANGWAY_SCAN
+        +UUID permissionId
+        +String permissionCode
+        +String resourceName
+        +String action
     }
 
-    %% Relationships
-    User "1" --> "0..1" Passenger : associatesProfile
-    Passenger "1" *-- "0..1" PassengerBleIdentity : pairedWith
-    User "0..*" --> "1..*" Role : hasRoles
-    Role "1" o-- "1..*" RolePermission : definedBy
-    RolePermission --> Permission : grants
-    User --> UserStatus : hasStatus
-```
+    %% Inter-Layer and Domain Relationships
+    AuthController --> AuthService : delegatesTo
+    IdentityController --> IdentityService : delegatesTo
 
+    AuthService --> UserRepository : accesses
+    IdentityService --> UserRepository : accesses
+    IdentityService --> PassengerRepository : accesses
+    IdentityService --> RoleRepository : accesses
+
+    UserRepository ..> User : manages
+    PassengerRepository ..> Passenger : manages
+    RoleRepository ..> Role : manages
+    PermissionRepository ..> Permission : manages
+
+    User "1" <|-- "0..1" Passenger : profileOf
+    User "0..*" o-- "1..*" Role : hasRoles
+    Role "0..*" o-- "1..*" Permission : grants
+```

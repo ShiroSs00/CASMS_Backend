@@ -133,3 +133,4 @@ classDiagram
 - **Service Layer (Tầng Nghiệp vụ)**: Tách biệt Interface (`OnboardOperationService`) và Implementation (`OnboardOperationServiceImpl`) theo nguyên lý **Inversion of Control (IoC)** và **Dependency Injection (DI)** của Spring Framework, bọc giao dịch bằng `@Transactional`.
 - **Repository Layer (Tầng Truy xuất Dữ liệu)**: Mở rộng `JpaRepository<T, ID>` tận dụng các truy vấn tối ưu và Hibernate Caching của Spring Data JPA.
 - **Entity Layer (Tầng Thực thể Miền)**: Định nghĩa cấu trúc bảng CSDL, quan hệ khóa ngoại và các ràng buộc toàn vẹn dữ liệu.
+

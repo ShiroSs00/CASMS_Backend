@@ -1,13 +1,91 @@
-# Phân Hệ Cổng Thanh Toán Trực Tuyến & Lịch Trả Góp (Payment & Installments)
+# Sơ Đồ Lớp Thiết Kế Chi Tiết: Phân Hệ Thanh Toán & Trả Góp (Payment & Installments Design Class Diagram)
 
-Giao dịch thanh toán (`Payment`), tích hợp cổng VietQR/SePay (`SepayTransaction`), lộ trình trả góp chia đợt (`Installment`), hóa đơn (`Invoice`) và dòng chi tiết hóa đơn (`InvoiceLine`).
+Mô hình hóa chi tiết đầy đủ 4 tầng kiến trúc: **Controller ➔ Service ➔ Repository ➔ Entity** cho việc tích hợp cổng thanh toán trực tuyến, xử lý Webhook ngân hàng VietQR/SePay, chia đợt trả góp và xuất hóa đơn điện tử.
 
-## Mã Mermaid UML
+## Mã Mermaid UML (Full-Stack 4 Tầng)
 
 ```mermaid
 classDiagram
     direction TB
 
+    %% 1. Controller Layer
+    class PaymentController {
+        -PaymentService paymentService
+        +createPayment(request) ApiResponse~PaymentResponse~
+        +confirmPayment(paymentId) ApiResponse~PaymentResponse~
+        +failPayment(paymentId) ApiResponse~PaymentResponse~
+        +getPaymentsForBooking(bookingId) ApiResponse
+        +getPaymentDetail(paymentId) ApiResponse
+    }
+
+    class SepayController {
+        -SepayService sepayService
+        +handleWebhook(payload) ApiResponse~SepayWebhookResponse~
+        +getTransactionsByBooking(bookingId) ApiResponse
+    }
+
+    class InvoiceController {
+        -InvoiceService invoiceService
+        +issueInvoice(paymentId) ApiResponse~InvoiceResponse~
+        +getInvoice(invoiceId) ApiResponse~InvoiceResponse~
+    }
+
+    %% 2. Service Layer
+    class PaymentService {
+        -PaymentRepository paymentRepo
+        -InstallmentRepository installmentRepo
+        -BookingRepository bookingRepo
+        +createPayment(dto) PaymentResponse
+        +confirmPayment(paymentId) PaymentResponse
+        +matchWithBooking(transactionRef, amount) boolean
+        +updateInstallmentProgress(bookingId, paidAmount) void
+    }
+
+    class SepayService {
+        -SepayTransactionRepository sepayRepo
+        -PaymentService paymentService
+        +processWebhookTransaction(webhookData) SepayTransaction
+        +verifySignature(payload, signature) boolean
+    }
+
+    class InvoiceService {
+        -InvoiceRepository invoiceRepo
+        -InvoiceLineRepository invoiceLineRepo
+        +createInvoiceFromPayment(paymentId) Invoice
+        +exportPdf(invoiceId) byte[]
+    }
+
+    %% 3. Repository Layer
+    class PaymentRepository {
+        <<interface>>
+        +findById(id) Optional~Payment~
+        +findByTransactionReference(ref) Optional~Payment~
+        +findByBookingId(bookingId) List~Payment~
+        +save(payment) Payment
+    }
+
+    class SepayTransactionRepository {
+        <<interface>>
+        +findByReferenceNumber(refNum) Optional~SepayTransaction~
+        +existsBySepayId(sepayId) boolean
+        +save(transaction) SepayTransaction
+    }
+
+    class InstallmentRepository {
+        <<interface>>
+        +findByBookingIdOrderBySequenceNo(bookingId) List~Installment~
+        +findOverdueInstallments(asOfDate) List~Installment~
+        +save(installment) Installment
+    }
+
+    class InvoiceRepository {
+        <<interface>>
+        +findByInvoiceNumber(invoiceNo) Optional~Invoice~
+        +findByPaymentId(paymentId) Optional~Invoice~
+        +save(invoice) Invoice
+    }
+
+    %% 4. Entity Layer
     class Payment {
         +UUID paymentId
         +BigDecimal amount
@@ -29,7 +107,6 @@ classDiagram
         +BigDecimal amountIn
         +String transactionContent
         +String referenceNumber
-        +String code
     }
 
     class Installment {
@@ -40,7 +117,6 @@ classDiagram
         +BigDecimal paidAmount
         +LocalDate dueDate
         +InstallmentStatus status
-        +Instant fullyPaidAt
     }
 
     class Invoice {
@@ -49,7 +125,6 @@ classDiagram
         +BigDecimal subtotalAmount
         +BigDecimal taxAmount
         +BigDecimal totalAmount
-        +String taxIdNumber
         +InvoiceStatus status
         +Instant issuedAt
     }
@@ -62,43 +137,24 @@ classDiagram
         +BigDecimal lineTotal
     }
 
-    class ChargeDispute {
-        +UUID disputeId
-        +BigDecimal disputedAmount
-        +String reason
-        +DisputeStatus status
-        +Instant resolvedAt
-    }
+    %% Inter-Layer and Domain Relationships
+    PaymentController --> PaymentService : delegatesTo
+    SepayController --> SepayService : delegatesTo
+    InvoiceController --> InvoiceService : delegatesTo
 
-    class PaymentStatus {
-        <<enumeration>>
-        PENDING
-        COMPLETED
-        FAILED
-        REFUNDED
-    }
+    SepayService --> SepayTransactionRepository : accesses
+    SepayService --> PaymentService : triggersSettlement
+    PaymentService --> PaymentRepository : accesses
+    PaymentService --> InstallmentRepository : accesses
+    InvoiceService --> InvoiceRepository : accesses
 
-    class InstallmentStatus {
-        <<enumeration>>
-        PENDING
-        PARTIALLY_PAID
-        PAID
-        OVERDUE
-    }
+    PaymentRepository ..> Payment : manages
+    SepayTransactionRepository ..> SepayTransaction : manages
+    InstallmentRepository ..> Installment : manages
+    InvoiceRepository ..> Invoice : manages
 
-    %% Relationships
     Payment "1" *-- "0..1" SepayTransaction : matchedWebhook
     Installment "0..*" o-- "0..*" Payment : settledVia
     Payment "1" --> "0..1" Invoice : generates
     Invoice "1" *-- "1..*" InvoiceLine : lineItems
-    Payment "1" o-- "0..*" ChargeDispute : disputedUnder
-    Payment --> PaymentStatus : status
-    Installment --> InstallmentStatus : status
 ```
-
-## Giải Thích Quan Hệ & Ràng Buộc
-- **Payment - SepayTransaction**: Xử lý Webhook tự động từ SePay/VietQR. Khi khách chuyển khoản quét mã VietQR có nội dung khớp mã thanh toán, `SepayTransaction` đối soát tự động chuyển trạng thái `Payment` từ `PENDING` sang `COMPLETED`.
-- **Installment**: Hỗ trợ chia nhỏ số tiền cọc và thanh toán nhiều đợt trước ngày khởi hành (ví dụ: Đợt 1 cọc 30%, Đợt 2 thanh toán 40% trước 30 ngày, Đợt 3 thanh toán 30% trước 7 ngày).
-- **Invoice - InvoiceLine**: Xuất hóa đơn VAT điện tử cho cơ quan thuế và khách hàng.
-- **ChargeDispute**: Cơ chế giải quyết khiếu nại sai lệch cước phí hoặc giao dịch trùng lặp.
-

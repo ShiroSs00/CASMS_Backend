@@ -1,41 +1,84 @@
-# Phân Hệ Lập Kế Hoạch Hải Trình & Cảng Biển (Itinerary & Port Planning)
+# Sơ Đồ Lớp Thiết Kế Chi Tiết: Phân Hệ Hải Trình & Cảng Biển (Itinerary & Port Design Class Diagram)
 
-Quản lý lộ trình đường biển (`Itinerary`), danh mục các cảng đón trả khách (`Port`), điểm đến tham quan (`Destination`), chuyến đi được lên lịch (`Cruise`), các điểm cập cảng (`CruiseStop`) và kế hoạch phân bổ theo ngày (`TripPlanDay`).
+Mô hình hóa chi tiết đầy đủ 4 tầng kiến trúc: **Controller ➔ Service ➔ Repository ➔ Entity** cho lập kế hoạch lộ trình đường biển, các chặng dừng tại cảng và lịch trình chi tiết theo từng ngày của chuyến đi.
 
-## Mã Mermaid UML
+## Mã Mermaid UML (Full-Stack 4 Tầng)
 
 ```mermaid
 classDiagram
     direction TB
 
-    class Port {
-        +UUID portId
-        +String portCode
-        +String portName
-        +String countryCode
-        +Double latitude
-        +Double longitude
-        +Boolean isHomePort
+    %% 1. Controller Layer
+    class CruiseController {
+        -CruiseService cruiseService
+        +create(request) ApiResponse~CruiseResponse~
+        +list(pageable) ApiResponse~Page~CruiseResponse~~
+        +detail(cruiseId) ApiResponse~CruiseResponse~
+        +assignShip(cruiseId, shipId) ApiResponse
+        +publish(cruiseId) ApiResponse
+        +start(cruiseId) ApiResponse
+        +complete(cruiseId) ApiResponse
     }
 
-    class Destination {
-        +UUID destinationId
-        +String destinationCode
-        +String destinationName
-        +String countryCode
-        +String description
+    class ItineraryController {
+        -ItineraryService itineraryService
+        +createItinerary(request) ApiResponse
+        +listItineraries() ApiResponse
+        +getItineraryDetail(id) ApiResponse
+        +publishItinerary(id) ApiResponse
     }
 
-    class Itinerary {
-        +UUID itineraryId
-        +String itineraryCode
-        +String itineraryName
-        +Integer durationDays
-        +Integer durationNights
-        +String plannedScope
-        +ItineraryStatus status
+    %% 2. Service Layer
+    class CruiseService {
+        -CruiseRepository cruiseRepo
+        -CruiseStopRepository stopRepo
+        -ItineraryRepository itineraryRepo
+        +createCruise(dto) CruiseResponse
+        +assignShipToCruise(cruiseId, shipId) CruiseResponse
+        +startCruise(cruiseId) CruiseResponse
+        +completeCruise(cruiseId) CruiseResponse
+        +validateScheduleOverlap(shipId, departure, returns) boolean
     }
 
+    class ItineraryService {
+        -ItineraryRepository itineraryRepo
+        -PortRepository portRepo
+        +createItinerary(dto) Itinerary
+        +publishItinerary(id) Itinerary
+        +calculateTotalDuration(id) int
+    }
+
+    %% 3. Repository Layer
+    class CruiseRepository {
+        <<interface>>
+        +findById(id) Optional~Cruise~
+        +findByCruiseCode(code) Optional~Cruise~
+        +findByShipIdAndStatus(shipId, status) List~Cruise~
+        +save(cruise) Cruise
+    }
+
+    class ItineraryRepository {
+        <<interface>>
+        +findById(id) Optional~Itinerary~
+        +findByStatus(status) List~Itinerary~
+        +save(itinerary) Itinerary
+    }
+
+    class CruiseStopRepository {
+        <<interface>>
+        +findByCruiseIdOrderBySequenceNumber(cruiseId) List~CruiseStop~
+        +findByPortId(portId) List~CruiseStop~
+        +save(stop) CruiseStop
+    }
+
+    class PortRepository {
+        <<interface>>
+        +findById(id) Optional~Port~
+        +findByPortCode(code) Optional~Port~
+        +save(port) Port
+    }
+
+    %% 4. Entity Layer
     class Cruise {
         +UUID cruiseId
         +String cruiseCode
@@ -47,51 +90,46 @@ classDiagram
         +Instant publishedAt
     }
 
+    class Itinerary {
+        +UUID itineraryId
+        +String itineraryCode
+        +String itineraryName
+        +Integer durationDays
+        +Integer durationNights
+        +ItineraryStatus status
+    }
+
     class CruiseStop {
         +UUID cruiseStopId
         +Integer sequenceNumber
         +Instant plannedArrivalTime
         +Instant plannedDepartureTime
-        +Instant actualArrivalTime
-        +Instant actualDepartureTime
         +String berthNumber
     }
 
-    class TripPlanDay {
-        +UUID planDayId
-        +Integer dayIndex
-        +LocalDate planDate
-        +String dayTheme
+    class Port {
+        +UUID portId
+        +String portCode
+        +String portName
+        +String countryCode
+        +Boolean isHomePort
     }
 
-    class TripPlanEntry {
-        +UUID planEntryId
-        +Instant startTime
-        +Instant endTime
-        +String activityTitle
-        +String category
-        +String locationNote
-    }
+    %% Inter-Layer and Domain Relationships
+    CruiseController --> CruiseService : delegatesTo
+    ItineraryController --> ItineraryService : delegatesTo
 
-    class DestinationVisit {
-        +UUID visitId
-        +String excursionSummary
-        +BigDecimal estimatedHours
-    }
+    CruiseService --> CruiseRepository : accesses
+    CruiseService --> CruiseStopRepository : accesses
+    ItineraryService --> ItineraryRepository : accesses
+    ItineraryService --> PortRepository : accesses
 
-    %% Relationships
-    Itinerary "1" o-- "0..*" Cruise : instantiates
-    Itinerary "1" *-- "2..*" CruiseStop : definesStops
+    CruiseRepository ..> Cruise : manages
+    ItineraryRepository ..> Itinerary : manages
+    CruiseStopRepository ..> CruiseStop : manages
+    PortRepository ..> Port : manages
+
+    Itinerary "1" o-- "0..*" Cruise : basisFor
+    Cruise "1" *-- "2..*" CruiseStop : stopsAt
     CruiseStop "0..*" --> "1" Port : atPort
-    Destination "1" o-- "0..*" DestinationVisit : highlights
-    CruiseStop "1" o-- "0..*" DestinationVisit : enablesVisits
-    Cruise "1" *-- "1..*" TripPlanDay : scheduledDays
-    TripPlanDay "1" *-- "0..*" TripPlanEntry : dailySchedule
 ```
-
-## Giải Thích Quan Hệ & Ràng Buộc
-- **Itinerary - CruiseStop**: Hải trình mẫu bao gồm danh sách các điểm dừng (`CruiseStop`) theo thứ tự (`sequenceNumber`), mỗi điểm dừng gắn liền với một Cảng biển (`Port`). Một hải trình tiêu chuẩn cần ít nhất 2 điểm dừng (cảng đi và cảng đến).
-- **Itinerary - Cruise**: Một hải trình (`Itinerary`) có thể được dùng để khởi tạo nhiều chuyến tàu cụ thể (`Cruise`) với các mốc thời gian khởi hành (`departureDatetime`) khác nhau.
-- **Cruise - TripPlanDay - TripPlanEntry**: Mỗi chuyến đi được chia thành từng ngày (`TripPlanDay`), mỗi ngày có danh sách các mốc hoạt động chi tiết (`TripPlanEntry`).
-- **CruiseStop - DestinationVisit - Destination**: Khi tàu cập một cảng, hành khách có thể tham gia các chuyến tham quan điểm đến địa phương liên kết (`Destination`).
-

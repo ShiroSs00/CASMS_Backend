@@ -1,13 +1,75 @@
-# Phân Hệ Cầu Tàu, Điểm Danh An Toàn SOLAS & Thẻ Từ RFID (Gangway Check-in & Safety)
+# Sơ Đồ Lớp Thiết Kế Chi Tiết: Phân Hệ Cầu Tàu & An Toàn SOLAS (Check-in & Safety Design Class Diagram)
 
-Kiểm soát khách qua cửa cầu cảng (`CruiseCheckin`, `CruiseCheckout`), sự kiện quẹt thẻ từ NFC/RFID tại cửa Gangway (`GangwayEvent`), trạm tập kết cứu sinh (`MusterStation`) và buổi diễn tập an toàn bắt buộc SOLAS (`GuidanceSession`).
+Mô hình hóa chi tiết đầy đủ 4 tầng kiến trúc: **Controller ➔ Service ➔ Repository ➔ Entity** cho thủ tục check-in tại nhà ga cảng, kiểm soát qua cầu tàu Gangway bằng NFC/RFID và điểm danh diễn tập an toàn bắt buộc SOLAS (Muster Drill).
 
-## Mã Mermaid UML
+## Mã Mermaid UML (Full-Stack 4 Tầng)
 
 ```mermaid
 classDiagram
     direction TB
 
+    %% 1. Controller Layer
+    class CheckinController {
+        -CheckinService checkinService
+        +startCheckin(bookingId) ApiResponse~CheckinResponse~
+        +completeCheckin(checkinId) ApiResponse~CheckinResponse~
+        +getStatus(bookingId) ApiResponse~CheckinResponse~
+    }
+
+    class GuidanceSessionController {
+        -GuidanceSessionService guidanceService
+        +createSession(request) ApiResponse
+        +markAttendance(sessionId, participantId) ApiResponse
+        +getSessionRoster(sessionId) ApiResponse
+    }
+
+    %% 2. Service Layer
+    class CheckinService {
+        -CruiseCheckinRepository checkinRepo
+        -GangwayEventRepository gangwayRepo
+        -BookingRepository bookingRepo
+        +initiateCheckin(bookingId) CruiseCheckin
+        +processGangwayScan(tagId, direction, gate) GangwayEvent
+        +finalizeCheckin(checkinId) CruiseCheckin
+        +getPersonsOnBoardCount(cruiseId) int
+    }
+
+    class GuidanceSessionService {
+        -GuidanceSessionRepository sessionRepo
+        -MusterStationRepository stationRepo
+        +scheduleMusterDrill(cruiseId, stationId) GuidanceSession
+        +recordAttendance(sessionId, passengerId, signature) boolean
+        +verifySolasCompliance(cruiseId) boolean
+    }
+
+    %% 3. Repository Layer
+    class CruiseCheckinRepository {
+        <<interface>>
+        +findById(id) Optional~CruiseCheckin~
+        +findByBookingId(bookingId) Optional~CruiseCheckin~
+        +save(checkin) CruiseCheckin
+    }
+
+    class GangwayEventRepository {
+        <<interface>>
+        +findByCruiseIdOrderByEventTimeDesc(cruiseId) List~GangwayEvent~
+        +countByCruiseIdAndDirection(cruiseId, direction) Long
+        +save(event) GangwayEvent
+    }
+
+    class GuidanceSessionRepository {
+        <<interface>>
+        +findByCruiseId(cruiseId) List~GuidanceSession~
+        +save(session) GuidanceSession
+    }
+
+    class MusterStationRepository {
+        <<interface>>
+        +findByShipId(shipId) List~MusterStation~
+        +save(station) MusterStation
+    }
+
+    %% 4. Entity Layer
     class CruiseCheckin {
         +UUID checkinId
         +Instant checkinTime
@@ -15,19 +77,11 @@ classDiagram
         +CheckinStatus status
     }
 
-    class CruiseCheckout {
-        +UUID checkoutId
-        +Instant checkoutTime
-        +String clearanceNotes
-        +Boolean folioSettled
-    }
-
     class CheckinStep {
         +UUID stepId
         +String stepName
         +Integer sequenceOrder
         +Boolean isCompleted
-        +Instant completedAt
     }
 
     class GangwayEvent {
@@ -36,7 +90,6 @@ classDiagram
         +GangwayDirection direction
         +String scannerDeviceId
         +Boolean accessGranted
-        +String refusalReason
     }
 
     class MusterStation {
@@ -44,7 +97,6 @@ classDiagram
         +String stationCode
         +String locationDescription
         +Integer maxCapacityPlaque
-        +UUID primaryLifeboatId
     }
 
     class GuidanceSession {
@@ -53,41 +105,23 @@ classDiagram
         +GuidanceType guidanceType
         +Instant scheduledTime
         +Boolean isSolasMandatory
-        +SessionStatus status
     }
 
-    class GuidanceSessionParticipant {
-        +UUID participantId
-        +Boolean hasAttended
-        +Instant markedAttendanceAt
-        +String signatureEvidence
-    }
+    %% Inter-Layer and Domain Relationships
+    CheckinController --> CheckinService : delegatesTo
+    GuidanceSessionController --> GuidanceSessionService : delegatesTo
 
-    class GangwayDirection {
-        <<enumeration>>
-        EMBARK
-        DISEMBARK
-    }
+    CheckinService --> CruiseCheckinRepository : accesses
+    CheckinService --> GangwayEventRepository : accesses
+    GuidanceSessionService --> GuidanceSessionRepository : accesses
+    GuidanceSessionService --> MusterStationRepository : accesses
 
-    class GuidanceType {
-        <<enumeration>>
-        MUSTER_DRILL_SOLAS
-        SHIP_ORIENTATION
-        EXCURSION_BRIEFING
-    }
+    CruiseCheckinRepository ..> CruiseCheckin : manages
+    GangwayEventRepository ..> GangwayEvent : manages
+    GuidanceSessionRepository ..> GuidanceSession : manages
+    MusterStationRepository ..> MusterStation : manages
 
-    %% Relationships
     CruiseCheckin "1" *-- "1..*" CheckinStep : pipelineSteps
     CruiseCheckin "1" o-- "0..*" GangwayEvent : entryEvents
-    CruiseCheckout "1" o-- "0..*" GangwayEvent : exitEvents
     MusterStation "1" o-- "0..*" GuidanceSession : hostedAt
-    GuidanceSession "1" *-- "1..*" GuidanceSessionParticipant : attendanceRoster
-    GangwayEvent --> GangwayDirection : movement
-    GuidanceSession --> GuidanceType : nature
 ```
-
-## Giải Thích Quan Hệ & Ràng Buộc
-- **GangwayEvent (Kiểm soát cầu tàu)**: Ghi nhận thời gian thực mỗi lần hành khách lên (`EMBARK`) hoặc rời tàu (`DISEMBARK`) khi tàu cập cảng, đảm bảo danh sách số lượng người trên tàu (Onboard POB - Persons On Board) luôn chính xác 100% theo luật hàng hải.
-- **MusterStation & GuidanceSession (Quy định an toàn SOLAS)**: Công ước SOLAS quốc tế bắt buộc 100% hành khách phải tham gia diễn tập cứu sinh tại Trạm tập trung khẩn cấp (`MusterStation`) trước khi tàu nhổ neo hoặc trong vòng 24 giờ sau khi xuất bến. Thuộc tính `hasAttended` và `signatureEvidence` đóng vai trò là bằng chứng pháp lý điện tử.
-- **CruiseCheckout**: Xác nhận hành khách đã hoàn tất quyết toán tài khoản phòng (`folioSettled = true`) trước khi được cấp phép rời tàu cuối hành trình.
-

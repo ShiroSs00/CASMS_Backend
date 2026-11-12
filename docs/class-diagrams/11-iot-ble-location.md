@@ -75,3 +75,4 @@ classDiagram
 - **LocationDevice**: Các trạm thu phát sóng Bluetooth Low Energy (BLE) cố định tại các góc boong tàu, hành lang, nhà hàng, hồ bơi.
 - **LocationRecord**: Dòng dữ liệu time-series lưu trữ tọa độ tính toán (X, Y, Z) và cường độ sóng (`signalRssi`) của vòng đeo tay thông minh.
 - **PassengerBleIdentity & PassengerIdentifier**: Liên kết vòng tay RFID/BLE với hồ sơ hành khách (`Passenger`), cho phép xác định vị trí hành khách trong các tình huống khẩn cấp (diễn tập cứu hộ, tìm trẻ em đi lạc, cảnh báo khu vực cấm).
+

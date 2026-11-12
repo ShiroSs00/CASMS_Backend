@@ -95,3 +95,4 @@ classDiagram
 - **ShipModel - ShipModelObject**: Cây đối tượng 3D chi tiết ánh xạ trực tiếp đến các thực thể logic như `Deck`, `Cabin`, `Area` thông qua thuộc tính `nodeKey` và ma trận chuyển đổi không gian 3 chiều (`transformMatrix`).
 - **ShipModelAssetBlob**: Lưu trữ nhị phân các file định dạng GLTF/GLB/Textures với mã băm bảo mật `checksumSha256`.
 - **ModelImportJob & ModelImportIssue**: Tiến trình nhập dữ liệu CAD/BIM bất đồng bộ, ghi nhận các lỗi sai lệch tọa độ hoặc thiếu vật liệu đồ họa khi import.
+

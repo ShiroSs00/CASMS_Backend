@@ -82,3 +82,4 @@ classDiagram
 ## Giải Thích Quan Hệ & Ràng Buộc
 - **Quản lý phiên bản gói (Versioning)**: Gói du thuyền mẫu được tách thành nhiều phiên bản (`CruisePackageTemplateVersion`). Điều này đảm bảo khi điều chỉnh giá hoặc chính sách quyền lợi cho các mùa sau, dữ liệu các hợp đồng và vé đã bán của các mùa trước vẫn được bảo toàn nguyên vẹn.
 - **Biểu giá động theo hạng phòng**: Mỗi đợt xuất phát (`DepartureCruisePackage`) có bảng giá chi tiết cho người lớn (`adultPrice`), trẻ em (`childPrice`) và phụ thu phòng đơn (`singleSupplementRate`) ứng với từng hạng phòng cụ thể.
+

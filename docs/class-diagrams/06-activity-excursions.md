@@ -1,13 +1,101 @@
-# Phân Hệ Hoạt Động Giải Trí Trên Tàu & Tour Tham Quan Bờ (Onboard Activities & Excursions)
+# Sơ Đồ Lớp Thiết Kế Chi Tiết: Phân Hệ Hoạt Động Giải Trí & Tour Bờ (Activity & Excursion Design Class Diagram)
 
-Mô hình hóa hoạt động giải trí (`OnboardActivity`), đăng ký ghế ngồi (`Registration`), điểm danh (`Participation`), tour khám phá bờ biển (`ShoreExcursion`) và đơn vị cung cấp đối tác địa phương (`Supplier`).
+Mô hình hóa chi tiết đầy đủ 4 tầng kiến trúc: **Controller ➔ Service ➔ Repository ➔ Entity** cho các hoạt động biểu diễn nghệ thuật, thể thao trên tàu, tour tham quan bờ biển và vận hành linh hoạt thời tiết (Dynamic Rescheduling).
 
-## Mã Mermaid UML
+## Mã Mermaid UML (Full-Stack 4 Tầng)
 
 ```mermaid
 classDiagram
     direction TB
 
+    %% 1. Controller Layer
+    class OnboardOperationController {
+        -OnboardOperationService operationService
+        +registerActivity(bookingPassengerId, request) ApiResponse
+        +rescheduleActivity(activityId, request) ApiResponse
+        +syncOfflineTransactions(transactions) ApiResponse
+    }
+
+    class ActivityController {
+        -ActivityService activityService
+        +createActivity(request) ApiResponse
+        +listActivities(cruiseId, category) ApiResponse
+        +getActivityDetail(activityId) ApiResponse
+        +cancelActivity(activityId, reason) ApiResponse
+    }
+
+    class ShoreExcursionController {
+        -ShoreExcursionService excursionService
+        +createExcursion(request) ApiResponse
+        +listExcursions(cruiseId, portId) ApiResponse
+        +checkAvailability(excursionId) ApiResponse
+        +confirmExcursion(excursionId) ApiResponse
+    }
+
+    %% 2. Service Layer
+    class OnboardOperationService {
+        <<interface>>
+        +registerActivity(bookingPassengerId, activityId, notes) Registration
+        +rescheduleActivity(activityId, newStartTime, newLocation, isMovedIndoor) OnboardActivity
+        +syncOfflineTransactions(offlineTransactions) List~OnboardTransaction~
+    }
+
+    class ActivityService {
+        -OnboardActivityRepository activityRepo
+        -RegistrationRepository registrationRepo
+        -ParticipationRepository participationRepo
+        +createActivity(dto) OnboardActivity
+        +findActivitiesByCruise(cruiseId) List~OnboardActivity~
+        +checkCapacity(activityId) boolean
+        +cancelActivity(activityId, reason) OnboardActivity
+    }
+
+    class ShoreExcursionService {
+        -ShoreExcursionRepository excursionRepo
+        -TourGroupRepository tourGroupRepo
+        -SupplierRepository supplierRepo
+        +createExcursion(dto) ShoreExcursion
+        +findExcursionsByPort(portId) List~ShoreExcursion~
+        +assignTourGuide(tourGroupId, guideName) TourGroup
+    }
+
+    %% 3. Repository Layer
+    class OnboardActivityRepository {
+        <<interface>>
+        +findById(id) Optional~OnboardActivity~
+        +findByStatus(status) List~OnboardActivity~
+        +findByCruiseId(cruiseId) List~OnboardActivity~
+        +save(activity) OnboardActivity
+    }
+
+    class RegistrationRepository {
+        <<interface>>
+        +countByOnboardActivityId(activityId) Long
+        +existsByBookingPassengerAndActivity(passengerId, activityId) Boolean
+        +findByBookingPassengerId(passengerId) List~Registration~
+        +save(registration) Registration
+    }
+
+    class ParticipationRepository {
+        <<interface>>
+        +findByRegistrationId(registrationId) Optional~Participation~
+        +save(participation) Participation
+    }
+
+    class ShoreExcursionRepository {
+        <<interface>>
+        +findById(id) Optional~ShoreExcursion~
+        +findByCruiseStopId(cruiseStopId) List~ShoreExcursion~
+        +save(excursion) ShoreExcursion
+    }
+
+    class TourGroupRepository {
+        <<interface>>
+        +findByShoreExcursionId(excursionId) List~TourGroup~
+        +save(group) TourGroup
+    }
+
+    %% 4. Entity Layer
     class OnboardActivity {
         +UUID onboardActivityId
         +String activityCode
@@ -19,9 +107,7 @@ classDiagram
         +String meetingPoint
         +Integer capacity
         +BigDecimal price
-        +String currencyCode
         +OnboardActivityStatus status
-        +Boolean catalogEntry
     }
 
     class Registration {
@@ -30,8 +116,6 @@ classDiagram
         +Integer quantity
         +RegistrationStatus status
         +String cancellationReason
-        +String notes
-        +UUID fareBenefitSnapshotId
     }
 
     class Participation {
@@ -46,10 +130,7 @@ classDiagram
         +String excursionCode
         +String excursionTitle
         +BigDecimal pricePerAdult
-        +BigDecimal pricePerChild
         +Integer maximumCapacity
-        +Instant plannedDepartureTime
-        +Instant plannedReturnTime
         +ShoreExcursionStatus status
     }
 
@@ -61,54 +142,24 @@ classDiagram
         +TourGroupStatus status
     }
 
-    class TourGroupPassenger {
-        +UUID assignmentId
-        +Instant assignedAt
-        +TourGroupPassengerAssignmentStatus status
-    }
+    %% Inter-Layer and Domain Relationships
+    OnboardOperationController --> OnboardOperationService : delegatesTo
+    ActivityController --> ActivityService : delegatesTo
+    ShoreExcursionController --> ShoreExcursionService : delegatesTo
 
-    class Supplier {
-        +UUID supplierId
-        +String companyName
-        +String licenseNumber
-        +String contactEmail
-        +SupplierStatus status
-    }
+    ActivityService --> OnboardActivityRepository : accesses
+    ActivityService --> RegistrationRepository : accesses
+    ActivityService --> ParticipationRepository : accesses
+    ShoreExcursionService --> ShoreExcursionRepository : accesses
+    ShoreExcursionService --> TourGroupRepository : accesses
 
-    class OnboardActivityCategory {
-        <<enumeration>>
-        SPORTS_WELLNESS
-        ENTERTAINMENT
-        WORKSHOPS_CLASSES
-        FAMILY_KIDS
-        SPECIAL_EVENTS
-    }
+    OnboardActivityRepository ..> OnboardActivity : manages
+    RegistrationRepository ..> Registration : manages
+    ParticipationRepository ..> Participation : manages
+    ShoreExcursionRepository ..> ShoreExcursion : manages
+    TourGroupRepository ..> TourGroup : manages
 
-    class OnboardActivityStatus {
-        <<enumeration>>
-        PLANNED
-        OPEN
-        FULL
-        IN_PROGRESS
-        COMPLETED
-        CANCELLED
-        MOVED_INDOOR
-    }
-
-    %% Relationships
     OnboardActivity "1" *-- "0..*" Registration : receivesRegistrations
     Registration "1" *-- "0..1" Participation : leadsToAttendance
-    ShoreExcursion "1" *-- "0..*" Registration : excursionBookings
     ShoreExcursion "1" *-- "1..*" TourGroup : organizesGroups
-    TourGroup "1" *-- "0..*" TourGroupPassenger : assignsMembers
-    Supplier "1" o-- "0..*" ShoreExcursion : operates
-    OnboardActivity --> OnboardActivityCategory : categorized
-    OnboardActivity --> OnboardActivityStatus : state
 ```
-
-## Giải Thích Quan Hệ & Ràng Buộc
-- **OnboardActivity - Registration - Participation**: Luồng đăng ký từ lúc giữ slot (`Registration`) đến khi có mặt thực tế quét mã tại cửa phòng/sân khấu (`Participation`).
-- **Dynamic Rescheduling**: Thuộc tính `status` của `OnboardActivity` hỗ trợ trạng thái `MOVED_INDOOR` và `CANCELLED` khi thời tiết trên biển xấu, cho phép dời lịch hoặc đổi địa điểm mà vẫn giữ nguyên danh sách đăng ký.
-- **ShoreExcursion - TourGroup - TourGroupPassenger**: Tour tham quan cảng được chia thành các nhóm nhỏ (`TourGroup`) do hướng dẫn viên (`assignedGuideName`) phụ trách để đảm bảo an toàn và số lượng tối đa (`maxPax`).
-- **Supplier**: Nhà cung ứng dịch vụ tại điểm đến địa phương (xe đưa đón, cano cao tốc, nhà hàng đối tác).
-

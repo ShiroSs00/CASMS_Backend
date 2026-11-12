@@ -1,13 +1,82 @@
-# Phân Hệ Đặt Chỗ, Giữ Chỗ & Hợp Đồng Hải Trình (Booking & Contract Lifecycle)
+# Sơ Đồ Lớp Thiết Kế Chi Tiết: Phân Hệ Đặt Chỗ & Hợp Đồng (Booking & Contract Design Class Diagram)
 
-Vòng đời đơn đặt chỗ (`Booking`), danh sách thành viên đi cùng (`BookingPassenger`), phân bổ phòng (`CabinAssignment`), báo giá giữ chỗ (`BookingQuote`) và văn bản hợp đồng vận chuyển hành khách (`BookingContract`).
+Mô hình hóa chi tiết đầy đủ 4 tầng kiến trúc: **Controller ➔ Service ➔ Repository ➔ Entity** cho vòng đời đơn đặt chỗ, báo giá giữ phòng, phân bổ buồng phòng và ký hợp đồng vận tải điện tử.
 
-## Mã Mermaid UML
+## Mã Mermaid UML (Full-Stack 4 Tầng)
 
 ```mermaid
 classDiagram
     direction TB
 
+    %% 1. Controller Layer
+    class BookingController {
+        -BookingService bookingService
+        +getAvailableCabins(cruiseId, categoryCode) ApiResponse
+        +createQuote(request) ApiResponse
+        +create(request) ApiResponse
+        +detail(bookingId) ApiResponse
+        +acceptContract(bookingId) ApiResponse
+        +printContract(bookingId) ResponseEntity
+        +confirm(bookingId) ApiResponse
+        +cancel(bookingId) ApiResponse
+        +changeCabin(bookingId, request) ApiResponse
+    }
+
+    %% 2. Service Layer
+    class BookingService {
+        -BookingRepository bookingRepo
+        -BookingPassengerRepository passengerRepo
+        -BookingContractRepository contractRepo
+        -CabinAssignmentRepository assignmentRepo
+        -BookingQuoteRepository quoteRepo
+        +getAvailableCabins(cruiseId, categoryCode) List~AvailableCabinResponse~
+        +createQuote(request, principal) BookingQuoteResponse
+        +createBooking(request, principal) BookingDetailResponse
+        +detail(bookingId, principal) BookingDetailResponse
+        +acceptContract(bookingId, principal) BookingDetailResponse
+        +generateContractHtml(bookingId, principal) String
+        +confirm(bookingId, principal) BookingDetailResponse
+        +cancel(bookingId, principal) BookingDetailResponse
+        +changeCabin(request, principal) BookingDetailResponse
+        +releaseExpiredHolds() int
+    }
+
+    %% 3. Repository Layer
+    class BookingRepository {
+        <<interface>>
+        +findByBookingReference(reference) Optional~Booking~
+        +findByUserId(userId, pageable) Page~Booking~
+        +existsByCruiseIdAndStatus(cruiseId, status) boolean
+        +save(booking) Booking
+        +findById(id) Optional~Booking~
+    }
+
+    class BookingPassengerRepository {
+        <<interface>>
+        +findByBookingId(bookingId) List~BookingPassenger~
+        +saveAll(passengers) List~BookingPassenger~
+    }
+
+    class BookingContractRepository {
+        <<interface>>
+        +findByBookingId(bookingId) Optional~BookingContract~
+        +save(contract) BookingContract
+    }
+
+    class CabinAssignmentRepository {
+        <<interface>>
+        +findByBookingId(bookingId) List~CabinAssignment~
+        +existsByCabinIdAndCruiseId(cabinId, cruiseId) boolean
+        +save(assignment) CabinAssignment
+    }
+
+    class BookingQuoteRepository {
+        <<interface>>
+        +findById(quoteId) Optional~BookingQuote~
+        +save(quote) BookingQuote
+    }
+
+    %% 4. Entity Layer
     class Booking {
         +UUID bookingId
         +String bookingReference
@@ -59,26 +128,23 @@ classDiagram
         +String quoteFingerprint
     }
 
-    class BookingFareSnapshot {
-        +UUID snapshotId
-        +BigDecimal baseFare
-        +BigDecimal portTaxes
-        +BigDecimal serviceSurcharges
-        +Instant snapshotTime
-    }
+    %% Inter-Layer and Domain Relationships
+    BookingController --> BookingService : delegatesTo
+    BookingService --> BookingRepository : accesses
+    BookingService --> BookingPassengerRepository : accesses
+    BookingService --> BookingContractRepository : accesses
+    BookingService --> CabinAssignmentRepository : accesses
+    BookingService --> BookingQuoteRepository : accesses
 
-    %% Relationships
+    BookingRepository ..> Booking : manages
+    BookingPassengerRepository ..> BookingPassenger : manages
+    BookingContractRepository ..> BookingContract : manages
+    CabinAssignmentRepository ..> CabinAssignment : manages
+    BookingQuoteRepository ..> BookingQuote : manages
+
     Booking "1" *-- "1..*" BookingPassenger : includes
     Booking "1" *-- "0..1" BookingContract : signs
     Booking "1" *-- "0..*" BookingQuote : quotedBy
-    Booking "1" *-- "0..*" BookingFareSnapshot : freezeFares
     BookingPassenger "0..*" o-- "0..1" CabinAssignment : holdsCabin
     Booking "1" o-- "0..*" CabinAssignment : manages
 ```
-
-## Giải Thích Quan Hệ & Ràng Buộc
-- **Booking - BookingPassenger**: Một đơn đặt chỗ có ít nhất 1 hoặc nhiều hành khách tham gia (`1 *-- 1..*`).
-- **Booking - BookingContract**: Hợp đồng vận tải du lịch điện tử ký kết giữa khách hàng và hãng tàu. Thuộc tính `isInternational` phân biệt hợp đồng nội địa (Tuân thủ Bộ luật Hàng hải Việt Nam, Luật Du lịch 2017) với hợp đồng quốc tế (Công ước Athens 1974, quy định xuất nhập cảnh và thị thực).
-- **BookingPassenger - CabinAssignment**: Phân bổ buồng phòng cụ thể cho hành khách dựa trên hạng phòng và nhóm cabin (`cabinGroupKey`).
-- **BookingFareSnapshot**: Lưu lại ảnh chụp giá vé tại thời điểm đặt phòng nhằm tránh biến động tỷ giá và bảo vệ quyền lợi người tiêu dùng.
-
