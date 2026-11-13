@@ -42,6 +42,7 @@ public interface DestinationRepository extends JpaRepository<Destination, UUID> 
 SELECT EXISTS (SELECT 1 FROM "DestinationVisit" WHERE destination_id=:id)
     OR EXISTS (SELECT 1 FROM "CruiseDestinationVisit" WHERE destination_id=:id)
     OR EXISTS (SELECT 1 FROM "Port" WHERE destination_id=:id)
+    OR EXISTS (SELECT 1 FROM "PortDestinationAccess" WHERE destination_id=:id)
     OR EXISTS (SELECT 1 FROM "CruiseStop" WHERE destination_id=:id)
     OR EXISTS (SELECT 1 FROM "TripPlanStop" WHERE destination_id=:id)
     OR EXISTS (SELECT 1 FROM "TripPlanEntry" WHERE destination_id=:id)

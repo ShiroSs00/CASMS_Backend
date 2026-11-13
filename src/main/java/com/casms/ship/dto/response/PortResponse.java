@@ -11,6 +11,7 @@ import lombok.Data;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.UUID;
+import java.util.List;
 
 @Data
 @Schema(description = "Thông tin chi tiết cảng")
@@ -65,6 +66,9 @@ public class PortResponse {
 
     @Schema(description = "ID điểm đến liên kết", example = "3fa85f64-5717-4562-b3fc-2c963f66afa6")
     private UUID destinationId;
+
+    @Schema(description = "Các địa điểm có thể tiếp cận từ cảng, dùng khi kiểm tra tour bờ")
+    private List<UUID> servedDestinationIds;
 
     @Schema(description = "Tên điểm đến liên kết", example = "Hạ Long Bay")
     private String destinationName;

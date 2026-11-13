@@ -20,6 +20,8 @@ import org.springframework.test.web.servlet.request.RequestPostProcessor;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.UUID;
+import java.time.Duration;
+import java.time.Instant;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
@@ -95,16 +97,48 @@ class CatalogBranch75ApiPostgresTest {
 
     @Test
     void onlyAuthorizedCompleteReviewCreatesVerifiedStagingRecord() throws Exception {
-        UUID user = UUID.randomUUID(), port = UUID.randomUUID(), supplier = UUID.randomUUID();
+        UUID user = UUID.randomUUID(), port = UUID.randomUUID(), destination = UUID.randomUUID(),
+                supplier = UUID.randomUUID(), cruise = UUID.randomUUID(), itinerary = UUID.randomUUID(),
+                day = UUID.randomUUID(), stop = UUID.randomUUID();
+        Instant arrival = Instant.now().plus(Duration.ofDays(2));
+        Instant departure = arrival.plus(Duration.ofHours(8));
+        Instant tourStart = arrival.plus(Duration.ofMinutes(30));
         jdbc.update("""
                 INSERT INTO "User"(user_id,username,password_hash,status,created_at,updated_at)
                 VALUES (?,?,'test-account-with-no-login','ACTIVE',now(),now())
                 """, user, "catalog-test-" + user);
         jdbc.update("""
-                INSERT INTO "Port"(port_id,port_name,country_code,time_zone_id,latitude,longitude,
+                INSERT INTO "Destination"(destination_id,destination_name,country_code,status,created_at,updated_at)
+                VALUES (?,'Catalog test destination','VN','ACTIVE',now(),now())
+                """, destination);
+        jdbc.update("""
+                INSERT INTO "Port"(port_id,port_name,country_code,time_zone_id,latitude,longitude,destination_id,
                     status,created_at,updated_at)
-                VALUES (?,'Catalog test port','VN','Asia/Ho_Chi_Minh',20,107,'INACTIVE',now(),now())
-                """, port);
+                VALUES (?,'Catalog test port','VN','Asia/Ho_Chi_Minh',20,107,?,'INACTIVE',now(),now())
+                """, port, destination);
+        jdbc.update("INSERT INTO \"PortDestinationAccess\"(port_id,destination_id) VALUES (?,?)", port, destination);
+        jdbc.update("""
+                INSERT INTO "Cruise"(cruise_id,cruise_code,cruise_name,cruise_type,departure_datetime,
+                    return_datetime,departure_port_id,return_port_id,status,revision,created_at,updated_at)
+                VALUES (?,?,'Catalog verification cruise','MULTI_DAYS',?,?,?,?, 'DRAFT',1,now(),now())
+                """, cruise, "CAT" + cruise.toString().substring(0, 12),
+                java.sql.Timestamp.from(arrival.minus(Duration.ofHours(2))),
+                java.sql.Timestamp.from(departure.plus(Duration.ofHours(2))), port, port);
+        jdbc.update("""
+                INSERT INTO "Itinerary"(itinerary_id,cruise_id,itinerary_name,start_date,end_date,itinerary_type,status,created_at,updated_at)
+                VALUES (?,?,'Catalog verification itinerary',current_date + 2,current_date + 2,'ROUND_TRIP','DRAFT',now(),now())
+                """, itinerary, cruise);
+        jdbc.update("""
+                INSERT INTO "ItineraryDay"(itinerary_day_id,itinerary_id,day_number,date,day_type,day_role)
+                VALUES (?,?,1,current_date + 2,'PORT_DAY','REGULAR')
+                """, day, itinerary);
+        jdbc.update("""
+                INSERT INTO "CruiseStop"(cruise_stop_id,itinerary_id,arrival_itinerary_day_id,departure_itinerary_day_id,
+                    port_id,destination_id,stop_order,planned_arrival,planned_departure,all_aboard_time,call_type,status)
+                VALUES (?,?,?,?,?,?,1,?,?,?,'NORMAL','PLANNED')
+                """, stop, itinerary, day, day, port, destination, java.sql.Timestamp.from(arrival),
+                java.sql.Timestamp.from(departure),
+                java.sql.Timestamp.from(departure.minus(Duration.ofMinutes(15))));
         jdbc.update("""
                 INSERT INTO "Supplier"(supplier_id,supplier_name,contact_name,status,verification_status,
                     created_at,updated_at)
@@ -112,9 +146,10 @@ class CatalogBranch75ApiPostgresTest {
                 """, supplier);
         var ops = actor(Role.OPERATIONS_MANAGER, user, "PORT_VALIDATE", "SUPPLIER_VERIFY");
         String valid = """
-                {"portId":"%s","supplierId":"%s","portEvidenceUrl":"https://example.invalid/port",
+                {"portId":"%s","destinationId":"%s","cruiseStopId":"%s","supplierId":"%s",
+                "roundTripTravelMinutes":30,"tourStartTime":"%s","portEvidenceUrl":"https://example.invalid/port",
                 "supplierEvidenceUrl":"https://example.invalid/supplier","note":"Reviewed test evidence"}
-                """.formatted(port, supplier);
+                """.formatted(port, destination, stop, supplier, tourStart);
         int liveBefore = jdbc.queryForObject("SELECT count(*)::int FROM \"ShoreExcursion\"", Integer.class);
         mvc.perform(post(VERIFY).contextPath("/api").with(csrf())
                         .with(actor(Role.OPERATIONS_MANAGER, user, "PORT_VALIDATE"))

@@ -27,6 +27,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.LinkedHashSet;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -84,6 +86,7 @@ public class PortService {
         port.setStatus(request.getStatus() != null ? request.getStatus() : PortStatus.ACTIVE);
 
         port = portRepository.saveAndFlush(port);
+        synchronizeServedDestinations(port, request.getServedDestinationIds(), true);
         auditService.recordDirectoryMutation(
                 "Port", port.getPortId(), "CREATE", java.util.Map.of(), snapshot(port));
         return mapToResponse(port);
@@ -215,6 +218,8 @@ public class PortService {
         }
 
         port = portRepository.saveAndFlush(port);
+        synchronizeServedDestinations(
+                port, request.getServedDestinationIds(), request.getServedDestinationIds() != null);
         auditService.recordDirectoryMutation(
                 "Port", port.getPortId(), "UPDATE", before, snapshot(port));
         return mapToResponse(port);
@@ -232,6 +237,7 @@ public class PortService {
         }
 
         var before = snapshot(port);
+        portRepository.deleteServedDestinations(portId);
         portRepository.delete(port);
         auditService.recordDirectoryMutation(
                 "Port", portId, "DELETE_UNUSED", before, java.util.Map.of());
@@ -354,6 +360,7 @@ public class PortService {
         fields.put(
                 "destinationId",
                 port.getDestination() == null ? null : port.getDestination().getDestinationId());
+        fields.put("servedDestinationIds", portRepository.findServedDestinationIds(port.getPortId()));
         fields.put("status", port.getStatus());
         fields.put("createdAt", port.getCreatedAt());
         fields.put("updatedAt", port.getUpdatedAt());
@@ -389,8 +396,30 @@ public class PortService {
             res.setDestinationId(port.getDestination().getDestinationId());
             res.setDestinationName(port.getDestination().getDestinationName());
         }
+        res.setServedDestinationIds(portRepository.findServedDestinationIds(port.getPortId()));
         res.setCreatedAt(port.getCreatedAt());
         res.setUpdatedAt(port.getUpdatedAt());
         return res;
+    }
+
+    /**
+     * The primary directory destination is retained for compatibility, but a port can provide
+     * access to multiple excursion destinations through PortDestinationAccess.
+     */
+    private void synchronizeServedDestinations(
+            Port port, Set<UUID> requestedDestinationIds, boolean replace) {
+        var destinationIds = new LinkedHashSet<UUID>();
+        if (requestedDestinationIds != null) {
+            requestedDestinationIds.stream().filter(java.util.Objects::nonNull).forEach(destinationIds::add);
+        }
+        if (port.getDestination() != null) destinationIds.add(port.getDestination().getDestinationId());
+        for (UUID destinationId : destinationIds) {
+            if (!destinationRepository.existsById(destinationId))
+                throw new ResourceNotFoundException("Destination", destinationId);
+        }
+        if (replace) portRepository.deleteServedDestinations(port.getPortId());
+        for (UUID destinationId : destinationIds) {
+            portRepository.addServedDestination(port.getPortId(), destinationId);
+        }
     }
 }

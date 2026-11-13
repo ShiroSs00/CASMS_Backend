@@ -83,6 +83,20 @@ public class ItineraryProgramPolicy {
                     "The destination must be explicitly planned for this exact port call");
     }
 
+    /** A selected tour destination must be planned for this call and reachable via its port. */
+    public void requireServedDestination(UUID stop, UUID destination) {
+        requireDestination(stop, destination);
+        if (!Boolean.TRUE.equals(jdbc.queryForObject("""
+                SELECT EXISTS(
+                  SELECT 1 FROM "CruiseStop" s
+                  JOIN "PortDestinationAccess" a ON a.port_id=s.port_id AND a.destination_id=?
+                  JOIN "Destination" d ON d.destination_id=a.destination_id AND d.status='ACTIVE'
+                  WHERE s.cruise_stop_id=?)
+                """, Boolean.class, destination, stop)))
+            throw new BusinessException(HttpStatus.UNPROCESSABLE_ENTITY, "EXCURSION_DESTINATION_NOT_SERVED",
+                    "The selected destination is not served from this port call");
+    }
+
     public List<Issue> issues(UUID cruiseId) {
         var issues = new ArrayList<Issue>();
         var cruises = jdbc.queryForList("SELECT * FROM \"Cruise\" WHERE cruise_id=?", cruiseId);
@@ -123,7 +137,7 @@ public class ItineraryProgramPolicy {
                 UUID id = (UUID) e.get("shore_excursion_id");
                 try {
                     validateExcursionTimes(stop, instant(e.get("start_time")), instant(e.get("planned_return_time")), cruise);
-                    requireDestination(stopId, (UUID) e.get("destination_id"));
+                    requireServedDestination(stopId, (UUID) e.get("destination_id"));
                     requireDetails(e.get("maximum_capacity"), e.get("price"), e.get("currency_code"), e.get("meeting_point"));
                     if (e.get("location_text") == null || e.get("location_text").toString().isBlank())
                         throw new BusinessException("PROGRAM_DETAILS_REQUIRED", "Excursion location is required");

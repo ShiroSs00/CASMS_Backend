@@ -7,8 +7,9 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.Map;
+import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.*;
 
 class ItineraryProgramPolicyTest {
     private final ItineraryProgramPolicy policy = new ItineraryProgramPolicy(mock(JdbcTemplate.class));
@@ -43,6 +44,18 @@ class ItineraryProgramPolicyTest {
         assertCode("PROGRAM_DETAILS_REQUIRED", () -> ItineraryProgramPolicy.requireDetails(20, BigDecimal.ONE.negate(), "USD", "Deck"));
         assertCode("PROGRAM_DETAILS_REQUIRED", () -> ItineraryProgramPolicy.requireDetails(20, BigDecimal.ZERO, "VND", "Deck"));
         assertCode("PROGRAM_DETAILS_REQUIRED", () -> ItineraryProgramPolicy.requireDetails(20, BigDecimal.ZERO, "USD", "  "));
+    }
+
+    @Test void rejectsTourDestinationNotServedByThePortCall() {
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        when(jdbc.queryForObject(anyString(), eq(Boolean.class), any(), any()))
+                .thenReturn(true, false);
+        ItineraryProgramPolicy destinationPolicy = new ItineraryProgramPolicy(jdbc);
+
+        BusinessException error = assertThrows(BusinessException.class,
+                () -> destinationPolicy.requireServedDestination(UUID.randomUUID(), UUID.randomUUID()));
+
+        assertEquals("EXCURSION_DESTINATION_NOT_SERVED", error.getCode());
     }
 
     private void assertCode(String code, Executable action) {

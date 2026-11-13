@@ -38,7 +38,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class ItineraryProgramsPostgresIntegrationTest {
     @DynamicPropertySource static void database(DynamicPropertyRegistry properties) {
         String url = System.getenv("CASMS_TEST_POSTGRES_URL");
-        if (url == null || !url.matches("jdbc:postgresql://127\\.0\\.0\\.1:56559/casms75_test(?:\\?.*)?"))
+        if (url == null || !url.matches("jdbc:postgresql://127\\.0\\.0\\.1:(?:55475|56559)/casms75_test"))
             throw new IllegalStateException("Use only the disposable CASMS-75 database");
         properties.add("spring.datasource.url", () -> url);
         properties.add("spring.datasource.username", () -> "postgres");
@@ -76,6 +76,18 @@ class ItineraryProgramsPostgresIntegrationTest {
         cruise.setDepartureDatetime(departure); cruise.setReturnDatetime(departure.plusSeconds(2*86400));
         cruise.setCruiseType(CruiseCruiseType.MULTI_DAYS); cruise.setStatus(CruiseStatus.DRAFT); em.persist(cruise);
         cruiseId=cruise.getCruiseId();
+        em.flush();
+        UUID sourceTrip = jdbc.queryForObject("""
+                INSERT INTO "Trip" (trip_code, name, duration_days, duration_nights, trip_type)
+                VALUES (?, 'Program fixture itinerary', 3, 2, 'ROUND_TRIP') RETURNING trip_id
+                """, UUID.class, "TR-" + code);
+        UUID sourceVersion = jdbc.queryForObject("""
+                INSERT INTO "TripScheduleVersion" (trip_id, version_number, status)
+                VALUES (?, 1, 'PUBLISHED') RETURNING version_id
+                """, UUID.class, sourceTrip);
+        jdbc.update("""
+                UPDATE "Cruise" SET source_trip_id=?, source_version_id=? WHERE cruise_id=?
+                """, sourceTrip, sourceVersion, cruiseId);
         Itinerary itinerary = new Itinerary(); itinerary.setCruise(cruise); itinerary.setItineraryName("Draft");
         itinerary.setStartDate(LocalDate.of(2030,2,1)); itinerary.setEndDate(LocalDate.of(2030,2,3));
         itinerary.setItineraryType(ItineraryType.ROUND_TRIP); itinerary.setStatus(ItineraryStatus.DRAFT); em.persist(itinerary);
@@ -92,6 +104,8 @@ class ItineraryProgramsPostgresIntegrationTest {
         stop.setCallType(CruiseStopCallType.NORMAL); stop.setArrivalMethod(CruiseStopArrivalMethod.BERTH);
         stop.setStatus(CruiseStopStatus.PLANNED); em.persist(stop); stopId=stop.getCruiseStopId();
         em.flush(); em.clear();
+        jdbc.update("INSERT INTO \"PortDestinationAccess\" (port_id,destination_id) VALUES (?,?)",
+                port.getPortId(),destinationId);
         jdbc.update("UPDATE \"ShipModelObject\" SET area_usage='ACTIVITY_SPACE' WHERE ship_model_object_id=?",areaId);
         jdbc.update("UPDATE \"ShipModelObject\" SET area_usage='SERVICE' WHERE ship_model_object_id=?",serviceAreaId);
         sourceActivity=UUID.randomUUID(); sourceExcursion=UUID.randomUUID(); UUID supplier=UUID.randomUUID();
@@ -160,6 +174,19 @@ class ItineraryProgramsPostgresIntegrationTest {
     @Test void destinationMustBePlannedAtTheExactCall() {
         assertCode("EXCURSION_DESTINATION_NOT_PLANNED",()->programs.assign(itineraryId,revision(),List.of(),
                 List.of(new ItineraryProgramService.ShoreSelection(sourceExcursion,stopId,UUID.randomUUID()))));
+    }
+
+    @Test void plannedDestinationMustAlsoBeServedByThePort() {
+        jdbc.update("""
+            DELETE FROM "PortDestinationAccess" WHERE destination_id=? AND port_id=
+                (SELECT port_id FROM "CruiseStop" WHERE cruise_stop_id=?)
+            """,destinationId,stopId);
+        long before=revision();
+        assertCode("EXCURSION_DESTINATION_NOT_SERVED",()->programs.assign(itineraryId,before,List.of(),
+                List.of(new ItineraryProgramService.ShoreSelection(sourceExcursion,stopId,destinationId))));
+        assertEquals(before,revision());
+        assertEquals(0,jdbc.queryForObject(
+                "SELECT count(*) FROM \"ShoreExcursion\" WHERE cruise_stop_id=?",Integer.class,stopId));
     }
 
     @Test void normalPortCallMustFitCruiseWindowEvenWithoutExcursions() {
@@ -233,7 +260,8 @@ class ItineraryProgramsPostgresIntegrationTest {
     @Test void httpOperationsSubmissionAndDirectItinerarySubmissionRejectIncompletePrograms() throws Exception {
         assignBoth(); String authorization=token(com.casms.identity.enums.Role.CRUISE_MANAGER);
         mvc.perform(post("/cruise-plans/{id}/submit",cruiseId).header("Authorization",authorization)
-                .contentType("application/json").content("{\"expectedRevision\":0}"))
+                .contentType("application/json").content("{\"expectedRevision\":0,\"fingerprint\":\""
+                        + plans.get(cruiseId).fingerprint() + "\"}"))
                 .andExpect(status().isUnprocessableEntity()).andExpect(jsonPath("$.code").value("PLAN_INCOMPLETE"))
                 .andExpect(jsonPath("$.details.blockers",org.hamcrest.Matchers.hasItem("ACTIVITY_OUTSIDE_CRUISE")));
         mvc.perform(post("/itineraries/{id}/submit",itineraryId).header("Authorization",authorization))

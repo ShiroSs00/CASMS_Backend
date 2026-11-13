@@ -78,6 +78,8 @@ public class CruisePricingPolicyIntegrationTest {
     private Port portDan;
     private User testOpsManager;
     private User testCaptain;
+    private User testCruiseManager;
+    @Autowired private org.springframework.jdbc.core.JdbcTemplate jdbc;
 
     @BeforeEach
     void setUp() {
@@ -138,6 +140,13 @@ public class CruisePricingPolicyIntegrationTest {
         testOpsManager.setRoles(Set.of(Role.OPERATIONS_MANAGER));
         testOpsManager = userRepository.save(testOpsManager);
 
+        testCruiseManager = new User();
+        testCruiseManager.setUsername("crm_prc_" + UUID.randomUUID().toString().substring(0, 8));
+        testCruiseManager.setPasswordHash("hash123");
+        testCruiseManager.setStatus(UserStatus.ACTIVE);
+        testCruiseManager.setRoles(Set.of(Role.CRUISE_MANAGER));
+        testCruiseManager = userRepository.save(testCruiseManager);
+
         testCaptain = new User();
         testCaptain.setUsername("capt_prc_" + UUID.randomUUID().toString().substring(0, 6));
         testCaptain.setPasswordHash("hash123");
@@ -156,6 +165,17 @@ public class CruisePricingPolicyIntegrationTest {
         req.setReturnPortId(portDan.getPortId());
         req.setShipId(testShip.getShipId());
         CruiseResponse cruise = cruiseService.create(req);
+        UUID trip = jdbc.queryForObject("""
+                INSERT INTO "Trip" (trip_code, name, duration_days, duration_nights, trip_type)
+                VALUES (?, 'Pricing itinerary', 4, 3, 'ONE_WAY') RETURNING trip_id
+                """, UUID.class, "TR-PRC-" + UUID.randomUUID().toString().substring(0, 8));
+        UUID version = jdbc.queryForObject("""
+                INSERT INTO "TripScheduleVersion" (trip_id, version_number, status)
+                VALUES (?, 1, 'PUBLISHED') RETURNING version_id
+                """, UUID.class, trip);
+        jdbc.update("""
+                UPDATE "Cruise" SET source_trip_id=?, source_version_id=? WHERE cruise_id=?
+                """, trip, version, cruise.getCruiseId());
 
         CruiseStaffRequest staffReq = new CruiseStaffRequest();
         staffReq.setUserId(testCaptain.getUserId());
@@ -173,6 +193,36 @@ public class CruisePricingPolicyIntegrationTest {
         itineraryRepository.save(itinerary);
 
         return cruise;
+    }
+
+    private <T> T as(User actor, java.util.function.Supplier<T> action) {
+        var holder = org.springframework.security.core.context.SecurityContextHolder.getContext();
+        var previous = holder.getAuthentication();
+        var principal = new CasmsPrincipal(actor, rolePermissionRepository);
+        holder.setAuthentication(new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(
+                principal, null, principal.getAuthorities()));
+        try {
+            return action.get();
+        } finally {
+            holder.setAuthentication(previous);
+        }
+    }
+
+    private CruisePricingPolicyResponse savePricing(UUID cruiseId, CruisePricingPolicyRequest request) {
+        request.setExpectedRevision(cruisePricingPolicyRepository.findByCruise_CruiseId(cruiseId)
+                .map(policy -> policy.getRevision()).orElse(0L));
+        return as(testCruiseManager, () -> pricingPolicyService.savePricingPolicy(
+                cruiseId, request, testCruiseManager.getUserId()));
+    }
+
+    private CruisePricingPolicyResponse approvePricing(UUID cruiseId) {
+        var draft = pricingPolicyService.getPricingPolicy(cruiseId);
+        var submitted = as(testCruiseManager, () -> pricingPolicyService.review(
+                cruiseId, "submit", new CruisePricingPolicyService.Review(draft.getRevision(), null),
+                testCruiseManager.getUserId()));
+        return as(testOpsManager, () -> pricingPolicyService.review(
+                cruiseId, "approve", new CruisePricingPolicyService.Review(submitted.getRevision(), null),
+                testOpsManager.getUserId()));
     }
 
     @Test
@@ -229,8 +279,7 @@ public class CruisePricingPolicyIntegrationTest {
         req.setDepositPercentage(new BigDecimal("0.3000"));
         req.setFinalPaymentDueDays(14);
         req.setFullPaymentCutoffDays(7);
-        pricingPolicyService.savePricingPolicy(
-                cruise.getCruiseId(), req, testOpsManager.getUserId(), false);
+        savePricing(cruise.getCruiseId(), req);
 
         CruiseSaleReadinessResponse readiness =
                 cruiseService.validateSaleReadiness(cruise.getCruiseId());
@@ -331,15 +380,13 @@ public class CruisePricingPolicyIntegrationTest {
         saveReq.setCancellationPolicy("Huy truoc 30 ngay hoan 100%, sau 30 ngay mat coc.");
 
         CruisePricingPolicyResponse saved =
-                pricingPolicyService.savePricingPolicy(
-                        cruise.getCruiseId(), saveReq, testOpsManager.getUserId(), false);
+                savePricing(cruise.getCruiseId(), saveReq);
         assertEquals(PricingPolicyStatus.DRAFT, saved.getStatus());
         assertEquals("USD", saved.getCurrency());
 
         // 2. Approve Policy
         CruisePricingPolicyResponse approved =
-                pricingPolicyService.approvePricingPolicy(
-                        cruise.getCruiseId(), testOpsManager.getUserId());
+                approvePricing(cruise.getCruiseId());
         assertEquals(PricingPolicyStatus.APPROVED, approved.getStatus());
         assertNotNull(approved.getApprovedAt());
         assertEquals(testOpsManager.getUserId(), approved.getApprovedBy());
@@ -495,9 +542,8 @@ public class CruisePricingPolicyIntegrationTest {
         reqV1.setDepositPercentage(new BigDecimal("0.3000"));
         reqV1.setFinalPaymentDueDays(14);
         reqV1.setFullPaymentCutoffDays(7);
-        pricingPolicyService.savePricingPolicy(
-                cruise.getCruiseId(), reqV1, testOpsManager.getUserId(), true);
-        pricingPolicyService.approvePricingPolicy(cruise.getCruiseId(), testOpsManager.getUserId());
+        savePricing(cruise.getCruiseId(), reqV1);
+        approvePricing(cruise.getCruiseId());
 
         // Mo ban
         CruiseOpenSaleRequest openReq =
@@ -530,8 +576,7 @@ public class CruisePricingPolicyIntegrationTest {
         reqV2.setFinalPaymentDueDays(14);
         reqV2.setFullPaymentCutoffDays(7);
         CruisePricingPolicyResponse updatedPolicy =
-                pricingPolicyService.savePricingPolicy(
-                        cruise.getCruiseId(), reqV2, testOpsManager.getUserId(), true);
+                savePricing(cruise.getCruiseId(), reqV2);
 
         assertTrue(
                 updatedPolicy.getPolicyVersion().contains("-V2"),

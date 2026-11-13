@@ -25,6 +25,7 @@ class OperationalProgramUnknownInputTest {
     @Mock CruiseRepository cruises;
     @Mock ShipRepository ships;
     @Mock PortRepository ports;
+    @Mock ItineraryProgramPolicy itineraryProgramPolicy;
     @Mock TripPlanEntryRepository entries;
     @Mock ItineraryRepository itineraries;
     @Mock CruiseStopRepository stops;

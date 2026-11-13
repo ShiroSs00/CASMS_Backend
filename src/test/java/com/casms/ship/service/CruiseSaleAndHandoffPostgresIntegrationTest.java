@@ -99,6 +99,8 @@ public class CruiseSaleAndHandoffPostgresIntegrationTest {
     @Autowired private RolePermissionRepository rolePermissionRepository;
     @Autowired private TransactionTemplate transactionTemplate;
     @Autowired private CruisePricingPolicyRepository cruisePricingPolicyRepository;
+    @Autowired private org.springframework.jdbc.core.JdbcTemplate jdbc;
+    @Autowired private CruiseMainflowService mainflow;
 
     private Ship testShip;
     private Deck testDeck;
@@ -238,6 +240,32 @@ public class CruiseSaleAndHandoffPostgresIntegrationTest {
         unassignedPackage = tourPackageRepository.save(unassignedPackage);
     }
 
+    private CruiseResponse openSale(UUID cruiseId, CruiseOpenSaleRequest request) {
+        String snapshot = mainflow.planSnapshot(cruiseId);
+        jdbc.update("""
+                INSERT INTO "CruisePlanReview" (cruise_id, status, snapshot, fingerprint)
+                VALUES (?, 'APPROVED', CAST(? AS jsonb), ?)
+                ON CONFLICT (cruise_id) DO UPDATE
+                SET status=EXCLUDED.status, snapshot=EXCLUDED.snapshot, fingerprint=EXCLUDED.fingerprint
+                """, cruiseId, snapshot, CruiseMainflowService.hash(snapshot));
+        jdbc.update("""
+                UPDATE "CruisePlanReview" SET ready_at=now(), ready_fingerprint=? WHERE cruise_id=?
+                """, mainflow.get(cruiseId).fingerprint(), cruiseId);
+        if (request.getExpectedRevision() == null) {
+            request.setExpectedRevision(cruiseRepository.findById(cruiseId).orElseThrow().getRevision());
+        }
+        if (request.getSaleScope() == null) {
+            request.setSaleScope(request.getPackageIds() == null || request.getPackageIds().isEmpty()
+                    ? "WHOLE_CRUISE" : "SELECTED_PACKAGES");
+        }
+        if (request.getFingerprint() == null) {
+            Set<UUID> packages = request.getPackageIds() == null ? null : Set.copyOf(request.getPackageIds());
+            request.setFingerprint(cruiseService.validateSaleReadiness(
+                    cruiseId, request.getSaleScope(), packages).getFingerprint());
+        }
+        return cruiseService.openSale(cruiseId, request);
+    }
+
     private CruiseResponse createReadyCruise(String name, Instant dep, Instant ret) {
         CruiseCreateRequest req = new CruiseCreateRequest();
         req.setCruiseName(name);
@@ -260,11 +288,17 @@ public class CruiseSaleAndHandoffPostgresIntegrationTest {
         Itinerary itinerary = new Itinerary();
         itinerary.setCruise(cruiseRepository.findById(cruise.getCruiseId()).orElseThrow());
         itinerary.setItineraryName(name + " Itinerary");
-        itinerary.setStartDate(LocalDate.ofInstant(dep, ZoneId.of("UTC")));
-        itinerary.setEndDate(LocalDate.ofInstant(ret, ZoneId.of("UTC")));
+        itinerary.setStartDate(LocalDate.ofInstant(dep, ZoneId.of("Asia/Ho_Chi_Minh")));
+        itinerary.setEndDate(LocalDate.ofInstant(ret, ZoneId.of("Asia/Ho_Chi_Minh")));
         itinerary.setItineraryType(ItineraryType.ROUND_TRIP);
         itinerary.setStatus(ItineraryStatus.APPROVED);
-        itineraryRepository.save(itinerary);
+        itinerary = itineraryRepository.save(itinerary);
+        jdbc.update("""
+                INSERT INTO "ItineraryDay" (itinerary_day_id, itinerary_id, day_number, date, day_type)
+                SELECT gen_random_uuid(), ?, day + 1, CAST(? AS date) + day, 'SEA_DAY'
+                FROM generate_series(0, CAST(? AS integer)) AS day
+                """, itinerary.getItineraryId(), itinerary.getStartDate(),
+                ChronoUnit.DAYS.between(itinerary.getStartDate(), itinerary.getEndDate()));
 
         // Create approved Pricing Policy for this cruise
         CruisePricingPolicy policy =
@@ -284,6 +318,7 @@ public class CruiseSaleAndHandoffPostgresIntegrationTest {
                         .fullPaymentCutoffDays(7)
                         .build();
         cruisePricingPolicyRepository.save(policy);
+        jdbc.update("UPDATE \"Cruise\" SET status='PUBLISHED', planned_scope='DOMESTIC' WHERE cruise_id=?", cruise.getCruiseId());
 
         return cruise;
     }
@@ -330,7 +365,7 @@ public class CruiseSaleAndHandoffPostgresIntegrationTest {
 
         // BE-R02 / Question 5: Open sale and create a Draft booking to verify held vs booked and
         // remaining capacity
-        cruiseService.openSale(cruise.getCruiseId(), new CruiseOpenSaleRequest());
+        openSale(cruise.getCruiseId(), new CruiseOpenSaleRequest());
         BookingCreateRequest req = new BookingCreateRequest();
         req.setCruiseId(cruise.getCruiseId());
         req.setCurrency("USD");
@@ -377,7 +412,7 @@ public class CruiseSaleAndHandoffPostgresIntegrationTest {
         CruiseTourPackageRequest pkgReq = new CruiseTourPackageRequest();
         pkgReq.setTourPackageId(testPackage.getTourPackageId());
         cruisePackageService.assignPackage(cruise.getCruiseId(), pkgReq);
-        cruiseService.openSale(cruise.getCruiseId(), new CruiseOpenSaleRequest());
+        openSale(cruise.getCruiseId(), new CruiseOpenSaleRequest());
 
         int threads = 2;
         ExecutorService executor = Executors.newFixedThreadPool(threads);
@@ -448,7 +483,7 @@ public class CruiseSaleAndHandoffPostgresIntegrationTest {
         CruiseTourPackageRequest pkgReq = new CruiseTourPackageRequest();
         pkgReq.setTourPackageId(testPackage.getTourPackageId());
         cruisePackageService.assignPackage(cruise.getCruiseId(), pkgReq);
-        cruiseService.openSale(cruise.getCruiseId(), new CruiseOpenSaleRequest());
+        openSale(cruise.getCruiseId(), new CruiseOpenSaleRequest());
 
         BookingCreateRequest req = new BookingCreateRequest();
         req.setCruiseId(cruise.getCruiseId());
@@ -528,13 +563,13 @@ public class CruiseSaleAndHandoffPostgresIntegrationTest {
         BusinessException staleEx =
                 assertThrows(
                         BusinessException.class,
-                        () -> cruiseService.openSale(cruise.getCruiseId(), staleReq));
+                        () -> openSale(cruise.getCruiseId(), staleReq));
         assertEquals("STALE_REVISION", staleEx.getCode());
 
         // 2. Open sale successfully
         CruiseOpenSaleRequest openReq =
                 CruiseOpenSaleRequest.builder().expectedRevision(cruise.getRevision()).build();
-        CruiseResponse opened = cruiseService.openSale(cruise.getCruiseId(), openReq);
+        CruiseResponse opened = openSale(cruise.getCruiseId(), openReq);
         assertEquals(CruiseStatus.PUBLISHED, opened.getStatus());
 
         Itinerary itinerary =
@@ -664,7 +699,7 @@ public class CruiseSaleAndHandoffPostgresIntegrationTest {
                 CruiseOpenSaleRequest.builder()
                         .packageIds(List.of(testPackage.getTourPackageId()))
                         .build();
-        CruiseResponse openedCruise = cruiseService.openSale(cruise.getCruiseId(), openScopeA);
+        CruiseResponse openedCruise = openSale(cruise.getCruiseId(), openScopeA);
         assertEquals(CruiseStatus.PUBLISHED, openedCruise.getStatus());
 
         // Verify: Package A is ACTIVE, Package B is NOT ACTIVE (Scope A không mở B)
@@ -714,7 +749,7 @@ public class CruiseSaleAndHandoffPostgresIntegrationTest {
         assertEquals("PACKAGE_NOT_AVAILABLE_FOR_CRUISE", exB.getCode());
 
         // 2. Retry openSale with Scope A: idempotent, does not add Package B
-        CruiseResponse retried = cruiseService.openSale(cruise.getCruiseId(), openScopeA);
+        CruiseResponse retried = openSale(cruise.getCruiseId(), openScopeA);
         assertNotNull(retried);
         ctpB =
                 cruiseTourPackageRepository
@@ -729,7 +764,7 @@ public class CruiseSaleAndHandoffPostgresIntegrationTest {
                 CruiseOpenSaleRequest.builder()
                         .packageIds(List.of(packageB.getTourPackageId()))
                         .build();
-        CruiseResponse scopeBOpened = cruiseService.openSale(cruise.getCruiseId(), openScopeB);
+        CruiseResponse scopeBOpened = openSale(cruise.getCruiseId(), openScopeB);
         assertNotNull(scopeBOpened);
 
         ctpB =
@@ -772,7 +807,7 @@ public class CruiseSaleAndHandoffPostgresIntegrationTest {
                 CruiseOpenSaleRequest.builder().packageIds(List.of(nonExistentId)).build();
         assertThrows(
                 com.casms.common.exception.ResourceNotFoundException.class,
-                () -> cruiseService.openSale(cruise.getCruiseId(), nonExistentReq));
+                () -> openSale(cruise.getCruiseId(), nonExistentReq));
 
         // 2. Package not assigned to this cruise (unassignedPackage): throws
         // PACKAGE_NOT_ASSIGNED_TO_CRUISE
@@ -783,7 +818,7 @@ public class CruiseSaleAndHandoffPostgresIntegrationTest {
         BusinessException unassignedEx =
                 assertThrows(
                         BusinessException.class,
-                        () -> cruiseService.openSale(cruise.getCruiseId(), unassignedReq));
+                        () -> openSale(cruise.getCruiseId(), unassignedReq));
         assertEquals("PACKAGE_NOT_ASSIGNED_TO_CRUISE", unassignedEx.getCode());
 
         // 3. Inactive package: throws PACKAGE_INACTIVE
@@ -809,7 +844,7 @@ public class CruiseSaleAndHandoffPostgresIntegrationTest {
         BusinessException inactiveEx =
                 assertThrows(
                         BusinessException.class,
-                        () -> cruiseService.openSale(cruise.getCruiseId(), inactiveReq));
+                        () -> openSale(cruise.getCruiseId(), inactiveReq));
         assertEquals("PACKAGE_INACTIVE", inactiveEx.getCode());
 
         // Verify atomicity: cruise remains DRAFT, nothing was half-opened
@@ -830,7 +865,7 @@ public class CruiseSaleAndHandoffPostgresIntegrationTest {
         CruiseTourPackageRequest pkgReq = new CruiseTourPackageRequest();
         pkgReq.setTourPackageId(testPackage.getTourPackageId());
         cruisePackageService.assignPackage(cruise.getCruiseId(), pkgReq);
-        cruiseService.openSale(cruise.getCruiseId(), new CruiseOpenSaleRequest());
+        openSale(cruise.getCruiseId(), new CruiseOpenSaleRequest());
 
         // 1. Book the ONLY slot of testCabinSingleSlot (capacity = 1)
         BookingCreateRequest req = new BookingCreateRequest();
@@ -942,7 +977,7 @@ public class CruiseSaleAndHandoffPostgresIntegrationTest {
         pkgReq.setTourPackageId(testPackage.getTourPackageId());
         cruisePackageService.assignPackage(cruise.getCruiseId(), pkgReq);
 
-        cruiseService.openSale(cruise.getCruiseId(), new CruiseOpenSaleRequest());
+        openSale(cruise.getCruiseId(), new CruiseOpenSaleRequest());
 
         // Prepare 2 identical booking requests competing for testCabinSingleSlot (capacity = 1)
         BookingCreateRequest req1 = new BookingCreateRequest();
@@ -1021,7 +1056,7 @@ public class CruiseSaleAndHandoffPostgresIntegrationTest {
         pkgReq.setTourPackageId(testPackage.getTourPackageId());
         cruisePackageService.assignPackage(cruise.getCruiseId(), pkgReq);
 
-        cruiseService.openSale(cruise.getCruiseId(), new CruiseOpenSaleRequest());
+        openSale(cruise.getCruiseId(), new CruiseOpenSaleRequest());
 
         // 1. Client creates a valid Draft booking (holding a slot)
         BookingCreateRequest req = new BookingCreateRequest();
@@ -1111,7 +1146,7 @@ public class CruiseSaleAndHandoffPostgresIntegrationTest {
         pkgReq.setTourPackageId(testPackage.getTourPackageId());
         cruisePackageService.assignPackage(cruise.getCruiseId(), pkgReq);
 
-        cruiseService.openSale(cruise.getCruiseId(), new CruiseOpenSaleRequest());
+        openSale(cruise.getCruiseId(), new CruiseOpenSaleRequest());
 
         // Create booking with 1 passenger
         BookingCreateRequest req = new BookingCreateRequest();
@@ -1228,6 +1263,27 @@ public class CruiseSaleAndHandoffPostgresIntegrationTest {
         createReq.setExpectedSourceVersionRevision(version.getRevision());
         CruiseResponse cruise = cruiseService.create(createReq);
 
+        // Add approved Pricing Policy
+        CruisePricingPolicy policy =
+                CruisePricingPolicy.builder()
+                        .cruise(cruiseRepository.findById(cruise.getCruiseId()).orElseThrow())
+                        .policyVersion("PRC-2026.10-V1")
+                        .status(PricingPolicyStatus.APPROVED)
+                        .currency("USD")
+                        .interiorBaseFare(BigDecimal.valueOf(300.00))
+                        .oceanViewBaseFare(BigDecimal.valueOf(350.00))
+                        .balconyBaseFare(BigDecimal.valueOf(450.00))
+                        .suiteBaseFare(BigDecimal.valueOf(650.00))
+                        .taxRate(BigDecimal.valueOf(0.1000))
+                        .portFeePerPassenger(BigDecimal.valueOf(25.00))
+                        .depositPercentage(BigDecimal.valueOf(0.3000))
+                        .finalPaymentDueDays(14)
+                        .fullPaymentCutoffDays(7)
+                        .build();
+        cruisePricingPolicyRepository.save(policy);
+        jdbc.update("UPDATE \"Cruise\" SET status='PUBLISHED', planned_scope='DOMESTIC' WHERE cruise_id=?", cruise.getCruiseId());
+
+        // Published pre-cutover departures retain legacy pricing and package behavior.
         // Assign captain and package
         CruiseStaffRequest staffReq = new CruiseStaffRequest();
         staffReq.setUserId(testStaffCaptain.getUserId());
@@ -1249,26 +1305,7 @@ public class CruiseSaleAndHandoffPostgresIntegrationTest {
                             itineraryRepository.save(it);
                         });
 
-        // Add approved Pricing Policy
-        CruisePricingPolicy policy =
-                CruisePricingPolicy.builder()
-                        .cruise(cruiseRepository.findById(cruise.getCruiseId()).orElseThrow())
-                        .policyVersion("PRC-2026.10-V1")
-                        .status(PricingPolicyStatus.APPROVED)
-                        .currency("USD")
-                        .interiorBaseFare(BigDecimal.valueOf(300.00))
-                        .oceanViewBaseFare(BigDecimal.valueOf(350.00))
-                        .balconyBaseFare(BigDecimal.valueOf(450.00))
-                        .suiteBaseFare(BigDecimal.valueOf(650.00))
-                        .taxRate(BigDecimal.valueOf(0.1000))
-                        .portFeePerPassenger(BigDecimal.valueOf(25.00))
-                        .depositPercentage(BigDecimal.valueOf(0.3000))
-                        .finalPaymentDueDays(14)
-                        .fullPaymentCutoffDays(7)
-                        .build();
-        cruisePricingPolicyRepository.save(policy);
-
-        cruiseService.openSale(cruise.getCruiseId(), new CruiseOpenSaleRequest());
+        openSale(cruise.getCruiseId(), new CruiseOpenSaleRequest());
 
         // Create a booking
         BookingCreateRequest req = new BookingCreateRequest();

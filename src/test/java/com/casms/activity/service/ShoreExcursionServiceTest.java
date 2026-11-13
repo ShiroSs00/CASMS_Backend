@@ -9,6 +9,8 @@ import com.casms.activity.repository.RegistrationRepository;
 import com.casms.activity.repository.ShoreExcursionRepository;
 import com.casms.activity.repository.SupplierRepository;
 import com.casms.ship.repository.CruiseStopRepository;
+import com.casms.ship.repository.DestinationRepository;
+import com.casms.ship.repository.PortRepository;
 
 import jakarta.persistence.EntityNotFoundException;
 
@@ -32,6 +34,10 @@ class ShoreExcursionServiceTest {
     @Mock private SupplierRepository supplierRepository;
 
     @Mock private CruiseStopRepository cruiseStopRepository;
+
+    @Mock private DestinationRepository destinationRepository;
+
+    @Mock private PortRepository portRepository;
 
     @InjectMocks private ShoreExcursionService service;
 

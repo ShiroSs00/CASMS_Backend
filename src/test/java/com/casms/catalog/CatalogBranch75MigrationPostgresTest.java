@@ -29,7 +29,7 @@ class CatalogBranch75MigrationPostgresTest {
                     Flyway flyway = Flyway.configure().dataSource(url, "postgres", "").load();
                     flyway.migrate();
                     flyway.validate();
-                    assertEquals("112", flyway.info().current().getVersion().getVersion());
+                    assertEquals("113", flyway.info().current().getVersion().getVersion());
                     CatalogBranch75PostgresFixtures.runSeeds(url);
                 } finally {
                     statement.execute("DROP DATABASE " + database + " WITH (FORCE)");

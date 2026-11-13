@@ -104,7 +104,7 @@ public class CruiseDraftAndMaterializationPostgresIntegrationTest {
         trip.setName("Chuyến đi mẫu " + tripCode);
         trip.setStatus(TripStatus.READY);
         trip.setPlannedScope(plannedScope);
-        trip.setDurationGroup(TripDurationGroup.SHORT);
+        trip.setDurationGroup(TripDurationGroup.LONG);
         trip.setDurationDays(3);
         trip.setDurationNights(2);
         trip = tripRepository.save(trip);

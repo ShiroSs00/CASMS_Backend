@@ -156,12 +156,6 @@ public class CruiseEvidenceReadinessPostgresIntegrationTest {
         req.setShipId(testShip.getShipId());
         CruiseResponse cruise = cruiseService.create(req);
 
-        CruiseStaffRequest staffReq = new CruiseStaffRequest();
-        staffReq.setUserId(testCaptain.getUserId());
-        staffReq.setRoleInCruise("CAPTAIN");
-        staffReq.setNotes("Thuyền trưởng điều hành");
-        cruiseStaffService.assignStaff(cruise.getCruiseId(), staffReq, testCaptain.getUserId());
-
         Itinerary itinerary = new Itinerary();
         itinerary.setCruise(cruiseRepository.findById(cruise.getCruiseId()).orElseThrow());
         itinerary.setItineraryName(name + " Itinerary");
@@ -188,6 +182,17 @@ public class CruiseEvidenceReadinessPostgresIntegrationTest {
                         .fullPaymentCutoffDays(7)
                         .build();
         cruisePricingPolicyRepository.save(policy);
+
+        // These scenarios exercise legacy sale readiness for existing departures.
+        Cruise existingDeparture = cruiseRepository.findById(cruise.getCruiseId()).orElseThrow();
+        existingDeparture.setStatus(CruiseStatus.PUBLISHED);
+        cruiseRepository.saveAndFlush(existingDeparture);
+
+        CruiseStaffRequest staffReq = new CruiseStaffRequest();
+        staffReq.setUserId(testCaptain.getUserId());
+        staffReq.setRoleInCruise("CAPTAIN");
+        staffReq.setNotes("Thuyền trưởng điều hành");
+        cruiseStaffService.assignStaff(cruise.getCruiseId(), staffReq, testCaptain.getUserId());
 
         return cruise;
     }
@@ -612,11 +617,11 @@ public class CruiseEvidenceReadinessPostgresIntegrationTest {
         assertEquals(ReadinessSeverity.BLOCKER, shipConflictDetail.getSeverity());
         assertEquals("CRUISE_CHANGE_SHIP", shipConflictDetail.getRequiredPermission());
 
-        // Thiếu thuyền trưởng (Cruise B chưa gán thuyền trưởng)
-        assertTrue(opResB.getBlockers().contains("MISSING_CAPTAIN"));
+        // Chuyến B chưa có nhân viên trên tàu.
+        assertTrue(opResB.getBlockers().contains("MISSING_ONBOARD_STAFF"));
         ReadinessIssueDetail captainDetail =
                 opResB.getDetails().stream()
-                        .filter(d -> "MISSING_CAPTAIN".equals(d.getCode()))
+                        .filter(d -> "MISSING_ONBOARD_STAFF".equals(d.getCode()))
                         .findFirst()
                         .orElse(null);
         assertNotNull(captainDetail);
@@ -700,12 +705,12 @@ public class CruiseEvidenceReadinessPostgresIntegrationTest {
         CruiseSaleReadinessResponse r2 = cruiseService.validateSaleReadiness(cruise.getCruiseId());
         assertTrue(r2.isReady());
 
-        // Kiểm tra Cruise vẫn ở trạng thái DRAFT
+        // Kiểm tra Cruise vẫn ở trạng thái ban đầu.
         Cruise currentCruise = cruiseRepository.findById(cruise.getCruiseId()).orElseThrow();
         assertEquals(
-                CruiseStatus.DRAFT,
+                CruiseStatus.PUBLISHED,
                 currentCruise.getStatus(),
-                "C09 không được tự động chuyển Cruise sang PUBLISHED");
+                "C09 không được thay đổi trạng thái chuyến");
 
         // Kiểm tra Itinerary vẫn ở trạng thái APPROVED (chưa phải OPEN_FOR_SALE)
         Itinerary currentItinerary =
