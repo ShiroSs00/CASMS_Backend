@@ -17,6 +17,7 @@ import lombok.RequiredArgsConstructor;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -38,9 +39,14 @@ public class AuthController {
     @Operation(summary = "Làm mới token", description = "Làm mới access token từ token hiện tại")
     @PostMapping("/refresh")
     public ApiResponse<LoginResponse> refreshToken(
-            @RequestHeader("Authorization") String authHeader) {
-        String token = authHeader.replace("Bearer ", "");
-        return ApiResponse.success(authService.refreshToken(token));
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        if (authHeader == null
+                || !authHeader.startsWith("Bearer ")
+                || !StringUtils.hasText(authHeader.substring(7))) {
+            throw new BusinessException(
+                    HttpStatus.UNAUTHORIZED, "INVALID_TOKEN", "Invalid or expired token");
+        }
+        return ApiResponse.success(authService.refreshToken(authHeader.substring(7)));
     }
 
     @Operation(

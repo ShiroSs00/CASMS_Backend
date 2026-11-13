@@ -6,7 +6,11 @@ import com.casms.activity.repository.OnboardActivityRepository;
 import com.casms.activity.repository.ShoreExcursionRepository;
 import com.casms.common.exception.BusinessException;
 import com.casms.common.exception.ResourceNotFoundException;
+import com.casms.identity.repository.UserRepository;
 import com.casms.security.principal.CasmsPrincipal;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.core.context.SecurityContextHolder;
 import com.casms.ship.dto.request.CruisePreparationConfirmRequest;
 import com.casms.ship.dto.request.CruisePreparationReturnRequest;
 import com.casms.ship.dto.request.CruisePreparationSubmitRequest;
@@ -43,15 +47,13 @@ public class CruisePreparationService {
     private final CabinRepository cabinRepository;
     private final ShoreExcursionRepository shoreExcursionRepository;
     private final OnboardActivityRepository onboardActivityRepository;
-    private final com.casms.identity.repository.UserRepository userRepository;
-    private final org.springframework.jdbc.core.JdbcTemplate jdbc;
-    private final com.fasterxml.jackson.databind.ObjectMapper mapper;
+    private final UserRepository userRepository;
+    private final JdbcTemplate jdbc;
+    private final ObjectMapper mapper;
     private final ItineraryProgramPolicy programPolicy;
 
     private CasmsPrincipal currentActor() {
-        var auth =
-                org.springframework.security.core.context.SecurityContextHolder.getContext()
-                        .getAuthentication();
+        var auth = SecurityContextHolder.getContext().getAuthentication();
         return auth != null && auth.getPrincipal() instanceof CasmsPrincipal p ? p : null;
     }
 
@@ -682,7 +684,8 @@ public class CruisePreparationService {
         List<CruisePreparationSection> sections =
                 preparationSectionRepository.findByCruiseCruiseIdOrderBySectionCodeAsc(cruiseId);
         for (CruisePreparationSection section : sections) {
-            if (targetSectionCode != null && !targetSectionCode.equalsIgnoreCase(section.getSectionCode())) {
+            if (targetSectionCode != null
+                    && !targetSectionCode.equalsIgnoreCase(section.getSectionCode())) {
                 continue;
             }
             if ("CONFIRMED".equalsIgnoreCase(section.getStatus())) {

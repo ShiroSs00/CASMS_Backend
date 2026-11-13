@@ -13,6 +13,8 @@ import jakarta.validation.constraints.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
@@ -70,8 +72,8 @@ public class CruisePackageAddonService {
                 : value instanceof java.time.OffsetDateTime t ? t.toInstant() : null;
     }
     public List<CruisePackageAddonOffer> list(UUID cruiseId){return em.createQuery("from CruisePackageAddonOffer where cruiseId=:id order by createdAt,id",CruisePackageAddonOffer.class).setParameter("id",cruiseId).getResultList();}
-    private UUID maker(){var auth=org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
-        if(auth==null||!(auth.getPrincipal() instanceof CasmsPrincipal actor)||!actor.hasRole(Role.ACTIVITY_SERVICE_MANAGER)||!actor.hasAuthority("TOUR_PACKAGE_MANAGE"))throw new org.springframework.security.access.AccessDeniedException("ASM Add-on configuration permission required");return actor.getUserId();}
+    private UUID maker(){var auth=SecurityContextHolder.getContext().getAuthentication();
+        if(auth==null||!(auth.getPrincipal() instanceof CasmsPrincipal actor)||!actor.hasRole(Role.ACTIVITY_SERVICE_MANAGER)||!actor.hasAuthority("TOUR_PACKAGE_MANAGE"))throw new AccessDeniedException("ASM Add-on configuration permission required");return actor.getUserId();}
     @Transactional public CruisePackageAddonOffer create(UUID cruiseId,Input input){
         UUID actor=maker();plans.lockOperational(cruiseId);
         UUID shipId=jdbc.queryForObject("SELECT ship_id FROM \"Cruise\" WHERE cruise_id=? AND status IN ('DRAFT','PUBLISHED')",UUID.class,cruiseId);

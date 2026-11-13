@@ -158,17 +158,14 @@ public class CruiseStaffService {
                     "INVALID_CRUISE_STAFF_ROLE",
                     "Unsupported operational role in cruise assignment");
         }
-        if (!user.isStaff()
-                || user.getRoles() == null
-                || user.getRoles().stream().noneMatch(STAFF_ROLES::contains)) {
+        if (!canReceiveAssignment(user)) {
             throw new BusinessException(
                     "INVALID_CRUISE_STAFF_ROLE",
                     "Only an existing staff account can receive a cruise assignment; assignment"
                         + " does not grant system roles");
         }
 
-        if ("ONBOARD_STAFF".equals(assignmentRole)
-                && !user.hasRole(com.casms.identity.enums.Role.ONBOARD_STAFF)) {
+        if (!canReceiveRole(user, assignmentRole)) {
             throw new BusinessException(
                     "INVALID_CRUISE_STAFF_ROLE",
                     "Shipboard assignment requires the matching account role: " + assignmentRole);

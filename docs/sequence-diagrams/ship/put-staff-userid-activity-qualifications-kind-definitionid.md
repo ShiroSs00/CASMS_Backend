@@ -2,31 +2,28 @@
 
 ```mermaid
 sequenceDiagram
-    title PUT /staff/{userId}/activity-qualifications/{kind}/{definitionId} — CruiseStaffWorkController.addQualification
     actor Client
-    participant Security as Spring Security / JWT filters
+    participant Auth as Spring Security
     participant Controller as CruiseStaffWorkController
-    participant Service as Resolved application service
-    participant Repository as Repository collaborators
-    participant DB as Database
-
-    Client->>Security: PUT /staff/{userId}/activity-qualifications/{kind}/{definitionId} + request
-    alt Authentication or authorization rejected
-        Security-->>Client: 401 / 403
-    else Request reaches handler
-        Security->>Controller: invoke addQualification(...)
-        opt Bean validation when handler parameter has @Valid
-            Controller->>Controller: Validate request constraints
-        end
-        Controller->>Service: service.addQualification()
-
-    Note over Controller,Service: Source branch: if !"ACTIVE".equals(lockUser(userId)
-        Note over Service,Repository: @Transactional present on traced service method. Static trace covers direct service body and immediate helper branches; deeper call paths may need review.
-        Note over Controller,Repository: No direct repository interaction found in traced method body
-        Service-->>Controller: Domain result
-        Controller-->>Client: HTTP response (verify DTO and status)
-    Note over Service,Client: Source throws ResourceNotFoundException; HTTP mapping requires exception-handler review
+    participant Service as CruiseStaffWorkService
+    participant Repository as JdbcTemplate
+    participant DB as PostgreSQL
+    Client->>Auth: PUT /staff/{userId}/activity-qualifications/{kind}/{definitionId}
+    alt Unauthorized
+        Auth-->>Client: 401 or 403
+    else CRUISE_STAFF_ASSIGN
+        Auth->>Controller: Authorized request
+        Controller->>Service: addQualification in transaction
+        Service->>Repository: Lock active onboard employee, validate source and insert qualification once
+        Repository->>DB: Execute bound SQL
+        DB-->>Service: Result or constraint violation
+        Service-->>Controller: Return or map business error
+        Controller-->>Client: 204; 404 invalid source; 409 inactive or wrong role
     end
 ```
 
-See [CASMS-75 catalog and staffing flows](../CASMS75-CATALOG-STAFFING-FLOWS.md) for the shared integration behavior.
+See the [shared work scheduling flow](../ITINERARY-PROGRAM-FLOWS.md#dịch-vụ-và-ca-hoạt-động).
+
+## HR assignment lifecycle
+
+The target user lock excludes Admin accounts. Existing service, qualification and overlap rules continue to apply. See [assignment lifecycle](../ITINERARY-PROGRAM-FLOWS.md#một-chuyến-đang-hiệu-lực-cho-mỗi-nhân-viên).

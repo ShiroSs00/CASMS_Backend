@@ -6,6 +6,7 @@ import com.casms.security.principal.CasmsPrincipal;
 
 import lombok.RequiredArgsConstructor;
 
+import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Service;
@@ -18,7 +19,7 @@ public class AuthenticationService implements UserDetailsService {
     private final RolePermissionRepository rolePermissionRepository;
 
     @Override
-    public org.springframework.security.core.userdetails.UserDetails loadUserByUsername(
+    public UserDetails loadUserByUsername(
             String username) throws UsernameNotFoundException {
         return userRepository
                 .findByUsername(username)

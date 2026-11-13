@@ -22,6 +22,7 @@ import com.casms.booking.entity.CabinAssignment;
 import com.casms.booking.enums.BookingContractStatus;
 import com.casms.booking.enums.BookingPassengerParticipationStatus;
 import com.casms.booking.enums.BookingStatus;
+import com.casms.booking.enums.CabinSelectionMode;
 import com.casms.booking.enums.PaymentPlan;
 import com.casms.booking.repository.BookingContractRepository;
 import com.casms.booking.repository.BookingPassengerRepository;
@@ -31,14 +32,17 @@ import com.casms.booking.repository.CabinAssignmentRepository;
 import com.casms.common.exception.BusinessException;
 import com.casms.common.exception.ResourceNotFoundException;
 import com.casms.common.service.BusinessCodeGenerator;
+import com.casms.cruisepackage.dto.CruisePackagePurchaseSelection;
 import com.casms.identity.entity.Passenger;
 import com.casms.identity.entity.User;
 import com.casms.identity.enums.Role;
+import com.casms.ship.repository.BookingAgentCruiseScope;
 import com.casms.identity.enums.UserStatus;
 import com.casms.identity.repository.PassengerRepository;
 import com.casms.identity.repository.UserRepository;
 import com.casms.notification.entity.Notification;
 import com.casms.notification.repository.NotificationRepository;
+import com.casms.notification.service.BookingEmailService;
 import com.casms.payment.entity.Installment;
 import com.casms.payment.entity.Payment;
 import com.casms.payment.entity.Refund;
@@ -76,8 +80,10 @@ import com.casms.ship.repository.CruiseTourPackageRepository;
 import com.casms.ship.repository.ItineraryRepository;
 import com.casms.ship.repository.ShipModelObjectRepository;
 import com.casms.ship.repository.ShipModelRepository;
+import com.casms.ship.service.CruiseMainflowService;
 import com.casms.trip.entity.IdempotencyRecord;
 import com.casms.trip.repository.IdempotencyRecordRepository;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -134,11 +140,18 @@ public class BookingService {
     private final BookingQuoteRepository bookingQuoteRepository;
     private final IdempotencyRecordRepository idempotencyRecordRepository;
     private final ObjectMapper objectMapper;
-    private final com.casms.notification.service.BookingEmailService bookingEmailService;
+    private final BookingEmailService bookingEmailService;
+
+    private final CruiseMainflowService mainflow;
+    private final org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
+    private final com.casms.cruisepackage.service.CruisePackageService cruisePackageService;
+    private final com.casms.cruisepackage.service.CruisePackageCabinMappingService cruisePackageCabinMappings;
+    private final com.casms.cruisepackage.service.CruisePackagePurchaseSnapshotService cruisePackagePurchaseSnapshotService;
+    private final com.casms.cruisepackage.service.CruisePackageEntitlementService cruisePackageEntitlementService;
+    private final com.casms.ship.service.DepartureSaleTermsService departureSaleTermsService;
+    private final FareHoldInventory fareHoldInventory;
 
     /** Tra cứu danh sách các phòng còn trống trên tàu của chuyến đi để khách hàng tự chọn. */
-    private final com.casms.ship.service.CruiseMainflowService mainflow;
-
     @Transactional(readOnly = true)
     public List<AvailableCabinResponse> getAvailableCabins(
             UUID cruiseId, UUID deckId, CabinType cabinType, Integer minCapacity) {
@@ -219,16 +232,18 @@ public class BookingService {
                     "CRUISE_NO_SHIP", "Cruise does not have an assigned ship yet");
         }
 
-        Optional<CruisePricingPolicy> policyOpt =
-                cruisePricingPolicyRepository
-                        .findByCruise_CruiseId(cruiseId)
-                        .filter(p -> p.getStatus() == PricingPolicyStatus.APPROVED);
-        if (policyOpt.isEmpty()) {
-            throw new BusinessException(
-                    HttpStatus.CONFLICT,
-                    "PRICING_POLICY_NOT_APPROVED",
-                    "Chính sách giá của chuyến khởi hành chưa được phê duyệt, không thể tra cứu giá"
-                        + " hoặc phòng mở bán");
+        if (!mainflow.usesUnifiedPackages(cruiseId)) {
+            Optional<CruisePricingPolicy> policyOpt =
+                    cruisePricingPolicyRepository
+                            .findByCruise_CruiseId(cruiseId)
+                            .filter(p -> p.getStatus() == PricingPolicyStatus.APPROVED);
+            if (policyOpt.isEmpty()) {
+                throw new BusinessException(
+                        HttpStatus.CONFLICT,
+                        "PRICING_POLICY_NOT_APPROVED",
+                        "Chính sách giá của chuyến khởi hành chưa được phê duyệt, không thể tra cứu giá"
+                            + " hoặc phòng mở bán");
+            }
         }
 
         UUID shipId = cruise.getShip().getShipId();
@@ -394,6 +409,7 @@ public class BookingService {
     @Transactional
     public BookingDetailResponse createBooking(
             BookingCreateRequest request, CasmsPrincipal principal) {
+        requireAssignedCruise(request.getCruiseId(), principal);
         log.info("Creating new booking for cruise: {}", request.getCruiseId());
         if (request.getCurrency() != null && !request.getCurrency().isBlank())
             com.casms.common.util.NewWriteCurrency.requireUsd(
@@ -405,6 +421,9 @@ public class BookingService {
                     "PASSENGERS_REQUIRED",
                     "At least one passenger must be included in the booking");
         }
+
+        if (request.getPassengers().stream().anyMatch(Objects::isNull))
+            throw new BusinessException("PASSENGERS_REQUIRED", "Passenger details cannot be null");
 
         // Validate primary passenger contact information for guest booking
         PassengerBookingItemRequest primaryPassenger = request.getPassengers().get(0);
@@ -420,12 +439,6 @@ public class BookingService {
         // request
         Set<String> documentNumbers = new HashSet<>();
         for (PassengerBookingItemRequest pReq : request.getPassengers()) {
-            if (pReq.getCabinId() == null) {
-                throw new BusinessException(
-                        HttpStatus.BAD_REQUEST,
-                        "CABIN_ID_REQUIRED",
-                        "Cabin ID is required for passenger: " + pReq.getFullName());
-            }
             if (pReq.getDocumentNumber() != null && !pReq.getDocumentNumber().isBlank()) {
                 String doc = pReq.getDocumentNumber().trim().toUpperCase();
                 if (!documentNumbers.add(doc)) {
@@ -509,6 +522,12 @@ public class BookingService {
                     "CRUISE_NO_SHIP", "Cruise does not have an assigned ship yet");
         }
 
+        boolean unified = mainflow.usesUnifiedPackages(cruise.getCruiseId());
+        List<BookingResourceSelection> requested = request.getPassengers().stream()
+                .map(item -> BookingResourceSelection.from(item).validate(unified))
+                .toList();
+        if (unified) cruisePackageCabinMappings.lockShip(cruise.getShip().getShipId());
+
         // 2. Kiểm tra tổng sức chứa tàu
         int totalNewPassengers = request.getPassengers().size();
         long currentBookedPassengers =
@@ -527,6 +546,7 @@ public class BookingService {
         // Gom nhóm hành khách theo cabinId để kiểm tra sức chứa phòng
         Map<UUID, List<PassengerBookingItemRequest>> cabinPassengersMap =
                 request.getPassengers().stream()
+                        .filter(passenger -> passenger.getCabinId() != null)
                         .collect(Collectors.groupingBy(PassengerBookingItemRequest::getCabinId));
 
         List<UUID> sortedCabinIds = cabinPassengersMap.keySet().stream().sorted().toList();
@@ -575,38 +595,41 @@ public class BookingService {
             validatedCabins.put(cabinId, cabin);
         }
 
-        // BE-10: Kiểm tra tồn kho theo từng CabinType (ngăn oversell theo hạng phòng)
-        Map<CabinType, Long> requestedPassengersByType =
-                request.getPassengers().stream()
-                        .map(p -> validatedCabins.get(p.getCabinId()).getCabinType())
-                        .collect(Collectors.groupingBy(Function.identity(), Collectors.counting()));
+        // Legacy category limits. Unified inventory is checked with mapped cabins and unassigned holds below.
+        if (!unified) {
+            Map<CabinType, Long> requestedPassengersByType =
+                    request.getPassengers().stream()
+                            .map(p -> validatedCabins.get(p.getCabinId()).getCabinType())
+                            .collect(Collectors.groupingBy(Function.identity(), Collectors.counting()));
 
-        for (Map.Entry<CabinType, Long> entry : requestedPassengersByType.entrySet()) {
-            CabinType type = entry.getKey();
-            Long requestedSlots = entry.getValue();
-            Long totalSlotsForType =
-                    cabinRepository.sumCapacityByShipIdAndCabinType(
-                            cruise.getShip().getShipId(), type);
-            if (totalSlotsForType == null || totalSlotsForType == 0) {
-                throw new BusinessException(
-                        "CABIN_TYPE_NOT_CONFIGURED",
-                        "Hạng phòng "
-                                + type
-                                + " chưa có chỗ khả dụng trên tàu: "
-                                + cruise.getShip().getShipName());
-            }
-            long activeAssignmentsForType =
-                    cabinAssignmentRepository.countActiveAssignmentsByCabinTypeAndCruise(
-                            type, cruise.getCruiseId());
-            long remainingSlotsForType = Math.max(0, totalSlotsForType - activeAssignmentsForType);
-            if (requestedSlots > remainingSlotsForType) {
-                throw new BusinessException(
-                        "CABIN_TYPE_EXHAUSTED",
-                        String.format(
-                                "Hạng phòng %s không còn đủ chỗ khả dụng (Còn lại: %d, Yêu cầu:"
-                                    + " %d). Hệ thống từ chối bán để chống oversell.",
-                                type, remainingSlotsForType, requestedSlots));
-            }
+            for (Map.Entry<CabinType, Long> entry : requestedPassengersByType.entrySet()) {
+                CabinType type = entry.getKey();
+                Long requestedSlots = entry.getValue();
+                Long totalSlotsForType =
+                        cabinRepository.sumCapacityByShipIdAndCabinType(
+                                cruise.getShip().getShipId(), type);
+                if (totalSlotsForType == null || totalSlotsForType == 0) {
+                    throw new BusinessException(
+                            "CABIN_TYPE_NOT_CONFIGURED",
+                            "Hạng phòng "
+                                    + type
+                                    + " chưa có chỗ khả dụng trên tàu: "
+                                    + cruise.getShip().getShipName());
+                }
+                long activeAssignmentsForType =
+                        cabinAssignmentRepository.countActiveAssignmentsByCabinTypeAndCruise(
+                                type, cruise.getCruiseId());
+                long remainingSlotsForType = Math.max(0, totalSlotsForType - activeAssignmentsForType);
+                if (requestedSlots > remainingSlotsForType) {
+                    throw new BusinessException(
+                            "CABIN_TYPE_EXHAUSTED",
+                            String.format(
+                                    "Hạng phòng %s không còn đủ chỗ khả dụng (Còn lại: %d, Yêu cầu:"
+                                        + " %d). Hệ thống từ chối bán để chống oversell.",
+                                    type, remainingSlotsForType, requestedSlots));
+                }
+        }
+
         }
 
         // 4. Kiểm tra các gói tour (TourPackage) và tính tổng tiền vé
@@ -615,11 +638,13 @@ public class BookingService {
         BigDecimal totalCabinBaseAmount = BigDecimal.ZERO;
 
         BookingQuote validatedQuote = null;
+        List<QuoteLineItem> quoteLineItems = null;
+        List<QuoteLineItem> matchedQuoteLines = List.of();
         boolean isStaff =
                 principal != null
                         && (principal.hasAuthority("BOOKING_MANAGE")
                                 || principal.hasAuthority("ROLE_ADMIN"));
-        if (request.getQuoteId() == null && !isStaff) {
+        if (request.getQuoteId() == null && (unified || !isStaff)) {
             throw new BusinessException(
                     HttpStatus.BAD_REQUEST,
                     "QUOTE_REQUIRED",
@@ -690,147 +715,111 @@ public class BookingService {
                         "Không thể sử dụng báo giá của khách vãng lai khác");
             }
 
-            // BE-H03: Verify exact line-by-line selection against quote snapshot
-            List<QuoteLineItem> quoteLineItems = null;
-            if (validatedQuote.getQuotePayloadJson() != null
-                    && !validatedQuote.getQuotePayloadJson().isBlank()) {
-                try {
-                    quoteLineItems =
-                            objectMapper.readValue(
-                                    validatedQuote.getQuotePayloadJson(),
-                                    new TypeReference<List<QuoteLineItem>>() {});
-                } catch (Exception e) {
-                    log.error(
-                            "Failed to parse quotePayloadJson for quoteId {}: {}",
-                            validatedQuote.getQuoteId(),
-                            e.getMessage());
-                }
-            }
-            if (quoteLineItems == null) {
-                throw new BusinessException(
-                        HttpStatus.UNPROCESSABLE_ENTITY,
-                        "QUOTE_PAYLOAD_MISSING",
-                        "Dữ liệu chi tiết các dòng báo giá không tồn tại hoặc bị lỗi.");
-            }
-            if (request.getPassengers().size() != quoteLineItems.size()) {
-                throw new BusinessException(
-                        HttpStatus.BAD_REQUEST,
-                        "QUOTE_SELECTION_MISMATCH",
-                        String.format(
-                                "Số lượng hành khách (%d) không khớp với báo giá (%d).",
-                                request.getPassengers().size(), quoteLineItems.size()));
-            }
-            Map<String, Long> requestSelections =
-                    request.getPassengers().stream()
-                            .map(
-                                    p ->
-                                            p.getCabinId()
-                                                    + ":"
-                                                    + (p.getTourPackageId() != null
-                                                            ? p.getTourPackageId()
-                                                            : "NONE"))
-                            .collect(
-                                    Collectors.groupingBy(
-                                            Function.identity(), Collectors.counting()));
-
-            Map<String, Long> quoteSelections =
-                    quoteLineItems.stream()
-                            .map(
-                                    item ->
-                                            item.getCabinId()
-                                                    + ":"
-                                                    + (item.getTourPackageId() != null
-                                                            ? item.getTourPackageId()
-                                                            : "NONE"))
-                            .collect(
-                                    Collectors.groupingBy(
-                                            Function.identity(), Collectors.counting()));
-
-            if (!requestSelections.equals(quoteSelections)) {
-                throw new BusinessException(
-                        HttpStatus.BAD_REQUEST,
-                        "QUOTE_SELECTION_MISMATCH",
-                        "Danh sách phòng hoặc gói dịch vụ của hành khách không khớp chính xác với"
-                            + " báo giá đã cam kết.");
+            quoteLineItems = readQuoteLines(validatedQuote);
+            matchedQuoteLines = matchQuoteLines(requested, quoteLineItems);
+            if (unified) {
+                verifyUnifiedQuote(cruise, validatedQuote, quoteLineItems);
+                for (QuoteLineItem line : matchedQuoteLines)
+                    verifyFareCabin(cruise, validatedCabins.get(line.getCabinId()), line.getFareSelection());
+                fareHoldInventory.verify(cruise, matchedQuoteLines);
             }
         }
 
-        CruisePricingPolicy policy =
-                cruisePricingPolicyRepository
-                        .findByCruise_CruiseId(cruise.getCruiseId())
-                        .filter(p -> p.getStatus() == PricingPolicyStatus.APPROVED)
-                        .orElseThrow(
-                                () ->
-                                        new BusinessException(
-                                                HttpStatus.UNPROCESSABLE_ENTITY,
-                                                "PRICING_POLICY_MISSING",
-                                                "Chuyến khởi hành chưa có chính sách giá được phê"
-                                                    + " duyệt. Không thể hoàn tất đặt chỗ."));
+        CruisePricingPolicy policy = null;
+        BigDecimal portFeePerPassenger = BigDecimal.ZERO;
+        BigDecimal taxRate = BigDecimal.ZERO;
+        int cutoffDays = 7;
+        int dueDays = 7;
+        BigDecimal depositRate = BigDecimal.valueOf(0.30);
+        String initialCurrency = "USD";
 
-        com.casms.common.util.NewWriteCurrency.requireUsd(policy.getCurrency());
-        if (validatedQuote != null) {
-            com.casms.common.util.NewWriteCurrency.requireUsd(validatedQuote.getCurrency());
-            if (!policy.getPolicyVersion().equals(validatedQuote.getPolicyVersion())) {
-                throw new BusinessException(
-                        HttpStatus.CONFLICT,
-                        "QUOTE_POLICY_MISMATCH",
-                        "Báo giá thuộc phiên bản chính sách giá cũ ("
-                                + validatedQuote.getPolicyVersion()
-                                + "), chính sách hiện tại là ("
-                                + policy.getPolicyVersion()
-                                + "). Vui lòng yêu cầu báo giá mới.");
+        if (!unified) {
+            policy =
+                    cruisePricingPolicyRepository
+                            .findByCruise_CruiseId(cruise.getCruiseId())
+                            .filter(p -> p.getStatus() == PricingPolicyStatus.APPROVED)
+                            .orElseThrow(
+                                    () ->
+                                            new BusinessException(
+                                                    HttpStatus.UNPROCESSABLE_ENTITY,
+                                                    "PRICING_POLICY_MISSING",
+                                                    "Chuyến khởi hành chưa có chính sách giá được phê"
+                                                        + " duyệt. Không thể hoàn tất đặt chỗ."));
+
+            com.casms.common.util.NewWriteCurrency.requireUsd(policy.getCurrency());
+            initialCurrency = policy.getCurrency();
+            if (policy.getPortFeePerPassenger() != null) portFeePerPassenger = policy.getPortFeePerPassenger();
+            if (policy.getTaxRate() != null) taxRate = policy.getTaxRate();
+            if (policy.getFullPaymentCutoffDays() > 0) cutoffDays = policy.getFullPaymentCutoffDays();
+            if (policy.getFinalPaymentDueDays() > 0) dueDays = policy.getFinalPaymentDueDays();
+            if (policy.getDepositPercentage() != null) depositRate = policy.getDepositPercentage();
+
+            if (validatedQuote != null) {
+                com.casms.common.util.NewWriteCurrency.requireUsd(validatedQuote.getCurrency());
+                if (!policy.getPolicyVersion().equals(validatedQuote.getPolicyVersion())) {
+                    throw new BusinessException(
+                            HttpStatus.CONFLICT,
+                            "QUOTE_POLICY_MISMATCH",
+                            "Báo giá thuộc phiên bản chính sách giá cũ ("
+                                    + validatedQuote.getPolicyVersion()
+                                    + "), chính sách hiện tại là ("
+                                    + policy.getPolicyVersion()
+                                    + "). Vui lòng yêu cầu báo giá mới.");
+                }
             }
         }
 
-        for (PassengerBookingItemRequest pReq : request.getPassengers()) {
-            Cabin cabin = validatedCabins.get(pReq.getCabinId());
-            BigDecimal baseFare = policy.getBaseFareForCabinType(cabin.getCabinType());
-            if (baseFare == null) {
-                throw new BusinessException(
-                        HttpStatus.UNPROCESSABLE_ENTITY,
-                        "CABIN_TYPE_UNPRICED",
-                        "Hạng phòng "
-                                + cabin.getCabinType()
-                                + " chưa được định giá trong chính sách của chuyến khởi hành");
-            }
-            BigDecimal multiplier =
-                    (cabin.getDeck() != null && cabin.getDeck().getPriceMultiplier() != null)
-                            ? cabin.getDeck().getPriceMultiplier()
-                            : BigDecimal.valueOf(1.00);
-            BigDecimal cabinPrice = baseFare.multiply(multiplier).setScale(2, RoundingMode.HALF_UP);
-            totalCabinBaseAmount = totalCabinBaseAmount.add(cabinPrice);
+        if (!unified) {
+            for (PassengerBookingItemRequest pReq : request.getPassengers()) {
+                Cabin cabin = validatedCabins.get(pReq.getCabinId());
+                BigDecimal baseFare = policy.getBaseFareForCabinType(cabin.getCabinType());
+                if (baseFare == null) {
+                    throw new BusinessException(
+                            HttpStatus.UNPROCESSABLE_ENTITY,
+                            "CABIN_TYPE_UNPRICED",
+                            "Hạng phòng "
+                                    + cabin.getCabinType()
+                                    + " chưa được định giá trong chính sách hoặc gói của chuyến khởi hành");
+                }
+                BigDecimal multiplier =
+                        (cabin.getDeck() != null && cabin.getDeck().getPriceMultiplier() != null)
+                                ? cabin.getDeck().getPriceMultiplier()
+                                : BigDecimal.valueOf(1.00);
+                BigDecimal cabinPrice = baseFare.multiply(multiplier).setScale(2, RoundingMode.HALF_UP);
+                totalCabinBaseAmount = totalCabinBaseAmount.add(cabinPrice);
 
-            if (pReq.getTourPackageId() != null) {
-                TourPackage pkg =
-                        tourPackageRepository
-                                .findById(pReq.getTourPackageId())
-                                .orElseThrow(
-                                        () ->
-                                                new ResourceNotFoundException(
-                                                        "TourPackage", pReq.getTourPackageId()));
-                if (pkg.getStatus() != TourPackageStatus.ACTIVE) {
-                    throw new BusinessException(
-                            "PACKAGE_NOT_ACTIVE",
-                            "Tour package is not currently ACTIVE: " + pkg.getPackageName());
+                if (pReq.getTourPackageId() != null) {
+                    TourPackage pkg =
+                            tourPackageRepository
+                                    .findById(pReq.getTourPackageId())
+                                    .orElseThrow(
+                                            () ->
+                                                    new ResourceNotFoundException(
+                                                            "TourPackage", pReq.getTourPackageId()));
+                    if (pkg.getStatus() != TourPackageStatus.ACTIVE) {
+                        throw new BusinessException(
+                                "PACKAGE_NOT_ACTIVE",
+                                "Tour package is not currently ACTIVE: " + pkg.getPackageName());
+                    }
+                    // BE-07 / BE-08B / BE-12: Product gate - Package must be assigned to this Cruise
+                    // and active for sale
+                    boolean assignedToCruise =
+                            cruiseTourPackageRepository
+                                    .existsByCruise_CruiseIdAndTourPackage_TourPackageIdAndActiveTrue(
+                                            cruise.getCruiseId(), pkg.getTourPackageId());
+                    if (!assignedToCruise) {
+                        throw new BusinessException(
+                                "PACKAGE_NOT_AVAILABLE_FOR_CRUISE",
+                                "Gói dịch vụ "
+                                        + pkg.getPackageName()
+                                        + " chưa được mở bán cho chuyến khởi hành này");
+                    }
+                    validatedPackages.put(pReq.getTourPackageId(), pkg);
+                    com.casms.common.util.NewWriteCurrency.requireUsd(pkg.getCurrencyCode());
+                    totalPackageAmount =
+                            totalPackageAmount.add(
+                                    pkg.getPrice() != null ? pkg.getPrice() : BigDecimal.ZERO);
                 }
-                // BE-07 / BE-08B / BE-12: Product gate - Package must be assigned to this Cruise
-                // and active for sale
-                boolean assignedToCruise =
-                        cruiseTourPackageRepository
-                                .existsByCruise_CruiseIdAndTourPackage_TourPackageIdAndActiveTrue(
-                                        cruise.getCruiseId(), pkg.getTourPackageId());
-                if (!assignedToCruise) {
-                    throw new BusinessException(
-                            "PACKAGE_NOT_AVAILABLE_FOR_CRUISE",
-                            "Gói dịch vụ "
-                                    + pkg.getPackageName()
-                                    + " chưa được mở bán cho chuyến khởi hành này");
-                }
-                validatedPackages.put(pReq.getTourPackageId(), pkg);
-                com.casms.common.util.NewWriteCurrency.requireUsd(pkg.getCurrencyCode());
-                totalPackageAmount =
-                        totalPackageAmount.add(
-                                pkg.getPrice() != null ? pkg.getPrice() : BigDecimal.ZERO);
             }
         }
 
@@ -855,22 +844,14 @@ public class BookingService {
             bookingQuoteRepository.save(validatedQuote);
         } else {
             BigDecimal subtotalAmount = totalCabinBaseAmount.add(totalPackageAmount);
-            BigDecimal portFeePerPassenger =
-                    policy.getPortFeePerPassenger() != null
-                            ? policy.getPortFeePerPassenger()
-                            : BigDecimal.ZERO;
             BigDecimal portFeesAmount =
                     portFeePerPassenger.multiply(
                             BigDecimal.valueOf(request.getPassengers().size()));
-            BigDecimal taxRate =
-                    policy.getTaxRate() != null ? policy.getTaxRate() : BigDecimal.ZERO;
             BigDecimal taxesAmount =
                     subtotalAmount.multiply(taxRate).setScale(4, RoundingMode.HALF_UP);
             BigDecimal taxesAndFeesAmount = portFeesAmount.add(taxesAmount);
             agreedFareAmount = subtotalAmount.add(taxesAndFeesAmount);
 
-            int cutoffDays =
-                    policy.getFullPaymentCutoffDays() > 0 ? policy.getFullPaymentCutoffDays() : 7;
             if (cruise.getDepartureDatetime()
                     .isBefore(scheduleCreatedAt.plus(Duration.ofDays(cutoffDays)))) {
                 paymentPlan =
@@ -882,10 +863,6 @@ public class BookingService {
             if (paymentPlan == PaymentPlan.FULL) {
                 requiredDepositAmount = agreedFareAmount;
             } else {
-                BigDecimal depositRate =
-                        policy.getDepositPercentage() != null
-                                ? policy.getDepositPercentage()
-                                : BigDecimal.valueOf(0.30);
                 requiredDepositAmount =
                         agreedFareAmount.multiply(depositRate).setScale(4, RoundingMode.HALF_UP);
             }
@@ -893,9 +870,8 @@ public class BookingService {
             currency =
                     (request.getCurrency() != null && !request.getCurrency().isBlank())
                             ? request.getCurrency().toUpperCase()
-                            : policy.getCurrency();
+                            : (policy != null ? policy.getCurrency() : initialCurrency);
 
-            int dueDays = policy.getFinalPaymentDueDays() > 0 ? policy.getFinalPaymentDueDays() : 7;
             finalPaymentDueAt = cruise.getDepartureDatetime().minus(Duration.ofDays(dueDays));
             if (finalPaymentDueAt.isBefore(scheduleCreatedAt)) {
                 finalPaymentDueAt = scheduleCreatedAt;
@@ -928,7 +904,8 @@ public class BookingService {
         List<BookingPassenger> createdBookingPassengers = new ArrayList<>();
         BookingPassenger representative = null;
 
-        for (PassengerBookingItemRequest pReq : request.getPassengers()) {
+        for (int i = 0; i < request.getPassengers().size(); i++) {
+            PassengerBookingItemRequest pReq = request.getPassengers().get(i);
             Cabin cabin = validatedCabins.get(pReq.getCabinId());
 
             // Lưu hồ sơ Passenger (nếu là hành khách đại diện đầu tiên và có bookedByUser thì liên
@@ -980,7 +957,20 @@ public class BookingService {
             bp.setBooking(booking);
             bp.setPassenger(passenger);
             bp.setParticipationStatus(BookingPassengerParticipationStatus.Active);
-            bp.setRequestedCabinCategory(cabin.getCabinType().name());
+            if (unified) {
+                QuoteLineItem line = matchedQuoteLines.get(i);
+                var selection = line.getFareSelection();
+                bp.setRequestedCabinCategory(selection.cabinType().name());
+                bp.setCabinSelectionMode(line.getCabinSelectionMode());
+                bp.setCabinGroupKey(line.getCabinGroupKey());
+                bp.setFareOfferId(selection.offerId());
+                bp.setFareTemplateVersionId(selection.templateVersionId());
+                bp.setFarePriceRevisionId(selection.priceRevisionId());
+                bp.setFareCabinCategory(selection.cabinType().name());
+                bp.setFareSelectionPayload(writeQuoteData(selection));
+            } else {
+                bp.setRequestedCabinCategory(cabin.getCabinType().name());
+            }
             bp = bookingPassengerRepository.save(bp);
             createdBookingPassengers.add(bp);
 
@@ -988,15 +978,17 @@ public class BookingService {
                 representative = bp;
             }
 
-            // Gán phòng tự chọn (CabinAssignment)
-            CabinAssignment assignment = new CabinAssignment();
-            assignment.setBookingPassenger(bp);
-            assignment.setCabin(cabin);
-            assignment.setValidFrom(Instant.now());
-            assignment.setValidTo(null);
-            assignment.setAssignedByUser(bookedByUser);
-            assignment.setChangeReason("Khách hàng tự chọn phòng khi đặt tour");
-            cabinAssignmentRepository.save(assignment);
+            if (cabin != null) {
+                // Gán phòng tự chọn (CabinAssignment)
+                CabinAssignment assignment = new CabinAssignment();
+                assignment.setBookingPassenger(bp);
+                assignment.setCabin(cabin);
+                assignment.setValidFrom(Instant.now());
+                assignment.setValidTo(null);
+                assignment.setAssignedByUser(bookedByUser);
+                assignment.setChangeReason("Khách hàng tự chọn phòng khi đặt tour");
+                cabinAssignmentRepository.save(assignment);
+            }
 
             // Gán gói dịch vụ (BookingPassengerPackage) nếu có chọn
             if (pReq.getTourPackageId() != null) {
@@ -1055,12 +1047,24 @@ public class BookingService {
         return mapToDetailResponse(booking);
     }
 
+    @Transactional(readOnly = true)
+    public List<com.casms.cruisepackage.service.CruisePackageEntitlementService.EntitlementView> entitlements(
+            UUID bookingId, CasmsPrincipal principal) {
+        validateAccess(getBooking(bookingId), principal);
+        return cruisePackageEntitlementService.list(bookingId);
+    }
+
     /** Tra cứu danh sách đơn đặt chỗ (có phân quyền khách hàng xem của mình, agent xem toàn bộ). */
     @Transactional(readOnly = true)
     public Page<BookingSummaryResponse> list(
             UUID cruiseId, BookingStatus status, Pageable pageable, CasmsPrincipal principal) {
         if (principal == null || principal.getUserId() == null) {
             throw new BusinessException(HttpStatus.UNAUTHORIZED, "AUTH_REQUIRED", "Authentication required");
+        }
+        UUID agentId = BookingAgentCruiseScope.assignee(principal);
+        if (agentId != null) {
+            return bookingRepository.searchAssignedBookings(cruiseId, status, agentId, pageable)
+                    .map(this::mapToSummaryResponse);
         }
         boolean isStaffOrAgent =
                 principal != null
@@ -1113,6 +1117,7 @@ public class BookingService {
                 bookingRepository
                         .findByIdForUpdate(bookingId)
                         .orElseThrow(() -> new ResourceNotFoundException("Booking", bookingId));
+        requireAssignedCruise(booking.getCruise().getCruiseId(), principal);
 
         if (booking.getBookingStatus() == BookingStatus.Cancelled) {
             throw new BusinessException(
@@ -1148,6 +1153,17 @@ public class BookingService {
             }
         } else {
             signerId = booking.getRepresentativeBookingPassengerId();
+            if (signerId == null && !passengers.isEmpty()) {
+                signerId =
+                        passengers.stream()
+                                .filter(
+                                        bp ->
+                                                bp.getParticipationStatus()
+                                                        == BookingPassengerParticipationStatus.Active)
+                                .map(BookingPassenger::getBookingPassengerId)
+                                .findFirst()
+                                .orElse(null);
+            }
         }
         final UUID effectiveSignerId = signerId;
         if (passengers.stream().noneMatch(bp -> Objects.equals(bp.getBookingPassengerId(), effectiveSignerId)
@@ -1192,6 +1208,9 @@ public class BookingService {
                     HttpStatus.FORBIDDEN,
                     "BOOKING_CONFIRM_FORBIDDEN",
                     "Booking confirmation requires the BOOKING_CONFIRM permission");
+        }
+        if (BookingAgentCruiseScope.assignee(principal) != null) {
+            requireAssignedCruise(getBooking(bookingId).getCruise().getCruiseId(), principal);
         }
         return confirmInternal(bookingId);
     }
@@ -1311,12 +1330,22 @@ public class BookingService {
         }
         List<BookingPassenger> capacityPassengers =
                 bookingPassengerRepository.findByBookingBookingId(bookingId);
+        boolean unifiedPurchase = capacityPassengers.stream().anyMatch(p -> p.getFareOfferId() != null)
+                || (booking.getQuote() != null && booking.getQuote().getPolicyVersion() != null
+                        && booking.getQuote().getPolicyVersion().startsWith("TERMS-"));
+        if (unifiedPurchase) {
+            if (booking.getHoldExpiresAt() != null && !booking.getHoldExpiresAt().isAfter(Instant.now()))
+                throw new BusinessException(HttpStatus.CONFLICT, "BOOKING_HOLD_EXPIRED",
+                        "Giữ chỗ theo báo giá đã hết hạn. Cần đối soát trước khi xác nhận.");
+            fareHoldInventory.verify(capacityLockedCruise, List.of());
+        }
         List<UUID> cabinIds =
                 capacityPassengers.stream()
                         .filter(
                                 passenger ->
                                         passenger.getParticipationStatus()
                                                 == BookingPassengerParticipationStatus.Active)
+                        .filter(passenger -> !isCategoryHold(passenger))
                         .map(
                                 passenger ->
                                         cabinAssignmentRepository
@@ -1347,6 +1376,7 @@ public class BookingService {
         for (BookingPassenger passenger : capacityPassengers) {
             if (passenger.getParticipationStatus() != BookingPassengerParticipationStatus.Active)
                 continue;
+            if (isCategoryHold(passenger)) continue;
             CabinAssignment assignment =
                     cabinAssignmentRepository
                             .findByBookingPassengerBookingPassengerIdAndValidToIsNull(
@@ -1368,12 +1398,17 @@ public class BookingService {
                 throw new BusinessException(
                         "BOOKING_CAPACITY_INVALID", "A cabin no longer has sufficient capacity");
             }
+            if (passenger.getFareOfferId() != null)
+                verifyFareCabin(capacityLockedCruise, lockedCabin, cruisePackagePurchaseSnapshotService.intent(passenger));
         }
 
         booking.setBookingStatus(BookingStatus.Confirmed);
         booking.setConfirmedAt(Instant.now());
         booking.setHoldExpiresAt(null);
         booking = bookingRepository.save(booking);
+
+        if (unifiedPurchase)
+            cruisePackagePurchaseSnapshotService.captureConfirmed(booking.getBookingId());
 
         log.info("Confirmed booking reference: {}", booking.getBookingReference());
         bookingEmailService.enqueueConfirmation(booking, verifiedNetPaid(booking));
@@ -1443,6 +1478,10 @@ public class BookingService {
             return true;
         }
         return false;
+    }
+
+    private boolean isCategoryHold(BookingPassenger passenger) {
+        return passenger.getFareOfferId() != null && passenger.getCabinSelectionMode() == CabinSelectionMode.CATEGORY_HOLD;
     }
 
     /** Hủy đơn đặt chỗ. */
@@ -1530,6 +1569,9 @@ public class BookingService {
             throw new BusinessException(
                     "BOOKING_CANCELLED", "Cannot change cabin for a cancelled booking");
         }
+        if (bp.getFareOfferId() != null)
+            throw new BusinessException(HttpStatus.CONFLICT, "FARE_CABIN_CHANGE_NOT_SUPPORTED",
+                    "Đổi cabin của gói du thuyền cần kiểm tra lại nhóm và mapping đã mua.");
 
         Cruise cruise =
                 cruiseRepository
@@ -1591,6 +1633,10 @@ public class BookingService {
 
         bp.setRequestedCabinCategory(newCabin.getCabinType().name());
         bookingPassengerRepository.save(bp);
+        if (mainflow.usesUnifiedPackages(cruise.getCruiseId())) {
+            cabinAssignmentRepository.flush();
+            fareHoldInventory.verify(cruise, List.of());
+        }
 
         log.info(
                 "Changed cabin for passenger: {} to cabin: {}",
@@ -1616,6 +1662,10 @@ public class BookingService {
         res.setShipName(cruise.getShip() != null ? cruise.getShip().getShipName() : null);
         res.setDepartureDatetime(cruise.getDepartureDatetime());
         res.setReturnDatetime(cruise.getReturnDatetime());
+        String scope = cruise.getPlannedScope() != null ? cruise.getPlannedScope() : "DOMESTIC";
+        boolean isInter = "INTERNATIONAL".equalsIgnoreCase(scope);
+        res.setPlannedScope(scope);
+        res.setIsInternational(isInter);
 
         res.setAgreedFareAmount(booking.getAgreedFareAmount());
         res.setCurrency(booking.getCurrency());
@@ -1695,6 +1745,16 @@ public class BookingService {
 
             pRes.setParticipationStatus(bp.getParticipationStatus());
             pRes.setRequestedCabinCategory(bp.getRequestedCabinCategory());
+            if (bp.getFareOfferId() != null) {
+                pRes.setCabinSelectionMode(bp.getCabinSelectionMode());
+                pRes.setCabinGroupKey(bp.getCabinGroupKey());
+                pRes.setFarePackageOfferId(bp.getFareOfferId());
+                pRes.setFareCabinCategory(bp.getFareCabinCategory());
+                pRes.setSelectedFare(cruisePackagePurchaseSnapshotService.intent(bp));
+                pRes.setCanSelectFareCabin(false);
+                if (booking.getBookingStatus() == BookingStatus.Confirmed)
+                    pRes.setPurchasedFare(cruisePackagePurchaseSnapshotService.purchased(bp.getBookingPassengerId()));
+            }
 
             // Thông tin phòng gán hiện hành
             cabinAssignmentRepository
@@ -2004,7 +2064,8 @@ public class BookingService {
     }
 
     public BigDecimal getBaseCabinFareForCruise(UUID cruiseId, CabinType cabinType) {
-        if (cruiseId != null) {
+        if (cruiseId != null && cabinType != null) {
+            if (mainflow.usesUnifiedPackages(cruiseId)) return null;
             Optional<CruisePricingPolicy> policyOpt =
                     cruisePricingPolicyRepository
                             .findByCruise_CruiseId(cruiseId)
@@ -2031,28 +2092,24 @@ public class BookingService {
             throw new BusinessException(
                     HttpStatus.BAD_REQUEST, "CRUISE_ID_REQUIRED", "Cruise ID không được để trống");
         }
+        requireAssignedCruise(request.getCruiseId(), principal);
         if (request.getPassengers() == null || request.getPassengers().isEmpty()) {
             throw new BusinessException(
                     HttpStatus.BAD_REQUEST,
                     "PASSENGERS_REQUIRED",
                     "Danh sách hành khách không được để trống");
         }
-        for (PassengerQuoteItem p : request.getPassengers()) {
-            if (p == null || p.getCabinId() == null) {
-                throw new BusinessException(
-                        HttpStatus.BAD_REQUEST,
-                        "CABIN_ID_REQUIRED",
-                        "Thông tin phòng của hành khách không được để trống");
-            }
-        }
+        if (request.getPassengers().stream().anyMatch(Objects::isNull))
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "PASSENGER_REQUIRED", "Thiếu thông tin hành khách.");
 
-        Cruise cruise =
-                cruiseRepository
-                        .findById(request.getCruiseId())
-                        .orElseThrow(
-                                () ->
-                                        new ResourceNotFoundException(
-                                                "Cruise", request.getCruiseId()));
+        boolean unified = mainflow.usesUnifiedPackages(request.getCruiseId());
+        List<BookingResourceSelection> requested = request.getPassengers().stream()
+                .map(item -> BookingResourceSelection.from(item).validate(unified))
+                .toList();
+
+        Cruise cruise = (unified ? cruiseRepository.findByIdForUpdate(request.getCruiseId())
+                : cruiseRepository.findById(request.getCruiseId()))
+                .orElseThrow(() -> new ResourceNotFoundException("Cruise", request.getCruiseId()));
 
         mainflow.requireBookable(cruise.getCruiseId());
         if (cruise.getOpenedForSaleAt() == null || cruise.getStatus() != CruiseStatus.PUBLISHED) {
@@ -2107,31 +2164,44 @@ public class BookingService {
                     "Chuyến khởi hành chưa được gán tàu.");
         }
 
-        CruisePricingPolicy policy =
-                cruisePricingPolicyRepository
-                        .findByCruise_CruiseId(cruise.getCruiseId())
-                        .filter(p -> p.getStatus() == PricingPolicyStatus.APPROVED)
-                        .orElseThrow(
-                                () ->
-                                        new BusinessException(
-                                                HttpStatus.UNPROCESSABLE_ENTITY,
-                                                "PRICING_POLICY_MISSING",
-                                                "Chuyến khởi hành chưa có chính sách giá được phê"
-                                                    + " duyệt. Không thể phát hành báo giá."));
+        CruisePricingPolicy policy = null;
+        String currency = "USD";
+        BigDecimal portFeePerPassenger = BigDecimal.ZERO;
+        BigDecimal taxRate = BigDecimal.ZERO;
+
+        UnifiedTerms unifiedTerms = unified ? approvedUnifiedTerms(cruise.getCruiseId()) : null;
+        if (unified) {
+            portFeePerPassenger = unifiedTerms.portFee();
+            taxRate = unifiedTerms.taxRate();
+        } else {
+            policy =
+                    cruisePricingPolicyRepository
+                            .findByCruise_CruiseId(cruise.getCruiseId())
+                            .filter(p -> p.getStatus() == PricingPolicyStatus.APPROVED)
+                            .orElseThrow(
+                                    () ->
+                                            new BusinessException(
+                                                    HttpStatus.UNPROCESSABLE_ENTITY,
+                                                    "PRICING_POLICY_MISSING",
+                                                    "Chuyến khởi hành chưa có chính sách giá được phê"
+                                                        + " duyệt. Không thể phát hành báo giá."));
+            currency = policy.getCurrency();
+            if (policy.getPortFeePerPassenger() != null) portFeePerPassenger = policy.getPortFeePerPassenger();
+            if (policy.getTaxRate() != null) taxRate = policy.getTaxRate();
+        }
 
         if (request.getCurrency() != null && !request.getCurrency().isBlank()) {
-            if (!request.getCurrency().trim().equalsIgnoreCase(policy.getCurrency())) {
+            if (!request.getCurrency().trim().equalsIgnoreCase(currency)) {
                 throw new BusinessException(
                         HttpStatus.BAD_REQUEST,
                         "CURRENCY_MISMATCH",
                         "Đơn vị tiền tệ yêu cầu ("
                                 + request.getCurrency()
                                 + ") không khớp với chính sách chuyến khởi hành ("
-                                + policy.getCurrency()
+                                + currency
                                 + ").");
             }
         }
-        String currency = policy.getCurrency();
         com.casms.common.util.NewWriteCurrency.requireUsd(currency);
 
         String saleScope =
@@ -2166,6 +2236,7 @@ public class BookingService {
 
         Map<UUID, List<PassengerQuoteItem>> cabinPassengersMap =
                 request.getPassengers().stream()
+                        .filter(passenger -> passenger.getCabinId() != null)
                         .collect(Collectors.groupingBy(PassengerQuoteItem::getCabinId));
 
         Map<UUID, Cabin> validatedCabins = new HashMap<>();
@@ -2217,130 +2288,134 @@ public class BookingService {
             validatedCabins.put(cabinId, cabin);
         }
 
-        Map<CabinType, Long> requestedPassengersByType =
-                request.getPassengers().stream()
-                        .map(p -> validatedCabins.get(p.getCabinId()).getCabinType())
-                        .collect(Collectors.groupingBy(Function.identity(), Collectors.counting()));
+        if (!unified) {
+            Map<CabinType, Long> requestedPassengersByType =
+                    request.getPassengers().stream()
+                            .map(p -> validatedCabins.get(p.getCabinId()).getCabinType())
+                            .collect(Collectors.groupingBy(Function.identity(), Collectors.counting()));
 
-        for (Map.Entry<CabinType, Long> entry : requestedPassengersByType.entrySet()) {
-            CabinType type = entry.getKey();
-            Long requestedSlots = entry.getValue();
-            Long totalSlotsForType =
-                    cabinRepository.sumCapacityByShipIdAndCabinType(
-                            cruise.getShip().getShipId(), type);
-            if (totalSlotsForType == null || totalSlotsForType == 0) {
-                throw new BusinessException(
-                        HttpStatus.UNPROCESSABLE_ENTITY,
-                        "CABIN_TYPE_NOT_CONFIGURED",
-                        "Hạng phòng "
-                                + type
-                                + " chưa có chỗ khả dụng trên tàu: "
-                                + cruise.getShip().getShipName());
-            }
-            long activeAssignmentsForType =
-                    cabinAssignmentRepository.countActiveAssignmentsByCabinTypeAndCruise(
-                            type, cruise.getCruiseId());
-            long remainingSlotsForType = Math.max(0, totalSlotsForType - activeAssignmentsForType);
-            if (requestedSlots > remainingSlotsForType) {
-                throw new BusinessException(
-                        HttpStatus.UNPROCESSABLE_ENTITY,
-                        "CABIN_TYPE_EXHAUSTED",
-                        String.format(
-                                "Hạng phòng %s không còn đủ chỗ khả dụng (Còn lại: %d, Yêu cầu:"
-                                    + " %d). Hệ thống từ chối để chống oversell.",
-                                type, remainingSlotsForType, requestedSlots));
+            for (Map.Entry<CabinType, Long> entry : requestedPassengersByType.entrySet()) {
+                CabinType type = entry.getKey();
+                Long requestedSlots = entry.getValue();
+                Long totalSlotsForType =
+                        cabinRepository.sumCapacityByShipIdAndCabinType(
+                                cruise.getShip().getShipId(), type);
+                if (totalSlotsForType == null || totalSlotsForType == 0) {
+                    throw new BusinessException(
+                            HttpStatus.UNPROCESSABLE_ENTITY,
+                            "CABIN_TYPE_NOT_CONFIGURED",
+                            "Hạng phòng "
+                                    + type
+                                    + " chưa có chỗ khả dụng trên tàu: "
+                                    + cruise.getShip().getShipName());
+                }
+                long activeAssignmentsForType =
+                        cabinAssignmentRepository.countActiveAssignmentsByCabinTypeAndCruise(
+                                type, cruise.getCruiseId());
+                long remainingSlotsForType = Math.max(0, totalSlotsForType - activeAssignmentsForType);
+                if (requestedSlots > remainingSlotsForType) {
+                    throw new BusinessException(
+                            HttpStatus.UNPROCESSABLE_ENTITY,
+                            "CABIN_TYPE_EXHAUSTED",
+                            String.format(
+                                    "Hạng phòng %s không còn đủ chỗ khả dụng (Còn lại: %d, Yêu cầu:"
+                                        + " %d). Hệ thống từ chối để chống oversell.",
+                                    type, remainingSlotsForType, requestedSlots));
+                }
             }
         }
 
-        List<QuoteLineItem> lineItems = new ArrayList<>();
+        List<QuoteLineItem> lineItems = unified
+                ? prepareFareLines(cruise, requested, validatedCabins)
+                : new ArrayList<>();
+        if (unified) fareHoldInventory.verify(cruise, lineItems);
         BigDecimal subtotalCabin = BigDecimal.ZERO;
         BigDecimal subtotalPackage = BigDecimal.ZERO;
 
-        for (PassengerQuoteItem pReq : request.getPassengers()) {
-            Cabin cabin = validatedCabins.get(pReq.getCabinId());
-            BigDecimal baseFare = policy.getBaseFareForCabinType(cabin.getCabinType());
-            if (baseFare == null) {
-                throw new BusinessException(
-                        HttpStatus.UNPROCESSABLE_ENTITY,
-                        "CABIN_TYPE_UNPRICED",
-                        "Hạng phòng "
-                                + cabin.getCabinType()
-                                + " chưa được định giá trong chính sách của chuyến khởi hành");
-            }
-            BigDecimal multiplier =
-                    (cabin.getDeck() != null && cabin.getDeck().getPriceMultiplier() != null)
-                            ? cabin.getDeck().getPriceMultiplier()
-                            : BigDecimal.valueOf(1.00);
-            BigDecimal cabinPrice = baseFare.multiply(multiplier).setScale(2, RoundingMode.HALF_UP);
-            subtotalCabin = subtotalCabin.add(cabinPrice);
-
-            UUID pkgId = null;
-            String pkgName = null;
-            BigDecimal pkgPrice = BigDecimal.ZERO;
-
-            if (pReq.getTourPackageId() != null) {
-                TourPackage pkg =
-                        tourPackageRepository
-                                .findById(pReq.getTourPackageId())
-                                .orElseThrow(
-                                        () ->
-                                                new ResourceNotFoundException(
-                                                        "TourPackage", pReq.getTourPackageId()));
-                if (pkg.getStatus() != TourPackageStatus.ACTIVE) {
+        if (unified) {
+            subtotalCabin = lineItems.stream().map(QuoteLineItem::getItemTotal).reduce(BigDecimal.ZERO, BigDecimal::add);
+        } else {
+            for (PassengerQuoteItem pReq : request.getPassengers()) {
+                Cabin cabin = validatedCabins.get(pReq.getCabinId());
+                BigDecimal baseFare = policy.getBaseFareForCabinType(cabin.getCabinType());
+                if (baseFare == null) {
                     throw new BusinessException(
                             HttpStatus.UNPROCESSABLE_ENTITY,
-                            "PACKAGE_INACTIVE",
-                            "Gói dịch vụ "
-                                    + pkg.getPackageName()
-                                    + " không ở trạng thái hoạt động");
+                            "CABIN_TYPE_UNPRICED",
+                            "Hạng phòng "
+                                    + cabin.getCabinType()
+                                    + " chưa được định giá trong chính sách hoặc gói của chuyến khởi hành");
                 }
-                boolean assigned =
-                        cruiseTourPackageRepository
-                                .existsByCruise_CruiseIdAndTourPackage_TourPackageIdAndActiveTrue(
-                                        cruise.getCruiseId(), pkg.getTourPackageId());
-                if (!assigned) {
-                    throw new BusinessException(
-                            HttpStatus.UNPROCESSABLE_ENTITY,
-                            "PACKAGE_NOT_AVAILABLE_FOR_CRUISE",
-                            "Gói dịch vụ "
-                                    + pkg.getPackageName()
-                                    + " chưa được mở bán cho chuyến khởi hành này");
-                }
-                pkgId = pkg.getTourPackageId();
-                com.casms.common.util.NewWriteCurrency.requireUsd(pkg.getCurrencyCode());
-                pkgName = pkg.getPackageName();
-                pkgPrice = pkg.getPrice() != null ? pkg.getPrice() : BigDecimal.ZERO;
-                subtotalPackage = subtotalPackage.add(pkgPrice);
-            }
+                BigDecimal multiplier =
+                        (cabin.getDeck() != null && cabin.getDeck().getPriceMultiplier() != null)
+                                ? cabin.getDeck().getPriceMultiplier()
+                                : BigDecimal.valueOf(1.00);
+                BigDecimal cabinPrice = baseFare.multiply(multiplier).setScale(2, RoundingMode.HALF_UP);
+                subtotalCabin = subtotalCabin.add(cabinPrice);
 
-            BigDecimal itemTotal = cabinPrice.add(pkgPrice);
-            lineItems.add(
-                    QuoteLineItem.builder()
-                            .cabinId(cabin.getCabinId())
-                            .cabinNumber(cabin.getCabinNumber())
-                            .cabinType(cabin.getCabinType())
-                            .deckNumber(
-                                    cabin.getDeck() != null
-                                            ? cabin.getDeck().getDeckNumber()
-                                            : null)
-                            .baseFare(baseFare)
-                            .priceMultiplier(multiplier)
-                            .cabinPrice(cabinPrice)
-                            .tourPackageId(pkgId)
-                            .packageName(pkgName)
-                            .packagePrice(pkgPrice)
-                            .itemTotal(itemTotal)
-                            .build());
+                UUID pkgId = null;
+                String pkgName = null;
+                BigDecimal pkgPrice = BigDecimal.ZERO;
+
+                if (pReq.getTourPackageId() != null) {
+                    TourPackage pkg =
+                            tourPackageRepository
+                                    .findById(pReq.getTourPackageId())
+                                    .orElseThrow(
+                                            () ->
+                                                    new ResourceNotFoundException(
+                                                            "TourPackage", pReq.getTourPackageId()));
+                    if (pkg.getStatus() != TourPackageStatus.ACTIVE) {
+                        throw new BusinessException(
+                                HttpStatus.UNPROCESSABLE_ENTITY,
+                                "PACKAGE_INACTIVE",
+                                "Gói dịch vụ "
+                                        + pkg.getPackageName()
+                                        + " không ở trạng thái hoạt động");
+                    }
+                    boolean assigned =
+                            cruiseTourPackageRepository
+                                    .existsByCruise_CruiseIdAndTourPackage_TourPackageIdAndActiveTrue(
+                                            cruise.getCruiseId(), pkg.getTourPackageId());
+                    if (!assigned) {
+                        throw new BusinessException(
+                                HttpStatus.UNPROCESSABLE_ENTITY,
+                                "PACKAGE_NOT_AVAILABLE_FOR_CRUISE",
+                                "Gói dịch vụ "
+                                        + pkg.getPackageName()
+                                        + " chưa được mở bán cho chuyến khởi hành này");
+                    }
+                    pkgId = pkg.getTourPackageId();
+                    com.casms.common.util.NewWriteCurrency.requireUsd(pkg.getCurrencyCode());
+                    pkgName = pkg.getPackageName();
+                    pkgPrice = pkg.getPrice() != null ? pkg.getPrice() : BigDecimal.ZERO;
+                    subtotalPackage = subtotalPackage.add(pkgPrice);
+                }
+
+                BigDecimal itemTotal = cabinPrice.add(pkgPrice);
+                lineItems.add(
+                        QuoteLineItem.builder()
+                                .cabinId(cabin.getCabinId())
+                                .cabinNumber(cabin.getCabinNumber())
+                                .cabinType(cabin.getCabinType())
+                                .deckNumber(
+                                        cabin.getDeck() != null
+                                                ? cabin.getDeck().getDeckNumber()
+                                                : null)
+                                .baseFare(baseFare)
+                                .priceMultiplier(multiplier)
+                                .cabinPrice(cabinPrice)
+                                .tourPackageId(pkgId)
+                                .packageName(pkgName)
+                                .packagePrice(pkgPrice)
+                                .itemTotal(itemTotal)
+                                .build());
+            }
         }
 
         BigDecimal subtotalAmount = subtotalCabin.add(subtotalPackage);
-        BigDecimal portFeePerPassenger =
-                policy.getPortFeePerPassenger() != null
-                        ? policy.getPortFeePerPassenger()
-                        : BigDecimal.ZERO;
         BigDecimal portFeesAmount =
                 portFeePerPassenger.multiply(BigDecimal.valueOf(request.getPassengers().size()));
-        BigDecimal taxRate = policy.getTaxRate() != null ? policy.getTaxRate() : BigDecimal.ZERO;
         BigDecimal taxesAmount = subtotalAmount.multiply(taxRate).setScale(4, RoundingMode.HALF_UP);
         BigDecimal taxesAndFeesAmount = portFeesAmount.add(taxesAmount);
         BigDecimal totalAmount = subtotalAmount.add(taxesAndFeesAmount);
@@ -2351,7 +2426,7 @@ public class BookingService {
         Instant now = Instant.now();
         Instant departure = cruise.getDepartureDatetime();
         int cutoffDays =
-                policy.getFullPaymentCutoffDays() > 0 ? policy.getFullPaymentCutoffDays() : 7;
+                (policy != null && policy.getFullPaymentCutoffDays() > 0) ? policy.getFullPaymentCutoffDays() : 7;
         if (departure != null && departure.isBefore(now.plus(Duration.ofDays(cutoffDays)))) {
             plan = PaymentPlan.FULL; // Within cutoff days, must pay in full
         }
@@ -2361,20 +2436,24 @@ public class BookingService {
             depositAmount = totalAmount;
         } else {
             BigDecimal depositRate =
-                    policy.getDepositPercentage() != null
+                    (policy != null && policy.getDepositPercentage() != null)
                             ? policy.getDepositPercentage()
                             : BigDecimal.valueOf(0.30);
             depositAmount = totalAmount.multiply(depositRate).setScale(4, RoundingMode.HALF_UP);
         }
 
-        int dueDays = policy.getFinalPaymentDueDays() > 0 ? policy.getFinalPaymentDueDays() : 7;
+        int dueDays = (policy != null && policy.getFinalPaymentDueDays() > 0) ? policy.getFinalPaymentDueDays() : 7;
         Instant finalPaymentDueAt =
                 departure != null ? departure.minus(Duration.ofDays(dueDays)) : now;
         if (finalPaymentDueAt.isBefore(now)) {
             finalPaymentDueAt = now;
         }
 
-        String fingerprint = generateQuoteFingerprint(cruise, policy, totalAmount);
+        String policyVersion = unified ? unifiedTerms.version() : policy.getPolicyVersion();
+        String quotePayloadJson = writeQuoteData(lineItems);
+        String fingerprint = unified
+                ? unifiedQuoteFingerprint(cruise, unifiedTerms, totalAmount, quotePayloadJson)
+                : generateQuoteFingerprint(cruise, policy, totalAmount);
         String quoteCode;
         try {
             quoteCode = businessCodeGenerator.next("QT");
@@ -2391,19 +2470,12 @@ public class BookingService {
             guestToken = UUID.randomUUID().toString();
         }
 
-        String quotePayloadJson = null;
-        try {
-            quotePayloadJson = objectMapper.writeValueAsString(lineItems);
-        } catch (Exception e) {
-            log.warn("Failed to serialize quote line items: {}", e.getMessage());
-        }
-
         BookingQuote quote =
                 BookingQuote.builder()
                         .quoteCode(quoteCode)
                         .cruise(cruise)
                         .user(bookedUser)
-                        .policyVersion(policy.getPolicyVersion())
+                        .policyVersion(policyVersion)
                         .currency(currency)
                         .subtotalAmount(subtotalAmount)
                         .taxesAndFeesAmount(taxesAndFeesAmount)
@@ -2427,7 +2499,7 @@ public class BookingService {
                 .cruiseId(cruise.getCruiseId())
                 .cruiseCode(cruise.getCruiseCode())
                 .departureDatetime(cruise.getDepartureDatetime())
-                .policyVersion(policy.getPolicyVersion())
+                .policyVersion(quote.getPolicyVersion())
                 .currency(currency)
                 .lineItems(lineItems)
                 .subtotalAmount(subtotalAmount)
@@ -2459,6 +2531,9 @@ public class BookingService {
                 bookingQuoteRepository
                         .findById(quoteId)
                         .orElseThrow(() -> new ResourceNotFoundException("BookingQuote", quoteId));
+        if (BookingAgentCruiseScope.assignee(principal) != null) {
+            requireAssignedCruise(quote.getCruise().getCruiseId(), principal);
+        }
 
         boolean isStaff =
                 principal != null
@@ -2501,6 +2576,18 @@ public class BookingService {
             }
         }
 
+        String responseStatus = quote.getStatus();
+        if ("ACTIVE".equals(responseStatus) && quote.getExpiresAt() != null && quote.isExpired()) {
+            responseStatus = "EXPIRED";
+        } else if ("ACTIVE".equals(responseStatus) && quote.getPolicyVersion() != null
+                && quote.getPolicyVersion().startsWith("TERMS-")) {
+            try {
+                mainflow.requireBookable(quote.getCruise().getCruiseId());
+                verifyUnifiedQuote(quote.getCruise(), quote, readQuoteLines(quote));
+            } catch (BusinessException stale) {
+                responseStatus = "INVALIDATED";
+            }
+        }
         return BookingQuoteResponse.builder()
                 .quoteId(quote.getQuoteId())
                 .quoteCode(quote.getQuoteCode())
@@ -2520,7 +2607,7 @@ public class BookingService {
                 .fingerprint(quote.getFingerprint())
                 .issuedAt(quote.getIssuedAt())
                 .expiresAt(quote.getExpiresAt())
-                .status(quote.getStatus())
+                .status(responseStatus)
                 .guestToken(quote.getGuestToken())
                 .build();
     }
@@ -2581,6 +2668,119 @@ public class BookingService {
         return mapToDetailResponse(booking);
     }
 
+    private record UnifiedTerms(String version, String hash, BigDecimal portFee, BigDecimal taxRate) {}
+
+    private UnifiedTerms approvedUnifiedTerms(UUID cruiseId) {
+        var approved = departureSaleTermsService.approvedForBooking(cruiseId);
+        return new UnifiedTerms("TERMS-" + approved.revision(), approved.submittedHash(),
+                Objects.requireNonNullElse(approved.terms().portFee().value(), BigDecimal.ZERO),
+                Objects.requireNonNullElse(approved.terms().tax().value(), BigDecimal.ZERO));
+    }
+
+    private String unifiedQuoteFingerprint(Cruise cruise, UnifiedTerms terms, BigDecimal total, String payload) {
+        return CruiseMainflowService.hash(cruise.getCruiseId() + ":" + cruise.getRevision() + ":"
+                + cruise.getOpenedForSaleAt() + ":" + terms.version() + ":" + terms.hash() + ":"
+                + total.stripTrailingZeros().toPlainString() + ":" + payload);
+    }
+
+    private String writeQuoteData(Object value) {
+        try {
+            return objectMapper.writeValueAsString(value);
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException("Cannot persist booking commercial evidence", e);
+        }
+    }
+
+    private List<QuoteLineItem> readQuoteLines(BookingQuote quote) {
+        try {
+            List<QuoteLineItem> lines = objectMapper.readValue(quote.getQuotePayloadJson(), new TypeReference<>() {});
+            if (lines != null && !lines.isEmpty() && lines.stream().noneMatch(Objects::isNull)) return lines;
+        } catch (JsonProcessingException | IllegalArgumentException e) {
+            log.warn("Cannot read quote commercial evidence for quote {}", quote.getQuoteId());
+        }
+        throw new BusinessException(HttpStatus.UNPROCESSABLE_ENTITY, "QUOTE_PAYLOAD_MISSING",
+                "Dữ liệu chi tiết báo giá không tồn tại hoặc bị lỗi.");
+    }
+
+    static List<QuoteLineItem> matchQuoteLines(List<BookingResourceSelection> requested, List<QuoteLineItem> lines) {
+        if (requested.size() != lines.size()) throw quoteSelectionMismatch();
+        Map<BookingResourceSelection, ArrayDeque<QuoteLineItem>> bySelection = new HashMap<>();
+        for (QuoteLineItem line : lines)
+            bySelection.computeIfAbsent(BookingResourceSelection.from(line), ignored -> new ArrayDeque<>()).add(line);
+        List<QuoteLineItem> matched = new ArrayList<>();
+        for (var selection : requested) {
+            var candidates = bySelection.get(selection);
+            if (candidates == null || candidates.isEmpty()) throw quoteSelectionMismatch();
+            matched.add(candidates.removeFirst());
+        }
+        return matched;
+    }
+
+    private static BusinessException quoteSelectionMismatch() {
+        return new BusinessException(HttpStatus.BAD_REQUEST, "QUOTE_SELECTION_MISMATCH",
+                "Lựa chọn cabin, nhóm hoặc phiên bản giá không khớp báo giá.");
+    }
+
+    private record OfferPrice(UUID offerId, UUID priceId) {}
+
+    private List<QuoteLineItem> prepareFareLines(Cruise cruise, List<BookingResourceSelection> requested,
+            Map<UUID, Cabin> cabins) {
+        Map<OfferPrice, CruisePackagePurchaseSelection> selections = new HashMap<>();
+        Map<String, String> groupResources = new HashMap<>();
+        List<QuoteLineItem> lines = new ArrayList<>();
+        for (var choice : requested) {
+            var fare = selections.computeIfAbsent(new OfferPrice(choice.offerId(), choice.priceRevisionId()),
+                    key -> cruisePackageService.preparePurchase(cruise.getCruiseId(), key.offerId(), key.priceId()));
+            Cabin cabin = cabins.get(choice.cabinId());
+            verifyFareCabin(cruise, cabin, fare);
+            String resource = choice.mode() + ":" + (cabin != null ? cabin.getCabinId() : fare.cabinType());
+            String previous = groupResources.putIfAbsent(choice.groupKey(), resource);
+            if (previous != null && !previous.equals(resource)) throw quoteSelectionMismatch();
+            lines.add(QuoteLineItem.builder()
+                    .cabinId(choice.cabinId())
+                    .cabinNumber(cabin == null ? null : cabin.getCabinNumber())
+                    .deckNumber(cabin == null || cabin.getDeck() == null ? null : cabin.getDeck().getDeckNumber())
+                    .cabinType(fare.cabinType())
+                    .cabinSelectionMode(choice.mode())
+                    .cabinGroupKey(choice.groupKey())
+                    .fareSelection(fare)
+                    .itemTotal(fare.amount())
+                    .build());
+        }
+        return lines;
+    }
+
+    private void verifyFareCabin(Cruise cruise, Cabin cabin, CruisePackagePurchaseSelection selection) {
+        if (selection == null || !selection.shipId().equals(cruise.getShip().getShipId())
+                || selection.logicalCategoryId() == null || selection.cabinMappingId() == null
+                || selection.physicalCabinIds().isEmpty()
+                || (cabin != null && (cabin.getCabinType() != selection.cabinType()
+                        || !selection.physicalCabinIds().contains(cabin.getCabinId())))) {
+            throw new BusinessException(HttpStatus.CONFLICT, "FARE_CABIN_MAPPING_MISMATCH",
+                    "Cabin hoặc hạng giữ chỗ không thuộc gói du thuyền đã chọn.");
+        }
+    }
+
+    private void verifyUnifiedQuote(Cruise cruise, BookingQuote quote, List<QuoteLineItem> lines) {
+        UnifiedTerms terms = approvedUnifiedTerms(cruise.getCruiseId());
+        if (!terms.version().equals(quote.getPolicyVersion())
+                || !unifiedQuoteFingerprint(cruise, terms, quote.getTotalAmount(), quote.getQuotePayloadJson())
+                        .equals(quote.getFingerprint())) {
+            throw new BusinessException(HttpStatus.CONFLICT, "QUOTE_POLICY_MISMATCH",
+                    "Cấu hình thương mại đã thay đổi. Vui lòng lấy báo giá mới.");
+        }
+        Map<OfferPrice, CruisePackagePurchaseSelection> current = new HashMap<>();
+        for (var line : lines) {
+            var captured = line.getFareSelection();
+            if (captured == null) throw quoteSelectionMismatch();
+            var live = current.computeIfAbsent(new OfferPrice(captured.offerId(), captured.priceRevisionId()),
+                    key -> cruisePackageService.preparePurchase(cruise.getCruiseId(), key.offerId(), key.priceId()));
+            if (!captured.equals(live))
+                throw new BusinessException(HttpStatus.CONFLICT, "FARE_QUOTED_PRICE_STALE",
+                        "Gói hoặc quyền lợi trong báo giá đã thay đổi. Vui lòng lấy báo giá mới.");
+        }
+    }
+
     private String generateQuoteFingerprint(
             Cruise cruise, CruisePricingPolicy policy, BigDecimal total) {
         try {
@@ -2590,7 +2790,7 @@ public class BookingService {
                             + ":"
                             + cruise.getRevision()
                             + ":"
-                            + policy.getPolicyVersion()
+                            + (policy != null ? policy.getPolicyVersion() : "PKG")
                             + ":"
                             + total;
             byte[] hash = md.digest(raw.getBytes(StandardCharsets.UTF_8));
@@ -2715,6 +2915,7 @@ public class BookingService {
             guestUser.setStatus(UserStatus.ACTIVE);
             guestUser.setRoles(EnumSet.of(Role.PASSENGER));
             User saved = userRepository.save(guestUser);
+            userRepository.flush();
             bookingEmailService.markProvisioned(saved);
             return saved;
         }
@@ -2734,7 +2935,7 @@ public class BookingService {
     }
 
     private BigDecimal verifiedNetPaid(Booking booking) {
-        BigDecimal paid = paymentRepository.findForBooking(booking.getBookingId()).stream()
+        BigDecimal paid = paymentRepository.findForBookingReadOnly(booking.getBookingId()).stream()
                 .filter(p -> p.getStatus() == PaymentStatus.Confirmed && p.getConfirmedAt() != null
                         && p.getConfirmedAmount() != null && p.getConfirmedAmount().signum() > 0
                         && p.getOperationType() == PaymentOperationType.Collect
@@ -2750,10 +2951,17 @@ public class BookingService {
         return paid.subtract(refunds).max(BigDecimal.ZERO);
     }
 
+    public void requireAssignedCruise(UUID cruiseId, CasmsPrincipal principal) {
+        BookingAgentCruiseScope.requireAssigned(cruiseRepository, cruiseId, BookingAgentCruiseScope.assignee(principal));
+    }
+
     private void validateAccess(Booking booking, CasmsPrincipal principal) {
         if (principal == null || principal.getUserId() == null) {
             throw new BusinessException(
                     HttpStatus.UNAUTHORIZED, "AUTH_REQUIRED", "Authentication required");
+        }
+        if (BookingAgentCruiseScope.assignee(principal) != null) {
+            requireAssignedCruise(booking.getCruise().getCruiseId(), principal);
         }
         boolean isStaff =
                 principal.isAdmin()
@@ -2830,12 +3038,17 @@ public class BookingService {
                 .append("  </div>\n")
                 .append("</div>\n");
 
+        boolean isInternational = Boolean.TRUE.equals(detail.getIsInternational())
+                || "INTERNATIONAL".equalsIgnoreCase(detail.getPlannedScope());
+
         html.append("<div class=\"contract-paper\">\n");
-        html.append(buildContractHeader(detail, contractRef, bookingRef));
+        html.append(buildContractHeader(detail, contractRef, bookingRef, isInternational));
         html.append(buildPartiesSection(detail));
         html.append(buildCruiseSection(detail));
         html.append(buildPassengerTable(detail.getPassengers()));
         html.append(buildFinancialAndInstallmentSection(detail));
+        html.append(buildCommitmentsSection(isInternational));
+        html.append(buildNotesAndAdvisoriesSection(isInternational));
         html.append(buildTermsAndSignatures(detail, contractRef));
         html.append("</div>\n");
 
@@ -2844,10 +3057,20 @@ public class BookingService {
     }
 
     private String buildContractHeader(
-            BookingDetailResponse detail, String contractRef, String bookingRef) {
+            BookingDetailResponse detail, String contractRef, String bookingRef, boolean isInternational) {
         boolean isAccepted = detail.getContractStatus() == BookingContractStatus.Accepted;
         String statusLabel = isAccepted ? "ĐÃ KÝ KẾT &amp; XÁC NHẬN" : "BẢN THẢO CHỜ XÁC NHẬN";
         String statusClass = isAccepted ? "badge-success" : "badge-warning";
+
+        String contractTitle = isInternational
+                ? "HỢP ĐỒNG DỊCH VỤ VẬN CHUYỂN HẢI TRÌNH DU THUYỀN QUỐC TẾ"
+                : "HỢP ĐỒNG DỊCH VỤ VẬN CHUYỂN HÀNH KHÁCH ĐƯỜNG BIỂN NỘI ĐỊA";
+        String contractSubTitle = isInternational
+                ? "(V/v Cung cấp dịch vụ vận chuyển hành khách &amp; lưu trú hải trình quốc tế rời lãnh hải Việt Nam)"
+                : "(V/v Cung cấp dịch vụ vận chuyển hành khách &amp; lưu trú hải trình du thuyền trong lãnh hải Việt Nam)";
+        String scopeBadge = isInternational
+                ? "<span class=\"badge badge-scope-international\">🌐 HẢI TRÌNH QUỐC TẾ (INTERNATIONAL)</span>\n"
+                : "<span class=\"badge badge-scope-domestic\">🇻🇳 HẢI TRÌNH NỘI ĐỊA (DOMESTIC)</span>\n";
 
         return "<div class=\"contract-header\">\n"
                 + "  <div class=\"header-left\">\n"
@@ -2863,9 +3086,8 @@ public class BookingService {
                 + "  </div>\n"
                 + "</div>\n"
                 + "<div class=\"contract-title\">\n"
-                + "  <h1>HỢP ĐỒNG DỊCH VỤ VẬN CHUYỂN HÀNH KHÁCH ĐƯỜNG BIỂN</h1>\n"
-                + "  <p>(V/v Cung cấp dịch vụ vận tải hành khách &amp; lưu trú hải trình du thuyền"
-                + " cao cấp)</p>\n"
+                + "  <h1>" + contractTitle + "</h1>\n"
+                + "  <p>" + contractSubTitle + "</p>\n"
                 + "  <div class=\"meta-badges\">\n"
                 + "    <span class=\"badge\">Mã Hợp Đồng: <strong>"
                 + contractRef
@@ -2873,6 +3095,7 @@ public class BookingService {
                 + "    <span class=\"badge\">Mã Đặt Chỗ: <strong>"
                 + bookingRef
                 + "</strong></span>\n"
+                + scopeBadge
                 + "    <span class=\"badge "
                 + statusClass
                 + "\">"
@@ -2888,9 +3111,11 @@ public class BookingService {
                 (passengers != null && !passengers.isEmpty()) ? passengers.get(0) : null;
 
         String repName =
-                primary != null && primary.getFullName() != null
+                primary != null && primary.getFullName() != null && !primary.getFullName().isBlank()
                         ? escapeHtml(primary.getFullName())
-                        : escapeHtml(detail.getBookedByUsername());
+                        : (detail.getBookedByUsername() != null && !detail.getBookedByUsername().isBlank()
+                                ? escapeHtml(detail.getBookedByUsername())
+                                : "Đại diện hành khách");
         String repDoc =
                 (primary != null && primary.getDocumentNumber() != null)
                         ? escapeHtml(primary.getDocumentNumber())
@@ -3050,10 +3275,14 @@ public class BookingService {
                                 ? escapeHtml(p.getTourPackageName())
                                 : "Cơ bản";
 
+                String passName =
+                        p.getFullName() != null && !p.getFullName().isBlank()
+                                ? escapeHtml(p.getFullName())
+                                : ("Hành khách " + stt);
                 sb.append("      <tr>\n");
                 sb.append("        <td class=\"center\">").append(stt++).append("</td>\n");
                 sb.append("        <td><strong>")
-                        .append(escapeHtml(p.getFullName()))
+                        .append(passName)
                         .append("</strong></td>\n");
                 sb.append("        <td class=\"center\">")
                         .append(formatDate(p.getDateOfBirth()))
@@ -3153,6 +3382,86 @@ public class BookingService {
         return sb.toString();
     }
 
+    private String buildCommitmentsSection(boolean isInternational) {
+        if (isInternational) {
+            return "<div class=\"section\">\n"
+                    + "  <div class=\"section-title\">ĐIỀU 4: CAM KẾT CHUNG GIỮA HAI BÊN (HẢI TRÌNH QUỐC TẾ)</div>\n"
+                    + "  <div class=\"commit-grid\">\n"
+                    + "    <div class=\"commit-box\">\n"
+                    + "      <h5>1. CAM KẾT CỦA BÊN A (HÃNG TÀU CASMS CRUISE)</h5>\n"
+                    + "      <ul class=\"commit-list\">\n"
+                    + "        <li><strong>Chuẩn mực hàng hải quốc tế:</strong> Du thuyền vận hành đạt quy chuẩn đăng kiểm quốc tế, tuân thủ tuyệt đối các Công ước SOLAS (An toàn sinh mạng), MARPOL (Bảo vệ môi trường biển), MLC 2006 và luật hàng hải của các quốc gia sở tại ghé cảng.</li>\n"
+                    + "        <li><strong>Đúng tiện nghi &amp; hải trình:</strong> Bố trí đúng buồng phòng (cabin) đã ký kết, thực hiện hải trình quốc tế theo đúng lịch trình đã được phê duyệt.</li>\n"
+                    + "        <li><strong>Bảo hiểm du lịch quốc tế:</strong> Cung cấp bảo hiểm du lịch quốc tế toàn diện cho hành khách (bao gồm bảo hiểm tai nạn, ốm đau ở nước ngoài và cứu trợ y tế khẩn cấp/hồi hương).</li>\n"
+                    + "        <li><strong>Hỗ trợ thủ tục xuất nhập cảnh:</strong> Phối hợp với đại lý cảng và cơ quan biên phòng hỗ trợ hành khách làm thủ tục xuất nhập cảnh nhanh chóng, an toàn.</li>\n"
+                    + "        <li><strong>Bảo mật &amp; Bất khả kháng:</strong> Bảo mật thông tin cá nhân; trong trường hợp thời tiết giông bão, dịch bệnh hoặc lệnh cấm cảng quốc tế vì an toàn, Bên A cam kết hỗ trợ đổi cảng dự phòng, bảo lưu hoặc hoàn trả chi phí thỏa đáng.</li>\n"
+                    + "      </ul>\n"
+                    + "    </div>\n"
+                    + "    <div class=\"commit-box\">\n"
+                    + "      <h5>2. CAM KẾT CỦA BÊN B (ĐẠI DIỆN HÀNH KHÁCH / ĐOÀN)</h5>\n"
+                    + "      <ul class=\"commit-list\">\n"
+                    + "        <li><strong>Hồ sơ xuất nhập cảnh hợp lệ:</strong> Chịu trách nhiệm hoàn toàn về tính hợp pháp của Hộ chiếu (còn hạn trên 6 tháng) và Thị thực (Visa) hợp lệ vào các quốc gia trong hải trình.</li>\n"
+                    + "        <li><strong>Nghĩa vụ tài chính:</strong> Thanh toán đầy đủ cước phí và các phụ phí hải trình quốc tế (thuế cảng nước ngoài, phụ phí nhiên liệu nếu có) đúng thời hạn.</li>\n"
+                    + "        <li><strong>Tuân thủ luật pháp quốc tế:</strong> Chấp hành nghiêm túc pháp luật của các quốc gia du thuyền cập cảng, nội quy du thuyền và mệnh lệnh an toàn của Thuyền trưởng.</li>\n"
+                    + "        <li><strong>Tinh thần hợp tác:</strong> Cam kết hợp tác thiện chí, tôn trọng văn hóa nước sở tại và giải quyết mọi tranh chấp qua thương lượng văn minh.</li>\n"
+                    + "      </ul>\n"
+                    + "    </div>\n"
+                    + "  </div>\n"
+                    + "</div>\n";
+        } else {
+            return "<div class=\"section\">\n"
+                    + "  <div class=\"section-title\">ĐIỀU 4: CAM KẾT CHUNG GIỮA HAI BÊN (HẢI TRÌNH NỘI ĐỊA)</div>\n"
+                    + "  <div class=\"commit-grid\">\n"
+                    + "    <div class=\"commit-box\">\n"
+                    + "      <h5>1. CAM KẾT CỦA BÊN A (HÃNG TÀU CASMS CRUISE)</h5>\n"
+                    + "      <ul class=\"commit-list\">\n"
+                    + "        <li><strong>An toàn đăng kiểm quốc gia:</strong> Du thuyền vận hành đạt chuẩn kỹ thuật đăng kiểm thủy nội địa và hàng hải Việt Nam, tuân thủ quy định PCCC và SOLAS.</li>\n"
+                    + "        <li><strong>Đúng chất lượng dịch vụ:</strong> Bố trí đúng buồng phòng (cabin), thực đơn và các tiện ích trên du thuyền theo thỏa thuận tại Điều 1 và Điều 2.</li>\n"
+                    + "        <li><strong>Bảo hiểm hành khách nội địa:</strong> 100% hành khách được thụ hưởng quyền lợi bảo hiểm du lịch đường biển theo quy định của pháp luật Việt Nam.</li>\n"
+                    + "        <li><strong>Bảo mật thông tin:</strong> Cam kết bảo mật dữ liệu hành khách, chỉ cung cấp cho Cảng vụ Hàng hải và Bộ đội Biên phòng theo danh sách khai báo rời bến.</li>\n"
+                    + "        <li><strong>Hỗ trợ thiên tai, bão gió:</strong> Khi Cảng vụ cấm biển vì thời tiết xấu, cam kết thông báo ngay và hỗ trợ bảo lưu lịch trình hoặc hoàn tiền thỏa đáng.</li>\n"
+                    + "      </ul>\n"
+                    + "    </div>\n"
+                    + "    <div class=\"commit-box\">\n"
+                    + "      <h5>2. CAM KẾT CỦA BÊN B (ĐẠI DIỆN HÀNH KHÁCH / ĐOÀN)</h5>\n"
+                    + "      <ul class=\"commit-list\">\n"
+                    + "        <li><strong>Thông tin nhân thân chuẩn xác:</strong> Cung cấp danh sách hành khách chính xác (Họ tên, ngày sinh, số CCCD/Hộ chiếu) để khai báo xuất bến theo quy định an ninh cảng.</li>\n"
+                    + "        <li><strong>Nghĩa vụ thanh toán:</strong> Thực hiện thanh toán đúng hạn và đủ số tiền theo tiến độ thỏa thuận tại Điều 3.</li>\n"
+                    + "        <li><strong>Tuân thủ quy chế du thuyền:</strong> Chấp hành nội quy trên tàu, hướng dẫn của thủy thủ đoàn, giữ gìn vệ sinh và bảo vệ môi trường biển Việt Nam.</li>\n"
+                    + "        <li><strong>Hợp tác hòa nhã:</strong> Giải quyết các phát sinh trên tinh thần tôn trọng, không để tranh chấp làm ảnh hưởng tới không khí nghỉ dưỡng của chuyến đi.</li>\n"
+                    + "      </ul>\n"
+                    + "    </div>\n"
+                    + "  </div>\n"
+                    + "</div>\n";
+        }
+    }
+
+    private String buildNotesAndAdvisoriesSection(boolean isInternational) {
+        if (isInternational) {
+            return "<div class=\"section\">\n"
+                    + "  <div class=\"section-title\">ĐIỀU 5: CÁC LƯU Ý QUAN TRỌNG KHI THAM GIA HẢI TRÌNH QUỐC TẾ</div>\n"
+                    + "  <div class=\"advisory-card international\">\n"
+                    + "    <div class=\"advisory-item\">🛂 <strong>1. Hộ chiếu &amp; Thị thực (Visa) bắt buộc:</strong> Bắt buộc mang theo bản gốc <strong>Hộ chiếu (Passport) còn hạn trên 06 tháng</strong> tính từ ngày kết thúc chuyến đi và còn tối thiểu 2-4 trang trống. <em>Hành khách không được dùng CCCD để xuất cảnh</em>. Quý khách tự chịu trách nhiệm về Visa nhập cảnh các nước trong hải trình và Visa tái nhập cảnh Việt Nam (đối với khách mang hộ chiếu nước ngoài).</div>\n"
+                    + "    <div class=\"advisory-item\">⏰ <strong>2. Thời gian làm thủ tục xuất cảnh:</strong> Quý khách phải có mặt tại Nhà ga Cảng biển Quốc tế trước giờ khởi hành tối thiểu <strong>180 phút (03 tiếng)</strong> để hoàn tất thủ tục xuất cảnh và kiểm tra an ninh quốc tế (ISPS Code). Cổng soát vé và thủ tục xuất cảnh sẽ đóng trước giờ khởi hành <strong>60 phút</strong>.</div>\n"
+                    + "    <div class=\"advisory-item\">💵 <strong>3. Ngoại tệ &amp; Khai báo Hải quan:</strong> Trường hợp mang theo tiền mặt trên <strong>5.000 USD</strong> (hoặc ngoại tệ tương đương trên 15.000.000 VNĐ), quý khách bắt buộc phải khai báo hải quan cửa khẩu cảng theo quy định của Ngân hàng Nhà nước. Khuyến khích sử dụng thẻ tín dụng quốc tế (Visa/Mastercard) để chi tiêu trên tàu.</div>\n"
+                    + "    <div class=\"advisory-item\">🚫 <strong>4. Kiểm dịch nông sản &amp; Hành lý cấm:</strong> Nghiêm cấm mang theo nông sản tươi sống, hạt giống, hoa quả tươi, thịt/thực phẩm chưa qua chế biến vào các quốc gia sở tại theo luật kiểm dịch sinh học quốc tế. Cấm vũ khí, chất cháy nổ, ma túy, flycam chưa được cấp phép.</div>\n"
+                    + "    <div class=\"advisory-item\">🏥 <strong>5. Bảo hiểm y tế quốc tế &amp; SOLAS:</strong> Quý khách được cấp chứng thư bảo hiểm du lịch quốc tế hỗ trợ y tế nước ngoài. Tất cả hành khách bắt buộc tham gia buổi diễn tập an toàn cứu sinh (Muster Drill) trên tàu trước giờ rời cảng.</div>\n"
+                    + "  </div>\n"
+                    + "</div>\n";
+        } else {
+            return "<div class=\"section\">\n"
+                    + "  <div class=\"section-title\">ĐIỀU 5: CÁC LƯU Ý QUAN TRỌNG KHI THAM GIA HẢI TRÌNH NỘI ĐỊA</div>\n"
+                    + "  <div class=\"advisory-card domestic\">\n"
+                    + "    <div class=\"advisory-item\">🪪 <strong>1. Giấy tờ tùy thân hợp lệ:</strong> Hành khách người lớn phải mang theo bản gốc <strong>CCCD / Căn cước</strong> hoặc Hộ chiếu còn hạn. Trẻ em dưới 14 tuổi bắt buộc mang theo bản gốc <strong>Giấy khai sinh</strong> (hoặc bản sao trích lục/công chứng hợp lệ) và phải có người giám hộ đi kèm.</div>\n"
+                    + "    <div class=\"advisory-item\">⏰ <strong>2. Thời gian tập trung &amp; Check-in:</strong> Quý khách có mặt tại Nhà ga đón khách trước giờ tàu khởi hành tối thiểu <strong>90 phút</strong> để làm thủ tục nhận phòng và kiểm tra an ninh cảng. Quầy làm thủ tục sẽ đóng trước giờ tàu chạy <strong>30 phút</strong>.</div>\n"
+                    + "    <div class=\"advisory-item\">🇻🇳 <strong>3. Tiền tệ &amp; Thanh toán:</strong> Giao dịch trên du thuyền và tại các điểm dừng chân trong nước sử dụng tiền Đồng Việt Nam (VND), chấp nhận chuyển khoản, quét mã VietQR và thẻ thanh toán nội địa.</div>\n"
+                    + "    <div class=\"advisory-item\">🚫 <strong>4. Quy định hành lý cấm:</strong> Nghiêm cấm mang theo vũ khí, chất nổ, pháo sáng, chất dễ cháy, ma túy, hóa chất độc hại, flycam/drone chưa có giấy phép hoặc vật nuôi/thú cưng lên tàu.</div>\n"
+                    + "    <div class=\"advisory-item\">🦺 <strong>5. Diễn tập an toàn cứu sinh (SOLAS):</strong> 100% hành khách trên tàu bắt buộc phải lắng nghe hướng dẫn an toàn và tham gia buổi diễn tập an toàn cứu hộ trên biển trước khi du thuyền rời bến.</div>\n"
+                    + "  </div>\n"
+                    + "</div>\n";
+        }
+    }
+
     private String buildTermsAndSignatures(BookingDetailResponse detail, String contractRef) {
         boolean isAccepted = detail.getContractStatus() == BookingContractStatus.Accepted;
         String acceptedTime = formatInstant(detail.getContractAcceptedAt());
@@ -3161,24 +3470,8 @@ public class BookingService {
                         ? escapeHtml(detail.getContractDocumentReference())
                         : "Lưu trữ số điện tử CASMS";
 
-        return "<div class=\"section\">\n"
-                + "  <div class=\"section-title\">ĐIỀU 4: QUY ĐỊNH AN TOÀN HÀNG HẢI (SOLAS) &amp;"
-                + " ĐIỀU KHOẢN VẬN TẢI</div>\n"
-                + "  <div style=\"font-size: 12px; line-height: 1.6; color: #334155;\">\n"
-                + "    1. <strong>An toàn sinh mạng trên biển:</strong> Hành khách có nghĩa vụ chấp"
-                + " hành nghiêm túc quy định của Công ước quốc tế SOLAS và hướng dẫn cứu hộ của"
-                + " Thuyền trưởng. Tất cả hành khách phải tham gia buổi diễn tập an toàn (Muster"
-                + " Drill) trước khi tàu rời cảng.<br>\n"
-                + "    2. <strong>Giấy tờ tùy thân:</strong> Hành khách phải xuất trình bản gốc giấy"
-                + " tờ tùy thân hợp lệ (CCCD / Hộ chiếu còn hạn trên 6 tháng) khi làm thủ tục"
-                + " check-in lên tàu.<br>\n"
-                + "    3. <strong>Hành lý &amp; Hàng cấm:</strong> Nghiêm cấm mang theo vũ khí, chất"
-                + " nổ, chất dễ cháy, ma túy và các hóa chất độc hại lên tàu theo quy định của Luật"
-                + " Hàng hải Việt Nam.\n"
-                + "  </div>\n"
-                + "</div>\n"
-                + "<div class=\"section\" style=\"page-break-inside: avoid;\">\n"
-                + "  <div class=\"section-title\">ĐIỀU 5: HIỆU LỰC HỢP ĐỒNG &amp; KÝ KẾT XÁC"
+        return "<div class=\"section\" style=\"page-break-inside: avoid;\">\n"
+                + "  <div class=\"section-title\">ĐIỀU 6: HIỆU LỰC HỢP ĐỒNG &amp; KÝ KẾT XÁC"
                 + " NHẬN</div>\n"
                 + "  <div style=\"font-size: 12px; margin-bottom: 12px;\">\n"
                 + "    Hợp đồng này được xác lập có hiệu lực kể từ ngày phát hành/ký kết. Hai bên"
@@ -3214,6 +3507,8 @@ public class BookingService {
                 + "      </div>\n"
                 + "      <strong>"
                 + (detail.getPassengers() != null && !detail.getPassengers().isEmpty()
+                        && detail.getPassengers().get(0).getFullName() != null
+                        && !detail.getPassengers().get(0).getFullName().isBlank()
                         ? escapeHtml(detail.getPassengers().get(0).getFullName())
                         : "ĐẠI DIỆN HÀNH KHÁCH")
                 + "</strong>\n"
@@ -3317,6 +3612,8 @@ public class BookingService {
                 + " }\n"
                 + ".badge-warning { background: #fef9c3; color: #854d0e; border: 1px solid #fde047;"
                 + " }\n"
+                + ".badge-scope-domestic { background: #e0f2fe; color: #0369a1; border: 1px solid #7dd3fc; font-weight: bold; }\n"
+                + ".badge-scope-international { background: #ede9fe; color: #6d28d9; border: 1px solid #c4b5fd; font-weight: bold; }\n"
                 + ".section { margin-bottom: 20px; }\n"
                 + ".section-title { font-size: 13.5px; font-weight: bold; text-transform:"
                 + " uppercase; color: #1e293b; margin-bottom: 8px; border-left: 4px solid #2563eb;"
@@ -3338,6 +3635,15 @@ public class BookingService {
                 + " 600; text-align: center; }\n"
                 + "table.data-table td.center { text-align: center; }\n"
                 + "table.data-table td.right { text-align: right; }\n"
+                + ".commit-grid { display: flex; gap: 14px; font-size: 11.5px; margin-top: 6px; }\n"
+                + ".commit-box { flex: 1; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 9px 12px; }\n"
+                + ".commit-box h5 { margin: 0 0 6px 0; font-size: 11.5px; color: #1e3a8a; text-transform: uppercase; border-bottom: 1px solid #cbd5e1; padding-bottom: 3px; }\n"
+                + ".commit-list { margin: 0; padding-left: 15px; line-height: 1.55; color: #334155; }\n"
+                + ".commit-list li { margin-bottom: 4px; }\n"
+                + ".advisory-card { background: #fffbeb; border: 1px solid #fde68a; border-radius: 6px; padding: 10px 14px; font-size: 11.5px; line-height: 1.6; color: #78350f; }\n"
+                + ".advisory-item { margin-bottom: 5px; }\n"
+                + ".advisory-item:last-child { margin-bottom: 0; }\n"
+                + ".advisory-item strong { color: #92400e; }\n"
                 + ".signature-grid { display: flex; justify-content: space-between; margin-top:"
                 + " 30px; page-break-inside: avoid; }\n"
                 + ".signature-box { width: 46%; text-align: center; font-size: 12.5px; }\n"

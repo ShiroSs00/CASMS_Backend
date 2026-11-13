@@ -45,4 +45,6 @@ sequenceDiagram
     end
 ```
 
-See [CASMS-75 catalog and staffing flows](../CASMS75-CATALOG-STAFFING-FLOWS.md) for the shared integration behavior.
+## HR assignment lifecycle
+
+When Cruise becomes CANCELLED, V100 closes ACTIVE staff rows as CANCELLED in the same transaction. See [assignment lifecycle](../ITINERARY-PROGRAM-FLOWS.md#một-chuyến-đang-hiệu-lực-cho-mỗi-nhân-viên).

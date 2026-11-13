@@ -17,6 +17,7 @@ import jakarta.persistence.EntityNotFoundException;
 
 import lombok.RequiredArgsConstructor;
 
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -51,7 +52,7 @@ public class ServicepackageService {
     private final FeedbackRepository feedbackRepo;
     private final BusinessCodeGenerator businessCodeGenerator;
     private final ShipServiceAvailability shipServices;
-    private final org.springframework.jdbc.core.JdbcTemplate jdbc;
+    private final JdbcTemplate jdbc;
 
     @Transactional(readOnly = true)
     public List<Service> services() {
@@ -312,6 +313,28 @@ public class ServicepackageService {
         }
         if (staff) return assignmentRepo.findAll();
         return assignmentRepo.findByBookingPassenger_Passenger_User_UserId(userId);
+    }
+
+    public void requireBookingAgentAssignment(UUID bookingId, UUID passengerId, UUID agentId) {
+        if (agentId == null) return;
+        boolean assigned;
+        if (passengerId != null) {
+            assigned = Boolean.TRUE.equals(jdbc.queryForObject("""
+                    SELECT EXISTS(SELECT 1 FROM "BookingPassenger" bp
+                      JOIN "Booking" b ON b.booking_id=bp.booking_id
+                      JOIN "CruiseStaff" cs ON cs.cruise_id=b.cruise_id
+                      WHERE bp.booking_passenger_id=? AND cs.user_id=?
+                        AND cs.role_in_cruise='BOOKING_AGENT' AND cs.status='ACTIVE')
+                    """, Boolean.class, passengerId, agentId));
+        } else {
+            assigned = bookingId != null && Boolean.TRUE.equals(jdbc.queryForObject("""
+                    SELECT EXISTS(SELECT 1 FROM "Booking" b
+                      JOIN "CruiseStaff" cs ON cs.cruise_id=b.cruise_id
+                      WHERE b.booking_id=? AND cs.user_id=?
+                        AND cs.role_in_cruise='BOOKING_AGENT' AND cs.status='ACTIVE')
+                    """, Boolean.class, bookingId, agentId));
+        }
+        if (!assigned) throw new AccessDeniedException("Chuyến khởi hành chưa được phân công cho bạn");
     }
 
     public BookingPassengerPackage assignPackage(

@@ -24,7 +24,7 @@ sequenceDiagram
     Note over Controller,Service: Source branch: if cruise.getStatus() != CruiseStatus.DRAFT
     Note over Controller,Service: Source branch: if cruiseImpactTaskRepository != null
     Note over Controller,Service: Source branch: if cruiseRegulationRepository != null
-    Note over Controller,Service: Source branch: if cruiseStaffRepository.existsByCruise_CruiseId(cruiseId)
+    Note over Controller,Service: Source branch: if cruiseStaffRepository != null
     Note over Controller,Service: Source branch: if cruiseTourPackageRepository != null
     Note over Controller,Service: Source branch: if onboardActivityRepository != null
     Note over Controller,Service: Source branch: if shoreExcursionRepository != null
@@ -34,8 +34,7 @@ sequenceDiagram
             Service->>Repository: CruiseImpactTaskRepository.deleteByCruiseCruiseId()
             Service->>Repository: CruiseRegulationRepository.deleteByCruise_CruiseId()
             Service->>Repository: CruiseRepository.delete()
-            Service->>Repository: CruiseRepository.findByIdForUpdate()
-            Service->>Repository: CruiseStaffRepository.existsByCruise_CruiseId()
+            Service->>Repository: CruiseStaffRepository.deleteByCruise_CruiseId()
             Service->>Repository: CruiseStopRepository.deleteByItineraryItineraryId()
             Service->>Repository: CruiseStopRepository.flush()
             Service->>Repository: CruiseTourPackageRepository.deleteByCruise_CruiseId()
@@ -53,4 +52,6 @@ sequenceDiagram
     end
 ```
 
-See [CASMS-75 catalog and staffing flows](../CASMS75-CATALOG-STAFFING-FLOWS.md) for the shared integration behavior.
+## HR assignment lifecycle
+
+Drafts with any staff history return 409 CRUISE_HAS_STAFF_HISTORY. The PostgreSQL FK also prevents deleting a cruise that has staff history. See [assignment lifecycle](../ITINERARY-PROGRAM-FLOWS.md#một-chuyến-đang-hiệu-lực-cho-mỗi-nhân-viên).

@@ -88,10 +88,13 @@ import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.http.HttpStatus;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -149,6 +152,7 @@ public class CruiseService {
     private final CruiseAuditService cruiseAuditService;
     private final CruisePackageService cruisePackageService;
     private final CruiseMainflowService mainflow;
+    private final JdbcTemplate jdbc;
 
     @Transactional
     public CruiseResponse create(CruiseCreateRequest request) {
@@ -326,6 +330,7 @@ public class CruiseService {
                         ? sourceVersion.getTrip().getPlannedScope()
                         : request.getPlannedScope());
         cruise.setStatus(CruiseStatus.DRAFT);
+        applyDefaultBookingAndGuidanceWindows(cruise, Instant.now());
         if (sourceVersion != null) {
             cruise.setSourceVersion(sourceVersion);
             cruise.setSourceTrip(sourceVersion.getTrip());
@@ -346,6 +351,21 @@ public class CruiseService {
         return mapToResponse(cruise);
     }
 
+    public static void applyDefaultBookingAndGuidanceWindows(Cruise cruise, Instant referenceNow) {
+        if (cruise == null || cruise.getDepartureDatetime() == null) {
+            return;
+        }
+        CruiseMainflowService.Windows defaults =
+                CruiseMainflowService.defaultWindowsForDeparture(
+                        cruise.getRevision() != null ? cruise.getRevision() : 0L,
+                        cruise.getDepartureDatetime(),
+                        referenceNow);
+        cruise.setBookingOpensAt(defaults.bookingOpensAt());
+        cruise.setBookingClosesAt(defaults.bookingClosesAt());
+        cruise.setGuidanceOpensAt(defaults.guidanceOpensAt());
+        cruise.setGuidanceClosesAt(defaults.guidanceClosesAt());
+    }
+
     @Transactional(readOnly = true)
     public Page<CruiseResponse> list(
             CruiseStatus status,
@@ -355,9 +375,22 @@ public class CruiseService {
             UUID sourceTripId,
             UUID sourceVersionId,
             Pageable pageable) {
+        return list(status, shipId, unassigned, cruiseType, sourceTripId, sourceVersionId, pageable, null, null);
+    }
+
+    private Page<CruiseResponse> list(
+            CruiseStatus status, UUID shipId, Boolean unassigned, CruiseCruiseType cruiseType,
+            UUID sourceTripId, UUID sourceVersionId, Pageable pageable, UUID bookingAgentId,
+            List<UUID> receivedPlans) {
         Specification<Cruise> spec =
                 (root, query, cb) -> {
                     List<Predicate> predicates = new ArrayList<>();
+                    if (bookingAgentId != null) {
+                        predicates.add(com.casms.ship.repository.BookingAgentCruiseScope.assigned(root, query, cb, bookingAgentId));
+                    }
+                    if (receivedPlans != null) {
+                        predicates.add(root.get("cruiseId").in(receivedPlans));
+                    }
                     if (status != null) {
                         predicates.add(cb.equal(root.get("status"), status));
                     }
@@ -396,16 +429,18 @@ public class CruiseService {
             UUID sourceTripId,
             UUID sourceVersionId,
             Pageable pageable) {
-        List<CruiseResponse> open =
-                list(
-                                CruiseStatus.PUBLISHED,
-                                shipId,
-                                unassigned,
-                                cruiseType,
-                                sourceTripId,
-                                sourceVersionId,
-                                Pageable.unpaged(pageable.getSort()))
-                        .stream()
+        return listOpenForSale(shipId, unassigned, cruiseType, sourceTripId, sourceVersionId, pageable, null);
+    }
+
+    @Transactional(readOnly = true)
+    public Page<CruiseResponse> listOpenForSale(
+            UUID shipId, Boolean unassigned, CruiseCruiseType cruiseType, UUID sourceTripId,
+            UUID sourceVersionId, Pageable pageable, UUID bookingAgentId) {
+        Pageable all = Pageable.unpaged(pageable.getSort());
+        Page<CruiseResponse> published = bookingAgentId == null
+                ? list(CruiseStatus.PUBLISHED, shipId, unassigned, cruiseType, sourceTripId, sourceVersionId, all)
+                : list(CruiseStatus.PUBLISHED, shipId, unassigned, cruiseType, sourceTripId, sourceVersionId, all, bookingAgentId, null);
+        List<CruiseResponse> open = published.stream()
                         .filter(
                                 c ->
                                         "OPEN_FOR_SALE"
@@ -418,6 +453,18 @@ public class CruiseService {
         int end = (int) Math.min((long) start + pageable.getPageSize(), open.size());
         return new org.springframework.data.domain.PageImpl<>(
                 open.subList(start, end), pageable, open.size());
+    }
+
+    public void requireBookingAgentAssignment(UUID cruiseId, UUID bookingAgentId) {
+        com.casms.ship.repository.BookingAgentCruiseScope.requireAssigned(cruiseRepository, cruiseId, bookingAgentId);
+    }
+
+    @Transactional(readOnly = true)
+    public Page<CruiseResponse> listReceivedForOperations(CruiseStatus status, UUID shipId, Boolean unassigned,
+            CruiseCruiseType cruiseType, UUID sourceTripId, UUID sourceVersionId, Pageable pageable) {
+        List<UUID> ids = jdbc.queryForList(CruisePlanOperationsAccess.RECEIVED_PLANS, UUID.class);
+        if (ids.isEmpty()) return Page.empty(pageable);
+        return list(status, shipId, unassigned, cruiseType, sourceTripId, sourceVersionId, pageable, null, ids);
     }
 
     // Overloads for backward compat
@@ -537,7 +584,30 @@ public class CruiseService {
                     "Departure and return datetimes are required; return must be after departure");
         }
 
-        if (cruise.getShip() != null
+        if (request.getShipId() != null) {
+            Ship targetShip =
+                    shipRepository
+                            .findById(request.getShipId())
+                            .orElseThrow(
+                                    () ->
+                                            new ResourceNotFoundException(
+                                                    "Ship", request.getShipId()));
+            if (targetShip.getStatus() != ShipStatus.READY
+                    && targetShip.getStatus() != ShipStatus.IN_SERVICE) {
+                throw new BusinessException(
+                        "SHIP_NOT_OPERATIONAL", "Selected ship is not in an operational status");
+            }
+            if (cruiseRepository.existsOverlappingCruisesExcluding(
+                    targetShip.getShipId(),
+                    cruise.getCruiseId(),
+                    effectiveDeparture,
+                    effectiveReturn)) {
+                throw new BusinessException(
+                        "SHIP_SCHEDULE_CONFLICT",
+                        "Selected ship already has an overlapping active cruise");
+            }
+            cruise.setShip(targetShip);
+        } else if (cruise.getShip() != null
                 && (request.getDepartureDatetime() != null
                         || request.getReturnDatetime() != null)) {
             if (cruiseRepository.existsOverlappingCruisesExcluding(
@@ -560,6 +630,22 @@ public class CruiseService {
                     "Thời lượng chuyến khởi hành được kế thừa từ nguồn, không thể ghi đè trực"
                         + " tiếp.");
         }
+        if (!Objects.equals(oldDep, effectiveDeparture)
+                || !Objects.equals(cruise.getReturnDatetime(), effectiveReturn)) {
+            var zone = PortTimeZoneHelper.SHIP_TIME_ZONE;
+            long expectedDays = ChronoUnit.DAYS.between(
+                    effectiveDeparture.atZone(zone).toLocalDate(),
+                    effectiveReturn.atZone(zone).toLocalDate()) + 1;
+            itineraryRepository.findByCruiseCruiseId(cruiseId).ifPresent(itinerary -> {
+                var days = itineraryDayRepository.findByItineraryItineraryIdOrderByDayNumberAsc(
+                        itinerary.getItineraryId());
+                if (!days.isEmpty() && days.size() != expectedDays) {
+                    throw new BusinessException(HttpStatus.UNPROCESSABLE_ENTITY,
+                            "DRAFT_ITINERARY_DAY_COUNT_MISMATCH",
+                            "Giờ mới làm thay đổi số ngày lịch trình theo giờ Việt Nam.");
+                }
+            });
+        }
         if (request.getCruiseName() != null) cruise.setCruiseName(request.getCruiseName());
         if (request.getCruiseType() != null) cruise.setCruiseType(request.getCruiseType());
         cruise.setDepartureDatetime(effectiveDeparture);
@@ -568,6 +654,13 @@ public class CruiseService {
         // BE-R05b: Cập nhật ngày của Itinerary/CruiseStop/OnboardActivity/ShoreExcursion đồng bộ
         // khi dời ngày
         shiftScheduleAndPrograms(cruise, oldDep, effectiveDeparture);
+        if (!Objects.equals(oldDep, effectiveDeparture)
+                || cruise.getBookingOpensAt() == null
+                || cruise.getBookingClosesAt() == null
+                || cruise.getGuidanceOpensAt() == null
+                || cruise.getGuidanceClosesAt() == null) {
+            applyDefaultBookingAndGuidanceWindows(cruise, Instant.now());
+        }
 
         Trip sourceTrip = cruise.getSourceTrip();
 
@@ -1908,6 +2001,8 @@ public class CruiseService {
             res.setCompletionActorUsername(cruise.getCompletionActor().getUsername());
         }
         res.setClosureNotes(cruise.getClosureNotes());
+        res.setBookingOpensAt(cruise.getBookingOpensAt());
+        res.setBookingClosesAt(cruise.getBookingClosesAt());
         res.setCreatedAt(cruise.getCreatedAt());
         res.setUpdatedAt(cruise.getUpdatedAt());
         return res;
@@ -2148,8 +2243,8 @@ public class CruiseService {
                 .build();
     }
 
-    @org.springframework.beans.factory.annotation.Autowired
-    private org.springframework.beans.factory.ObjectProvider<com.casms.cruisepackage.service.CruisePackageService>
+    @Autowired
+    private ObjectProvider<com.casms.cruisepackage.service.CruisePackageService>
             commercialPackages;
 
     private com.casms.cruisepackage.service.CruisePackageService cruisePackageCommercialService() {
@@ -2181,7 +2276,22 @@ public class CruiseService {
         boolean hasInfrastructureError = false;
         if (!mainflow.isReady(cruiseId)) {
             blockers.add("READY_CONFIRMATION_REQUIRED");
-            issues.add("OPS Ready confirmation required");
+            issues.add("Kế hoạch và điều kiện mở bán chưa được Quản lý vận hành xác nhận sẵn sàng tại Bước 2");
+            details.add(
+                    ReadinessIssueDetail.builder()
+                            .code("READY_CONFIRMATION_REQUIRED")
+                            .targetType("CRUISE")
+                            .targetId(cruiseId)
+                            .scope("WHOLE_CRUISE")
+                            .severity(ReadinessSeverity.BLOCKER)
+                            .message("Chuyến khởi hành chưa được Quản lý vận hành xác nhận sẵn sàng tại Bước 2")
+                            .evidence("CruisePlanReview.ready_at is null")
+                            .ownerRole("OPERATIONS_MANAGER")
+                            .allowedAction("Xác nhận sẵn sàng mở bán tại Bước 2")
+                            .requiredPermission("CRUISE_VALIDATE")
+                            .remediationUrl("/admin/cruises/" + cruiseId + "?step=ready")
+                            .remediationOperation("POST")
+                            .build());
         }
         blockers.addAll(mainflow.commercialBlockers(cruiseId));
 
@@ -3125,12 +3235,13 @@ public class CruiseService {
         response.setUnconfirmedPreparationSectionsCount((int) unconfirmedCount);
 
         if (!prep.isAllConfirmed()) {
+            response.getBlockers().add("PREPARATION_CONFIRMATION_REQUIRED");
             response.getBlockers().add("PREPARATION_SECTIONS_NOT_CONFIRMED");
             response.getIssues()
                     .add(
                             "Còn "
                                     + unconfirmedCount
-                                    + " phân hệ chuẩn bị liên phòng ban chưa được ký duyệt");
+                                    + " phân hệ chuẩn bị liên phòng ban chưa được xác nhận");
             for (CruisePreparationSectionResponse sec : prep.getSections()) {
                 if (!"CONFIRMED".equalsIgnoreCase(sec.getStatus())) {
                     response.getDetails()
@@ -3146,7 +3257,7 @@ public class CruiseService {
                                                             + sec.getSectionName()
                                                             + " ("
                                                             + sec.getSectionCode()
-                                                            + ") chưa được ký duyệt (Trạng thái: "
+                                                            + ") chưa được xác nhận (Trạng thái: "
                                                             + sec.getStatus()
                                                             + ")")
                                             .evidence(
@@ -3156,7 +3267,7 @@ public class CruiseService {
                                                             + sec.getStatus())
                                             .ownerRole(sec.getOwnerRole())
                                             .allowedAction(
-                                                    "Hoàn thành công tác chuẩn bị và ký duyệt phân"
+                                                    "Hoàn thành công tác chuẩn bị và xác nhận phân"
                                                         + " hệ")
                                             .requiredPermission("CRUISE_PREPARATION_CONFIRM")
                                             .remediationUrl(
@@ -3169,6 +3280,66 @@ public class CruiseService {
                                             .build());
                 }
             }
+            response.setReady(false);
+            response.setStatus(ReadinessStatus.NOT_READY);
+        }
+
+        // Khâu chuẩn bị xuất bến 2: Nhân sự Onboard Staff trên tàu
+        boolean onboardAssigned = cruiseStaffRepository.existsActiveOnboardStaff(cruiseId);
+        if (!onboardAssigned) {
+            if (!response.getBlockers().contains("ONBOARD_STAFF_REQUIRED")) {
+                response.getBlockers().add("ONBOARD_STAFF_REQUIRED");
+            }
+            if (!response.getBlockers().contains("MISSING_ONBOARD_STAFF")) {
+                response.getBlockers().add("MISSING_ONBOARD_STAFF");
+            }
+            response.getIssues().add("Chưa phân công nhân viên trên tàu (Onboard Staff) cho chuyến khởi hành trước giờ xuất bến");
+            response.getDetails().add(
+                    ReadinessIssueDetail.builder()
+                            .code("ONBOARD_STAFF_REQUIRED")
+                            .targetType("CRUISE")
+                            .targetId(cruiseId)
+                            .scope("CRUISE")
+                            .severity(ReadinessSeverity.BLOCKER)
+                            .message("Chưa phân công Onboard Staff cho chuyến khởi hành trước giờ xuất bến")
+                            .evidence("Active Onboard Staff assignment = 0")
+                            .ownerRole("OPERATIONS_MANAGER")
+                            .allowedAction("Phân công nhân sự trên tàu tại mục Nhân sự chuyến khởi hành")
+                            .requiredPermission(Permission.CRUISE_STAFF_ASSIGN.name())
+                            .remediationUrl("/api/cruise/" + cruiseId + "/staff")
+                            .remediationOperation("POST")
+                            .build());
+            response.setReady(false);
+            response.setStatus(ReadinessStatus.NOT_READY);
+        }
+
+        // Khâu chuẩn bị xuất bến 3: Buổi hướng dẫn an toàn trước chuyến khởi hành
+        Boolean guidance =
+                jdbc.queryForObject(
+                        "SELECT EXISTS(SELECT 1 FROM \"GuidanceSession\" WHERE cruise_id=? AND"
+                            + " status IN ('Published','Completed') AND published_at IS NOT NULL"
+                            + " AND content IS NOT NULL AND length(trim(content))>0 AND"
+                            + " instructor_user_id IS NOT NULL)",
+                        Boolean.class,
+                        cruiseId);
+        if (!Boolean.TRUE.equals(guidance)) {
+            response.getBlockers().add("GUIDANCE_PUBLICATION_REQUIRED");
+            response.getIssues().add("Buổi hướng dẫn an toàn chưa được công bố hoặc chưa hoàn thiện người phụ trách");
+            response.getDetails().add(
+                    ReadinessIssueDetail.builder()
+                            .code("GUIDANCE_PUBLICATION_REQUIRED")
+                            .targetType("CRUISE")
+                            .targetId(cruiseId)
+                            .scope("CRUISE")
+                            .severity(ReadinessSeverity.BLOCKER)
+                            .message("Buổi hướng dẫn chưa được công bố. Quản lý vận hành cần hoàn thiện nội dung và phân công người phụ trách")
+                            .evidence("GuidanceSession not published or instructor missing")
+                            .ownerRole("OPERATIONS_MANAGER")
+                            .allowedAction("Công bố buổi hướng dẫn trước chuyến đi")
+                            .requiredPermission("GUIDANCE_MANAGE")
+                            .remediationUrl("/api/cruise/" + cruiseId + "/guidance")
+                            .remediationOperation("POST")
+                            .build());
             response.setReady(false);
             response.setStatus(ReadinessStatus.NOT_READY);
         }
@@ -3860,7 +4031,7 @@ public class CruiseService {
                 .departureDatetime(cruise.getDepartureDatetime())
                 .returnDatetime(cruise.getReturnDatetime())
                 .sellable(sellable)
-                .transactionReady(sellable && !unified)
+                .transactionReady(sellable)
                 .publicDisplayEligible(sellable)
                 .publicSaleState(saleState)
                 .openedForSaleAt(cruise.getOpenedForSaleAt())

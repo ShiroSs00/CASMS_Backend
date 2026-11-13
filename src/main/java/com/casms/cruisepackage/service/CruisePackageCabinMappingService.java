@@ -1,13 +1,16 @@
 package com.casms.cruisepackage.service;
 
+import com.casms.booking.service.BookingService;
 import com.casms.common.exception.BusinessException;
 import com.casms.cruisepackage.dto.CruisePackageContracts.Blocker;
+import com.casms.cruisepackage.dto.CruisePackagePurchaseSelection;
 import com.casms.identity.enums.Role;
 import com.casms.security.principal.CasmsPrincipal;
 import com.casms.ship.repository.ShipRepository;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.*;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -22,7 +25,7 @@ import java.util.*;
 public class CruisePackageCabinMappingService {
     private final JdbcTemplate jdbc;
     private final ShipRepository ships;
-    private final org.springframework.beans.factory.ObjectProvider<com.casms.booking.service.BookingService> bookings;
+    private final ObjectProvider<BookingService> bookings;
     public record Category(UUID id,UUID templateVersionId,String name,String packageName) {}
     public record Selection(@NotNull UUID logicalCategoryId,@NotEmpty List<@NotNull UUID> cabinIds) {}
     public record Confirmation(UUID expectedMappingId,@NotBlank String expectedStructureFingerprint,
@@ -137,7 +140,7 @@ public class CruisePackageCabinMappingService {
     public boolean hasInventory(UUID cruiseId,List<UUID> cabinIds) {
         return !cabinIds.isEmpty()&&bookings.getObject().hasMappedCabinInventory(cruiseId,Set.copyOf(cabinIds));
     }
-    public Set<UUID> requirePurchasedCabins(com.casms.cruisepackage.dto.CruisePackagePurchaseSelection selection) {
+    public Set<UUID> requirePurchasedCabins(CruisePackagePurchaseSelection selection) {
         if(selection==null||selection.logicalCategoryId()==null||selection.cabinMappingId()==null||selection.physicalCabinIds().isEmpty())
             throw error("CABIN_MAPPING_PURCHASE_EVIDENCE_REQUIRED","Nội dung mua chưa có bằng chứng mapping bằng ID; không tự suy luận hoặc backfill từ hạng cabin cũ.");
         var assessment=assess(selection.shipId(),selection.logicalCategoryId(),selection.templateVersionId());

@@ -71,6 +71,19 @@ public interface BookingPassengerRepository extends JpaRepository<BookingPasseng
                 + " (b.holdExpiresAt IS NULL OR b.holdExpiresAt > CURRENT_TIMESTAMP)))")
     List<BookingPassenger> findActivePassengersByCruiseId(@Param("cruiseId") UUID cruiseId);
 
+    @Query("""
+            SELECT bp FROM BookingPassenger bp JOIN FETCH bp.booking b
+            WHERE b.cruise.cruiseId = :cruiseId
+              AND bp.cabinSelectionMode = com.casms.booking.enums.CabinSelectionMode.CATEGORY_HOLD
+              AND bp.participationStatus = com.casms.booking.enums.BookingPassengerParticipationStatus.Active
+              AND (b.bookingStatus = com.casms.booking.enums.BookingStatus.Confirmed
+                OR (b.bookingStatus = com.casms.booking.enums.BookingStatus.Draft
+                  AND (b.holdExpiresAt IS NULL OR b.holdExpiresAt > CURRENT_TIMESTAMP)))
+              AND NOT EXISTS (SELECT ca FROM CabinAssignment ca
+                WHERE ca.bookingPassenger = bp AND ca.validTo IS NULL)
+            """)
+    List<BookingPassenger> findActiveUnassignedFareHolds(@Param("cruiseId") UUID cruiseId);
+
     List<BookingPassenger> findByBookingBookingId(UUID bookingId);
 
     List<BookingPassenger> findByPassenger_PassengerId(UUID passengerId);

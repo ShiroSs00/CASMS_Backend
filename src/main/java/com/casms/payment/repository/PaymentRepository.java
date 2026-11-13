@@ -18,15 +18,20 @@ import java.util.UUID;
 
 @Repository
 public interface PaymentRepository extends JpaRepository<Payment, UUID> {
+    String PAYMENTS_FOR_BOOKING =
+            "select p from Payment p left join p.booking b left join p.installment i left join"
+                    + " i.booking ib where b.bookingId = :bookingId or ib.bookingId = :bookingId";
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select p from Payment p where p.paymentId = :paymentId")
     Optional<Payment> findByIdForUpdate(@Param("paymentId") UUID paymentId);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query(
-            "select p from Payment p left join p.booking b left join p.installment i left join"
-                + " i.booking ib where b.bookingId = :bookingId or ib.bookingId = :bookingId")
+    @Query(PAYMENTS_FOR_BOOKING)
     List<Payment> findForBooking(@Param("bookingId") UUID bookingId);
+
+    @Query(PAYMENTS_FOR_BOOKING)
+    List<Payment> findForBookingReadOnly(@Param("bookingId") UUID bookingId);
 
     Optional<Payment> findByIdempotencyKey(String idempotencyKey);
 

@@ -249,8 +249,7 @@ public class CruiseDelayService {
                         stop.getPlannedArrival(), stop.getPlannedDeparture());
                 stop.setPortWindowChecks(result);
                 checks.addAll(result);
-                departureCovered |= Objects.equals(stop.getPortId(), schedule.getDeparturePortId())
-                        && Objects.equals(stop.getPlannedDeparture(), newDeparture);
+                departureCovered |= Objects.equals(stop.getPortId(), schedule.getDeparturePortId());
             }
             for (var entry : day.getEntries()) {
                 var entryZone = PortTimeZoneHelper.isValidTimeZoneId(entry.getTimeZoneId())
@@ -266,7 +265,7 @@ public class CruiseDelayService {
                     itinerary.getDeparturePortFacts() == null ? null : itinerary.getDeparturePortFacts().timeZoneId(),
                     newDeparture));
         }
-        boolean passed = !checks.isEmpty() && checks.stream().allMatch(check -> "PASS".equals(check.status()));
+        boolean passed = checks.stream().allMatch(check -> "PASS".equals(check.status()));
         schedule.setPortCallWindowStatus(passed ? "PASS" : "BLOCK");
         schedule.setPortWindowChecks(List.copyOf(checks));
         if (!passed) blockers.add("PORT_WINDOW_BLOCKED");

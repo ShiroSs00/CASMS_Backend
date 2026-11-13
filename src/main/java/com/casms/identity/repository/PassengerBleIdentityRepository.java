@@ -3,6 +3,7 @@ package com.casms.identity.repository;
 import com.casms.identity.entity.PassengerBleIdentity;
 import com.casms.identity.enums.PassengerBleIdentityStatus;
 
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.List;
@@ -18,7 +19,7 @@ public interface PassengerBleIdentityRepository extends JpaRepository<PassengerB
             findByCruiseCruiseIdAndBookingPassengerBookingPassengerIdOrderByAssignedAtDesc(
                     UUID cruiseId, UUID bookingPassengerId);
 
-    @org.springframework.data.jpa.repository.EntityGraph(
+    @EntityGraph(
             attributePaths = {"bookingPassenger", "bookingPassenger.passenger"})
     List<PassengerBleIdentity> findByCruiseCruiseIdAndStatusOrderByAssignedAtDesc(
             UUID cruiseId, PassengerBleIdentityStatus status);

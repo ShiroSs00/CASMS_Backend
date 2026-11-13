@@ -3,8 +3,10 @@ package com.casms.servicepackage.controller;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.*;
 
+import com.casms.cruisepackage.service.CruisePackageEntitlementService;
 import com.casms.servicepackage.entity.TourPackage;
 import com.casms.servicepackage.enums.TourPackageStatus;
+import com.casms.servicepackage.repository.ServiceCategoryRepository;
 import com.casms.servicepackage.service.ServiceCatalogReadService;
 import com.casms.servicepackage.service.ServiceRequestService;
 import com.casms.servicepackage.service.ServiceScheduleManagementService;
@@ -24,8 +26,8 @@ class ServicepackageControllerTest {
     @Mock ServiceRequestService serviceRequests;
     @Mock ServiceCatalogReadService catalogReads;
     @Mock ServiceScheduleManagementService scheduleManagement;
-    @Mock com.casms.servicepackage.repository.ServiceCategoryRepository categoryRepository;
-    @Mock com.casms.cruisepackage.service.CruisePackageEntitlementService fareEntitlements;
+    @Mock ServiceCategoryRepository categoryRepository;
+    @Mock CruisePackageEntitlementService fareEntitlements;
 
     @Test
     void packageBenefits_doesNotExposeDraftPackageToPublic() {

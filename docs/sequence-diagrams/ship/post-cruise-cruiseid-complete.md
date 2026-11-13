@@ -29,4 +29,6 @@ sequenceDiagram
     end
 ```
 
-See [CASMS-75 catalog and staffing flows](../CASMS75-CATALOG-STAFFING-FLOWS.md) for the shared integration behavior.
+## HR assignment lifecycle
+
+When Cruise becomes COMPLETED, V100 closes ACTIVE staff rows in the same transaction and preserves history. Those employees become eligible for new assignments. See [assignment lifecycle](../ITINERARY-PROGRAM-FLOWS.md#một-chuyến-đang-hiệu-lực-cho-mỗi-nhân-viên).

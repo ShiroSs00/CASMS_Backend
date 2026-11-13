@@ -2,39 +2,35 @@
 
 ```mermaid
 sequenceDiagram
-    title POST /employees/imports — EmployeeImportController.upload
     actor Client
-    participant Security as Spring Security / JWT filters
-    participant Controller as EmployeeImportController
-    participant Service as Resolved application service
-    participant Repository as Repository collaborators
-    participant DB as Database
-
-    Client->>Security: POST /employees/imports + request
-    alt Authentication or authorization rejected
-        Security-->>Client: 401 / 403
-    else Request reaches handler
-        Security->>Controller: invoke upload(...)
-        opt Bean validation when handler parameter has @Valid
-            Controller->>Controller: Validate request constraints
+    participant Security as Spring Security
+    participant API as EmployeeImportController
+    participant Service as EmployeeImportService
+    participant JDBC as JdbcTemplate / AuditRepository
+    participant DB as PostgreSQL
+    Client->>Security: POST /employees/imports multipart/form-data
+    alt Rejected by security (including a disabled or locked bearer account)
+        Security-->>Client: 403 Forbidden
+    else Admin/HR + USER_CREATE
+        Security->>API: Invoke upload
+        alt File missing, empty, over 2 MiB, or unreadable
+            API-->>Client: 400 EMPLOYEE_XLSX_INVALID
+        else File bytes available
+            API->>Service: upload(bytes, actor)
+            Note over Service,DB: Transactional preview
+            Service->>Service: Check assignable roles and parse XLSX
+            alt Invalid workbook
+                Service-->>API: Business validation error
+                API-->>Client: 400
+            else Parsed workbook
+                Service->>JDBC: Insert batch, validated rows and audit, then read preview
+                JDBC->>DB: Bound queries and writes
+                DB-->>JDBC: Stored preview
+                Service-->>API: Batch after commit
+                API-->>Client: 201 preview
+            end
         end
-        Controller->>Service: service.upload()
-
-    Note over Controller,Service: Source branch: for var row : parsed
-    Note over Controller,Service: Source branch: if !codes.add(code)
-    Note over Controller,Service: Source branch: if !emails.add(email)
-    Note over Controller,Service: Source branch: if !roles.contains(input.role())
-    Note over Controller,Service: Source branch: if !violations.isEmpty()
-    Note over Controller,Service: Source branch: if error == null) error = validate(input, roles, codes, emails
-    Note over Controller,Service: Source branch: if file == null || file.isEmpty() || file.getSize() > EmployeeWorkbook.MAX_UPLOAD_BYTES
-    Note over Controller,Service: Source branch: if users.findByNormalizedEmail(email).isPresent() || users.existsByUsername(email)
-        Note over Service,Repository: @Transactional present on traced service method. Static trace covers direct service body and immediate helper branches; deeper call paths may need review.
-        Note over Controller,Repository: No direct repository interaction found in traced method body
-        Service-->>Controller: Domain result
-        Controller-->>Client: HTTP response (verify DTO and status)
-    Note over Service,Client: Source throws BusinessException; HTTP mapping requires exception-handler review
-    Note over Service,Client: Source throws IllegalStateException; HTTP mapping requires exception-handler review
     end
 ```
 
-See [CASMS-75 catalog and staffing flows](../CASMS75-CATALOG-STAFFING-FLOWS.md) for the shared integration behavior.
+See the [shared bearer authentication flow](../BEARER-AUTHENTICATION.md) and the [reviewed HR flow](../ITINERARY-PROGRAM-FLOWS.md#tài-khoản-nhân-viên-và-nhập-excel).

@@ -4,6 +4,7 @@ import com.casms.audit.AuditLog;
 import com.casms.audit.AuditRepository;
 import com.casms.common.exception.BusinessException;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
@@ -40,10 +41,85 @@ public class DepartureSaleTermsService {
     public record Review(@NotNull Long expectedRevision, String reason) {}
     public record View(long revision, String status, Terms terms, String submittedHash,
                        UUID submittedBy, OffsetDateTime submittedAt, UUID reviewedBy, OffsetDateTime reviewedAt, String planStatus) {}
+    public record SetupRequest(UUID cruiseId, String cruiseCode, String cruiseName,
+                               String departurePort, String returnPort, java.util.List<String> ports) {}
+
+    @Transactional
+    public boolean requestSetup(UUID id, UUID actor) {
+        jdbc.queryForObject("SELECT cruise_id FROM \"Cruise\" WHERE cruise_id=? FOR UPDATE", UUID.class, id);
+        requirePackage(id);
+        View view = current(id);
+        if (!java.util.Set.of("DRAFT", "WITHDRAWN", "REVISION_REQUESTED").contains(view.planStatus())
+                || !java.util.Set.of("MISSING", "RETURNED").contains(view.status())) {
+            throw conflict("INVALID_SALE_TERMS_TRANSITION");
+        }
+        jdbc.update("""
+                INSERT INTO "CruiseSaleTermsRequest"(cruise_id, requested_by) VALUES (?,?)
+                ON CONFLICT (cruise_id) DO UPDATE SET requested_by=excluded.requested_by,
+                    requested_at=now(), completed_at=NULL
+                WHERE "CruiseSaleTermsRequest".completed_at IS NOT NULL
+                """, id, actor);
+        return true;
+    }
+
+    public boolean pendingSetup(UUID id) {
+        return Boolean.TRUE.equals(jdbc.queryForObject("""
+                SELECT EXISTS(SELECT 1 FROM "CruiseSaleTermsRequest" r JOIN "Cruise" c USING(cruise_id)
+                  WHERE r.cruise_id=? AND r.completed_at IS NULL AND c.status IN ('DRAFT','PUBLISHED'))
+                """, Boolean.class, id));
+    }
+
+    public java.util.List<SetupRequest> setupRequests() {
+        return jdbc.query("""
+                SELECT c.cruise_id, c.cruise_code, c.cruise_name, departure.port_name, return_port.port_name,
+                    ARRAY(SELECT DISTINCT p.port_name FROM "Itinerary" i
+                          JOIN "CruiseStop" s USING(itinerary_id) JOIN "Port" p ON p.port_id=s.port_id
+                          WHERE i.cruise_id=c.cruise_id ORDER BY p.port_name)
+                FROM "CruiseSaleTermsRequest" r JOIN "Cruise" c USING(cruise_id)
+                JOIN "Port" departure ON departure.port_id=c.departure_port_id
+                JOIN "Port" return_port ON return_port.port_id=c.return_port_id
+                WHERE r.completed_at IS NULL AND c.status IN ('DRAFT','PUBLISHED')
+                ORDER BY r.requested_at
+                """, (row, index) -> new SetupRequest(row.getObject(1, UUID.class), row.getString(2),
+                    row.getString(3), row.getString(4), row.getString(5),
+                    java.util.Arrays.asList((String[]) row.getArray(6).getArray())));
+    }
 
     public View read(UUID id) {
         requirePackage(id);
         return current(id);
+    }
+
+    /** The caller has checked the submitted whole-plan snapshot and reviewer authority. */
+    @Transactional
+    public void ensureApprovedForPlan(UUID id, UUID actor) {
+        requirePackage(id);
+        View before = current(id);
+        if ("APPROVED".equals(before.status())) {
+            approvedForBooking(id);
+            return;
+        }
+        if (!"PENDING_APPROVAL".equals(before.status()) || before.terms() == null)
+            throw conflict("SALE_TERMS_REQUIRED");
+        validate(before.terms().tax(), true);
+        validate(before.terms().portFee(), false);
+        String termsHash = hash(before.terms());
+        if (!Objects.equals(termsHash, before.submittedHash()))
+            throw conflict("SALE_TERMS_SNAPSHOT_STALE");
+        if (before.submittedBy() == null || before.submittedAt() == null) throw conflict("SALE_TERMS_SNAPSHOT_STALE");
+        if (actor.equals(before.submittedBy()) || Boolean.TRUE.equals(jdbc.queryForObject("""
+                SELECT ? = ANY(maker_ids) FROM "DepartureSaleTerms" WHERE cruise_id=?
+                """, Boolean.class, actor, id))) {
+            throw new BusinessException(HttpStatus.FORBIDDEN, "SELF_APPROVAL_FORBIDDEN",
+                    "Sale terms maker cannot review this revision");
+        }
+        int updated = jdbc.update("""
+                UPDATE "DepartureSaleTerms"
+                SET status='APPROVED', revision=revision+1, reviewed_by=?, reviewed_at=now()
+                WHERE cruise_id=? AND revision=?
+                """, actor, id, before.revision());
+        if (updated != 1) throw conflict("SALE_TERMS_SNAPSHOT_STALE");
+        record(id, actor, "APPROVE_WITH_PLAN", "Phê duyệt đồng bộ cùng kế hoạch khởi hành");
     }
 
     private View current(UUID id) {
@@ -81,7 +157,7 @@ public class DepartureSaleTermsService {
                 row.getObject(3,OffsetDateTime.class).toInstant(),decodeEvidence(row.getString(4))),id);
     }
 
-    private com.fasterxml.jackson.databind.JsonNode decodeEvidence(String value) {
+    private JsonNode decodeEvidence(String value) {
         try { return mapper.readTree(value); }
         catch (JsonProcessingException ex) { throw new IllegalStateException("Cannot decode sale terms evidence",ex); }
     }
@@ -106,12 +182,15 @@ public class DepartureSaleTermsService {
         validate(input.terms().portFee(),false);
         jdbc.update("""
             INSERT INTO "DepartureSaleTerms"(cruise_id,revision,status,terms,maker_ids)
-            VALUES (?,1,'DRAFT',?,ARRAY[?]::uuid[])
+            VALUES (?,1,'DRAFT',?::jsonb,ARRAY[?]::uuid[])
             ON CONFLICT(cruise_id) DO UPDATE SET revision="DepartureSaleTerms".revision+1,status='DRAFT',
             terms=excluded.terms,maker_ids=CASE WHEN "DepartureSaleTerms".status='DRAFT'
                 THEN "DepartureSaleTerms".maker_ids || excluded.maker_ids ELSE excluded.maker_ids END,
             submitted_hash=NULL,submitted_by=NULL,submitted_at=NULL,reviewed_by=NULL,reviewed_at=NULL
             """,id,encode(input.terms()),actor);
+        jdbc.update("""
+                UPDATE "CruiseSaleTermsRequest" SET completed_at=now() WHERE cruise_id=? AND completed_at IS NULL
+                """, id);
         return record(id,actor,"SAVE",null);
     }
 
@@ -121,6 +200,8 @@ public class DepartureSaleTermsService {
         View before = lock(id,input.expectedRevision());
         if ("submit".equals(action)) {
             if (!"DRAFT".equals(before.status())) throw conflict("INVALID_SALE_TERMS_TRANSITION");
+            validate(before.terms().tax(), true);
+            validate(before.terms().portFee(), false);
             jdbc.update("""
                 UPDATE "DepartureSaleTerms" SET status='PENDING_APPROVAL',revision=revision+1,
                 submitted_hash=?,submitted_by=?,submitted_at=now() WHERE cruise_id=?
@@ -153,9 +234,21 @@ public class DepartureSaleTermsService {
     }
 
     public String approvedFingerprint(UUID id) {
+        return approvedFingerprint(current(id));
+    }
+
+    public View approvedForBooking(UUID id) {
         View row = current(id);
+        if (approvedFingerprint(row) == null) throw conflict("SALE_TERMS_APPROVAL_REQUIRED");
+        validate(row.terms().tax(), true);
+        validate(row.terms().portFee(), false);
+        return row;
+    }
+
+    private String approvedFingerprint(View row) {
         if (!"APPROVED".equals(row.status()) || row.submittedBy()==null || row.submittedAt()==null
-                || row.reviewedBy()==null || row.reviewedAt()==null || row.reviewedBy().equals(row.submittedBy())
+                || row.reviewedBy()==null || row.reviewedAt()==null || row.submittedBy().equals(row.reviewedBy())
+                || row.terms()==null || row.terms().tax()==null || row.terms().portFee()==null
                 || !Objects.equals(row.submittedHash(),hash(row.terms()))) return null;
         return row.revision()+":"+row.submittedHash();
     }
@@ -174,6 +267,7 @@ public class DepartureSaleTermsService {
     }
 
     private void validate(Charge charge, boolean tax) {
+        if (charge == null) throw conflict(tax ? "INVALID_TAX_APPLICABILITY" : "INVALID_PORT_FEE_APPLICABILITY");
         boolean valid = charge.applicability()==Applicability.APPLICABLE
                 ? charge.value()!=null && charge.evidence()!=null && !charge.evidence().isBlank() && charge.value().signum()>=0 && (!tax || charge.value().compareTo(BigDecimal.ONE)<=0)
                 : charge.applicability()==Applicability.NOT_APPLICABLE && charge.value()==null

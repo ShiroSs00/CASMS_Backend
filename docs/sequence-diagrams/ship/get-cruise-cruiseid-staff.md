@@ -20,13 +20,21 @@ sequenceDiagram
         end
         Controller->>Service: staffService.listStaff()
 
-    Note over Controller,Service: Source branch: if actor == null || !actor.isEnabled() || !actor.hasAuthority(permission)
+    Note over Controller,Service: Source branch: if !cruiseRepository.existsById(cruiseId)
         Note over Service,Repository: @Transactional present on traced service method. Static trace covers direct service body and immediate helper branches; deeper call paths may need review.
-        Note over Controller,Repository: No direct repository interaction found in traced method body
+        opt Repository interactions found in traced handler/service code
+            Service->>Repository: CruiseRepository.existsById()
+            Service->>Repository: CruiseStaffRepository.findByCruise_CruiseId()
+            Repository->>DB: Database operation via repository
+            DB-->>Repository: Result / persistence outcome
+            Repository-->>Service: Result (caller may be Controller for inline repository use)
+        end
         Service-->>Controller: Domain result
         Controller-->>Client: HTTP response (verify DTO and status)
-    Note over Service,Client: Source throws AccessDeniedException; HTTP mapping requires exception-handler review
+    Note over Service,Client: Source throws ResourceNotFoundException; HTTP mapping requires exception-handler review
     end
 ```
 
-See [CASMS-75 catalog and staffing flows](../CASMS75-CATALOG-STAFFING-FLOWS.md) for the shared integration behavior.
+## HR assignment lifecycle
+
+Returns assignment history with assigned and ended actor, time and removal reason. HR-only callers cannot see assignments of Admin accounts. See [assignment lifecycle](../ITINERARY-PROGRAM-FLOWS.md#một-chuyến-đang-hiệu-lực-cho-mỗi-nhân-viên).

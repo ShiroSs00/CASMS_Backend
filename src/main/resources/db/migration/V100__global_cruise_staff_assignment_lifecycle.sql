@@ -7,6 +7,16 @@ FROM "Cruise" c
 WHERE c.cruise_id = cs.cruise_id AND cs.status = 'ACTIVE'
     AND c.status IN ('COMPLETED', 'CANCELLED');
 
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM "CruiseStaff" WHERE status = 'ACTIVE' GROUP BY user_id HAVING count(*) > 1) THEN
+        RAISE EXCEPTION 'CruiseStaff has multiple ACTIVE assignments per user. Reconcile assignment history before retrying V100.';
+    END IF;
+END $$;
+
+CREATE UNIQUE INDEX uq_cruise_staff_one_active_per_user ON "CruiseStaff" (user_id) WHERE status = 'ACTIVE';
+DROP INDEX uq_cruise_staff_active_user;
+
 ALTER TABLE "CruiseStaff" DROP CONSTRAINT fk_cruise_staff_cruise;
 ALTER TABLE "CruiseStaff" ADD CONSTRAINT fk_cruise_staff_cruise
     FOREIGN KEY (cruise_id) REFERENCES "Cruise"(cruise_id);

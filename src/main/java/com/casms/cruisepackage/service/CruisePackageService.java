@@ -2,12 +2,16 @@ package com.casms.cruisepackage.service;
 
 import com.casms.common.exception.BusinessException;
 import com.casms.cruisepackage.dto.CruisePackageContracts.*;
+import com.casms.cruisepackage.dto.CruisePackagePurchaseSelection;
 import com.casms.cruisepackage.entity.*;
 import com.casms.cruisepackage.repository.CruisePackageRepository;
 import com.casms.identity.enums.Role;
 import com.casms.security.principal.CasmsPrincipal;
+import com.casms.ship.enums.CabinType;
 import com.casms.ship.service.CruiseMainflowService;
+import com.casms.ship.service.CruiseService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -23,7 +27,7 @@ public class CruisePackageService {
     private final CruiseMainflowService plans;
     private final CruisePackageBenefitUsagePolicy benefitUsage;
     private final CruisePackageCabinMappingService cabinMappings;
-    private final org.springframework.beans.factory.ObjectProvider<com.casms.ship.service.CruiseService> cruiseServices;
+    private final ObjectProvider<CruiseService> cruiseServices;
 
     public List<CruisePackageTemplate> templates() { requireRead(); return repository.templates(); }
     public List<VersionView> versions(UUID templateId) {
@@ -35,16 +39,29 @@ public class CruisePackageService {
         return repository.offers(cruiseId).stream().map(this::offerView).toList();
     }
     public CruisePackageContext context(UUID cruiseId) {
-        requireRead(); UUID shipId=(UUID)cruise(cruiseId).get("ship_id");
+        requireRead();
+        var cruiseData=cruise(cruiseId);
+        UUID shipId=(UUID)cruiseData.get("ship_id");
         var rows=jdbc.queryForList("SELECT status FROM \"CruisePlanReview\" WHERE cruise_id=?",cruiseId);
         String status=rows.isEmpty()?"DRAFT":(String)rows.getFirst().get("status");
         boolean planning=Boolean.TRUE.equals(jdbc.queryForObject("SELECT status IN ('DRAFT','PUBLISHED') FROM \"Cruise\" WHERE cruise_id=?",Boolean.class,cruiseId));
         boolean maker=hasActor(Role.ACTIVITY_SERVICE_MANAGER,"TOUR_PACKAGE_MANAGE");
         boolean unified = plans.usesUnifiedPackages(cruiseId);
         boolean editable = !unified || Set.of("DRAFT","WITHDRAWN","REVISION_REQUESTED").contains(status);
+        Instant dep = instant(cruiseData.get("departure_datetime"));
+        Instant ret = instant(cruiseData.get("return_datetime"));
+        Instant bOpen = instant(cruiseData.get("booking_opens_at"));
+        Instant bClose = instant(cruiseData.get("booking_closes_at"));
+        if ((bOpen == null || bClose == null) && dep != null) {
+            long rev = ((Number) cruiseData.getOrDefault("revision", 0L)).longValue();
+            Instant ref = instant(cruiseData.get("created_at"));
+            var defaults = CruiseMainflowService.defaultWindowsForDeparture(rev, dep, ref);
+            if (bOpen == null) bOpen = defaults.bookingOpensAt();
+            if (bClose == null) bClose = defaults.bookingClosesAt();
+        }
         return new CruisePackageContext(cruiseId,shipId,status,shipId!=null&&planning&&editable&&maker,
                 planning&&editable&&maker,planning&&!unified&&hasActor(Role.OPERATIONS_MANAGER,"CRUISE_PRICING_APPROVE"),
-                unified);
+                unified, dep, ret, bOpen, bClose);
     }
     public List<ResourceOption> resources(ResourceType type,UUID cruiseId) {
         requireRead();
@@ -55,7 +72,17 @@ public class CruisePackageService {
             case EXCURSION -> cruiseId==null
                     ? jdbc.query("SELECT shore_excursion_id,excursion_name FROM \"ShoreExcursion\" WHERE cruise_stop_id IS NULL ORDER BY excursion_name,shore_excursion_id",(r,n)->new ResourceOption(r.getObject(1,UUID.class),r.getString(2)))
                     : jdbc.query("SELECT e.shore_excursion_id,e.excursion_name FROM \"ShoreExcursion\" e JOIN \"CruiseStop\" s USING(cruise_stop_id) JOIN \"Itinerary\" i USING(itinerary_id) WHERE i.cruise_id=? ORDER BY e.excursion_name,e.shore_excursion_id",(r,n)->new ResourceOption(r.getObject(1,UUID.class),r.getString(2)),cruiseId);
-            case SERVICE -> jdbc.query("SELECT service_id,service_name,unit_code FROM \"Service\" ORDER BY service_name,service_id",(r,n)->new ResourceOption(r.getObject(1,UUID.class),r.getString(2),r.getString(3)));
+            case SERVICE -> cruiseId == null
+                    ? jdbc.query("SELECT service_id,service_name,unit_code FROM \"Service\" ORDER BY service_name,service_id",
+                            (r,n)->new ResourceOption(r.getObject(1,UUID.class),r.getString(2),r.getString(3)))
+                    : jdbc.query("""
+                            SELECT s.service_id,s.service_name,s.unit_code FROM "Service" s
+                            WHERE s.status='ACTIVE' AND EXISTS(
+                                SELECT 1 FROM "DeckServiceAssignment" a JOIN "Deck" d USING(deck_id)
+                                JOIN "Cruise" c ON c.ship_id=d.ship_id
+                                WHERE c.cruise_id=? AND a.service_id=s.service_id)
+                            ORDER BY s.service_name,s.service_id
+                            """, (r,n)->new ResourceOption(r.getObject(1,UUID.class),r.getString(2),r.getString(3)), cruiseId);
         };
     }
     public List<String> cabinOptions(UUID cruiseId) {
@@ -368,7 +395,9 @@ public class CruisePackageService {
     }
 
     public List<UUID> eligibleOfferIds(UUID cruiseId) {
-        return repository.offers(cruiseId).stream().filter(o -> eligibility(o).eligible()).map(DepartureCruisePackage::getId).sorted().toList();
+        return repository.offers(cruiseId).stream()
+                .filter(offer -> eligibility(offer).eligible() && isPlanApprovedPrice(offer))
+                .map(DepartureCruisePackage::getId).sorted().toList();
     }
     public Set<UUID> sellableCabinIds(UUID cruiseId) {
         return repository.offers(cruiseId).stream().filter(o->o.isSaleEnabled()&&eligibility(o).eligible())
@@ -381,52 +410,56 @@ public class CruisePackageService {
                 .flatMap(o->cabinMappings.assess(o.getShipId(),o.getLogicalCategoryId(),o.getTemplateVersionId()).cabinIds().stream())
                 .collect(java.util.stream.Collectors.toUnmodifiableSet());
     }
-    public boolean requiresFareSelection(UUID cruiseId) {
-        return repository.offers(cruiseId).stream().anyMatch(DepartureCruisePackage::isSaleRequested);
+    private boolean isPlanApprovedPrice(DepartureCruisePackage offer) {
+        var price = currentApprovedPrice(offer);
+        return price != null && plans.isApprovedFareRevision(offer.getCruiseId(), offer.getId(), price.getId());
     }
-    public Set<com.casms.ship.enums.CabinType> sellableCategories(UUID cruiseId) {
-        Set<com.casms.ship.enums.CabinType> result=new HashSet<>();
+    public Set<CabinType> sellableCategories(UUID cruiseId) {
+        Set<CabinType> result=new HashSet<>();
         for(UUID id:saleScopeCabinIds(cruiseId)){
             String type=jdbc.queryForObject("SELECT cabin_type::text FROM \"Cabin\" WHERE cabin_id=?",String.class,id);
-            result.add(com.casms.ship.enums.CabinType.valueOf(type));
+            result.add(CabinType.valueOf(type));
         }
         return Set.copyOf(result);
     }
     public CruisePackageCatalog available(UUID cruiseId) {
         cruise(cruiseId); cruiseServices.getObject().requirePublicSaleVisible(cruiseId);
         var offers=repository.offers(cruiseId).stream().filter(o->o.isSaleRequested()&&o.isSaleEnabled()&&eligibility(o).eligible())
+                .filter(this::isPlanApprovedPrice)
                 .map(o->{var price=currentApprovedPrice(o);return new AvailableCruisePackage(cruiseId,preparePurchase(cruiseId,o.getId(),price.getId()),"USD","PERSON");}).toList();
-        return new CruisePackageCatalog(cruiseId,requiresFareSelection(cruiseId),offers);
+        return new CruisePackageCatalog(cruiseId,plans.usesUnifiedPackages(cruiseId),offers);
     }
     /** Booking/quote callers already serialize on Cruise. Never interpret TourPackage as a Fare Offer. */
-    public com.casms.cruisepackage.dto.CruisePackagePurchaseSelection preparePurchase(UUID cruiseId,UUID offerId,UUID priceId) {
+    @Transactional(readOnly = true, noRollbackFor = BusinessException.class)
+    public CruisePackagePurchaseSelection preparePurchase(UUID cruiseId,UUID offerId,UUID priceId) {
         var offer=offer(cruiseId,offerId,false);
-        if(!offer.isSaleEnabled()||!"PUBLISHED".equals(offer.getStatus()))
+        if(!offer.isSaleRequested()||!offer.isSaleEnabled()||!"PUBLISHED".equals(offer.getStatus()))
             throw new BusinessException(HttpStatus.NOT_FOUND,"FARE_OFFER_NOT_AVAILABLE","Gói vé không khả dụng để mua trên chuyến khởi hành này.");
         var assessment=eligibility(offer);
         if(!assessment.eligible())throw new BusinessException(HttpStatus.CONFLICT,"FARE_OFFER_INELIGIBLE",
                 "Gói du thuyền chưa đủ điều kiện mua.",purchaseFailureDetails(cruiseId,offerId));
         var price=currentApprovedPrice(offer);
-        if(price==null||priceId==null||!price.getId().equals(priceId))
+        if(price==null||priceId==null||!price.getId().equals(priceId)
+                ||!plans.isApprovedFareRevision(cruiseId,offerId,priceId))
             throw new BusinessException(HttpStatus.CONFLICT,"FARE_QUOTED_PRICE_STALE","Phiên bản giá đã thay đổi; cần lấy báo giá mới.");
         var view=offerView(offer); var version=view.template().version();
         var benefits=view.template().benefits().stream().map(benefit -> {
             var occurrences=view.bindings().stream().filter(b->b.getBenefitId().equals(benefit.getId()))
-                    .map(b->new com.casms.cruisepackage.dto.CruisePackagePurchaseSelection.Occurrence(resourceType(benefit).name(),
+                    .map(b->new CruisePackagePurchaseSelection.Occurrence(resourceType(benefit).name(),
                             b.getOnboardActivityId()!=null?b.getOnboardActivityId():b.getShoreExcursionId()!=null?b.getShoreExcursionId():b.getServiceId(),
                             view.bindingNames().get(b.getId()))).toList();
-            return new com.casms.cruisepackage.dto.CruisePackagePurchaseSelection.Benefit(benefit.getId(),benefit.getInclusion(),
+            return new CruisePackagePurchaseSelection.Benefit(benefit.getId(),benefit.getInclusion(),
                     benefit.getOnboardActivityId(),benefit.getShoreExcursionId(),benefit.getServiceId(),benefit.getQuantityLimit(),
                     benefit.getEligibility(),view.template().resourceNames().get(benefit.getId()),occurrences,
                     benefit.getUsageUnit(),benefit.getRequiresReservation(),benefit.getUsageStartsAt(),benefit.getUsageEndsAt(),benefit.getUsagePolicy(),benefit.getServiceUnitCode());
         }).toList();
-        return new com.casms.cruisepackage.dto.CruisePackagePurchaseSelection(offerId,version.getId(),priceId,offer.getShipId(),
-                offer.getLogicalCategory(),com.casms.ship.enums.CabinType.valueOf(offer.getProposedCabinType()),price.getAmount(),
+        return new CruisePackagePurchaseSelection(offerId,version.getId(),priceId,offer.getShipId(),
+                offer.getLogicalCategory(),CabinType.valueOf(offer.getProposedCabinType()),price.getAmount(),
                 version.getName(),version.getDescription(),version.getVersionNumber(),price.getRevisionNumber(),offer.getCommercialRevision(),benefits,
                 offer.getLogicalCategoryId(),view.cabinMapping().mappingId(),view.cabinMapping().cabinIds());
     }
     /** Caller holds the Cruise lock and validates this booking's existing allocation separately. */
-    public void validateHeldPurchase(UUID cruiseId,com.casms.cruisepackage.dto.CruisePackagePurchaseSelection selection) {
+    public void validateHeldPurchase(UUID cruiseId,CruisePackagePurchaseSelection selection) {
         var offer=offer(cruiseId,selection.offerId(),false);
         if(!offer.isSaleEnabled()||!"PUBLISHED".equals(offer.getStatus())
                 ||!eligibility(offer,false,false).eligible())
@@ -478,7 +511,7 @@ public class CruisePackageService {
         Map<UUID,Eligibility> assessments=new LinkedHashMap<>();
         for(UUID id:requested) {
             var offer=offer(cruiseId,id,true); var assessment=eligibility(offer); assessments.put(id,assessment);
-            if(assessment.eligible()) eligible.add(offer);
+            if(assessment.eligible() && isPlanApprovedPrice(offer)) eligible.add(offer);
         }
         if(eligible.size()!=requested.size()) throw new BusinessException(HttpStatus.UNPROCESSABLE_ENTITY,"FARE_SALE_SCOPE_INELIGIBLE",
                 "Mọi gói du thuyền được chọn phải đủ điều kiện mở bán.",Map.of("farePackageEligibility",assessments));
@@ -525,7 +558,35 @@ public class CruisePackageService {
         if(!input.salesStart().isBefore(input.salesEnd())) fail("FARE_SALES_WINDOW_INVALID","Thời điểm bắt đầu bán phải trước thời điểm kết thúc.");
         return version;
     }
+    private void validateSalesWindow(UUID cruiseId, Instant salesStart, Instant salesEnd) {
+        if (salesStart == null || salesEnd == null || !salesStart.isBefore(salesEnd)) {
+            fail("FARE_SALES_WINDOW_INVALID", "Thời gian bắt đầu bán phải trước thời gian kết thúc bán.");
+        }
+        var cruise = jdbc.queryForMap(
+                "SELECT departure_datetime, booking_opens_at, booking_closes_at, revision, created_at FROM \"Cruise\" WHERE cruise_id=?",
+                cruiseId);
+        Instant dep = instant(cruise.get("departure_datetime"));
+        Instant bOpen = instant(cruise.get("booking_opens_at"));
+        Instant bClose = instant(cruise.get("booking_closes_at"));
+        if (bOpen == null || bClose == null) {
+            long rev = ((Number) cruise.get("revision")).longValue();
+            Instant created = instant(cruise.get("created_at"));
+            var windows = com.casms.ship.service.CruiseMainflowService.defaultWindowsForDeparture(rev, dep, created);
+            if (bOpen == null) bOpen = windows.bookingOpensAt();
+            if (bClose == null) bClose = windows.bookingClosesAt();
+        }
+        if (bOpen != null && salesStart.isBefore(bOpen)) {
+            fail("FARE_SALES_START_BEFORE_BOOKING_OPENS",
+                    "Thời gian bắt đầu bán không được trước thời gian mở nhận đặt chỗ của chuyến (" + bOpen + ").");
+        }
+        if (bClose != null && salesEnd.isAfter(bClose)) {
+            fail("FARE_SALES_END_AFTER_BOOKING_CLOSES",
+                    "Thời gian kết thúc bán không được sau thời gian đóng nhận đặt chỗ của chuyến (" + bClose + ").");
+        }
+    }
+
     private void applyOffer(DepartureCruisePackage offer,OfferInput input,CruisePackageTemplateVersion version) {
+        validateSalesWindow(offer.getCruiseId(), input.salesStart(), input.salesEnd());
         if(!Boolean.TRUE.equals(jdbc.queryForObject("SELECT EXISTS(SELECT 1 FROM \"Cabin\" WHERE ship_id=? AND cabin_type::text=?)",Boolean.class,offer.getShipId(),input.proposedCabinType().name())))
             fail("FARE_CABIN_TYPE_NOT_ON_SHIP","Hạng phòng dự kiến không có trong dữ liệu cabin của tàu đã phân công.");
         offer.setTemplateVersionId(version.getId()); offer.setLogicalCategory(input.logicalCategory());
@@ -545,9 +606,15 @@ public class CruisePackageService {
             fail("FARE_PRICING_CRUISE_STATE_INVALID","Trạng thái chuyến khởi hành không cho phép lập hoặc xét duyệt giá mới.");
     }
     private Map<String,Object> cruise(UUID id) {
-        var rows=jdbc.queryForList("SELECT ship_id FROM \"Cruise\" WHERE cruise_id=?",id);
+        var rows=jdbc.queryForList("SELECT ship_id, departure_datetime, return_datetime, booking_opens_at, booking_closes_at, created_at, revision FROM \"Cruise\" WHERE cruise_id=?",id);
         if(rows.isEmpty()) throw new BusinessException(HttpStatus.NOT_FOUND,"CRUISE_NOT_FOUND","Không tìm thấy chuyến khởi hành.");
         return rows.getFirst();
+    }
+    private Instant instant(Object value) {
+        if (value instanceof java.sql.Timestamp t) return t.toInstant();
+        if (value instanceof java.time.OffsetDateTime o) return o.toInstant();
+        if (value instanceof Instant i) return i;
+        return null;
     }
     private UUID currentShip(UUID cruiseId) {
         UUID ship=(UUID)cruise(cruiseId).get("ship_id");

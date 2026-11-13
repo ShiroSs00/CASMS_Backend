@@ -2,31 +2,20 @@
 
 ```mermaid
 sequenceDiagram
-    title POST /staff/assignment-email-template/preview — StaffAssignmentEmailController.preview
     actor Client
-    participant Security as Spring Security / JWT filters
-    participant Controller as StaffAssignmentEmailController
-    participant Service as Resolved application service
-    participant Repository as Repository collaborators
-    participant DB as Database
-
-    Client->>Security: POST /staff/assignment-email-template/preview + request
-    alt Authentication or authorization rejected
-        Security-->>Client: 401 / 403
-    else Request reaches handler
-        Security->>Controller: invoke preview(...)
-        opt Bean validation when handler parameter has @Valid
-            Controller->>Controller: Validate request constraints
-        end
-        Controller->>Service: service.preview()
-
-
-        Note over Service,Repository: No @Transactional found on traced service method; repository calls may still join an outer transaction. Static trace covers direct service body and immediate helper branches; deeper call paths may need review.
-        Note over Controller,Repository: No direct repository interaction found in traced method body
-        Service-->>Controller: Domain result
-        Controller-->>Client: HTTP response (verify DTO and status)
-
+    participant Auth as Spring Security
+    participant API as StaffAssignmentEmailController
+    participant Service as StaffAssignmentEmailService
+    participant DB as PostgreSQL
+    Client->>Auth: POST /staff/assignment-email-template/preview
+    alt Unauthorized
+        Auth-->>Client: 401 / 403
+    else CRUISE_STAFF_ASSIGN
+        Auth->>API: Invoke handler
+        API->>Service: Validate fields and render Vietnamese example without writes
+        Service-->>API: Result or mapped business error
+        API-->>Client: 200 subject, text and HTML; 400/422 invalid fields
     end
 ```
 
-See [CASMS-75 catalog and staffing flows](../CASMS75-CATALOG-STAFFING-FLOWS.md) for the shared integration behavior.
+See [email assignment flow](../ITINERARY-PROGRAM-FLOWS.md#email-phân-công-nhân-viên).

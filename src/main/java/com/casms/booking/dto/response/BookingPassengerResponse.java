@@ -1,9 +1,13 @@
 package com.casms.booking.dto.response;
 
 import com.casms.booking.enums.BookingPassengerParticipationStatus;
+import com.casms.booking.enums.CabinSelectionMode;
+import com.casms.cruisepackage.dto.CruisePackagePurchaseSelection;
+import com.casms.cruisepackage.service.CruisePackagePurchaseSnapshotService.PurchasedCruisePackage;
 import com.casms.identity.enums.PassengerDocumentType;
 import com.casms.servicepackage.enums.TourPackageType;
 import com.casms.ship.enums.CabinType;
+import com.fasterxml.jackson.annotation.JsonInclude;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 
@@ -50,19 +54,19 @@ public class BookingPassengerResponse {
 
     @Schema(description = "Hạng phòng khách đã yêu cầu/chọn", example = "BALCONY")
     private String requestedCabinCategory;
-    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
-    private com.casms.booking.enums.CabinSelectionMode cabinSelectionMode;
-    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private CabinSelectionMode cabinSelectionMode;
+    @JsonInclude(JsonInclude.Include.NON_NULL)
     private String cabinGroupKey;
-    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+    @JsonInclude(JsonInclude.Include.NON_NULL)
     private UUID farePackageOfferId;
-    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+    @JsonInclude(JsonInclude.Include.NON_NULL)
     private String fareCabinCategory;
-    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
-    private com.casms.cruisepackage.service.CruisePackagePurchaseSnapshotService.PurchasedCruisePackage purchasedFare;
-    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
-    private com.casms.cruisepackage.dto.CruisePackagePurchaseSelection selectedFare;
-    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private PurchasedCruisePackage purchasedFare;
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private CruisePackagePurchaseSelection selectedFare;
+    @JsonInclude(JsonInclude.Include.NON_NULL)
     private Boolean canSelectFareCabin;
 
     // Cabin Assignment Info (Khách tự chọn phòng)

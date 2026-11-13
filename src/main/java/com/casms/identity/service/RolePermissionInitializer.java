@@ -162,6 +162,7 @@ public class RolePermissionInitializer implements CommandLineRunner {
                 Role.SHIP_MANAGER,
                 EnumSet.of(
                         Permission.SHIP_READ,
+                        Permission.SHIP_CABIN_CATEGORY_MAPPING_CONFIRM,
                         Permission.SHIP_STATUS_CHANGE,
                         Permission.SHIP_SCHEDULE_CHECK,
                         Permission.SHIP_CAPACITY_SUMMARY,

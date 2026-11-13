@@ -4,7 +4,9 @@ import com.casms.booking.repository.BookingQuoteRepository;
 import com.casms.common.exception.BusinessException;
 import com.casms.common.exception.ResourceNotFoundException;
 import com.casms.identity.entity.User;
+import com.casms.identity.enums.Role;
 import com.casms.identity.repository.UserRepository;
+import com.casms.security.principal.CasmsPrincipal;
 import com.casms.ship.dto.request.CruisePricingPolicyRequest;
 import com.casms.ship.dto.response.CruisePricingPolicyResponse;
 import com.casms.ship.entity.Cruise;
@@ -14,11 +16,14 @@ import com.casms.ship.enums.PricingPolicyStatus;
 import com.casms.ship.repository.CabinRepository;
 import com.casms.ship.repository.CruisePricingPolicyRepository;
 import com.casms.ship.repository.CruiseRepository;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 import org.springframework.http.HttpStatus;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -61,22 +66,20 @@ public class CruisePricingPolicyService {
         return toResponse(policy);
     }
 
-    private final org.springframework.jdbc.core.JdbcTemplate jdbc;
-    private final com.fasterxml.jackson.databind.ObjectMapper mapper;
+    private final JdbcTemplate jdbc;
+    private final ObjectMapper mapper;
     private final CruiseMainflowService plans;
 
     private void actor(UUID actorId, boolean review) {
-        var auth =
-                org.springframework.security.core.context.SecurityContextHolder.getContext()
-                        .getAuthentication();
+        var auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth == null
                 || !(auth.getPrincipal()
-                        instanceof com.casms.security.principal.CasmsPrincipal principal)
+                        instanceof CasmsPrincipal principal)
                 || !Objects.equals(actorId, principal.getUserId())
                 || !principal.hasRole(
                         review
-                                ? com.casms.identity.enums.Role.OPERATIONS_MANAGER
-                                : com.casms.identity.enums.Role.CRUISE_MANAGER)
+                                ? Role.OPERATIONS_MANAGER
+                                : Role.CRUISE_MANAGER)
                 || !principal.hasPermission(
                         review
                                 ? com.casms.identity.enums.Permission.CRUISE_PRICING_APPROVE
@@ -306,12 +309,8 @@ public class CruisePricingPolicyService {
         cruiseRepository
                 .findByIdForUpdate(cruiseId)
                 .orElseThrow(() -> new ResourceNotFoundException("Cruise", cruiseId));
-        var p =
-                pricingPolicyRepository
-                        .findByCruise_CruiseId(cruiseId)
-                        .orElseThrow(
-                                () -> new ResourceNotFoundException("Pricing policy", cruiseId));
-        if (p.getStatus() != PricingPolicyStatus.PENDING_APPROVAL) return;
+        var p = pricingPolicyRepository.findByCruise_CruiseId(cruiseId).orElse(null);
+        if (p == null || p.getStatus() != PricingPolicyStatus.PENDING_APPROVAL) return;
         p.setStatus(PricingPolicyStatus.DRAFT);
         p.setSubmittedBy(null);
         p.setSubmittedAt(null);

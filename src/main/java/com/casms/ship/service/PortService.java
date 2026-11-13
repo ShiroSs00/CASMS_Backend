@@ -1,7 +1,9 @@
 package com.casms.ship.service;
 
+import com.casms.audit.AuditService;
 import com.casms.common.exception.BusinessException;
 import com.casms.common.exception.ResourceNotFoundException;
+import com.casms.ship.dto.PortCoordinateSource;
 import com.casms.ship.dto.request.PortCreateRequest;
 import com.casms.ship.dto.request.PortUpdateRequest;
 import com.casms.ship.dto.response.PortResponse;
@@ -17,8 +19,10 @@ import com.casms.ship.util.PortTimeZoneHelper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -34,8 +38,8 @@ public class PortService {
     private final PortRepository portRepository;
     private final DestinationRepository destinationRepository;
 
-    @org.springframework.beans.factory.annotation.Autowired
-    private com.casms.audit.AuditService auditService;
+    @Autowired
+    private AuditService auditService;
 
     @Transactional
     public PortResponse create(PortCreateRequest request) {
@@ -305,8 +309,8 @@ public class PortService {
         }
     }
 
-    private com.casms.ship.dto.PortCoordinateSource newCoordinateSource(
-            com.casms.ship.dto.PortCoordinateSource input) {
+    private PortCoordinateSource newCoordinateSource(
+            PortCoordinateSource input) {
         if (input == null
                 || !"OPEN_METEO_GEOCODING".equals(input.getProvider())
                 || !"GEONAMES".equals(input.getDataset())
@@ -317,7 +321,7 @@ public class PortService {
                 || input.getLocationName() == null
                 || input.getLocationName().isBlank()) {
             throw new BusinessException(
-                    org.springframework.http.HttpStatus.UNPROCESSABLE_ENTITY,
+                    HttpStatus.UNPROCESSABLE_ENTITY,
                     "PORT_COORDINATE_SOURCE_REQUIRED",
                     "Tạo cảng hoặc đổi tọa độ cần chọn kết quả GeoNames qua Open-Meteo hợp lệ.");
         }

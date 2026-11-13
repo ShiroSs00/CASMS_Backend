@@ -9,6 +9,9 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
+import org.springframework.security.access.PermissionEvaluator;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
@@ -19,6 +22,7 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.Http403ForbiddenEntryPoint;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
 import org.springframework.security.web.util.matcher.RequestMatcher;
@@ -52,6 +56,18 @@ public class SecurityConfig {
                                         new AntPathRequestMatcher("/swagger-ui.html"),
                                         bearerTokenRequest))
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .exceptionHandling(
+                        errors -> {
+                            var forbidden = new Http403ForbiddenEntryPoint();
+                            errors.authenticationEntryPoint((request, response, exception) -> {
+                                if (bearerTokenRequest.matches(request)) {
+                                    response.setHeader(HttpHeaders.WWW_AUTHENTICATE, "Bearer");
+                                    response.setStatus(HttpStatus.UNAUTHORIZED.value());
+                                } else {
+                                    forbidden.commence(request, response, exception);
+                                }
+                            });
+                        })
                 .authorizeHttpRequests(
                         auth ->
                                 auth.requestMatchers(
@@ -110,7 +126,7 @@ public class SecurityConfig {
     }
 
     @Bean
-    public org.springframework.security.access.PermissionEvaluator permissionEvaluator() {
+    public PermissionEvaluator permissionEvaluator() {
         return new CasmsPermissionEvaluator(rolePermissionRepository);
     }
 }

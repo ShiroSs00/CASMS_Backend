@@ -2,31 +2,24 @@
 
 ```mermaid
 sequenceDiagram
-    title GET /cruise/{cruiseId}/staff/work-plan — CruiseStaffWorkController.workPlan
     actor Client
-    participant Security as Spring Security / JWT filters
+    participant Auth as Spring Security
     participant Controller as CruiseStaffWorkController
-    participant Service as Resolved application service
-    participant Repository as Repository collaborators
-    participant DB as Database
-
-    Client->>Security: GET /cruise/{cruiseId}/staff/work-plan + request
-    alt Authentication or authorization rejected
-        Security-->>Client: 401 / 403
-    else Request reaches handler
-        Security->>Controller: invoke workPlan(...)
-        opt Bean validation when handler parameter has @Valid
-            Controller->>Controller: Validate request constraints
-        end
-        Controller->>Service: service.workPlan()
-
-    Note over Controller,Service: Source branch: if !exists("SELECT EXISTS (SELECT 1 FROM \"Cruise\" WHERE cruise_id = ?)", cruiseId)
-        Note over Service,Repository: @Transactional present on traced service method. Static trace covers direct service body and immediate helper branches; deeper call paths may need review.
-        Note over Controller,Repository: No direct repository interaction found in traced method body
-        Service-->>Controller: Domain result
-        Controller-->>Client: HTTP response (verify DTO and status)
-    Note over Service,Client: Source throws ResourceNotFoundException; HTTP mapping requires exception-handler review
+    participant Service as CruiseStaffWorkService
+    participant Repository as JdbcTemplate
+    participant DB as PostgreSQL
+    Client->>Auth: GET /cruise/{cruiseId}/staff/work-plan
+    alt Unauthorized
+        Auth-->>Client: 401 or 403
+    else CRUISE_STAFF_ASSIGN or CRUISE_STAFF_READ
+        Auth->>Controller: Authorized request
+        Controller->>Service: workPlan in transaction
+        Service->>Repository: Read sorted dated windows, assigned staff and services
+        Repository->>DB: Execute bound SQL
+        DB-->>Service: Result or constraint violation
+        Service-->>Controller: Return or map business error
+        Controller-->>Client: 200 WorkPlan; 404 cruise
     end
 ```
 
-See [CASMS-75 catalog and staffing flows](../CASMS75-CATALOG-STAFFING-FLOWS.md) for the shared integration behavior.
+See the [shared work scheduling flow](../ITINERARY-PROGRAM-FLOWS.md#dịch-vụ-và-ca-hoạt-động).

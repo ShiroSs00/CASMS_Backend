@@ -3,12 +3,16 @@ package com.casms.cruisepackage.controller;
 import com.casms.common.response.ApiResponse;
 import com.casms.cruisepackage.dto.CruisePackageContracts.*;
 import com.casms.cruisepackage.entity.CruisePackageTemplate;
+import com.casms.cruisepackage.service.CruisePackageBenefitUsagePolicy;
+import com.casms.cruisepackage.service.CruisePackageCabinMappingService;
+import com.casms.cruisepackage.service.CruisePackageCabinMappingService.Category;
 import com.casms.cruisepackage.service.CruisePackageService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @RestController @RequiredArgsConstructor
@@ -16,14 +20,14 @@ import java.util.UUID;
 @PreAuthorize("hasAnyRole('ACTIVITY_SERVICE_MANAGER','OPERATIONS_MANAGER','CRUISE_MANAGER','BOOKING_AGENT') and hasAnyAuthority('TOUR_PACKAGE_MANAGE','CRUISE_READ','CRUISE_PRICING_APPROVE','BOOKING_READ')")
 public class CruisePackageController {
     private final CruisePackageService service;
-    private final com.casms.cruisepackage.service.CruisePackageBenefitUsagePolicy benefitUsage;
-    private final com.casms.cruisepackage.service.CruisePackageCabinMappingService cabinMappings;
+    private final CruisePackageBenefitUsagePolicy benefitUsage;
+    private final CruisePackageCabinMappingService cabinMappings;
     @GetMapping("/logical-categories")
-    public ApiResponse<List<com.casms.cruisepackage.service.CruisePackageCabinMappingService.Category>> logicalCategories(){return ApiResponse.success(cabinMappings.categories(null));}
+    public ApiResponse<List<Category>> logicalCategories(){return ApiResponse.success(cabinMappings.categories(null));}
 
     @GetMapping("/benefit-usage-options")
-    public ApiResponse<java.util.Map<String,Object>> usageOptions() {
-        return ApiResponse.success(java.util.Map.of("usagePolicies",List.of("UNLIMITED","LIMITED"),"usageUnits",benefitUsage.supportedUnits()));
+    public ApiResponse<Map<String,Object>> usageOptions() {
+        return ApiResponse.success(Map.of("usagePolicies",List.of("UNLIMITED","LIMITED"),"usageUnits",benefitUsage.supportedUnits()));
     }
     @GetMapping public ApiResponse<List<CruisePackageTemplate>> templates() { return ApiResponse.success(service.templates()); }
     @GetMapping("/benefit-resources")

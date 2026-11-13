@@ -25,6 +25,25 @@ public class CruiseMainflowController {
     private final CruisePlanPackageSelectionService selections;
     private final DepartureSaleTermsService saleTerms;
 
+    @GetMapping("/sale-terms-requests")
+    @PreAuthorize("hasRole('OPERATIONS_MANAGER') and hasAuthority('CRUISE_PRICING_APPROVE')")
+    public ApiResponse<List<DepartureSaleTermsService.SetupRequest>> saleTermsRequests() {
+        return ApiResponse.success(saleTerms.setupRequests());
+    }
+
+    @PostMapping("/{cruiseId}/sale-terms-request")
+    @PreAuthorize("hasRole('CRUISE_MANAGER') and hasAuthority('CRUISE_UPDATE_DRAFT')")
+    public ApiResponse<Boolean> requestSaleTerms(@PathVariable UUID cruiseId,
+            @AuthenticationPrincipal CasmsPrincipal principal) {
+        return ApiResponse.success(saleTerms.requestSetup(cruiseId, principal.getUserId()));
+    }
+
+    @GetMapping("/{cruiseId}/sale-terms-request")
+    @PreAuthorize("hasRole('CRUISE_MANAGER') and hasAuthority('CRUISE_READ')")
+    public ApiResponse<Boolean> pendingSaleTermsRequest(@PathVariable UUID cruiseId) {
+        return ApiResponse.success(saleTerms.pendingSetup(cruiseId));
+    }
+
     @GetMapping("/{cruiseId}/cruise-packages")
     @PreAuthorize("hasAuthority('CRUISE_READ') and hasAnyRole('CRUISE_MANAGER','OPERATIONS_MANAGER')")
     public ApiResponse<CruisePlanPackageSelectionService.View> packageSelection(@PathVariable UUID cruiseId) {
@@ -79,8 +98,9 @@ public class CruiseMainflowController {
 
     @GetMapping
     @PreAuthorize("hasRole('OPERATIONS_MANAGER') and hasAuthority('CRUISE_READ')")
-    public ApiResponse<List<CruiseMainflowService.View>> queue() {
-        return ApiResponse.success(service.queue());
+    public ApiResponse<List<CruiseMainflowService.View>> queue(
+            @RequestParam(defaultValue = "false") boolean includeReviewed) {
+        return ApiResponse.success(includeReviewed ? service.operationsWorkspace() : service.queue());
     }
 
     @PutMapping("/{cruiseId}/windows")

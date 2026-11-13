@@ -18,10 +18,16 @@ import com.casms.security.principal.CasmsPrincipal;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
+import org.springframework.dao.DataAccessException;
+import org.springframework.http.HttpStatus;
+import org.springframework.security.authentication.AccountStatusException;
 import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.AuthenticationServiceException;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.core.AuthenticationException;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -43,8 +49,6 @@ public class AuthService {
 
     @Transactional
     public LoginResponse login(LoginRequest request) {
-        log.info("Login attempt for username: {}", request.getUsername());
-
         // Authenticate using Spring Security
         Authentication authentication;
         try {
@@ -52,9 +56,12 @@ public class AuthService {
                     authenticationManager.authenticate(
                             new UsernamePasswordAuthenticationToken(
                                     request.getUsername(), request.getPassword()));
-        } catch (BadCredentialsException e) {
-            log.warn("Failed login attempt for username: {}", request.getUsername());
-            throw new BusinessException("INVALID_CREDENTIALS", "Invalid username or password");
+        } catch (BadCredentialsException | AccountStatusException | UsernameNotFoundException e) {
+            throw invalidCredentials();
+        } catch (AuthenticationServiceException e) {
+            throw e;
+        } catch (AuthenticationException | DataAccessException e) {
+            throw new AuthenticationServiceException("Authentication provider failed", e);
         }
 
         // Get user details
@@ -63,7 +70,7 @@ public class AuthService {
 
         // Check account status
         if (user.getStatus() != UserStatus.ACTIVE) {
-            throw new BusinessException("ACCOUNT_DISABLED", "Account is disabled or locked");
+            throw invalidCredentials();
         }
 
         // Update last login
@@ -90,20 +97,11 @@ public class AuthService {
 
     @Transactional(readOnly = true)
     public LoginResponse refreshToken(String accessToken) {
-        // Extract user ID from token
-        UUID userId = jwtService.extractUserId(accessToken);
-
-        // Verify token is valid
-        if (!jwtService.isValid(accessToken)) {
-            throw new BusinessException("INVALID_TOKEN", "Invalid or expired token");
-        }
-
-        // Get user
         User user =
-                userRepository
-                        .findById(userId)
-                        .orElseThrow(
-                                () -> new BusinessException("USER_NOT_FOUND", "User not found"));
+                jwtService.findValidUserId(accessToken)
+                        .flatMap(userRepository::findById)
+                        .filter(account -> account.getStatus() == UserStatus.ACTIVE)
+                        .orElseThrow(AuthService::invalidToken);
 
         // Generate new token
         String newAccessToken = jwtService.generateToken(user.getUsername(), user.getUserId());
@@ -119,6 +117,16 @@ public class AuthService {
         response.setEffectivePermissions(getEffectivePermissions(user));
 
         return response;
+    }
+
+    private static BusinessException invalidCredentials() {
+        return new BusinessException(
+                HttpStatus.UNAUTHORIZED, "INVALID_CREDENTIALS", "Invalid username or password");
+    }
+
+    private static BusinessException invalidToken() {
+        return new BusinessException(
+                HttpStatus.UNAUTHORIZED, "INVALID_TOKEN", "Invalid or expired token");
     }
 
     public Set<String> getEffectivePermissions(User user) {
@@ -145,8 +153,14 @@ public class AuthService {
 
     @Transactional(readOnly = true)
     public UserMeResponse getCurrentUser(CasmsPrincipal principal) {
-        User user = principal.getUser();
-        User freshUser = userRepository.findById(user.getUserId()).orElse(user);
+        User freshUser =
+                userRepository.findById(principal.getUserId())
+                        .filter(user -> user.getStatus() == UserStatus.ACTIVE)
+                        .orElseThrow(
+                                () -> new BusinessException(
+                                        HttpStatus.UNAUTHORIZED,
+                                        "AUTH_REQUIRED",
+                                        "Yêu cầu đăng nhập để truy cập thông tin phiên"));
         UUID passengerId =
                 (passengerRepository != null)
                         ? passengerRepository

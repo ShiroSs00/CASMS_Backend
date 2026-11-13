@@ -11,6 +11,7 @@ import com.casms.activity.repository.ShoreExcursionRepository;
 import com.casms.activity.repository.TourGroupPassengerRepository;
 import com.casms.activity.repository.TourGroupRepository;
 import com.casms.identity.repository.PassengerRepository;
+import com.casms.identity.repository.UserRepository;
 
 import jakarta.persistence.EntityNotFoundException;
 
@@ -37,7 +38,7 @@ class TourGroupServiceTest {
 
     @Mock private PassengerRepository passengerRepository;
 
-    @Mock private com.casms.identity.repository.UserRepository userRepository;
+    @Mock private UserRepository userRepository;
 
     @InjectMocks private TourGroupService service;
 

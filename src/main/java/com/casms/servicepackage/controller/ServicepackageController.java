@@ -2,7 +2,10 @@ package com.casms.servicepackage.controller;
 
 import com.casms.common.exception.ResourceNotFoundException;
 import com.casms.common.response.ApiResponse;
+import com.casms.cruisepackage.service.CruisePackageEntitlementService;
+import com.casms.cruisepackage.service.CruisePackageEntitlementService.OperationEntitlement;
 import com.casms.security.principal.CasmsPrincipal;
+import com.casms.ship.repository.BookingAgentCruiseScope;
 import com.casms.servicepackage.entity.*;
 import com.casms.servicepackage.entity.Service;
 import com.casms.servicepackage.enums.*;
@@ -39,12 +42,12 @@ public class ServicepackageController {
     private final ServiceCatalogReadService catalogReads;
     private final ServiceScheduleManagementService scheduleManagement;
     private final ServiceCategoryRepository categoryRepository;
-    private final com.casms.cruisepackage.service.CruisePackageEntitlementService fareEntitlements;
+    private final CruisePackageEntitlementService fareEntitlements;
  @PreAuthorize("hasAnyAuthority('SERVICE_REQUEST_READ','SERVICE_REQUEST_CREATE','SERVICE_REQUEST_EXECUTE')")
  @GetMapping("/requests/{id}/fare-entitlement")
- public ApiResponse<com.casms.cruisepackage.service.CruisePackageEntitlementService.OperationEntitlement> requestEntitlement(@PathVariable UUID id,Authentication auth){
+ public ApiResponse<OperationEntitlement> requestEntitlement(@PathVariable UUID id,Authentication auth){
   var principal=(CasmsPrincipal)auth.getPrincipal();var request=serviceRequests.get(id,principal.getUserId(),principal.isStaff());
-  return ApiResponse.success(new com.casms.cruisepackage.service.CruisePackageEntitlementService.OperationEntitlement(id,fareEntitlements.operationGrant(request.getFareBenefitSnapshotId(),request.getBookingPassenger()==null?null:request.getBookingPassenger().getBookingPassengerId())));
+  return ApiResponse.success(new OperationEntitlement(id,fareEntitlements.operationGrant(request.getFareBenefitSnapshotId(),request.getBookingPassenger()==null?null:request.getBookingPassenger().getBookingPassengerId())));
  }
 
 
@@ -728,6 +731,7 @@ public class ServicepackageController {
     public ApiResponse<List<AssignmentView>> packageAssignments(
             @RequestParam(required = false) UUID bookingId, Authentication auth) {
         var p = (CasmsPrincipal) auth.getPrincipal();
+        service.requireBookingAgentAssignment(bookingId, null, BookingAgentCruiseScope.assignee(p));
         return ApiResponse.success(
                 service.packageAssignments(bookingId, p.getUserId(), p.isStaff()).stream()
                         .map(AssignmentView::of)
@@ -739,6 +743,7 @@ public class ServicepackageController {
     public ApiResponse<AssignmentView> packageAssignment(
             @PathVariable UUID bookingPassengerId, Authentication auth) {
         var p = (CasmsPrincipal) auth.getPrincipal();
+        service.requireBookingAgentAssignment(null, bookingPassengerId, BookingAgentCruiseScope.assignee(p));
         return ApiResponse.success(
                 AssignmentView.of(
                         service.packageAssignment(bookingPassengerId, p.getUserId(), p.isStaff())));
@@ -752,6 +757,7 @@ public class ServicepackageController {
             @Valid @RequestBody PackageAssignmentDto r,
             Authentication auth) {
         var p = (CasmsPrincipal) auth.getPrincipal();
+        service.requireBookingAgentAssignment(null, bookingPassengerId, BookingAgentCruiseScope.assignee(p));
         return ApiResponse.success(
                 AssignmentView.of(
                         service.assignPackage(
@@ -768,6 +774,7 @@ public class ServicepackageController {
             @Valid @RequestBody PackageAssignmentDto r,
             Authentication auth) {
         var p = (CasmsPrincipal) auth.getPrincipal();
+        service.requireBookingAgentAssignment(null, bookingPassengerId, BookingAgentCruiseScope.assignee(p));
         return ApiResponse.success(
                 AssignmentView.of(
                         service.changePackage(
@@ -782,6 +789,7 @@ public class ServicepackageController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void removePackage(@PathVariable UUID bookingPassengerId, Authentication auth) {
         var p = (CasmsPrincipal) auth.getPrincipal();
+        service.requireBookingAgentAssignment(null, bookingPassengerId, BookingAgentCruiseScope.assignee(p));
         service.removePackageAssignment(bookingPassengerId, p.getUserId(), p.isStaff());
     }
 

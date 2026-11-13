@@ -6,6 +6,7 @@ import com.casms.activity.repository.*;
 import com.casms.booking.entity.BookingPassenger;
 import com.casms.booking.enums.BookingStatus;
 import com.casms.booking.repository.BookingPassengerRepository;
+import com.casms.common.exception.BusinessException;
 import com.casms.common.service.BusinessCodeGenerator;
 import com.casms.servicepackage.repository.TourPackageActivityRepository;
 import com.casms.ship.entity.Cabin;
@@ -18,12 +19,14 @@ import jakarta.persistence.EntityNotFoundException;
 
 import lombok.RequiredArgsConstructor;
 
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /** Domain operations for onboard activities, registrations and attendance. */
@@ -124,12 +127,14 @@ public class ActivityService {
         a.setActivityName(source.getActivityName());
         a.setDescription(source.getDescription());
         a.setCategory(source.getCategory());
-        a.setPrice(source.getPrice());
-        a.setCurrencyCode(source.getCurrencyCode());
+        a.setPrice(source.getPrice() == null ? BigDecimal.ZERO : source.getPrice());
+        a.setCurrencyCode(source.getCurrencyCode() == null || source.getCurrencyCode().isBlank() ? "USD" : source.getCurrencyCode());
         a.setCapacity(input.capacity() == null ? source.getCapacity() : input.capacity());
         a.setStartTime(input.startTime());
         a.setEndTime(input.endTime());
         a.setLocation(input.location());
+        a.setMeetingPoint(input.meetingPoint() == null || input.meetingPoint().isBlank()
+                ? null : input.meetingPoint().trim());
         return doCreateActivity(a, cruiseId, input.deckId(), input.cabinId());
     }
 
@@ -165,6 +170,9 @@ public class ActivityService {
             a.setPrice(BigDecimal.ZERO);
         }
         resolveDeckAndCabin(a, deckId, cabinId);
+        if (a.getMeetingPoint() != null) {
+            a.setMeetingPoint(a.getMeetingPoint().isBlank() ? null : a.getMeetingPoint().trim());
+        }
         validateActivity(a, null);
         a.setStatus(OnboardActivityStatus.PLANNED);
         return activities.save(a);
@@ -209,6 +217,9 @@ public class ActivityService {
         a.setStartTime(input.getStartTime());
         a.setEndTime(input.getEndTime());
         a.setLocation(input.getLocation());
+        if (input.getMeetingPoint() != null) {
+            a.setMeetingPoint(input.getMeetingPoint().isBlank() ? null : input.getMeetingPoint().trim());
+        }
         a.setCapacity(input.getCapacity());
         a.setPrice(input.getPrice());
         a.setCurrencyCode(input.getCurrencyCode());
@@ -268,12 +279,12 @@ public class ActivityService {
         return deckId == null || deckId.equals(cabin.getDeck().getDeckId());
     }
 
-    private static com.casms.common.exception.BusinessException venueMismatch(String field) {
-        return new com.casms.common.exception.BusinessException(
-                org.springframework.http.HttpStatus.UNPROCESSABLE_ENTITY,
+    private static BusinessException venueMismatch(String field) {
+        return new BusinessException(
+                HttpStatus.UNPROCESSABLE_ENTITY,
                 "ACTIVITY_VENUE_MISMATCH",
                 "Activity venue must belong to the assigned ship and selected deck",
-                java.util.Map.of(FIELD_PATH, field));
+                Map.of(FIELD_PATH, field));
     }
 
     public void deleteActivity(UUID id) {

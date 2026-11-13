@@ -1,5 +1,8 @@
 package com.casms.ship.dto.request;
 
+import com.casms.ship.ShipDeckCount;
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
+
 import io.swagger.v3.oas.annotations.media.Schema;
 
 import jakarta.validation.constraints.Max;
@@ -24,7 +27,9 @@ public class ShipUpdateRequest {
     private Integer totalCapacity;
 
     @Schema(description = "Tổng số boong cập nhật", example = "14")
-    @Min(value = 1, message = "Total decks must be greater than 0")
+    @Min(value = ShipDeckCount.MIN, message = ShipDeckCount.MESSAGE)
+    @Max(value = ShipDeckCount.MAX, message = ShipDeckCount.MESSAGE)
+    @JsonDeserialize(using = ShipDeckCount.Deserializer.class)
     private Integer totalDecks;
 
     @Positive private Double lengthMeters;

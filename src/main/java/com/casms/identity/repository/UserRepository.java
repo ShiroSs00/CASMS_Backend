@@ -4,8 +4,8 @@ import com.casms.identity.entity.User;
 import com.casms.identity.enums.UserStatus;
 
 import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.repository.query.Param;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -18,8 +18,8 @@ public interface UserRepository extends JpaRepository<User, UUID> {
 
     Optional<User> findByEmail(String email);
 
-    @org.springframework.data.jpa.repository.Query("select u from User u where lower(trim(u.email)) = :email")
-    Optional<User> findByNormalizedEmail(@org.springframework.data.repository.query.Param("email") String email);
+    @Query("select u from User u where lower(trim(u.email)) = :email")
+    Optional<User> findByNormalizedEmail(@Param("email") String email);
 
     boolean existsByUsername(String username);
 

@@ -3,6 +3,8 @@ package com.casms.activity.controller;
 import com.casms.activity.entity.*;
 import com.casms.activity.service.ActivityService;
 import com.casms.common.response.ApiResponse;
+import com.casms.cruisepackage.service.CruisePackageEntitlementService;
+import com.casms.cruisepackage.service.CruisePackageEntitlementService.OperationEntitlement;
 import com.casms.security.principal.CasmsPrincipal;
 
 import io.swagger.v3.oas.annotations.Operation;
@@ -17,6 +19,7 @@ import lombok.RequiredArgsConstructor;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
@@ -33,14 +36,14 @@ import java.util.UUID;
         description = "Quản lý hoạt động trên tàu, đăng ký tham gia và điểm danh hành khách")
 public class ActivityController {
     private final ActivityService service;
-    private final com.casms.cruisepackage.service.CruisePackageEntitlementService fareEntitlements;
+    private final CruisePackageEntitlementService fareEntitlements;
 
     @GetMapping("/registrations/{id}/fare-entitlement")
     @PreAuthorize("hasAnyAuthority('ACTIVITY_REGISTRATION','ACTIVITY_ATTENDANCE','REGISTRATION_MANAGE')")
-    public ApiResponse<com.casms.cruisepackage.service.CruisePackageEntitlementService.OperationEntitlement> fareEntitlement(@PathVariable UUID id,Authentication auth) {
+    public ApiResponse<OperationEntitlement> fareEntitlement(@PathVariable UUID id,Authentication auth) {
         var principal=(CasmsPrincipal)auth.getPrincipal();
         var registration=service.getRegistration(id,principal.getUserId(),principal.isStaff());
-        return ApiResponse.success(new com.casms.cruisepackage.service.CruisePackageEntitlementService.OperationEntitlement(id,
+        return ApiResponse.success(new OperationEntitlement(id,
                 fareEntitlements.operationGrant(registration.getFareBenefitSnapshotId(),registration.getBookingPassenger().getBookingPassengerId())));
     }
 
@@ -63,6 +66,7 @@ public class ActivityController {
             @Schema(description = "Thời gian bắt đầu (ISO-8601)") @NotNull Instant startTime,
             @Schema(description = "Thời gian kết thúc (ISO-8601)") @NotNull Instant endTime,
             @Schema(description = "Địa điểm tổ chức (text)") @Size(max = 250) String location,
+            @Size(max = 255) String meetingPoint,
             @Schema(description = "ID tầng (deck) nơi diễn ra — VD: tầng có spa, nhà hàng")
                     UUID deckId,
             @Schema(description = "ID phòng/cabin cụ thể nơi diễn ra — VD: phòng spa 201")
@@ -93,7 +97,8 @@ public class ActivityController {
             @NotNull UUID sourceActivityId,
             @NotNull Instant startTime, @NotNull Instant endTime,
             @NotBlank @Size(max=250) String location,
-            UUID deckId, UUID cabinId, @Positive Integer capacity) {}
+            UUID deckId, UUID cabinId, @Positive Integer capacity,
+            @Size(max=255) String meetingPoint) {}
 
     @GetMapping("/catalog")
     @PreAuthorize("hasAuthority('ACTIVITY_READ') or (hasRole('CRUISE_MANAGER') and hasAuthority('CRUISE_UPDATE_DRAFT'))")
@@ -138,6 +143,7 @@ public class ActivityController {
             Instant startTime,
             Instant endTime,
             String location,
+            String meetingPoint,
             UUID deckId,
             Integer deckNumber,
             String deckName,
@@ -147,7 +153,7 @@ public class ActivityController {
             BigDecimal price,
             String currencyCode,
             String status,
-            UUID cruiseId, boolean catalogEntry, UUID sourceActivityId,
+            UUID cruiseId, boolean catalogEntry, UUID sourceActivityId, UUID areaId,
             com.casms.activity.enums.OnboardActivityCategory category, UUID responsibleUserId) {
         public static ActivityView of(OnboardActivity a) {
             return new ActivityView(
@@ -158,6 +164,7 @@ public class ActivityController {
                     a.getStartTime(),
                     a.getEndTime(),
                     a.getLocation(),
+                    a.getMeetingPoint(),
                     a.getDeck() != null ? a.getDeck().getDeckId() : null,
                     a.getDeck() != null ? a.getDeck().getDeckNumber() : null,
                     a.getDeck() != null ? a.getDeck().getDeckName() : null,
@@ -167,7 +174,7 @@ public class ActivityController {
                     a.getPrice(),
                     a.getCurrencyCode(),
                     a.getStatus().name(),
-                    a.getCruise() != null ? a.getCruise().getCruiseId() : null, a.isCatalogEntry(), a.getSourceActivityId(), a.getCategory(), a.getResponsibleUserId());
+                    a.getCruise() != null ? a.getCruise().getCruiseId() : null, a.isCatalogEntry(), a.getSourceActivityId(), a.getAreaObjectId(), a.getCategory(), a.getResponsibleUserId());
         }
     }
 
@@ -233,6 +240,7 @@ public class ActivityController {
     @Operation(summary = "Chi tiết hoạt động", description = "Lấy thông tin một hoạt động theo ID")
     @PreAuthorize("hasAuthority('ACTIVITY_READ')")
     @GetMapping("/{id}")
+    @Transactional(readOnly = true)
     public ApiResponse<ActivityView> get(
             @Parameter(description = "ID hoạt động", required = true) @PathVariable UUID id) {
         return ApiResponse.success(ActivityView.of(service.activity(id)));
@@ -465,6 +473,7 @@ public class ActivityController {
         a.setStartTime(r.startTime());
         a.setEndTime(r.endTime());
         a.setLocation(r.location());
+        a.setMeetingPoint(r.meetingPoint());
         a.setCapacity(r.capacity());
         a.setPrice(r.price());
         a.setCurrencyCode(r.currencyCode());

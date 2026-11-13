@@ -54,4 +54,4 @@ CREATE TRIGGER enforce_cruise_schedule_staff_windows
         OR OLD.status IS DISTINCT FROM NEW.status)
     EXECUTE FUNCTION enforce_cruise_schedule_staff_windows();
 
-DROP INDEX uq_cruise_staff_active_user;
+DROP INDEX uq_cruise_staff_one_active_per_user;

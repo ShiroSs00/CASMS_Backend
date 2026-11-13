@@ -2,6 +2,7 @@ package com.casms.booking.repository;
 
 import com.casms.booking.entity.Booking;
 import com.casms.booking.enums.BookingStatus;
+import com.casms.ship.repository.BookingAgentCruiseScope;
 
 import jakarta.persistence.LockModeType;
 
@@ -53,5 +54,12 @@ public interface BookingRepository
         return findAll(
                 BookingSpecification.filter(cruiseId, status, userId),
                 pageable != null ? pageable : Pageable.unpaged());
+    }
+
+    default Page<Booking> searchAssignedBookings(
+            UUID cruiseId, BookingStatus status, UUID agentId, Pageable pageable) {
+        return findAll(BookingSpecification.filter(cruiseId, status, null).and(
+                (root, query, builder) -> BookingAgentCruiseScope.assigned(
+                        root.get("cruise"), query, builder, agentId)), pageable);
     }
 }

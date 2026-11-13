@@ -20,14 +20,20 @@ sequenceDiagram
         end
         Controller->>Service: staffService.removeStaff()
 
-    Note over Controller,Service: Source branch: if !actor.hasRole(Role.HR_MANAGER)
-    Note over Controller,Service: Source branch: if actor == null || !actor.isEnabled() || !actor.hasAuthority(permission)
+
         Note over Service,Repository: @Transactional present on traced service method. Static trace covers direct service body and immediate helper branches; deeper call paths may need review.
-        Note over Controller,Repository: No direct repository interaction found in traced method body
+        opt Repository interactions found in traced handler/service code
+            Service->>Repository: CruiseStaffRepository.save()
+            Repository->>DB: Database operation via repository
+            DB-->>Repository: Result / persistence outcome
+            Repository-->>Service: Result (caller may be Controller for inline repository use)
+        end
         Service-->>Controller: Domain result
         Controller-->>Client: HTTP response (verify DTO and status)
-    Note over Service,Client: Source throws AccessDeniedException; HTTP mapping requires exception-handler review
+
     end
 ```
 
-See [CASMS-75 catalog and staffing flows](../CASMS75-CATALOG-STAFFING-FLOWS.md) for the shared integration behavior.
+## HR assignment lifecycle
+
+Optional assignmentId identifies the removal and optional reason records its cause. A pre-departure removal keeps history as REMOVED, writes audit and a direct HR notification atomically, and returns 204. Repeating the same assignment removal performs no write. See [assignment lifecycle](../ITINERARY-PROGRAM-FLOWS.md#một-chuyến-đang-hiệu-lực-cho-mỗi-nhân-viên).

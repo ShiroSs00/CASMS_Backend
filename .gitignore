@@ -27,5 +27,13 @@ Thumbs.db
 # Large ship model assets are deployed separately
 /model-assets/
 
-# Local documentation is not versioned
-/docs/
+# Local documentation is ignored by default.
+/docs/*
+!/docs/sequence-diagrams/
+/docs/sequence-diagrams/*
+!/docs/sequence-diagrams/identity/
+/docs/sequence-diagrams/identity/*
+!/docs/sequence-diagrams/identity/post-auth-login.md
+!/docs/sequence-diagrams/identity/post-auth-refresh.md
+!/docs/sequence-diagrams/identity/get-auth-me.md
+!/docs/sequence-diagrams/identity/post-auth-logout.md

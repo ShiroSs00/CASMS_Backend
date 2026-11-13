@@ -13,10 +13,13 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
+import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
@@ -41,8 +44,8 @@ public class ShipModelImportService {
 
     @Transactional
     public ModelImportJobResponse importByCode(UUID shipId, String modelKey,
-            org.springframework.web.multipart.MultipartFile bundle,
-            org.springframework.security.core.Authentication authentication) {
+            MultipartFile bundle,
+            Authentication authentication) {
         if (bundle == null || bundle.isEmpty() || bundle.getSize() > 2L * 1024 * 1024 * 1024)
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A non-empty ZIP up to 2 GiB is required");
         return upsertByCode(shipId, modelKey, authentication, () -> {
@@ -107,11 +110,11 @@ public class ShipModelImportService {
         return result;
     }
 
-    private static void requireAuthority(org.springframework.security.core.Authentication authentication,
+    private static void requireAuthority(Authentication authentication,
             String authority) {
         if (authentication == null || authentication.getAuthorities().stream()
                 .noneMatch(granted -> authority.equals(granted.getAuthority())))
-            throw new org.springframework.security.access.AccessDeniedException("Missing required authority: " + authority);
+            throw new AccessDeniedException("Missing required authority: " + authority);
     }
 
     /**

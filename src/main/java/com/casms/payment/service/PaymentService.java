@@ -393,7 +393,7 @@ public class PaymentService {
         return toResponse(saved);
     }
 
-    private void allocateInstallmentsAndSync(Booking booking) {
+    public void allocateInstallmentsAndSync(Booking booking) {
         List<Installment> installments =
                 installmentRepository.findByBookingBookingIdOrderBySequenceNoAsc(
                         booking.getBookingId());

@@ -2,36 +2,37 @@
 
 ```mermaid
 sequenceDiagram
-    title POST /auth/refresh — AuthController.refreshToken
     actor Client
-    participant Security as Spring Security / JWT filters
+    participant Security as Spring Security
     participant Controller as AuthController
-    participant Service as Resolved application service
-    participant Repository as Repository collaborators
-    participant DB as Database
+    participant Service as AuthService / JwtService
+    participant Repo as UserRepository / RolePermissionRepository
+    participant DB as PostgreSQL
 
-    Client->>Security: POST /auth/refresh + request
-    alt Authentication or authorization rejected
-        Security-->>Client: 401 / 403
-    else Request reaches handler
-        Security->>Controller: invoke refreshToken(...)
-        opt Bean validation when handler parameter has @Valid
-            Controller->>Controller: Validate request constraints
+    Client->>Security: POST /auth/refresh
+    Security->>Controller: Public route, JWT filter skipped
+    alt Missing or malformed Bearer header
+        Controller-->>Client: 401 INVALID_TOKEN
+    else Bearer token present
+        Controller->>Service: refreshToken(token)
+        Note over Service,DB: Read-only transaction
+        Service->>Service: Verify signed JWT and read userId once
+        opt Valid token
+            Service->>Repo: Find user by userId
+            Repo->>DB: Read user and roles
         end
-        Controller->>Service: authService.refreshToken()
-
-    Note over Controller,Service: Source branch: for Permission p : rp.getPermissions()
-    Note over Controller,Service: Source branch: for Role role : user.getRoles()
-    Note over Controller,Service: Source branch: if !jwtService.isValid(accessToken)
-    Note over Controller,Service: Source branch: if rp.getPermissions() != null
-    Note over Controller,Service: Source branch: if user == null || user.hasRole(Role.POS)
-    Note over Controller,Service: Source branch: if user.getRoles() != null && rolePermissionRepository != null
-        Note over Service,Repository: @Transactional present on traced service method. Static trace covers direct service body and immediate helper branches; deeper call paths may need review.
-        Note over Controller,Repository: No direct repository interaction found in traced method body
-        Service-->>Controller: Domain result
-        Controller-->>Client: HTTP response (verify DTO and status)
-    Note over Service,Client: Source throws BusinessException; HTTP mapping requires exception-handler review
+        alt Invalid or expired token, missing or inactive user
+            Service-->>Client: 401 INVALID_TOKEN via exception advice
+        else Persistence or transaction failure
+            Service-->>Client: 500 INTERNAL_ERROR with traceId via auth-specific advice
+        else Active user
+            Service->>Repo: Read effective permissions
+            Repo->>DB: Read role permissions
+            Service->>Service: Sign new access JWT
+            Service-->>Controller: LoginResponse
+            Controller-->>Client: 200 with new access token and current permissions
+        end
     end
 ```
 
-See [CASMS-75 catalog and staffing flows](../CASMS75-CATALOG-STAFFING-FLOWS.md) for the shared integration behavior.
+Refresh uses an unexpired access token and issues a new access token. See [shared error handling](../README.md#shared-security-and-error-flow).

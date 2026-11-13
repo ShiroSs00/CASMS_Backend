@@ -35,3 +35,7 @@ sequenceDiagram
 ```
 
 Confirmed delays create in-app notifications for assigned active staff. Notification reads use the existing authenticated recipient scope. See [departure and delay flows](../CRUISE-DEPARTURE-DELAY.md).
+
+## HR assignment lifecycle
+
+Direct HR replacement notifications are visible in the recipient-owned notification list after the removal transaction commits. See [assignment lifecycle](../ITINERARY-PROGRAM-FLOWS.md#một-chuyến-đang-hiệu-lực-cho-mỗi-nhân-viên).

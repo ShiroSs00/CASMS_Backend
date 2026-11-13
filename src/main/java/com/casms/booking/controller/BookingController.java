@@ -13,6 +13,7 @@ import com.casms.booking.enums.BookingStatus;
 import com.casms.booking.service.BookingService;
 import com.casms.common.exception.BusinessException;
 import com.casms.common.response.ApiResponse;
+import com.casms.cruisepackage.service.CruisePackageEntitlementService.EntitlementView;
 import com.casms.security.principal.CasmsPrincipal;
 import com.casms.ship.enums.CabinType;
 import com.casms.trip.service.IdempotencyService;
@@ -63,7 +64,8 @@ public class BookingController {
                     @RequestParam(required = false)
                     CabinType cabinType,
             @Parameter(description = "Sức chứa tối thiểu yêu cầu") @RequestParam(required = false)
-                    Integer minCapacity) {
+                    Integer minCapacity, @AuthenticationPrincipal CasmsPrincipal principal) {
+        if (principal != null) bookingService.requireAssignedCruise(cruiseId, principal);
         return ApiResponse.success(
                 bookingService.getAvailableCabins(cruiseId, deckId, cabinType, minCapacity));
     }
@@ -82,7 +84,8 @@ public class BookingController {
             @Parameter(description = "Loại cabin (tùy chọn)") @RequestParam(required = false)
                     CabinType cabinType,
             @Parameter(description = "Sức chứa còn trống tối thiểu") @RequestParam(required = false)
-                    Integer minCapacity) {
+                    Integer minCapacity, @AuthenticationPrincipal CasmsPrincipal principal) {
+        if (principal != null) bookingService.requireAssignedCruise(cruiseId, principal);
         return ApiResponse.success(
                 bookingService.getThreeDimensionalAvailableCabins(
                         cruiseId, deckId, cabinType, minCapacity));
@@ -250,6 +253,13 @@ public class BookingController {
                     UUID bookingId,
             @AuthenticationPrincipal CasmsPrincipal principal) {
         return ApiResponse.success(bookingService.detail(bookingId, principal));
+    }
+
+    @PreAuthorize("hasAuthority('BOOKING_READ')")
+    @GetMapping("/{bookingId}/cruise-package-entitlements")
+    public ApiResponse<List<EntitlementView>> entitlements(
+            @PathVariable UUID bookingId, @AuthenticationPrincipal CasmsPrincipal principal) {
+        return ApiResponse.success(bookingService.entitlements(bookingId, principal));
     }
 
     @Operation(

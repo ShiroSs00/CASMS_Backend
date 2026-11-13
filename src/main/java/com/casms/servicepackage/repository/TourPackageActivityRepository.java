@@ -16,4 +16,7 @@ public interface TourPackageActivityRepository
     long countByTourPackage_TourPackageId(UUID id);
 
     boolean existsByOnboardActivity_OnboardActivityId(UUID id);
+
+    boolean existsByTourPackage_TourPackageIdAndOnboardActivity_OnboardActivityId(
+            UUID tourPackageId, UUID onboardActivityId);
 }
