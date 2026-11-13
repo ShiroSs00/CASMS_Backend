@@ -2139,9 +2139,16 @@ class PosPostgresIntegrationTest {
                     + " service_id=? AND enabled)",
                 Boolean.class,
                 targetArea,
-                service))
+                service)) {
+            jdbc.update("""
+                    INSERT INTO "CruiseStaffDuty" (cruise_staff_id, service_id, assigned_by)
+                    SELECT cruise_staff_id, ?, ? FROM "CruiseStaff"
+                    WHERE cruise_id=? AND user_id=? AND status='ACTIVE'
+                    ON CONFLICT DO NOTHING
+                    """, service, jwt.extractUserId(hrManager), targetCruise, id);
             grantResource(
                     id, targetArea, targetCruise, "SERVICE", service, Map.of("enabled", true));
+        }
     }
 
     private JsonNode grantResource(
@@ -2263,6 +2270,11 @@ class PosPostgresIntegrationTest {
                     "DELETE FROM \"OnboardTransaction\" WHERE onboard_account_id IN (SELECT"
                         + " settlement_onboard_account_id FROM \"Booking\" WHERE booking_id=?)",
                     booking);
+            jdbc.update("""
+                    DELETE FROM "ServiceUsage" WHERE service_request_id IN (
+                        SELECT service_request_id FROM "ServiceRequest" WHERE booking_id=?
+                    )
+                    """, booking);
             jdbc.update("DELETE FROM \"ServiceRequest\" WHERE booking_id=?", booking);
             if (account != null) {
                 jdbc.update(
@@ -2324,6 +2336,13 @@ class PosPostgresIntegrationTest {
                         + " \"Cruise\" WHERE ship_id=?)",
                     ship);
             jdbc.update(
+                    """
+                    DELETE FROM "CruiseStaffDuty" WHERE cruise_staff_id IN (
+                        SELECT cs.cruise_staff_id FROM "CruiseStaff" cs
+                        JOIN "Cruise" c ON c.cruise_id=cs.cruise_id WHERE c.ship_id=?
+                    )
+                    """, ship);
+            jdbc.update(
                     "DELETE FROM \"CruiseStaff\" WHERE cruise_id IN (SELECT cruise_id FROM"
                         + " \"Cruise\" WHERE ship_id=?)",
                     ship);
@@ -2347,6 +2366,7 @@ class PosPostgresIntegrationTest {
         for (UUID passenger : passengerIds)
             jdbc.update("DELETE FROM \"Passenger\" WHERE passenger_id=?", passenger);
         for (UUID user : userIds) {
+            jdbc.update("DELETE FROM audit_log WHERE actor_user_id=?", user);
             jdbc.update("DELETE FROM \"Notification\" WHERE recipient_user_id=?", user);
             jdbc.update("DELETE FROM \"UserRole\" WHERE user_id=?", user);
             jdbc.update("DELETE FROM \"User\" WHERE user_id=?", user);
