@@ -42,6 +42,7 @@ public class PosStaffResourceService {
                                         r.getBoolean("inherit_permissions")),
                         assignment)
                 .stream()
+                .filter(r -> type != ResourceType.SERVICE || hasServiceDuty(assignment, r.resourceId()))
                 .map(
                         r ->
                                 new PosDtos.StaffResource(
@@ -67,6 +68,10 @@ public class PosStaffResourceService {
             UUID id,
             PosDtos.AssignmentInput input) {
         UUID assignment = assignment(ship, area, user, cruise);
+        if (type == ResourceType.SERVICE && !hasServiceDuty(assignment, id)) {
+            throw new BusinessException("POS_STAFF_SERVICE_MISMATCH",
+                    "HR must assign this service before a POS grant can be issued");
+        }
         var policy = source.get(type, id);
         ResourceOperationService.validate(type, input.permissions(), policy.permissions());
         String areaTable =
@@ -130,8 +135,37 @@ public class PosStaffResourceService {
 
     Set<PosPermission> restrict(
             PosService.Access access, ResourceType type, UUID id, Set<PosPermission> parent) {
-        if (manager(access.employee())) return parent;
+        boolean manager = manager(access.employee());
+        if (type == ResourceType.SERVICE) {
+            var assignment = access.assignment();
+            boolean matches = manager
+                    ? hasServiceDutyForCruise(assignment.cruiseId(), access.employee().getUserId(), id)
+                    : hasServiceDuty(assignment.assignmentId(), id);
+            if (!matches) return Set.of();
+        }
+        if (manager) return parent;
         return effective(access.assignment().assignmentId(), type, id, parent);
+    }
+
+    private boolean hasServiceDuty(UUID assignment, UUID service) {
+        return Boolean.TRUE.equals(jdbc.queryForObject("""
+                SELECT EXISTS (
+                    SELECT 1 FROM "AreaStaffAssignment" a
+                    JOIN "CruiseStaff" cs ON cs.cruise_staff_id = a.cruise_staff_id
+                    JOIN "CruiseStaffDuty" d ON d.cruise_staff_id = cs.cruise_staff_id
+                    WHERE a.assignment_id = ? AND cs.status = 'ACTIVE'
+                      AND d.service_id = ? AND d.ended_at IS NULL)
+                """, Boolean.class, assignment, service));
+    }
+
+    private boolean hasServiceDutyForCruise(UUID cruise, UUID user, UUID service) {
+        return Boolean.TRUE.equals(jdbc.queryForObject("""
+                SELECT EXISTS (
+                    SELECT 1 FROM "CruiseStaff" cs
+                    JOIN "CruiseStaffDuty" d ON d.cruise_staff_id = cs.cruise_staff_id
+                    WHERE cs.cruise_id = ? AND cs.user_id = ? AND cs.status = 'ACTIVE'
+                      AND d.service_id = ? AND d.ended_at IS NULL)
+                """, Boolean.class, cruise, user, service));
     }
 
     static boolean manager(CasmsPrincipal user) {

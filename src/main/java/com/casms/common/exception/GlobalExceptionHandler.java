@@ -231,6 +231,26 @@ public class GlobalExceptionHandler {
                 root != null && root.getMessage() != null ? root.getMessage().toLowerCase() : "";
         String msg =
                 ex.getMessage() != null ? ex.getMessage() : "Dữ liệu xung đột toàn vẹn dữ liệu";
+        if (rootMsg.contains("uq_cruise_staff_one_active_per_cruise_user")) {
+            return ResponseEntity.status(HttpStatus.CONFLICT)
+                    .body(ApiResponse.error("Nhân viên đã được phân công vào chuyến này.",
+                            "DUPLICATE_STAFF_ASSIGNMENT"));
+        }
+        if (rootMsg.contains("ship_staff_schedule_conflict")) {
+            return ResponseEntity.status(HttpStatus.CONFLICT)
+                    .body(ApiResponse.error("Nhân viên bị trùng lịch chuyến.",
+                            "SHIP_STAFF_SCHEDULE_CONFLICT"));
+        }
+        if (rootMsg.contains("cruise_staff_cruise_closed")) {
+            return ResponseEntity.status(HttpStatus.CONFLICT)
+                    .body(ApiResponse.error("Chuyến đã hoàn thành hoặc đã bị hủy.", "CRUISE_STAFF_CRUISE_CLOSED"));
+        }
+        if (rootMsg.contains("staff_work_time_conflict")) {
+            return ResponseEntity.status(HttpStatus.CONFLICT)
+                    .body(ApiResponse.error(
+                            "Thời gian bị trùng với ca đã phân công cho nhân viên.",
+                            "STAFF_WORK_TIME_CONFLICT"));
+        }
         if (rootMsg.contains("idempotency") || rootMsg.contains("uq_idempotency")) {
             return ResponseEntity.status(HttpStatus.CONFLICT)
                     .body(

@@ -41,3 +41,5 @@ sequenceDiagram
 ```
 
 Delay eligibility reuses this gate and adds lifecycle, departure evidence, clock and shifted schedule checks. See [departure and delay flows](../CRUISE-DEPARTURE-DELAY.md).
+
+See [CASMS-75 catalog and staffing flows](../CASMS75-CATALOG-STAFFING-FLOWS.md) for the shared integration behavior.

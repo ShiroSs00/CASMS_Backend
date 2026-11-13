@@ -43,9 +43,19 @@ SELECT EXISTS(SELECT 1 FROM "CruiseStaff" cs JOIN "User" u ON u.user_id=cs.user_
 
     long countByCruise_CruiseIdAndStatus(UUID cruiseId, String status);
 
-    void deleteByCruise_CruiseIdAndUser_UserId(UUID cruiseId, UUID userId);
+    boolean existsByCruise_CruiseId(UUID cruiseId);
 
-    void deleteByCruise_CruiseId(UUID cruiseId);
+    @Query("""
+            SELECT DISTINCT cs.user.userId FROM CruiseStaff cs JOIN cs.cruise c
+            WHERE cs.status = 'ACTIVE' AND (c.cruiseId = :cruiseId OR (
+                c.status NOT IN (com.casms.ship.enums.CruiseStatus.CANCELLED,
+                    com.casms.ship.enums.CruiseStatus.COMPLETED)
+                AND c.departureDatetime < :returnTime AND c.returnDatetime > :departureTime))
+            """)
+    List<UUID> findUnavailableUserIds(@Param("cruiseId") UUID cruiseId,
+            @Param("departureTime") Instant departureTime, @Param("returnTime") Instant returnTime);
+
+    Optional<CruiseStaff> findFirstByCruise_CruiseIdAndUser_UserIdOrderByAssignedAtDesc(UUID cruiseId, UUID userId);
 
     @Query(
             """

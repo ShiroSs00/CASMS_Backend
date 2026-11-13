@@ -18,3 +18,5 @@ sequenceDiagram
     S-->>C: Original, expected and actual departure, total delay, events
     C-->>Client: 200 ApiResponse on success
 ```
+
+See [CASMS-75 catalog and staffing flows](../CASMS75-CATALOG-STAFFING-FLOWS.md) for the shared integration behavior.

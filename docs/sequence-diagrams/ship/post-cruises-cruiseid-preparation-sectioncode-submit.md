@@ -73,3 +73,5 @@ sequenceDiagram
         Controller-->>Client: HTTP success
     end
 ```
+
+See [CASMS-75 catalog and staffing flows](../CASMS75-CATALOG-STAFFING-FLOWS.md) for the shared integration behavior.

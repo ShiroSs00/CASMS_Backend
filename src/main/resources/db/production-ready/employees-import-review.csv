@@ -1,0 +1,121 @@
+employee_code,full_name,department,position,role,email
+VN-EMP-0001,Vũ Ngọc Khang,Ban quản lý tàu,Quản lý tàu,SHIP_MANAGER,vn-emp-0001@example.invalid
+VN-EMP-0002,Dương Hữu Phong,Ban quản lý tàu,Quản lý tàu,SHIP_MANAGER,vn-emp-0002@example.invalid
+VN-EMP-0003,Trần Quốc Uyên,Ban quản lý tàu,Quản lý tàu,SHIP_MANAGER,vn-emp-0003@example.invalid
+VN-EMP-0004,Võ Gia Hoa,Ban quản lý tàu,Quản lý tàu,SHIP_MANAGER,vn-emp-0004@example.invalid
+VN-EMP-0005,Trương Thị Nga,Ban quản lý tàu,Quản lý tàu,SHIP_MANAGER,vn-emp-0005@example.invalid
+VN-EMP-0006,Lê Hoài Trí,Ban quản lý tàu,Quản lý tàu,SHIP_MANAGER,vn-emp-0006@example.invalid
+VN-EMP-0007,Đặng Phương Hà,Ban quản lý tàu,Quản lý tàu,SHIP_MANAGER,vn-emp-0007@example.invalid
+VN-EMP-0008,Đinh Thanh Mai,Ban quản lý tàu,Quản lý tàu,SHIP_MANAGER,vn-emp-0008@example.invalid
+VN-EMP-0009,Phạm Khánh Tâm,Nhân sự,Chuyên viên nhân sự,HR_MANAGER,vn-emp-0009@example.invalid
+VN-EMP-0010,Bùi Minh Chi,Nhân sự,Chuyên viên nhân sự,HR_MANAGER,vn-emp-0010@example.invalid
+VN-EMP-0011,Mai Đức Lan,Nhân sự,Chuyên viên nhân sự,HR_MANAGER,vn-emp-0011@example.invalid
+VN-EMP-0012,Hoàng Văn Quân,Nhân sự,Chuyên viên nhân sự,HR_MANAGER,vn-emp-0012@example.invalid
+VN-EMP-0013,Đỗ Ngọc Vy,Nhân sự,Chuyên viên nhân sự,HR_MANAGER,vn-emp-0013@example.invalid
+VN-EMP-0014,Cao Hữu Huy,Điều hành,Chuyên viên điều hành,OPERATIONS_MANAGER,vn-emp-0014@example.invalid
+VN-EMP-0015,Huỳnh Quốc Nhung,Điều hành,Chuyên viên điều hành,OPERATIONS_MANAGER,vn-emp-0015@example.invalid
+VN-EMP-0016,Hồ Gia Tú,Điều hành,Chuyên viên điều hành,OPERATIONS_MANAGER,vn-emp-0016@example.invalid
+VN-EMP-0017,Lý Thị Hiếu,Điều hành,Chuyên viên điều hành,OPERATIONS_MANAGER,vn-emp-0017@example.invalid
+VN-EMP-0018,Phan Hoài Nam,Điều hành,Chuyên viên điều hành,OPERATIONS_MANAGER,vn-emp-0018@example.invalid
+VN-EMP-0019,Ngô Phương Trang,Điều hành,Chuyên viên điều hành,OPERATIONS_MANAGER,vn-emp-0019@example.invalid
+VN-EMP-0020,Nguyễn Thanh Giang,Điều hành,Chuyên viên điều hành,OPERATIONS_MANAGER,vn-emp-0020@example.invalid
+VN-EMP-0021,Vũ Khánh Long,Quản lý lịch trình,Điều phối lịch trình,CRUISE_MANAGER,vn-emp-0021@example.invalid
+VN-EMP-0022,Dương Minh Sơn,Quản lý lịch trình,Điều phối lịch trình,CRUISE_MANAGER,vn-emp-0022@example.invalid
+VN-EMP-0023,Trần Đức Bình,Quản lý lịch trình,Điều phối lịch trình,CRUISE_MANAGER,vn-emp-0023@example.invalid
+VN-EMP-0024,Võ Văn Khôi,Quản lý lịch trình,Điều phối lịch trình,CRUISE_MANAGER,vn-emp-0024@example.invalid
+VN-EMP-0025,Trương Ngọc Phúc,Quản lý lịch trình,Điều phối lịch trình,CRUISE_MANAGER,vn-emp-0025@example.invalid
+VN-EMP-0026,Lê Hữu Việt,Nhà hàng,Nhân viên phục vụ nhà hàng,ONBOARD_STAFF,vn-emp-0026@example.invalid
+VN-EMP-0027,Đặng Quốc Hùng,Nhà hàng,Nhân viên phục vụ nhà hàng,ONBOARD_STAFF,vn-emp-0027@example.invalid
+VN-EMP-0028,Đinh Gia Ngân,Nhà hàng,Nhân viên phục vụ nhà hàng,ONBOARD_STAFF,vn-emp-0028@example.invalid
+VN-EMP-0029,Phạm Thị Trung,Nhà hàng,Nhân viên phục vụ nhà hàng,ONBOARD_STAFF,vn-emp-0029@example.invalid
+VN-EMP-0030,Bùi Hoài Hải,Nhà hàng,Nhân viên phục vụ nhà hàng,ONBOARD_STAFF,vn-emp-0030@example.invalid
+VN-EMP-0031,Mai Phương Minh,Nhà hàng,Nhân viên phục vụ nhà hàng,ONBOARD_STAFF,vn-emp-0031@example.invalid
+VN-EMP-0032,Hoàng Thanh Thảo,Nhà hàng,Nhân viên phục vụ nhà hàng,ONBOARD_STAFF,vn-emp-0032@example.invalid
+VN-EMP-0033,Đỗ Khánh Dũng,Nhà hàng,Nhân viên phục vụ nhà hàng,ONBOARD_STAFF,vn-emp-0033@example.invalid
+VN-EMP-0034,Cao Minh Linh,Nhà hàng,Nhân viên phục vụ nhà hàng,ONBOARD_STAFF,vn-emp-0034@example.invalid
+VN-EMP-0035,Huỳnh Đức Quỳnh,Nhà hàng,Nhân viên phục vụ nhà hàng,ONBOARD_STAFF,vn-emp-0035@example.invalid
+VN-EMP-0036,Hồ Văn An,Nhà hàng,Nhân viên phục vụ nhà hàng,ONBOARD_STAFF,vn-emp-0036@example.invalid
+VN-EMP-0037,Lý Ngọc Khang,Nhà hàng,Nhân viên phục vụ nhà hàng,ONBOARD_STAFF,vn-emp-0037@example.invalid
+VN-EMP-0038,Phan Hữu Phong,Nhà hàng,Nhân viên phục vụ nhà hàng,ONBOARD_STAFF,vn-emp-0038@example.invalid
+VN-EMP-0039,Ngô Quốc Uyên,Nhà hàng,Nhân viên phục vụ nhà hàng,ONBOARD_STAFF,vn-emp-0039@example.invalid
+VN-EMP-0040,Nguyễn Gia Hoa,Nhà hàng,Nhân viên phục vụ nhà hàng,ONBOARD_STAFF,vn-emp-0040@example.invalid
+VN-EMP-0041,Vũ Thị Nga,Nhà hàng,Nhân viên phục vụ nhà hàng,ONBOARD_STAFF,vn-emp-0041@example.invalid
+VN-EMP-0042,Dương Hoài Trí,Nhà hàng,Nhân viên phục vụ nhà hàng,ONBOARD_STAFF,vn-emp-0042@example.invalid
+VN-EMP-0043,Trần Phương Hà,Nhà hàng,Nhân viên phục vụ nhà hàng,ONBOARD_STAFF,vn-emp-0043@example.invalid
+VN-EMP-0044,Võ Thanh Mai,Nhà hàng,Nhân viên phục vụ nhà hàng,ONBOARD_STAFF,vn-emp-0044@example.invalid
+VN-EMP-0045,Trương Khánh Tâm,Nhà hàng,Nhân viên phục vụ nhà hàng,ONBOARD_STAFF,vn-emp-0045@example.invalid
+VN-EMP-0046,Lê Minh Chi,Nhà hàng,Nhân viên phục vụ nhà hàng,ONBOARD_STAFF,vn-emp-0046@example.invalid
+VN-EMP-0047,Đặng Đức Lan,Nhà hàng,Nhân viên phục vụ nhà hàng,ONBOARD_STAFF,vn-emp-0047@example.invalid
+VN-EMP-0048,Đinh Văn Quân,Nhà hàng,Nhân viên phục vụ nhà hàng,ONBOARD_STAFF,vn-emp-0048@example.invalid
+VN-EMP-0049,Phạm Ngọc Vy,Nhà hàng,Nhân viên phục vụ nhà hàng,ONBOARD_STAFF,vn-emp-0049@example.invalid
+VN-EMP-0050,Bùi Hữu Huy,Nhà hàng,Nhân viên phục vụ nhà hàng,ONBOARD_STAFF,vn-emp-0050@example.invalid
+VN-EMP-0051,Mai Quốc Nhung,Bar và đồ uống,Nhân viên pha chế,ONBOARD_STAFF,vn-emp-0051@example.invalid
+VN-EMP-0052,Hoàng Gia Tú,Bar và đồ uống,Nhân viên pha chế,ONBOARD_STAFF,vn-emp-0052@example.invalid
+VN-EMP-0053,Đỗ Thị Hiếu,Bar và đồ uống,Nhân viên pha chế,ONBOARD_STAFF,vn-emp-0053@example.invalid
+VN-EMP-0054,Cao Hoài Nam,Bar và đồ uống,Nhân viên pha chế,ONBOARD_STAFF,vn-emp-0054@example.invalid
+VN-EMP-0055,Huỳnh Phương Trang,Bar và đồ uống,Nhân viên pha chế,ONBOARD_STAFF,vn-emp-0055@example.invalid
+VN-EMP-0056,Hồ Thanh Giang,Bar và đồ uống,Nhân viên pha chế,ONBOARD_STAFF,vn-emp-0056@example.invalid
+VN-EMP-0057,Lý Khánh Long,Bar và đồ uống,Nhân viên pha chế,ONBOARD_STAFF,vn-emp-0057@example.invalid
+VN-EMP-0058,Phan Minh Sơn,Bar và đồ uống,Nhân viên pha chế,ONBOARD_STAFF,vn-emp-0058@example.invalid
+VN-EMP-0059,Ngô Đức Bình,Bar và đồ uống,Nhân viên pha chế,ONBOARD_STAFF,vn-emp-0059@example.invalid
+VN-EMP-0060,Nguyễn Văn Khôi,Bar và đồ uống,Nhân viên pha chế,ONBOARD_STAFF,vn-emp-0060@example.invalid
+VN-EMP-0061,Vũ Ngọc Phúc,Bar và đồ uống,Nhân viên pha chế,ONBOARD_STAFF,vn-emp-0061@example.invalid
+VN-EMP-0062,Dương Hữu Việt,Bar và đồ uống,Nhân viên pha chế,ONBOARD_STAFF,vn-emp-0062@example.invalid
+VN-EMP-0063,Trần Quốc Hùng,Buồng phòng,Nhân viên buồng phòng,ONBOARD_STAFF,vn-emp-0063@example.invalid
+VN-EMP-0064,Võ Gia Ngân,Buồng phòng,Nhân viên buồng phòng,ONBOARD_STAFF,vn-emp-0064@example.invalid
+VN-EMP-0065,Trương Thị Trung,Buồng phòng,Nhân viên buồng phòng,ONBOARD_STAFF,vn-emp-0065@example.invalid
+VN-EMP-0066,Lê Hoài Hải,Buồng phòng,Nhân viên buồng phòng,ONBOARD_STAFF,vn-emp-0066@example.invalid
+VN-EMP-0067,Đặng Phương Minh,Buồng phòng,Nhân viên buồng phòng,ONBOARD_STAFF,vn-emp-0067@example.invalid
+VN-EMP-0068,Đinh Thanh Thảo,Buồng phòng,Nhân viên buồng phòng,ONBOARD_STAFF,vn-emp-0068@example.invalid
+VN-EMP-0069,Phạm Khánh Dũng,Buồng phòng,Nhân viên buồng phòng,ONBOARD_STAFF,vn-emp-0069@example.invalid
+VN-EMP-0070,Bùi Minh Linh,Buồng phòng,Nhân viên buồng phòng,ONBOARD_STAFF,vn-emp-0070@example.invalid
+VN-EMP-0071,Mai Đức Quỳnh,Buồng phòng,Nhân viên buồng phòng,ONBOARD_STAFF,vn-emp-0071@example.invalid
+VN-EMP-0072,Hoàng Văn An,Buồng phòng,Nhân viên buồng phòng,ONBOARD_STAFF,vn-emp-0072@example.invalid
+VN-EMP-0073,Đỗ Ngọc Khang,Buồng phòng,Nhân viên buồng phòng,ONBOARD_STAFF,vn-emp-0073@example.invalid
+VN-EMP-0074,Cao Hữu Phong,Buồng phòng,Nhân viên buồng phòng,ONBOARD_STAFF,vn-emp-0074@example.invalid
+VN-EMP-0075,Huỳnh Quốc Uyên,Buồng phòng,Nhân viên buồng phòng,ONBOARD_STAFF,vn-emp-0075@example.invalid
+VN-EMP-0076,Hồ Gia Hoa,Buồng phòng,Nhân viên buồng phòng,ONBOARD_STAFF,vn-emp-0076@example.invalid
+VN-EMP-0077,Lý Thị Nga,Buồng phòng,Nhân viên buồng phòng,ONBOARD_STAFF,vn-emp-0077@example.invalid
+VN-EMP-0078,Phan Hoài Trí,Buồng phòng,Nhân viên buồng phòng,ONBOARD_STAFF,vn-emp-0078@example.invalid
+VN-EMP-0079,Ngô Phương Hà,Buồng phòng,Nhân viên buồng phòng,ONBOARD_STAFF,vn-emp-0079@example.invalid
+VN-EMP-0080,Nguyễn Thanh Mai,Buồng phòng,Nhân viên buồng phòng,ONBOARD_STAFF,vn-emp-0080@example.invalid
+VN-EMP-0081,Vũ Khánh Tâm,Spa,Kỹ thuật viên spa,ONBOARD_STAFF,vn-emp-0081@example.invalid
+VN-EMP-0082,Dương Minh Chi,Spa,Kỹ thuật viên spa,ONBOARD_STAFF,vn-emp-0082@example.invalid
+VN-EMP-0083,Trần Đức Lan,Spa,Kỹ thuật viên spa,ONBOARD_STAFF,vn-emp-0083@example.invalid
+VN-EMP-0084,Võ Văn Quân,Spa,Kỹ thuật viên spa,ONBOARD_STAFF,vn-emp-0084@example.invalid
+VN-EMP-0085,Trương Ngọc Vy,Spa,Kỹ thuật viên spa,ONBOARD_STAFF,vn-emp-0085@example.invalid
+VN-EMP-0086,Lê Hữu Huy,Spa,Kỹ thuật viên spa,ONBOARD_STAFF,vn-emp-0086@example.invalid
+VN-EMP-0087,Đặng Quốc Nhung,Spa,Kỹ thuật viên spa,ONBOARD_STAFF,vn-emp-0087@example.invalid
+VN-EMP-0088,Đinh Gia Tú,Spa,Kỹ thuật viên spa,ONBOARD_STAFF,vn-emp-0088@example.invalid
+VN-EMP-0089,Phạm Thị Hiếu,Giải trí,Điều phối hoạt động,ONBOARD_STAFF,vn-emp-0089@example.invalid
+VN-EMP-0090,Bùi Hoài Nam,Giải trí,Điều phối hoạt động,ONBOARD_STAFF,vn-emp-0090@example.invalid
+VN-EMP-0091,Mai Phương Trang,Giải trí,Điều phối hoạt động,ONBOARD_STAFF,vn-emp-0091@example.invalid
+VN-EMP-0092,Hoàng Thanh Giang,Giải trí,Điều phối hoạt động,ONBOARD_STAFF,vn-emp-0092@example.invalid
+VN-EMP-0093,Đỗ Khánh Long,Giải trí,Điều phối hoạt động,ONBOARD_STAFF,vn-emp-0093@example.invalid
+VN-EMP-0094,Cao Minh Sơn,Giải trí,Điều phối hoạt động,ONBOARD_STAFF,vn-emp-0094@example.invalid
+VN-EMP-0095,Huỳnh Đức Bình,Giải trí,Điều phối hoạt động,ONBOARD_STAFF,vn-emp-0095@example.invalid
+VN-EMP-0096,Hồ Văn Khôi,Giải trí,Điều phối hoạt động,ONBOARD_STAFF,vn-emp-0096@example.invalid
+VN-EMP-0097,Lý Ngọc Phúc,Giải trí,Điều phối hoạt động,ONBOARD_STAFF,vn-emp-0097@example.invalid
+VN-EMP-0098,Phan Hữu Việt,Giải trí,Điều phối hoạt động,ONBOARD_STAFF,vn-emp-0098@example.invalid
+VN-EMP-0099,Ngô Quốc Hùng,Tour,Hướng dẫn viên,ONBOARD_STAFF,vn-emp-0099@example.invalid
+VN-EMP-0100,Nguyễn Gia Ngân,Tour,Hướng dẫn viên,ONBOARD_STAFF,vn-emp-0100@example.invalid
+VN-EMP-0101,Vũ Thị Trung,Tour,Hướng dẫn viên,ONBOARD_STAFF,vn-emp-0101@example.invalid
+VN-EMP-0102,Dương Hoài Hải,Tour,Hướng dẫn viên,ONBOARD_STAFF,vn-emp-0102@example.invalid
+VN-EMP-0103,Trần Phương Minh,Tour,Hướng dẫn viên,ONBOARD_STAFF,vn-emp-0103@example.invalid
+VN-EMP-0104,Võ Thanh Thảo,Tour,Hướng dẫn viên,ONBOARD_STAFF,vn-emp-0104@example.invalid
+VN-EMP-0105,Trương Khánh Dũng,Tour,Hướng dẫn viên,ONBOARD_STAFF,vn-emp-0105@example.invalid
+VN-EMP-0106,Lê Minh Linh,Tour,Hướng dẫn viên,ONBOARD_STAFF,vn-emp-0106@example.invalid
+VN-EMP-0107,Đặng Đức Quỳnh,Tour,Hướng dẫn viên,ONBOARD_STAFF,vn-emp-0107@example.invalid
+VN-EMP-0108,Đinh Văn An,Tour,Hướng dẫn viên,ONBOARD_STAFF,vn-emp-0108@example.invalid
+VN-EMP-0109,Phạm Ngọc Khang,Tour,Hướng dẫn viên,ONBOARD_STAFF,vn-emp-0109@example.invalid
+VN-EMP-0110,Bùi Hữu Phong,Tour,Hướng dẫn viên,ONBOARD_STAFF,vn-emp-0110@example.invalid
+VN-EMP-0111,Mai Quốc Uyên,POS và dịch vụ khách hàng,Nhân viên dịch vụ khách hàng,ONBOARD_STAFF,vn-emp-0111@example.invalid
+VN-EMP-0112,Hoàng Gia Hoa,POS và dịch vụ khách hàng,Nhân viên dịch vụ khách hàng,ONBOARD_STAFF,vn-emp-0112@example.invalid
+VN-EMP-0113,Đỗ Thị Nga,POS và dịch vụ khách hàng,Nhân viên dịch vụ khách hàng,ONBOARD_STAFF,vn-emp-0113@example.invalid
+VN-EMP-0114,Cao Hoài Trí,POS và dịch vụ khách hàng,Nhân viên dịch vụ khách hàng,ONBOARD_STAFF,vn-emp-0114@example.invalid
+VN-EMP-0115,Huỳnh Phương Hà,POS và dịch vụ khách hàng,Nhân viên dịch vụ khách hàng,ONBOARD_STAFF,vn-emp-0115@example.invalid
+VN-EMP-0116,Hồ Thanh Mai,POS và dịch vụ khách hàng,Nhân viên dịch vụ khách hàng,ONBOARD_STAFF,vn-emp-0116@example.invalid
+VN-EMP-0117,Lý Khánh Tâm,POS và dịch vụ khách hàng,Nhân viên dịch vụ khách hàng,ONBOARD_STAFF,vn-emp-0117@example.invalid
+VN-EMP-0118,Phan Minh Chi,POS và dịch vụ khách hàng,Nhân viên dịch vụ khách hàng,ONBOARD_STAFF,vn-emp-0118@example.invalid
+VN-EMP-0119,Ngô Đức Lan,POS và dịch vụ khách hàng,Nhân viên dịch vụ khách hàng,ONBOARD_STAFF,vn-emp-0119@example.invalid
+VN-EMP-0120,Nguyễn Văn Quân,POS và dịch vụ khách hàng,Nhân viên dịch vụ khách hàng,ONBOARD_STAFF,vn-emp-0120@example.invalid

@@ -1,5 +1,7 @@
 package com.casms.ship.dto.response;
 
+import com.casms.notification.service.StaffAssignmentEmailService;
+
 import lombok.Builder;
 import lombok.Getter;
 
@@ -22,6 +24,9 @@ public class CruiseStaffResponse {
     private Instant endedAt;
     private UUID endedBy;
     private String endedByName;
+    private String removalReason;
     private String status;
     private String notes;
+    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+    private StaffAssignmentEmailService.Status assignmentEmailStatus;
 }

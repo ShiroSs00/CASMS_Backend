@@ -1,0 +1,21 @@
+tour_code,tour_name,port_region,duration_minutes,capacity,reference_price_vnd,approval_status
+VN-SHORE-001,Tham quan hang Sửng Sốt và vịnh Hạ Long,Hạ Long,240,35,790000,DRAFT
+VN-SHORE-002,Chèo kayak khu vực Hang Luồn (phụ thuộc thời tiết),Hạ Long,180,24,650000,DRAFT
+VN-SHORE-003,Thăm làng chài Cửa Vạn,Hạ Long,240,28,690000,DRAFT
+VN-SHORE-004,Ngắm cảnh vịnh Hạ Long bằng thuyền nhỏ,Hạ Long,180,40,590000,DRAFT
+VN-SHORE-005,"Tham quan làng Việt Hải, Cát Bà",Cát Bà,300,24,890000,DRAFT
+VN-SHORE-006,Khám phá vịnh Lan Hạ bằng thuyền,Cát Bà,240,28,790000,DRAFT
+VN-SHORE-007,Tham quan rừng ngập mặn Phù Long,Cát Bà,240,25,720000,DRAFT
+VN-SHORE-008,Trải nghiệm làng chài ven biển Cát Bà,Cát Bà,180,30,590000,DRAFT
+VN-SHORE-009,Tham quan Ngũ Hành Sơn,Đà Nẵng,210,35,650000,DRAFT
+VN-SHORE-010,Khám phá bán đảo Sơn Trà,Đà Nẵng,240,30,720000,DRAFT
+VN-SHORE-011,Tham quan bảo tàng Điêu khắc Chăm,Đà Nẵng,180,35,580000,DRAFT
+VN-SHORE-012,Thăm phố cổ Hội An từ Đà Nẵng,Đà Nẵng,360,30,990000,DRAFT
+VN-SHORE-013,Tham quan tháp Bà Ponagar,Nha Trang,180,32,590000,DRAFT
+VN-SHORE-014,Tắm biển và lặn ngắm san hô (phụ thuộc thời tiết),Nha Trang,300,20,990000,DRAFT
+VN-SHORE-015,Khám phá văn hóa địa phương Nha Trang,Nha Trang,210,30,680000,DRAFT
+VN-SHORE-016,Tham quan Viện Hải dương học,Nha Trang,180,35,620000,DRAFT
+VN-SHORE-017,Tham quan Dinh Cậu và chợ đêm,Phú Quốc,240,30,690000,DRAFT
+VN-SHORE-018,Trải nghiệm làng chài Hàm Ninh,Phú Quốc,240,30,790000,DRAFT
+VN-SHORE-019,Tham quan vườn tiêu Phú Quốc,Phú Quốc,210,30,580000,DRAFT
+VN-SHORE-020,Trải nghiệm Hòn Thơm (phụ thuộc vận hành),Phú Quốc,360,24,1290000,DRAFT

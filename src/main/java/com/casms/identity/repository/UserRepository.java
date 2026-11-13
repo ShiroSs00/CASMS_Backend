@@ -4,6 +4,8 @@ import com.casms.identity.entity.User;
 import com.casms.identity.enums.UserStatus;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.repository.query.Param;
+import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -22,6 +24,9 @@ public interface UserRepository extends JpaRepository<User, UUID> {
     boolean existsByUsername(String username);
 
     boolean existsByEmail(String email);
+
+    @Query(value = "SELECT user_id FROM \"User\" WHERE user_id = :id FOR NO KEY UPDATE", nativeQuery = true)
+    Optional<UUID> lockForStaffAssignment(@Param("id") UUID id);
 
     List<User> findByStatus(UserStatus status);
 }

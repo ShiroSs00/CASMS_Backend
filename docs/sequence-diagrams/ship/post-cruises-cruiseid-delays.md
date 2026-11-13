@@ -28,3 +28,5 @@ sequenceDiagram
     end
     C-->>Client: 200 ApiResponse on success
 ```
+
+See [CASMS-75 catalog and staffing flows](../CASMS75-CATALOG-STAFFING-FLOWS.md) for the shared integration behavior.

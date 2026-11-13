@@ -110,6 +110,7 @@ public class User {
                         Role.BOOKING_AGENT,
                         Role.ONBOARD_STAFF,
                         Role.FINANCE_OFFICER,
-                        Role.ACTIVITY_SERVICE_MANAGER);
+                        Role.ACTIVITY_SERVICE_MANAGER,
+                        Role.HR_MANAGER);
     }
 }

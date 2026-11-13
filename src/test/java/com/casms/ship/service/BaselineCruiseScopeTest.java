@@ -21,17 +21,24 @@ class BaselineCruiseScopeTest {
         CruiseStaffRepository assignments = mock(CruiseStaffRepository.class);
         UserRepository users = mock(UserRepository.class);
         CruisePreparationService preparation = mock(CruisePreparationService.class);
+        CruiseRepository cruises = mock(CruiseRepository.class);
         CruiseStaffService service =
                 new CruiseStaffService(
-                        assignments, mock(CruiseRepository.class), users, preparation);
+                        assignments, cruises, users, preparation,
+                        mock(com.casms.notification.service.StaffAssignmentEmailService.class),
+                        mock(com.casms.notification.repository.NotificationRepository.class),
+                        mock(com.casms.audit.AuditRepository.class));
         UUID cruiseA = UUID.randomUUID(), cruiseB = UUID.randomUUID(), user = UUID.randomUUID();
         Cruise original = new Cruise();
         original.setCruiseId(cruiseA);
+        Cruise other = new Cruise();
+        other.setCruiseId(cruiseB);
+        when(cruises.findByIdForUpdate(cruiseB)).thenReturn(Optional.of(other));
         CruiseStaff assignment = new CruiseStaff();
         assignment.setCruise(original);
         assignment.setStatus("ACTIVE");
-        when(assignments.findFirstByCruise_CruiseIdAndUser_UserIdAndStatusOrderByAssignedAtDesc(
-                        any(), eq(user), eq("ACTIVE")))
+        when(assignments.findFirstByCruise_CruiseIdAndUser_UserIdOrderByAssignedAtDesc(
+                        any(), eq(user)))
                 .thenAnswer(
                         i ->
                                 cruiseA.equals(i.getArgument(0))
@@ -40,15 +47,15 @@ class BaselineCruiseScopeTest {
         UUID removedBy = UUID.randomUUID();
         assertThrows(
                 ResourceNotFoundException.class,
-                () -> service.removeStaff(cruiseB, user, removedBy));
+                () -> service.removeStaff(cruiseB, user, null, null, removedBy));
         verify(assignments)
-                .findFirstByCruise_CruiseIdAndUser_UserIdAndStatusOrderByAssignedAtDesc(
-                        cruiseB, user, "ACTIVE");
+                .findFirstByCruise_CruiseIdAndUser_UserIdOrderByAssignedAtDesc(cruiseB, user);
         verify(assignments, never())
-                .findFirstByCruise_CruiseIdAndUser_UserIdAndStatusOrderByAssignedAtDesc(
-                        cruiseA, user, "ACTIVE");
-        verify(assignments, never()).save(any());
+                .findFirstByCruise_CruiseIdAndUser_UserIdOrderByAssignedAtDesc(cruiseA, user);
+        verify(assignments, never()).saveAndFlush(any());
         org.junit.jupiter.api.Assertions.assertEquals("ACTIVE", assignment.getStatus());
-        verifyNoInteractions(users, preparation);
+        verify(users).lockForStaffAssignment(user);
+        verifyNoMoreInteractions(users);
+        verifyNoInteractions(preparation);
     }
 }

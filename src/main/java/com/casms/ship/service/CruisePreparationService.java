@@ -1,5 +1,7 @@
 package com.casms.ship.service;
 
+import com.casms.staffing.StaffingWorkflowService;
+
 import com.casms.activity.repository.OnboardActivityRepository;
 import com.casms.activity.repository.ShoreExcursionRepository;
 import com.casms.common.exception.BusinessException;
@@ -36,6 +38,7 @@ public class CruisePreparationService {
     private final CruiseRepository cruiseRepository;
     private final CruisePreparationSectionRepository preparationSectionRepository;
     private final CruiseStaffRepository cruiseStaffRepository;
+    private final StaffingWorkflowService staffingWorkflow;
     private final DeckRepository deckRepository;
     private final CabinRepository cabinRepository;
     private final ShoreExcursionRepository shoreExcursionRepository;
@@ -671,9 +674,17 @@ public class CruisePreparationService {
 
     @Transactional
     public void invalidateSignoffs(UUID cruiseId, String reason) {
+        invalidateSignoffs(cruiseId, null, reason);
+    }
+
+    @Transactional
+    public void invalidateSignoffs(UUID cruiseId, String targetSectionCode, String reason) {
         List<CruisePreparationSection> sections =
                 preparationSectionRepository.findByCruiseCruiseIdOrderBySectionCodeAsc(cruiseId);
         for (CruisePreparationSection section : sections) {
+            if (targetSectionCode != null && !targetSectionCode.equalsIgnoreCase(section.getSectionCode())) {
+                continue;
+            }
             if ("CONFIRMED".equalsIgnoreCase(section.getStatus())) {
                 section.setStatus("RETURNED");
                 section.setReturnReason(
@@ -845,7 +856,7 @@ public class CruisePreparationService {
                 boolean onboardAssigned = cruiseStaffRepository.existsActiveOnboardStaff(cruiseId);
                 long activeCrew =
                         cruiseStaffRepository.countByCruise_CruiseIdAndStatus(cruiseId, "ACTIVE");
-                boolean crewReady = onboardAssigned && activeCrew >= 1;
+                boolean crewReady = onboardAssigned && staffingWorkflow.ready(cruiseId);
                 items.add(
                         PreparationCheckItemDto.builder()
                                 .itemCode("ONBOARD_STAFF_ASSIGNED")
@@ -864,7 +875,7 @@ public class CruisePreparationService {
                                         "Onboard Staff: "
                                                 + (onboardAssigned ? "SẴN SÀNG" : "CHƯA PHÂN CÔNG")
                                                 + ", Thuyền viên: "
-                                                + activeCrew)
+                                                + activeCrew + ", Nhu cầu nhân sự đã được duyệt: " + crewReady)
                                 .build());
             }
             default -> {}

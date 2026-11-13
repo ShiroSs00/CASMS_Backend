@@ -30,3 +30,5 @@ sequenceDiagram
 ```
 
 Start locks the Cruise row before evaluating lifecycle and departure readiness so it serializes with delay confirmation. See [departure and delay flows](../CRUISE-DEPARTURE-DELAY.md).
+
+See [CASMS-75 catalog and staffing flows](../CASMS75-CATALOG-STAFFING-FLOWS.md) for the shared integration behavior.

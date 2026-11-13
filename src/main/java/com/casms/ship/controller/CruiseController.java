@@ -456,6 +456,14 @@ public class CruiseController {
 
     // ==================== CRUISE STAFF ASSIGNMENT ====================
 
+    @GetMapping("/{cruiseId}/staff/options")
+    @PreAuthorize("hasAuthority('CRUISE_STAFF_ASSIGN')")
+    public ApiResponse<CruiseStaffService.StaffOptions> staffOptions(
+            @PathVariable UUID cruiseId,
+            @RequestParam(defaultValue = "false") boolean shipboardOnly) {
+        return ApiResponse.success(staffService.staffOptions(cruiseId, shipboardOnly));
+    }
+
     @Operation(
             summary = "Phân công nhân viên / thủy thủ đoàn vào chuyến khởi hành",
             description =
@@ -470,7 +478,7 @@ public class CruiseController {
             @AuthenticationPrincipal CasmsPrincipal principal) {
         return ApiResponse.success(
                 "Assigned staff to cruise successfully",
-                staffService.assignStaff(cruiseId, request, principal.getUserId()));
+                staffService.assignStaff(cruiseId, request, principal));
     }
 
     @Operation(
@@ -480,8 +488,9 @@ public class CruiseController {
     @GetMapping("/{cruiseId}/staff")
     public ApiResponse<List<CruiseStaffResponse>> listStaff(
             @Parameter(description = "ID chuyến khởi hành", required = true) @PathVariable
-                    UUID cruiseId) {
-        return ApiResponse.success(staffService.listStaff(cruiseId));
+                    UUID cruiseId,
+            @AuthenticationPrincipal CasmsPrincipal principal) {
+        return ApiResponse.success(staffService.listStaff(cruiseId, principal));
     }
 
     @Operation(
@@ -494,8 +503,10 @@ public class CruiseController {
             @Parameter(description = "ID chuyến khởi hành", required = true) @PathVariable
                     UUID cruiseId,
             @Parameter(description = "ID người dùng", required = true) @PathVariable UUID userId,
+            @RequestParam(required = false) UUID assignmentId,
+            @RequestParam(required = false) String reason,
             @AuthenticationPrincipal CasmsPrincipal principal) {
-        staffService.removeStaff(cruiseId, userId, principal.getUserId());
+        staffService.removeStaff(cruiseId, userId, assignmentId, reason, principal);
         return ApiResponse.success("Staff member relieved from cruise", null);
     }
 

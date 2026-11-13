@@ -47,6 +47,7 @@ class CruiseServiceTest {
 
     @Mock private ScheduleMaterializationService scheduleMaterializationService;
     @Mock private CruiseStaffRepository cruiseStaffRepository;
+    @Mock private com.casms.staffing.StaffingWorkflowService staffingWorkflow;
     @Mock private CruiseRegulationService cruiseRegulationService;
     @Mock private com.casms.activity.repository.OnboardActivityRepository onboardActivityRepository;
     @Mock private CruiseTourPackageRepository cruiseTourPackageRepository;
@@ -231,6 +232,8 @@ class CruiseServiceTest {
         when(cabinRepository.countByShipShipId(shipId)).thenReturn(50L);
         when(itineraryRepository.findByCruiseCruiseId(cruiseId)).thenReturn(Optional.of(itinerary));
         when(cruiseStaffRepository.findByCruise_CruiseId(cruiseId)).thenReturn(List.of(captain));
+        when(staffingWorkflow.ready(cruiseId)).thenReturn(true);
+        when(cruiseStaffRepository.existsActiveOnboardStaff(cruiseId)).thenReturn(true);
         when(cruiseStaffRepository.findConflictingAssignments(any(), any(), any(), any()))
                 .thenReturn(List.of());
         when(cruiseRepository.save(any(Cruise.class))).thenAnswer(i -> i.getArgument(0));

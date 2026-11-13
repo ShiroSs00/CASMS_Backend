@@ -51,4 +51,7 @@ public class CruiseStaff {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "ended_by_user_id")
     private User endedBy;
+
+    @Column(name = "removal_reason", length = 500)
+    private String removalReason;
 }

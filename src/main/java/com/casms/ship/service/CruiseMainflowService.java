@@ -28,6 +28,7 @@ public class CruiseMainflowService {
     private final ObjectMapper mapper;
     private final PortWindowEvaluator portWindowEvaluator;
     private final org.springframework.beans.factory.ObjectProvider<CruiseService> cruiseServices;
+    private final com.casms.staffing.StaffingWorkflowService staffingWorkflow;
     private final ItineraryProgramPolicy programPolicy;
 
     @org.springframework.beans.factory.annotation.Autowired
@@ -375,6 +376,10 @@ public class CruiseMainflowService {
 
     private String readinessFingerprint(UUID id) {
         StringBuilder evidence = new StringBuilder(planSnapshot(id));
+        evidence.append(aggregate("""
+                SELECT jsonb_build_object('id', request_id, 'revision', revision, 'status', status)
+                FROM "StaffingRequest" WHERE cruise_id=? AND status NOT IN ('CANCELLED','RETURNED')
+                """, id));
         for (String table : List.of("CruiseStaff", "CruisePreparationSection", "CruiseRegulation"))
             evidence.append(
                     aggregate(
@@ -596,6 +601,7 @@ SELECT EXISTS(SELECT 1 FROM "CruisePricingPolicy" p JOIN "Cruise" c USING(cruise
                         Boolean.class,
                         id);
         if (!Boolean.TRUE.equals(onboard)) b.add("ONBOARD_STAFF_REQUIRED");
+        if (!staffingWorkflow.ready(id)) b.add("STAFFING_APPROVAL_REQUIRED");
         Boolean guidance =
                 jdbc.queryForObject(
                         "SELECT EXISTS(SELECT 1 FROM \"GuidanceSession\" WHERE cruise_id=? AND"

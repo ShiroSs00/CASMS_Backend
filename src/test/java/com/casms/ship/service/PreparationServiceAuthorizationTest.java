@@ -186,7 +186,8 @@ class PreparationServiceAuthorizationTest {
                         jdbc,
                         mapper,
                         mock(PortWindowEvaluator.class),
-                        mock(org.springframework.beans.factory.ObjectProvider.class), programPolicy);
+                        mock(org.springframework.beans.factory.ObjectProvider.class),
+                        mock(com.casms.staffing.StaffingWorkflowService.class), programPolicy);
         assertEquals(
                 "READY_ACTION_FORBIDDEN",
                 assertThrows(
