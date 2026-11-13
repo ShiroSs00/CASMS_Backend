@@ -47,6 +47,9 @@ class CruiseServiceTest {
 
     @Mock private ScheduleMaterializationService scheduleMaterializationService;
     @Mock private CruiseStaffRepository cruiseStaffRepository;
+    @Mock private CruisePreparationService cruisePreparationService;
+    @Mock private CruiseAuditService cruiseAuditService;
+    @Mock private CruiseMainflowService mainflow;
     @Mock private com.casms.staffing.StaffingWorkflowService staffingWorkflow;
     @Mock private CruiseRegulationService cruiseRegulationService;
     @Mock private com.casms.activity.repository.OnboardActivityRepository onboardActivityRepository;
@@ -191,7 +194,7 @@ class CruiseServiceTest {
         BusinessException ex =
                 assertThrows(
                         BusinessException.class, () -> cruiseService.assignShip(cruiseId, shipId));
-        assertEquals("SHIP_NOT_ACTIVE", ex.getCode());
+        assertEquals("SHIP_IN_MAINTENANCE", ex.getCode());
     }
 
     @Test
@@ -233,6 +236,7 @@ class CruiseServiceTest {
         when(itineraryRepository.findByCruiseCruiseId(cruiseId)).thenReturn(Optional.of(itinerary));
         when(cruiseStaffRepository.findByCruise_CruiseId(cruiseId)).thenReturn(List.of(captain));
         when(staffingWorkflow.ready(cruiseId)).thenReturn(true);
+        when(mainflow.isPlanApproved(cruiseId)).thenReturn(true);
         when(cruiseStaffRepository.existsActiveOnboardStaff(cruiseId)).thenReturn(true);
         when(cruiseStaffRepository.findConflictingAssignments(any(), any(), any(), any()))
                 .thenReturn(List.of());
