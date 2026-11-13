@@ -38,6 +38,7 @@ class ServicepackageWorkflowTest {
     @Mock BookingPassengerRepository bookingPassengerRepo;
     @Mock OnboardActivityRepository activityRepo;
     @Mock ShoreExcursionRepository excursionRepo;
+    @Mock org.springframework.jdbc.core.JdbcTemplate jdbc;
     @InjectMocks ServicepackageService service;
 
     @Test
@@ -46,6 +47,7 @@ class ServicepackageWorkflowTest {
         Booking booking = new Booking();
         booking.setBookingStatus(BookingStatus.Draft);
         com.casms.ship.entity.Cruise cruise = new com.casms.ship.entity.Cruise();
+        cruise.setCruiseId(UUID.randomUUID());
         cruise.setDepartureDatetime(java.time.Instant.now().plusSeconds(3600));
         cruise.setReturnDatetime(java.time.Instant.now().plusSeconds(7200));
         booking.setCruise(cruise);
@@ -56,6 +58,7 @@ class ServicepackageWorkflowTest {
         p.setStatus(TourPackageStatus.ACTIVE);
         p.setPrice(new BigDecimal("39.50"));
         p.setCurrencyCode("USD");
+        when(bookingPassengerRepo.findById(bpId)).thenReturn(Optional.of(bp));
         when(bookingPassengerRepo.lockById(bpId)).thenReturn(Optional.of(bp));
         when(assignmentRepo.existsById(bpId)).thenReturn(false);
         when(packageRepo.findById(packageId)).thenReturn(Optional.of(p));
@@ -73,6 +76,7 @@ class ServicepackageWorkflowTest {
         Booking booking = new Booking();
         booking.setBookingStatus(BookingStatus.Draft);
         com.casms.ship.entity.Cruise cruise = new com.casms.ship.entity.Cruise();
+        cruise.setCruiseId(UUID.randomUUID());
         cruise.setDepartureDatetime(java.time.Instant.now().plusSeconds(3600));
         cruise.setReturnDatetime(java.time.Instant.now().plusSeconds(7200));
         booking.setCruise(cruise);
@@ -80,6 +84,7 @@ class ServicepackageWorkflowTest {
         bp.setBooking(booking);
         TourPackage p = new TourPackage();
         p.setStatus(TourPackageStatus.INACTIVE);
+        when(bookingPassengerRepo.findById(bpId)).thenReturn(Optional.of(bp));
         when(bookingPassengerRepo.lockById(bpId)).thenReturn(Optional.of(bp));
         when(assignmentRepo.existsById(bpId)).thenReturn(false);
         when(packageRepo.findById(packageId)).thenReturn(Optional.of(p));

@@ -4,6 +4,9 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 import com.casms.common.exception.BusinessException;
+import com.casms.identity.entity.User;
+import com.casms.identity.enums.Role;
+import com.casms.identity.repository.UserRepository;
 import com.casms.ship.enums.ItineraryDayType;
 import com.casms.trip.entity.Trip;
 import com.casms.trip.entity.TripPlanDay;
@@ -18,14 +21,16 @@ import org.junit.jupiter.params.provider.CsvSource;
 
 import java.util.ArrayList;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 class ItnDurationValidationTest {
     private final TripScheduleVersionRepository versions =
             mock(TripScheduleVersionRepository.class);
+    private final UserRepository users = mock(UserRepository.class);
     private final TripScheduleVersionService service =
             new TripScheduleVersionService(
-                    null, versions, null, null, null, null, null, null, null, null);
+                    null, versions, null, null, null, null, null, users, null, null);
 
     private TripScheduleVersion itinerary(String group, int count) {
         Trip trip = new Trip();
@@ -64,12 +69,16 @@ class ItnDurationValidationTest {
                 service.validateVersionInternal(version).stream()
                         .anyMatch(v -> "INVALID_DURATION".equals(v.getCode())));
         UUID id = UUID.randomUUID();
+        UUID actorId = UUID.randomUUID();
+        User approver = new User();
+        approver.setRoles(Set.of(Role.CRUISE_MANAGER));
+        when(users.findById(actorId)).thenReturn(Optional.of(approver));
         when(versions.findById(id)).thenReturn(Optional.of(version));
         assertEquals(
                 "INVALID_DURATION",
                 assertThrows(
                                 BusinessException.class,
-                                () -> service.finalizeVersion(id, 1L, UUID.randomUUID()))
+                                () -> service.finalizeVersion(id, 1L, actorId))
                         .getCode());
         verify(versions, never()).save(any());
     }

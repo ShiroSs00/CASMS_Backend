@@ -60,7 +60,8 @@ class PosPostgresIntegrationTest {
     @Autowired JwtService jwt;
     @Autowired org.springframework.security.crypto.password.PasswordEncoder encoder;
     UUID ship, deck, model, area, port, cruise, booking, bp, bp2, service, account, terminal;
-    String manager, catalogManager, staff, buyer, secret, session;
+    String manager, hrManager, catalogManager, staff, buyer, secret, session;
+    UUID sourceTrip, sourceVersion;
     final List<UUID> userIds = new ArrayList<>();
     final List<UUID> passengerIds = new ArrayList<>();
 
@@ -170,6 +171,7 @@ class PosPostgresIntegrationTest {
                             bookingPassengers.saveAndFlush(a2);
                             bp2 = a2.getBookingPassengerId();
                             manager = token(user(Role.OPERATIONS_MANAGER));
+                            hrManager = token(user(Role.HR_MANAGER));
                             catalogManager = token(user(Role.ACTIVITY_SERVICE_MANAGER));
                             staff = token(user(Role.ONBOARD_STAFF));
                         });
@@ -204,6 +206,15 @@ class PosPostgresIntegrationTest {
                         201);
         terminal = UUID.fromString(device.path("terminal").path("terminalId").asText());
         secret = device.path("deviceSecret").asText();
+        sourceTrip = jdbc.queryForObject("""
+                INSERT INTO "Trip" (trip_code, name, duration_days, duration_nights, trip_type)
+                VALUES (?, 'POS itinerary', 2, 1, 'ONE_WAY') RETURNING trip_id
+                """, UUID.class, code());
+        sourceVersion = jdbc.queryForObject("""
+                INSERT INTO "TripScheduleVersion" (trip_id, version_number, status)
+                VALUES (?, 1, 'PUBLISHED') RETURNING version_id
+                """, UUID.class, sourceTrip);
+        linkToSourceVersion(cruise);
         assignEmployee(staff, area, cruise);
         assignEmployee(manager, area, cruise);
         configurePolicy(
@@ -418,7 +429,7 @@ class PosPostgresIntegrationTest {
                 403);
         perform(
                 post("/cruise/{id}/staff", cruise),
-                manager,
+                hrManager,
                 Map.of("userId", machine.getUserId(), "roleInCruise", "ONBOARD_STAFF"),
                 422);
         perform(
@@ -931,7 +942,7 @@ class PosPostgresIntegrationTest {
                         ship,
                         area,
                         jwt.extractUserId(other)),
-                manager,
+                hrManager,
                 Map.of("cruiseId", cruise, "enabled", true),
                 422);
         UUID otherArea = createArea();
@@ -978,7 +989,7 @@ class PosPostgresIntegrationTest {
         perform(
                 delete("/ships/{ship}/areas/{area}/staff/{user}", ship, area, employee)
                         .param("cruiseId", cruise.toString()),
-                manager,
+                hrManager,
                 null,
                 204);
         perform(get("/pos/session").header("X-POS-Session", session), staff, null, 403);
@@ -992,9 +1003,10 @@ class PosPostgresIntegrationTest {
     @Test
     void removingCruiseStaffBlocksExistingAreaSessionWithoutManualAreaRevocation()
             throws Exception {
+        jdbc.update("UPDATE \"Cruise\" SET status='PUBLISHED' WHERE cruise_id=?", cruise);
         perform(
                 delete("/cruise/{cruise}/staff/{user}", cruise, jwt.extractUserId(staff)),
-                manager,
+                hrManager,
                 null,
                 204);
         assertEquals(
@@ -1020,7 +1032,7 @@ class PosPostgresIntegrationTest {
         String path = "/ships/{ship}/areas/{area}/staff/{user}";
         perform(
                 put(path, ship, area, employee),
-                manager,
+                hrManager,
                 Map.of(
                         "cruiseId",
                         cruise,
@@ -1036,7 +1048,7 @@ class PosPostgresIntegrationTest {
                 403);
         perform(
                 put(path, ship, area, employee),
-                manager,
+                hrManager,
                 Map.of(
                         "cruiseId",
                         cruise,
@@ -1054,7 +1066,7 @@ class PosPostgresIntegrationTest {
                 403);
         perform(
                 put(path, ship, area, employee),
-                manager,
+                hrManager,
                 Map.of(
                         "cruiseId",
                         cruise,
@@ -1274,6 +1286,7 @@ class PosPostgresIntegrationTest {
                                     c.setReturnDatetime(Instant.now().plusSeconds(259200));
                                     return cruises.saveAndFlush(c).getCruiseId();
                                 });
+        linkToSourceVersion(otherCruise);
         assignEmployee(staff, area, otherCruise);
         perform(
                 post("/pos-terminals/{id}/sessions", terminal),
@@ -2082,6 +2095,12 @@ class PosPostgresIntegrationTest {
                 .asText();
     }
 
+    private void linkToSourceVersion(UUID targetCruise) {
+        jdbc.update("""
+                UPDATE "Cruise" SET source_trip_id=?, source_version_id=? WHERE cruise_id=?
+                """, sourceTrip, sourceVersion, targetCruise);
+    }
+
     private void assignEmployee(String auth, UUID targetArea, UUID targetCruise) throws Exception {
         UUID id = jwt.extractUserId(auth);
         int count =
@@ -2101,12 +2120,12 @@ class PosPostgresIntegrationTest {
         if (count == 0)
             perform(
                     post("/cruise/{id}/staff", targetCruise),
-                    manager,
+                    hrManager,
                     Map.of("userId", id, "roleInCruise", assignmentRole),
                     200);
         perform(
                 put("/ships/{ship}/areas/{area}/staff/{user}", ship, targetArea, id),
-                manager,
+                hrManager,
                 Map.of(
                         "cruiseId",
                         targetCruise,
@@ -2319,11 +2338,16 @@ class PosPostgresIntegrationTest {
             jdbc.update("DELETE FROM \"Cruise\" WHERE ship_id=?", ship);
             jdbc.update("DELETE FROM \"Ship\" WHERE ship_id=?", ship);
         }
+        if (sourceVersion != null) {
+            jdbc.update("DELETE FROM \"TripScheduleVersion\" WHERE version_id=?", sourceVersion);
+        }
+        if (sourceTrip != null) jdbc.update("DELETE FROM \"Trip\" WHERE trip_id=?", sourceTrip);
         if (service != null) jdbc.update("DELETE FROM \"Service\" WHERE service_id=?", service);
         if (port != null) jdbc.update("DELETE FROM \"Port\" WHERE port_id=?", port);
         for (UUID passenger : passengerIds)
             jdbc.update("DELETE FROM \"Passenger\" WHERE passenger_id=?", passenger);
         for (UUID user : userIds) {
+            jdbc.update("DELETE FROM \"Notification\" WHERE recipient_user_id=?", user);
             jdbc.update("DELETE FROM \"UserRole\" WHERE user_id=?", user);
             jdbc.update("DELETE FROM \"User\" WHERE user_id=?", user);
         }

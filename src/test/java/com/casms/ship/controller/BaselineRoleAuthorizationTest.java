@@ -161,7 +161,9 @@ class BaselineRoleAuthorizationTest {
     @Test
     void bookingCannotUseStatusFilterToReadDraftsOnEitherAlias() throws Exception {
         authenticate(Role.BOOKING_AGENT);
-        when(service.listOpenForSale(any(), any(), any(), any(), any(), any()))
+        var auth = SecurityContextHolder.getContext().getAuthentication();
+        UUID assignee = ((CasmsPrincipal) auth.getPrincipal()).getUserId();
+        when(service.listOpenForSale(any(), any(), any(), any(), any(), any(), eq(assignee)))
                 .thenReturn(
                         org.springframework.data.domain.Page.empty(
                                 org.springframework.data.domain.PageRequest.of(0, 20)));
@@ -169,12 +171,11 @@ class BaselineRoleAuthorizationTest {
             mvc.perform(
                             get(base)
                                     .param("status", "DRAFT")
-                                    .principal(
-                                            SecurityContextHolder.getContext().getAuthentication()))
+                                    .principal(auth))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.data.totalElements").value(0));
         }
-        verify(service, times(2)).listOpenForSale(any(), any(), any(), any(), any(), any());
+        verify(service, times(2)).listOpenForSale(any(), any(), any(), any(), any(), any(), eq(assignee));
         verify(service, never()).list(any(), any(), any(), any(), any(), any(), any());
     }
 
