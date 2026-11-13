@@ -507,6 +507,10 @@ public class CruiseMainflowService {
 
     private String readinessFingerprint(UUID id) {
         StringBuilder evidence = new StringBuilder(planSnapshot(id));
+        evidence.append(aggregate("""
+                SELECT jsonb_build_object('id', request_id, 'revision', revision, 'status', status)
+                FROM "StaffingRequest" WHERE cruise_id=? AND status NOT IN ('CANCELLED','RETURNED')
+                """, id));
         for (String table : List.of("CruiseRegulation"))
             evidence.append(
                     aggregate(

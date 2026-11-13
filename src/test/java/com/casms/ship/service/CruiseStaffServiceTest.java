@@ -89,7 +89,7 @@ class CruiseStaffServiceTest {
         agent.setUserId(UUID.randomUUID());
         agent.setUsername("agent");
         agent.addRole(Role.BOOKING_AGENT);
-        when(cruiseRepository.existsById(cruiseId)).thenReturn(true);
+        when(cruiseRepository.findById(cruiseId)).thenReturn(Optional.of(cruise));
         when(userRepository.findByStatus(UserStatus.ACTIVE)).thenReturn(List.of(user, manager, finance, agent));
 
         var options = cruiseStaffService.staffOptions(cruiseId, true);
@@ -215,20 +215,7 @@ class CruiseStaffServiceTest {
         assertEquals("DUPLICATE_STAFF_ASSIGNMENT", ex.getCode());
     }
 
-    @Test
-    void nonOverlappingOpenCruiseStillBlocksSecondAssignment() {
-        var request = new CruiseStaffRequest();
-        request.setUserId(userId);
-        request.setRoleInCruise("ONBOARD_STAFF");
-        when(cruiseRepository.findByIdForUpdate(cruiseId)).thenReturn(Optional.of(cruise));
-        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
-        when(cruiseStaffRepository.findActiveAssignment(userId)).thenReturn(Optional.of(new CruiseStaff()));
 
-        var error = assertThrows(BusinessException.class,
-                () -> cruiseStaffService.assignStaff(cruiseId, request, userId));
-        assertEquals("STAFF_ALREADY_ASSIGNED_TO_OPEN_CRUISE", error.getCode());
-        verify(cruiseStaffRepository, never()).saveAndFlush(any());
-    }
 
     @Test
     void inactiveAccountCannotBeAssigned() {

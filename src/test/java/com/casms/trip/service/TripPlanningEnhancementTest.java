@@ -433,7 +433,7 @@ public class TripPlanningEnhancementTest {
         act.setActivityName("Gala Dinner trên boong tàu");
         act.setLocation("Boong 8");
 
-        when(onboardActivityRepository.findAll()).thenReturn(List.of(act));
+        when(onboardActivityRepository.findByCatalogEntryTrue()).thenReturn(List.of(act));
 
         ApiResponse<List<PlanningSourceActivityResponse>> actRes =
                 catalogController.getSourceActivities();
@@ -1061,76 +1061,15 @@ public class TripPlanningEnhancementTest {
     }
 
     @Test
-    @DisplayName("BE-14/BE-DEC-03: Thu hồi phiên bản IN_REVIEW về DRAFT thành công")
-    void testBE14_WithdrawVersionSuccessfully() {
+    void retiredTemplateReviewCannotBeWithdrawnByEitherIdentifier() {
+        UUID versionId = UUID.randomUUID();
         UUID tripId = UUID.randomUUID();
-        Trip trip = new Trip();
-        trip.setTripId(tripId);
-        trip.setTripCode("TR-2026");
-        trip.setStatus(TripStatus.DRAFT);
-        trip.setDurationDays(2);
 
-        UUID versionId = UUID.randomUUID();
-        TripScheduleVersion ver = new TripScheduleVersion();
-        ver.setVersionId(versionId);
-        ver.setVersionNumber(1);
-        ver.setTrip(trip);
-        ver.setStatus(TripScheduleVersionStatus.IN_REVIEW);
-        ver.setRevision(3L);
-        ver.setSubmittedRevision(3L);
-        ver.setSubmittedAt(Instant.now());
-        ver.setDays(new ArrayList<>());
-        ver.setStops(new ArrayList<>());
-        ver.setEntries(new ArrayList<>());
-
-        when(versionRepository.findById(versionId)).thenReturn(Optional.of(ver));
-        when(versionRepository.save(any(TripScheduleVersion.class)))
-                .thenAnswer(i -> i.getArgument(0));
-
-        com.casms.trip.dto.request.VersionWithdrawRequest req =
-                new com.casms.trip.dto.request.VersionWithdrawRequest();
-        req.setExpectedRevision(3L);
-        req.setReason("Cần chỉnh sửa lại giờ tham quan");
-
-        TripScheduleVersionDetailResponse res =
-                versionService.withdrawById(versionId, req, actorId);
-
-        assertNotNull(res);
-        assertEquals(TripScheduleVersionStatus.DRAFT, res.getStatus());
-        assertEquals(ver.getVersionId(), res.getVersionId());
-        verify(versionRepository)
-                .save(
-                        argThat(
-                                v ->
-                                        v.getStatus() == TripScheduleVersionStatus.DRAFT
-                                                && v.getSubmittedRevision() == null));
-        verify(auditService)
-                .recordAudit(
-                        eq(actorId),
-                        eq("WITHDRAW"),
-                        eq("TripScheduleVersion"),
-                        eq(versionId),
-                        eq("SUCCESS"),
-                        contains("Cần chỉnh sửa lại giờ tham quan"));
-    }
-
-    @Test
-    @DisplayName("BE-14: Thu hồi thất bại khi phiên bản không ở trạng thái IN_REVIEW")
-    void testBE14_WithdrawVersionFailsWhenNotReview() {
-        UUID versionId = UUID.randomUUID();
-        TripScheduleVersion ver = new TripScheduleVersion();
-        ver.setVersionId(versionId);
-        ver.setTrip(new Trip());
-        ver.setStatus(TripScheduleVersionStatus.DRAFT); // already draft
-
-        when(versionRepository.findById(versionId)).thenReturn(Optional.of(ver));
-
-        BusinessException ex =
-                assertThrows(
-                        BusinessException.class,
-                        () -> versionService.withdrawById(versionId, null, actorId));
-
-        assertEquals("INVALID_STATUS", ex.getCode());
+        assertEquals("TEMPLATE_REVIEW_RETIRED", assertThrows(BusinessException.class,
+                () -> versionService.withdrawById(versionId, null, actorId)).getCode());
+        assertEquals("TEMPLATE_REVIEW_RETIRED", assertThrows(BusinessException.class,
+                () -> versionService.withdraw(tripId, 1, null, actorId)).getCode());
+        verifyNoInteractions(versionRepository, auditService);
     }
 
     @Test
@@ -1600,6 +1539,7 @@ public class TripPlanningEnhancementTest {
 
         TripPlanDay day1 = new TripPlanDay();
         day1.setDayId(UUID.randomUUID());
+        day1.setVersion(ver);
         day1.setDayNumber(1);
         day1.setDayType(ItineraryDayType.SEA_DAY);
         ver.setDays(new ArrayList<>(List.of(day1)));
@@ -1694,6 +1634,7 @@ public class TripPlanningEnhancementTest {
 
         TripPlanDay day1 = new TripPlanDay();
         day1.setDayId(UUID.randomUUID());
+        day1.setVersion(ver);
         day1.setDayNumber(1);
         day1.setDayType(ItineraryDayType.SEA_DAY);
         ver.setDays(new ArrayList<>(List.of(day1)));
@@ -1707,6 +1648,7 @@ public class TripPlanningEnhancementTest {
         deck10.setDeckName("Sun Deck");
 
         OnboardActivity srcAct = new OnboardActivity();
+        srcAct.setCatalogEntry(true);
         srcAct.setOnboardActivityId(srcActId);
         srcAct.setActivityName("Lớp Yoga & Thiền Đón Bình Minh");
         srcAct.setCategory(com.casms.activity.enums.OnboardActivityCategory.SPORTS_WELLNESS);
@@ -1999,6 +1941,9 @@ public class TripPlanningEnhancementTest {
         port.setTimeZoneId("Asia/Ho_Chi_Minh");
 
         TripPlanStop stop = new TripPlanStop();
+        TripScheduleVersion version = new TripScheduleVersion();
+        version.setStatus(TripScheduleVersionStatus.DRAFT);
+        stop.setVersion(version);
         stop.setStopId(UUID.randomUUID());
         stop.setClientKey("stop-hlg");
         stop.setPort(port);

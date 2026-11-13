@@ -1,6 +1,7 @@
 package com.casms.ship.service;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -79,7 +80,7 @@ class DeckServiceAssignmentPostgresIntegrationTest {
 
     private MockHttpServletRequestBuilder scoped(
             String verb, UUID deckId, UUID serviceId, UUID shipId) {
-        return request(HttpMethod.valueOf(verb), path(verb, deckId, serviceId))
+        return request(HttpMethod.valueOf(verb), path(verb, deckId, serviceId)).with(csrf())
                 .param("shipId", shipId.toString());
     }
 
@@ -170,13 +171,15 @@ class DeckServiceAssignmentPostgresIntegrationTest {
                         request(
                                         HttpMethod.valueOf(verb),
                                         path(verb, deck.getDeckId(), service.getServiceId()))
+                                .with(csrf())
                                 .param("shipId", "not-a-uuid"))
                 .andExpect(status().isBadRequest());
         mvc.perform(
                         request(
                                 HttpMethod.valueOf(verb),
                                 "/decks/not-a-uuid/services"
-                                        + (verb.equals("GET") ? "" : "/" + service.getServiceId())))
+                                        + (verb.equals("GET") ? "" : "/" + service.getServiceId()))
+                                .with(csrf()))
                 .andExpect(status().isBadRequest());
     }
 

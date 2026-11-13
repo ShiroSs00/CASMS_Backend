@@ -47,6 +47,8 @@ public class CruiseTimezoneAndSchedulePostgresIntegrationTest {
     @Autowired private ShipRepository shipRepository;
     @Autowired private DeckRepository deckRepository;
     @Autowired private PortRepository portRepository;
+    @Autowired private com.casms.ship.repository.DestinationRepository destinationRepository;
+    @Autowired private org.springframework.transaction.support.TransactionTemplate transactions;
     @Autowired private ItineraryRepository itineraryRepository;
     @Autowired private ItineraryDayRepository itineraryDayRepository;
     @Autowired private CruiseStopRepository cruiseStopRepository;
@@ -84,7 +86,14 @@ public class CruiseTimezoneAndSchedulePostgresIntegrationTest {
         portDan.setCountryCode("VN");
         portDan.setTimeZoneId("Asia/Ho_Chi_Minh");
         portDan.setStatus(PortStatus.ACTIVE);
+        var destination = new com.casms.ship.entity.Destination();
+        destination.setDestinationName("Da Nang test " + UUID.randomUUID());
+        destination.setCountryCode("VN");
+        destination.setStatus(com.casms.ship.enums.DestinationStatus.ACTIVE);
+        portDan.setDestination(destinationRepository.save(destination));
         portDan = portRepository.save(portDan);
+        transactions.executeWithoutResult(status -> portRepository.addServedDestination(
+                portDan.getPortId(), portDan.getDestination().getDestinationId()));
 
         portTokyo = new Port();
         portTokyo.setPortCode("JP-TYO-" + UUID.randomUUID().toString().substring(0, 4));
@@ -135,8 +144,8 @@ public class CruiseTimezoneAndSchedulePostgresIntegrationTest {
         trip.setStatus(TripStatus.READY);
         trip.setPlannedScope("DOMESTIC");
         trip.setCountryCodes(List.of("VN"));
-        trip.setDurationDays(3);
-        trip.setDurationNights(2);
+        trip.setDurationDays(2);
+        trip.setDurationNights(1);
         trip.setDurationGroup(TripDurationGroup.SHORT);
         trip = tripRepository.save(trip);
 
@@ -148,17 +157,18 @@ public class CruiseTimezoneAndSchedulePostgresIntegrationTest {
         version = versionRepository.save(version);
 
         List<TripPlanDay> days = new ArrayList<>();
-        for (int i = 1; i <= 3; i++) {
+        version.setTrip(trip);
+        for (int i = 1; i <= trip.getDurationDays(); i++) {
             TripPlanDay d = new TripPlanDay();
             d.setVersion(version);
             d.setDayNumber(i);
             d.setTitle("Ngày " + i);
-            d.setDayType(i == 2 ? ItineraryDayType.PORT_DAY : ItineraryDayType.SEA_DAY);
+            d.setDayType(ItineraryDayType.PORT_DAY);
             days.add(planDayRepository.save(d));
         }
         version.setDays(days);
 
-        // Stops: Day 1 HPH, Day 2 DAN, Day 3 HPH
+        // Stops: Day 1 HPH, Day 2 DAN
         TripPlanStop s1 = new TripPlanStop();
         s1.setVersion(version);
         s1.setClientKey("STOP-1-" + UUID.randomUUID());
@@ -176,6 +186,7 @@ public class CruiseTimezoneAndSchedulePostgresIntegrationTest {
         s2.setVersion(version);
         s2.setClientKey("STOP-2-" + UUID.randomUUID());
         s2.setPort(portDan);
+        s2.setDestination(portDan.getDestination());
         s2.setStopOrder(2);
         s2.setArrivalDayNumber(2);
         s2.setPlannedArrivalTime(LocalTime.of(8, 0));
@@ -183,6 +194,7 @@ public class CruiseTimezoneAndSchedulePostgresIntegrationTest {
         s2.setPlannedDepartureTime(LocalTime.of(18, 0));
         s2.setCallType(CruiseStopCallType.NORMAL);
         s2.setArrivalMethod(CruiseStopArrivalMethod.BERTH);
+        s2.setIsDisembarkation(true);
         s2 = planStopRepository.save(s2);
 
         version.setStops(List.of(s1, s2));
@@ -233,6 +245,7 @@ public class CruiseTimezoneAndSchedulePostgresIntegrationTest {
         e2.setKind(TripPlanEntryKind.SHORE_EXCURSION);
         e2.setTitle("Tour Bà Nà Hills");
         e2.setStop(s2);
+        e2.setDestination(portDan.getDestination());
         e2.setStartDayNumber(2);
         e2.setEndDayNumber(2);
         e2.setPlannedStartTime(LocalTime.of(9, 0));
@@ -265,7 +278,7 @@ public class CruiseTimezoneAndSchedulePostgresIntegrationTest {
         req.setDepartureDatetime(departure);
         req.setReturnDatetime(departure.plusSeconds(86400 * 3));
         req.setDeparturePortId(portHph.getPortId());
-        req.setReturnPortId(portHph.getPortId());
+        req.setReturnPortId(portDan.getPortId());
         req.setShipId(testShip.getShipId());
         req.setSourceVersionId(version.getVersionId());
         req.setExpectedSourceVersionRevision(version.getRevision());
@@ -375,9 +388,10 @@ public class CruiseTimezoneAndSchedulePostgresIntegrationTest {
         req.setDepartureDatetime(departure);
         req.setReturnDatetime(departure.plusSeconds(86400 * 3));
         req.setDeparturePortId(portHph.getPortId());
-        req.setReturnPortId(portHph.getPortId());
+        req.setReturnPortId(portDan.getPortId());
         req.setShipId(testShip.getShipId());
         req.setSourceVersionId(version.getVersionId());
+        req.setExpectedSourceVersionRevision(version.getRevision());
 
         CruiseResponse created = cruiseService.create(req);
         List<OnboardActivity> acts =
@@ -402,6 +416,7 @@ public class CruiseTimezoneAndSchedulePostgresIntegrationTest {
         trip.setPlannedScope("DOMESTIC");
         trip.setDurationDays(3);
         trip.setDurationNights(2);
+        trip.setDurationGroup(TripDurationGroup.LONG);
         trip = tripRepository.save(trip);
 
         TripScheduleVersion version = new TripScheduleVersion();
@@ -411,6 +426,7 @@ public class CruiseTimezoneAndSchedulePostgresIntegrationTest {
         version.setStatus(TripScheduleVersionStatus.PUBLISHED);
         version = versionRepository.save(version);
 
+        addPortDays(version, trip);
         // Ghé HPH ngày 1, ghé DAN ngày 2, quay lại HPH ngày 3
         TripPlanStop s1 = new TripPlanStop();
         s1.setVersion(version);
@@ -465,6 +481,7 @@ public class CruiseTimezoneAndSchedulePostgresIntegrationTest {
         req.setReturnPortId(portHph.getPortId());
         req.setShipId(testShip.getShipId());
         req.setSourceVersionId(version.getVersionId());
+        req.setExpectedSourceVersionRevision(version.getRevision());
 
         CruiseResponse created = cruiseService.create(req);
         CruiseSchedulePreviewResponse schedule =
@@ -484,6 +501,18 @@ public class CruiseTimezoneAndSchedulePostgresIntegrationTest {
                 "Cùng cảng HPH tại hai lần ghé phải có hai occurrence ID riêng biệt");
     }
 
+    private void addPortDays(TripScheduleVersion version, Trip trip) {
+        version.setTrip(trip);
+        for (int i = 1; i <= trip.getDurationDays(); i++) {
+            TripPlanDay day = new TripPlanDay();
+            day.setVersion(version);
+            day.setDayNumber(i);
+            day.setDayType(ItineraryDayType.PORT_DAY);
+            day.setTitle("Ngày " + i);
+            planDayRepository.save(day);
+        }
+    }
+
     @Test
     @DisplayName(
             "BE-R05a / Case 4: Các cảng khác múi giờ tính đúng thời gian địa phương và instant"
@@ -495,8 +524,9 @@ public class CruiseTimezoneAndSchedulePostgresIntegrationTest {
         trip.setStatus(TripStatus.READY);
         trip.setPlannedScope("INTERNATIONAL");
         trip.setCountryCodes(List.of("VN", "JP"));
-        trip.setDurationDays(3);
-        trip.setDurationNights(2);
+        trip.setDurationDays(2);
+        trip.setDurationNights(1);
+        trip.setDurationGroup(TripDurationGroup.SHORT);
         trip = tripRepository.save(trip);
 
         TripScheduleVersion version = new TripScheduleVersion();
@@ -533,6 +563,7 @@ public class CruiseTimezoneAndSchedulePostgresIntegrationTest {
         version.setEntries(Collections.emptyList());
         version = versionRepository.save(version);
 
+        addPortDays(version, trip);
         Instant departure = Instant.parse("2026-11-15T01:00:00Z"); // 08:00 UTC+7
         CruiseSchedulePreviewResponse preview =
                 scheduleMaterializationService.previewSchedule(version.getVersionId(), departure);
@@ -581,6 +612,7 @@ public class CruiseTimezoneAndSchedulePostgresIntegrationTest {
         trip.setPlannedScope("DOMESTIC");
         trip.setDurationDays(2);
         trip.setDurationNights(1);
+        trip.setDurationGroup(TripDurationGroup.SHORT);
         trip = tripRepository.save(trip);
 
         TripScheduleVersion version = new TripScheduleVersion();
@@ -603,6 +635,7 @@ public class CruiseTimezoneAndSchedulePostgresIntegrationTest {
         version.setStops(List.of(s1));
         version.setEntries(Collections.emptyList());
         TripScheduleVersion savedVersion = versionRepository.save(version);
+        addPortDays(savedVersion, trip);
         UUID targetVersionId = savedVersion.getVersionId();
 
         Instant departure = Instant.parse("2026-11-20T01:00:00Z");
@@ -660,9 +693,10 @@ public class CruiseTimezoneAndSchedulePostgresIntegrationTest {
         req.setDepartureDatetime(departure);
         req.setReturnDatetime(departure.plusSeconds(86400 * 3));
         req.setDeparturePortId(portHph.getPortId());
-        req.setReturnPortId(portHph.getPortId());
+        req.setReturnPortId(portDan.getPortId());
         req.setShipId(testShip.getShipId());
         req.setSourceVersionId(version.getVersionId());
+        req.setExpectedSourceVersionRevision(version.getRevision());
 
         CruiseResponse materializedCruise = cruiseService.create(req);
         CruiseSchedulePreviewResponse resMaterialized =
@@ -700,7 +734,7 @@ public class CruiseTimezoneAndSchedulePostgresIntegrationTest {
         req.setDepartureDatetime(departure);
         req.setReturnDatetime(departure.plusSeconds(86400 * 3));
         req.setDeparturePortId(portHph.getPortId());
-        req.setReturnPortId(portHph.getPortId());
+        req.setReturnPortId(portDan.getPortId());
         req.setShipId(testShip.getShipId());
         req.setSourceVersionId(version.getVersionId());
         req.setExpectedSourceVersionRevision(initialRevision); // Stale revision!
@@ -726,9 +760,10 @@ public class CruiseTimezoneAndSchedulePostgresIntegrationTest {
         req.setDepartureDatetime(departure);
         req.setReturnDatetime(departure.plusSeconds(86400 * 3));
         req.setDeparturePortId(portHph.getPortId());
-        req.setReturnPortId(portHph.getPortId());
+        req.setReturnPortId(portDan.getPortId());
         req.setShipId(testShip.getShipId());
         req.setSourceVersionId(version.getVersionId());
+        req.setExpectedSourceVersionRevision(version.getRevision());
 
         CruiseResponse created = cruiseService.create(req);
         Itinerary itinerary =

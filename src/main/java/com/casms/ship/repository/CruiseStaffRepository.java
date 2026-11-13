@@ -45,11 +45,15 @@ SELECT EXISTS(SELECT 1 FROM "CruiseStaff" cs JOIN "User" u ON u.user_id=cs.user_
 
     boolean existsByCruise_CruiseId(UUID cruiseId);
 
-    @Query("SELECT cs FROM CruiseStaff cs WHERE cs.user.userId = :userId AND cs.status = 'ACTIVE'")
-    Optional<CruiseStaff> findActiveAssignment(@Param("userId") UUID userId);
-
-    @Query("SELECT cs.user.userId FROM CruiseStaff cs WHERE cs.status = 'ACTIVE'")
-    List<UUID> findActiveUserIds();
+    @Query("""
+            SELECT DISTINCT cs.user.userId FROM CruiseStaff cs JOIN cs.cruise c
+            WHERE cs.status = 'ACTIVE' AND (c.cruiseId = :cruiseId OR (
+                c.status NOT IN (com.casms.ship.enums.CruiseStatus.CANCELLED,
+                    com.casms.ship.enums.CruiseStatus.COMPLETED)
+                AND c.departureDatetime < :returnTime AND c.returnDatetime > :departureTime))
+            """)
+    List<UUID> findUnavailableUserIds(@Param("cruiseId") UUID cruiseId,
+            @Param("departureTime") Instant departureTime, @Param("returnTime") Instant returnTime);
 
     Optional<CruiseStaff> findFirstByCruise_CruiseIdAndUser_UserIdOrderByAssignedAtDesc(UUID cruiseId, UUID userId);
 

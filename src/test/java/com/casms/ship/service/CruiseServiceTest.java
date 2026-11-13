@@ -69,6 +69,7 @@ class CruiseServiceTest {
     @Mock private ItineraryDayRepository itineraryDayRepository;
     @Mock private CruiseImpactAssessmentService cruiseImpactAssessmentService;
     @Mock private CruisePreparationService cruisePreparationService;
+    @Mock private com.casms.staffing.StaffingWorkflowService staffingWorkflow;
     @Mock private CruisePricingPolicyRepository cruisePricingPolicyRepository;
     @Mock private OperationalIssueRepository operationalIssueRepository;
     @Mock private CruiseAuditService cruiseAuditService;
@@ -252,6 +253,7 @@ class CruiseServiceTest {
         when(itineraryRepository.findByCruiseCruiseId(cruiseId)).thenReturn(Optional.of(itinerary));
         when(cruiseStaffRepository.findByCruise_CruiseId(cruiseId)).thenReturn(List.of(captain));
         when(cruiseStaffRepository.existsActiveOnboardStaff(cruiseId)).thenReturn(true);
+        when(staffingWorkflow.ready(cruiseId)).thenReturn(true);
         when(cruiseStaffRepository.findConflictingAssignments(any(), any(), any(), any()))
                 .thenReturn(List.of());
         when(mainflow.isPlanApproved(cruiseId)).thenReturn(true);

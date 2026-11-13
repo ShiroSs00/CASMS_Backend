@@ -93,7 +93,7 @@ class BookingRecoveryTest {
         var confirmed = payment(booking, "80", "bank-reference");
         var unverified = payment(booking, "500", null);
         var wrongCurrency = payment(booking, "1000", "other-reference"); wrongCurrency.setCurrency("VND");
-        when(paymentRepository.findForBooking(booking.getBookingId())).thenReturn(List.of(confirmed, unverified, wrongCurrency));
+        when(paymentRepository.findForBookingReadOnly(booking.getBookingId())).thenReturn(List.of(confirmed, unverified, wrongCurrency));
         var refund = new com.casms.payment.entity.Refund();
         refund.setStatus(com.casms.payment.enums.RefundStatus.Completed);
         refund.setCompletedAt(java.time.Instant.now()); refund.setApprovedAmount(new BigDecimal("20"));
@@ -108,7 +108,7 @@ class BookingRecoveryTest {
     @Test void fullyPaidProjectionIsSeparateFromBookingConfirmation() {
         Booking booking = storedGuestBooking(); booking.setCurrency("USD");
         booking.setBookingStatus(com.casms.booking.enums.BookingStatus.Draft);
-        when(paymentRepository.findForBooking(booking.getBookingId())).thenReturn(List.of(payment(booking, "100", "settled")));
+        when(paymentRepository.findForBookingReadOnly(booking.getBookingId())).thenReturn(List.of(payment(booking, "100", "settled")));
         var response = service.recoverBookingByIdempotencyKey("key", null, "original-token");
         assertTrue(response.isFullyPaid());
         assertEquals(BookingStatus.Draft, response.getBookingStatus());

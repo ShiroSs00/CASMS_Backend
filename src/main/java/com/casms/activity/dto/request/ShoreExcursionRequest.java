@@ -8,6 +8,7 @@ import java.util.UUID;
 
 public record ShoreExcursionRequest(
         @NotNull UUID cruiseStopId,
+        @NotNull UUID destinationId,
         @NotNull UUID supplierId,
         @NotBlank @Size(max = 250) String excursionName,
         @NotNull Instant startTime,

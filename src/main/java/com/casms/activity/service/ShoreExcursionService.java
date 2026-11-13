@@ -13,7 +13,10 @@ import com.casms.activity.repository.ShoreExcursionRepository;
 import com.casms.activity.repository.SupplierRepository;
 import com.casms.common.service.BusinessCodeGenerator;
 import com.casms.ship.entity.CruiseStop;
+import com.casms.ship.entity.Destination;
 import com.casms.ship.repository.CruiseStopRepository;
+import com.casms.ship.repository.DestinationRepository;
+import com.casms.ship.repository.PortRepository;
 
 import jakarta.persistence.EntityNotFoundException;
 
@@ -36,6 +39,8 @@ public class ShoreExcursionService {
     private final RegistrationRepository registrationRepository;
     private final SupplierRepository supplierRepository;
     private final CruiseStopRepository cruiseStopRepository;
+    private final DestinationRepository destinationRepository;
+    private final PortRepository portRepository;
     private final BusinessCodeGenerator businessCodeGenerator;
 
     private static final List<RegistrationStatus> CAPACITY_STATUSES =
@@ -211,6 +216,11 @@ public class ShoreExcursionService {
             throw new IllegalArgumentException("Cruise stop is required.");
         }
 
+        if (excursion.getDestination() == null
+                || excursion.getDestination().getDestinationId() == null) {
+            throw new IllegalArgumentException("Excursion destination is required.");
+        }
+
         if (excursion.getSupplier() == null || excursion.getSupplier().getSupplierId() == null) {
             throw new IllegalArgumentException("Supplier is required.");
         }
@@ -243,6 +253,7 @@ public class ShoreExcursionService {
         }
 
         validateSupplier(excursion.getSupplier().getSupplierId());
+        validateDestination(excursion);
         validateSchedule(excursion, excludeId);
         validateReturnTime(excursion);
         validateUniqueCode(excursion, excludeId);
@@ -263,6 +274,37 @@ public class ShoreExcursionService {
 
         if (supplier.getVerificationStatus() != SupplierVerificationStatus.VERIFIED) {
             throw new IllegalStateException("Supplier must be verified before use.");
+        }
+    }
+
+    /** Destination is the tour subject; the port is only the access point for its cruise call. */
+    private void validateDestination(ShoreExcursion excursion) {
+        CruiseStop stop = cruiseStopRepository.findById(excursion.getCruiseStop().getCruiseStopId())
+                .orElseThrow(() -> new EntityNotFoundException("Cruise stop not found."));
+        UUID destinationId = excursion.getDestination().getDestinationId();
+        Destination destination = destinationRepository.findById(destinationId)
+                .orElseThrow(() -> new EntityNotFoundException("Destination not found: " + destinationId));
+        if (destination.getStatus() != com.casms.ship.enums.DestinationStatus.ACTIVE) {
+            throw new com.casms.common.exception.BusinessException(
+                    org.springframework.http.HttpStatus.UNPROCESSABLE_ENTITY,
+                    "EXCURSION_DESTINATION_INACTIVE", "Excursion destination must be active");
+        }
+        if (stop.getPort() == null || !portRepository.servesActiveDestination(
+                stop.getPort().getPortId(), destinationId)) {
+            throw new com.casms.common.exception.BusinessException(
+                    org.springframework.http.HttpStatus.UNPROCESSABLE_ENTITY,
+                    "EXCURSION_DESTINATION_NOT_SERVED",
+                    "The selected destination is not served from this port call");
+        }
+        boolean plannedForStop = stop.getDestination() != null
+                && destinationId.equals(stop.getDestination().getDestinationId())
+                || stop.getVisits().stream().anyMatch(v -> v.getDestination() != null
+                        && destinationId.equals(v.getDestination().getDestinationId()));
+        if (!plannedForStop) {
+            throw new com.casms.common.exception.BusinessException(
+                    org.springframework.http.HttpStatus.UNPROCESSABLE_ENTITY,
+                    "EXCURSION_DESTINATION_NOT_PLANNED",
+                    "The destination must be planned for this exact port call");
         }
     }
 
@@ -472,10 +514,14 @@ public class ShoreExcursionService {
                 supplierRepository
                         .findById(request.supplierId())
                         .orElseThrow(() -> new EntityNotFoundException("Supplier not found."));
+        Destination destination = destinationRepository.findById(request.destinationId())
+                .orElseThrow(() -> new EntityNotFoundException("Destination not found."));
 
         com.casms.common.util.NewWriteCurrency.requireUsd(
                 request.currencyCode() == null ? "USD" : request.currencyCode());
         excursion.setCruiseStop(stop);
+        excursion.setPort(stop.getPort());
+        excursion.setDestination(destination);
         excursion.setSupplier(supplier);
         excursion.setExcursionName(request.excursionName().trim());
         excursion.setStartTime(request.startTime());

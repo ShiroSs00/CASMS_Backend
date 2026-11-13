@@ -8,6 +8,7 @@ import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
@@ -70,4 +71,23 @@ SELECT EXISTS (SELECT 1 FROM "PortCallWindow" WHERE port_id=:id)
 """,
             nativeQuery = true)
     boolean hasDirectoryReferences(@Param("id") UUID id);
+
+    @Query(value = "SELECT destination_id FROM \"PortDestinationAccess\" WHERE port_id=:portId ORDER BY destination_id", nativeQuery = true)
+    List<UUID> findServedDestinationIds(@Param("portId") UUID portId);
+
+    @Query(value = """
+            SELECT EXISTS(
+              SELECT 1 FROM \"PortDestinationAccess\" a
+              JOIN \"Destination\" d ON d.destination_id=a.destination_id AND d.status='ACTIVE'
+              WHERE a.port_id=:portId AND a.destination_id=:destinationId)
+            """, nativeQuery = true)
+    boolean servesActiveDestination(@Param("portId") UUID portId, @Param("destinationId") UUID destinationId);
+
+    @Modifying
+    @Query(value = "DELETE FROM \"PortDestinationAccess\" WHERE port_id=:portId", nativeQuery = true)
+    void deleteServedDestinations(@Param("portId") UUID portId);
+
+    @Modifying
+    @Query(value = "INSERT INTO \"PortDestinationAccess\" (port_id,destination_id) VALUES (:portId,:destinationId) ON CONFLICT DO NOTHING", nativeQuery = true)
+    void addServedDestination(@Param("portId") UUID portId, @Param("destinationId") UUID destinationId);
 }

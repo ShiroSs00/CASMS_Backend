@@ -13,11 +13,13 @@ import com.casms.identity.enums.UserStatus;
 import com.casms.identity.repository.UserRepository;
 import com.casms.security.jwt.JwtService;
 import com.casms.ship.entity.Cruise;
+import com.casms.ship.entity.CruiseStaff;
 import com.casms.ship.entity.Port;
 import com.casms.ship.enums.CruiseCruiseType;
 import com.casms.ship.enums.CruiseStatus;
 import com.casms.ship.enums.PortStatus;
 import com.casms.ship.repository.CruiseRepository;
+import com.casms.ship.repository.CruiseStaffRepository;
 import com.casms.ship.repository.PortRepository;
 
 import org.junit.jupiter.api.AfterEach;
@@ -48,6 +50,8 @@ class BookingPostgresIntegrationTest {
 
     @Autowired private CruiseRepository cruiseRepository;
 
+    @Autowired private CruiseStaffRepository cruiseStaffRepository;
+
     @Autowired private PortRepository portRepository;
 
     @Autowired private UserRepository userRepository;
@@ -62,7 +66,8 @@ class BookingPostgresIntegrationTest {
     private User staffUser;
     private User passengerUser1;
     private User passengerUser2;
-    private String adminToken;
+    private CruiseStaff staffAssignment;
+    private String bookingAgentToken;
     private String passengerToken;
 
     private final List<Booking> createdBookings = new ArrayList<>();
@@ -124,7 +129,13 @@ class BookingPostgresIntegrationTest {
         passengerUser2.setRoles(Set.of(Role.PASSENGER));
         passengerUser2 = userRepository.save(passengerUser2);
 
-        adminToken = jwtService.generateToken(staffUser.getUsername(), staffUser.getUserId());
+        staffAssignment = new CruiseStaff();
+        staffAssignment.setCruise(cruise1);
+        staffAssignment.setUser(staffUser);
+        staffAssignment.setRoleInCruise("BOOKING_AGENT");
+        staffAssignment.setAssignedAt(Instant.now());
+        staffAssignment = cruiseStaffRepository.save(staffAssignment);
+        bookingAgentToken = jwtService.generateToken(staffUser.getUsername(), staffUser.getUserId());
         passengerToken =
                 jwtService.generateToken(passengerUser1.getUsername(), passengerUser1.getUserId());
     }
@@ -134,6 +145,9 @@ class BookingPostgresIntegrationTest {
         if (!createdBookings.isEmpty()) {
             bookingRepository.deleteAll(createdBookings);
             createdBookings.clear();
+        }
+        if (staffAssignment != null) {
+            cruiseStaffRepository.delete(staffAssignment);
         }
         if (cruise1 != null) {
             cruiseRepository.delete(cruise1);
@@ -275,13 +289,15 @@ class BookingPostgresIntegrationTest {
             "Endpoint GET /booking - Không có filter trả về HTTP 200 (xác minh fix lỗi HTTP 500"
                 + " SQLState 42P18 parameter $3)")
     void testGetBookingEndpoint_NoFilter_ReturnsHttp200() throws Exception {
-        createBooking(cruise1, passengerUser1, BookingStatus.Confirmed);
+        Booking assigned = createBooking(cruise1, passengerUser1, BookingStatus.Confirmed);
+        createBooking(cruise2, passengerUser1, BookingStatus.Confirmed);
 
-        mockMvc.perform(get("/booking").header("Authorization", "Bearer " + adminToken))
+        mockMvc.perform(get("/booking").header("Authorization", "Bearer " + bookingAgentToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.content").isArray())
-                .andExpect(jsonPath("$.data.content", not(empty())));
+                .andExpect(jsonPath("$.data.content[*].bookingReference",
+                        contains(assigned.getBookingReference())));
     }
 
     @Test
@@ -296,7 +312,7 @@ class BookingPostgresIntegrationTest {
         mockMvc.perform(
                         get("/booking")
                                 .param("status", "Confirmed")
-                                .header("Authorization", "Bearer " + adminToken))
+                                .header("Authorization", "Bearer " + bookingAgentToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(
@@ -317,7 +333,7 @@ class BookingPostgresIntegrationTest {
                         get("/booking")
                                 .param("cruiseId", cruise1.getCruiseId().toString())
                                 .param("status", "Draft")
-                                .header("Authorization", "Bearer " + adminToken))
+                                .header("Authorization", "Bearer " + bookingAgentToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(

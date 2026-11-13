@@ -540,6 +540,7 @@ class TripScheduleVersionServiceTest {
 
     @Test
     void seaDepartureWithArrivalPortDoesNotRequireAnEmbarkationStop() {
+        trip.setDurationGroup(TripDurationGroup.SHORT);
         version.getDays().getFirst().setDeparturePort(samplePort);
         version.getDays().getFirst().setPlannedDepartureTime(LocalTime.of(8, 15));
         version.getDays().get(0).setDayType(ItineraryDayType.SEA_DAY);

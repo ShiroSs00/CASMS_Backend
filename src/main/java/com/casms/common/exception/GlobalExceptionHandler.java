@@ -236,10 +236,15 @@ public class GlobalExceptionHandler {
                 root != null && root.getMessage() != null ? root.getMessage().toLowerCase() : "";
         String msg =
                 ex.getMessage() != null ? ex.getMessage() : "Dữ liệu xung đột toàn vẹn dữ liệu";
-        if (rootMsg.contains("uq_cruise_staff_one_active_per_user")) {
+        if (rootMsg.contains("uq_cruise_staff_one_active_per_cruise_user")) {
             return ResponseEntity.status(HttpStatus.CONFLICT)
-                    .body(ApiResponse.error("Nhân viên đã được phân công vào một chuyến chưa kết thúc.",
-                            "STAFF_ALREADY_ASSIGNED_TO_OPEN_CRUISE"));
+                    .body(ApiResponse.error("Nhân viên đã được phân công vào chuyến này.",
+                            "DUPLICATE_STAFF_ASSIGNMENT"));
+        }
+        if (rootMsg.contains("ship_staff_schedule_conflict")) {
+            return ResponseEntity.status(HttpStatus.CONFLICT)
+                    .body(ApiResponse.error("Nhân viên bị trùng lịch chuyến.",
+                            "SHIP_STAFF_SCHEDULE_CONFLICT"));
         }
         if (rootMsg.contains("cruise_staff_cruise_closed")) {
             return ResponseEntity.status(HttpStatus.CONFLICT)

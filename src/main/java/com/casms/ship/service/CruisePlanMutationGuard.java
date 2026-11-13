@@ -143,8 +143,21 @@ public class CruisePlanMutationGuard {
                                                 "Fixed cruise itinerary cannot be structurally"
                                                     + " edited");
                                 }
+                                var before = new LinkedHashMap<UUID, String>();
+                                if (!operational && !method.equals("deleteDraft")) {
+                                    for (UUID id : ids) before.put(id, plans.planSnapshot(id));
+                                }
                                 try {
                                     Object result = call.proceed();
+                                    if (!before.isEmpty()) {
+                                        em.flush();
+                                        for (var entry : before.entrySet()) {
+                                            if (!Objects.equals(entry.getValue(), plans.planSnapshot(entry.getKey()))) {
+                                                jdbc.query("SELECT invalidate_staffing_plan(?)",
+                                                        rs -> {}, entry.getKey());
+                                            }
+                                        }
+                                    }
                                     if (operational) {
                                         em.flush();
                                         var auth =

@@ -74,7 +74,12 @@ class CruiseStaffLifecyclePostgresIntegrationTest {
     }
 
     @Test
-    void concurrentAssignmentsToNonOverlappingCruisesHaveOneWinnerAndDatabaseRejectsBypass() throws Exception {
+    void concurrentAssignmentsToOverlappingCruisesHaveOneWinnerAndDatabaseRejectsBypass() throws Exception {
+        jdbc.update("""
+                UPDATE "Cruise" target SET departure_datetime = source.departure_datetime,
+                    return_datetime = source.return_datetime
+                FROM "Cruise" source WHERE target.cruise_id = ? AND source.cruise_id = ?
+                """, secondCruise, firstCruise);
         var start = new CountDownLatch(1);
         try (var pool = Executors.newFixedThreadPool(2)) {
             var first = pool.submit(() -> assignConcurrently(start, firstCruise, hr));
@@ -82,7 +87,7 @@ class CruiseStaffLifecyclePostgresIntegrationTest {
             start.countDown();
             var outcomes = List.of(first.get(20, TimeUnit.SECONDS), second.get(20, TimeUnit.SECONDS));
             assertEquals(1, outcomes.stream().filter("SUCCESS"::equals).count());
-            assertEquals(1, outcomes.stream().filter("STAFF_ALREADY_ASSIGNED_TO_OPEN_CRUISE"::equals).count());
+            assertEquals(1, outcomes.stream().filter("SHIP_STAFF_SCHEDULE_CONFLICT"::equals).count());
         }
         assertEquals(1L, jdbc.queryForObject("""
                 SELECT count(*) FROM "CruiseStaff" WHERE user_id = ? AND status = 'ACTIVE'
@@ -102,15 +107,16 @@ class CruiseStaffLifecyclePostgresIntegrationTest {
                 """, firstCruise);
         assertEquals("CRUISE_STAFF_REMOVAL_NOT_ALLOWED", assertThrows(BusinessException.class,
                 () -> service.removeStaff(firstCruise, employee, first, null, hr)).getCode());
-        assertEquals("STAFF_ALREADY_ASSIGNED_TO_OPEN_CRUISE", assertThrows(BusinessException.class,
-                () -> service.assignStaff(secondCruise, request(), hr)).getCode());
+        assertEquals("ACTIVE", service.assignStaff(secondCruise, request(), hr).getStatus());
         assertEquals("ACTIVE", status(first));
         jdbc.update("""
                 UPDATE "Cruise" SET status = 'COMPLETED', actual_return_datetime = now()
                 WHERE cruise_id = ?
                 """, firstCruise);
         assertEquals("COMPLETED", status(first));
-        assertEquals("ACTIVE", service.assignStaff(secondCruise, request(), hr).getStatus());
+        assertEquals(1L, jdbc.queryForObject("""
+                SELECT count(*) FROM "CruiseStaff" WHERE user_id = ? AND status = 'ACTIVE'
+                """, Long.class, employee));
     }
 
     @Test

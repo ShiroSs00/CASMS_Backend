@@ -10,6 +10,7 @@ import java.util.UUID;
 public record ShoreExcursionResponse(
         UUID shoreExcursionId,
         UUID cruiseStopId,
+        UUID destinationId,
         String excursionCode,
         String excursionName,
         UUID supplierId,
@@ -39,6 +40,9 @@ public record ShoreExcursionResponse(
                 excursion.getCruiseStop() == null
                         ? null
                         : excursion.getCruiseStop().getCruiseStopId(),
+                excursion.getDestination() == null
+                        ? null
+                        : excursion.getDestination().getDestinationId(),
                 excursion.getExcursionCode(),
                 excursion.getExcursionName(),
                 excursion.getSupplier().getSupplierId(),

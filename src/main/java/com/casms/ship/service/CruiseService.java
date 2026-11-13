@@ -134,6 +134,7 @@ public class CruiseService {
     private final TripScheduleVersionRepository tripScheduleVersionRepository;
     private final ScheduleMaterializationService scheduleMaterializationService;
     private final CruiseStaffRepository cruiseStaffRepository;
+    private final com.casms.staffing.StaffingWorkflowService staffingWorkflow;
     private final CruiseRegulationService cruiseRegulationService;
     private final OnboardActivityRepository onboardActivityRepository;
     private final ShoreExcursionRepository shoreExcursionRepository;
@@ -1472,6 +1473,10 @@ public class CruiseService {
                 activeStaff.stream().anyMatch(s -> "CAPTAIN".equalsIgnoreCase(s.getRoleInCruise()));
 
         boolean onboardStaffAssigned = cruiseStaffRepository.existsActiveOnboardStaff(cruiseId);
+        if (!staffingWorkflow.ready(cruiseId)) {
+            issues.add("Nhu cầu nhân sự chưa được duyệt hoặc chưa đủ người");
+            blockers.add("STAFFING_APPROVAL_REQUIRED");
+        }
         List<String> staffConflicts = new ArrayList<>();
         if (!onboardStaffAssigned) {
             issues.add("Chuyến khởi hành chưa được phân công Onboard Staff");
@@ -4383,6 +4388,7 @@ public class CruiseService {
         boolean onboardStaffAssigned = cruiseStaffRepository.existsActiveOnboardStaff(cruiseId);
         boolean departureClearanceReady =
                 onboardStaffAssigned
+                        && staffingWorkflow.ready(cruiseId)
                         && ship != null
                         && ShipStatus.isOperational(ship.getStatus())
                         && (cruise.getStatus() == CruiseStatus.PUBLISHED

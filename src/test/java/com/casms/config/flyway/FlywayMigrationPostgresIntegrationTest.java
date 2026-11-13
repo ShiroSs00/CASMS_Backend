@@ -45,7 +45,7 @@ class FlywayMigrationPostgresIntegrationTest {
     private static final String[] PROD_LOCATIONS = {
         "classpath:db/migration", "classpath:db/prod-migration"
     };
-    private static final String LATEST = "93";
+    private static final String LATEST = "113";
 
     private final List<String> createdDatabases = new ArrayList<>();
 

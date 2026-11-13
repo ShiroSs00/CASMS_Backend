@@ -14,6 +14,7 @@ import lombok.Data;
 
 import java.math.BigDecimal;
 import java.util.UUID;
+import java.util.Set;
 
 @Data
 @Schema(
@@ -32,6 +33,10 @@ public class PortUpdateRequest {
 
     @Schema(description = "ID điểm đến liên kết", example = "3fa85f64-5717-4562-b3fc-2c963f66afa6")
     private UUID destinationId;
+
+    @Schema(description = "Thay toàn bộ danh sách địa điểm mà cảng có thể phục vụ. Bỏ trống trường để giữ nguyên danh sách.")
+    @Size(max = 100, message = "A port can serve at most 100 destinations")
+    private Set<UUID> servedDestinationIds;
 
     @Schema(description = "Vĩ độ", example = "35.4522")
     @DecimalMin("-90")

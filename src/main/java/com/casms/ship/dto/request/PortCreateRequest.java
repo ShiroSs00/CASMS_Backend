@@ -17,6 +17,7 @@ import lombok.Data;
 
 import java.math.BigDecimal;
 import java.util.UUID;
+import java.util.Set;
 
 @Data
 @Schema(description = "Yêu cầu tạo mới cảng")
@@ -56,6 +57,10 @@ public class PortCreateRequest {
 
     @Schema(description = "ID điểm đến liên kết", example = "3fa85f64-5717-4562-b3fc-2c963f66afa6")
     private UUID destinationId;
+
+    @Schema(description = "Các địa điểm có thể tiếp cận từ cảng này; nếu bỏ trống, destinationId vẫn được đưa vào danh sách khi có.")
+    @Size(max = 100, message = "A port can serve at most 100 destinations")
+    private Set<UUID> servedDestinationIds;
 
     @Schema(description = "Mô tả cảng", example = "Cảng du thuyền quốc tế Osanbashi")
     @Size(max = 1000, message = "Description must not exceed 1000 characters")

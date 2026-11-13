@@ -24,7 +24,6 @@ import java.util.UUID;
         name = "POS area access",
         description =
                 "Cruise-aware employee assignments and explicit POS-area-service capabilities")
-@PreAuthorize("hasAuthority('POS_MANAGE') and principal.enabled and principal.accountNonLocked")
 public class PosAssignmentController {
     private final PosAccessService service;
 
@@ -32,6 +31,7 @@ public class PosAssignmentController {
             summary =
                     "List employee assignments for a physical area, including inactive assignments")
     @GetMapping("/ships/{shipId}/areas/{areaId}/staff")
+    @PreAuthorize("(hasAuthority('POS_MANAGE') or (hasRole('HR_MANAGER') and hasAuthority('CRUISE_STAFF_READ'))) and principal.enabled and principal.accountNonLocked")
     public ApiResponse<List<PosDtos.AreaStaff>> staff(
             @PathVariable UUID shipId, @PathVariable UUID areaId) {
         return ApiResponse.success(service.staff(shipId, areaId));
@@ -46,6 +46,7 @@ public class PosAssignmentController {
                         + " ship. Changes revoke existing sessions for this assignment; no global"
                         + " role or operation permission is granted.")
     @PutMapping("/ships/{shipId}/areas/{areaId}/staff/{userId}")
+    @PreAuthorize("hasAuthority('CRUISE_STAFF_ASSIGN') and hasRole('HR_MANAGER') and principal.enabled and principal.accountNonLocked")
     public ApiResponse<PosDtos.AreaStaff> assignStaff(
             @PathVariable UUID shipId,
             @PathVariable UUID areaId,
@@ -61,6 +62,7 @@ public class PosAssignmentController {
                         + " sessions")
     @DeleteMapping("/ships/{shipId}/areas/{areaId}/staff/{userId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
+    @PreAuthorize("hasAuthority('CRUISE_STAFF_ASSIGN') and hasRole('HR_MANAGER') and principal.enabled and principal.accountNonLocked")
     public void unassignStaff(
             @PathVariable UUID shipId,
             @PathVariable UUID areaId,
@@ -71,6 +73,7 @@ public class PosAssignmentController {
 
     @Operation(summary = "List the areas linked to a POS; the original area remains its default")
     @GetMapping("/pos-terminals/{terminalId}/areas")
+    @PreAuthorize("hasAuthority('POS_MANAGE') and principal.enabled and principal.accountNonLocked")
     public ApiResponse<List<PosDtos.TerminalArea>> areas(@PathVariable UUID terminalId) {
         return ApiResponse.success(service.areas(terminalId));
     }
@@ -82,6 +85,7 @@ public class PosAssignmentController {
                         + " capped by terminal permissions. Explicit POS policies can restrict them"
                         + " further. Changing the link revokes sessions using that area.")
     @PutMapping("/pos-terminals/{terminalId}/areas/{areaId}")
+    @PreAuthorize("hasAuthority('POS_MANAGE') and principal.enabled and principal.accountNonLocked")
     public ApiResponse<PosDtos.TerminalArea> linkArea(
             @PathVariable UUID terminalId,
             @PathVariable UUID areaId,
@@ -95,12 +99,14 @@ public class PosAssignmentController {
                         + " history")
     @DeleteMapping("/pos-terminals/{terminalId}/areas/{areaId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
+    @PreAuthorize("hasAuthority('POS_MANAGE') and principal.enabled and principal.accountNonLocked")
     public void unlinkArea(@PathVariable UUID terminalId, @PathVariable UUID areaId) {
         service.linkArea(terminalId, areaId, false);
     }
 
     @Operation(summary = "List the service permissions configured for this exact POS and area")
     @GetMapping("/pos-terminals/{terminalId}/areas/{areaId}/services")
+    @PreAuthorize("hasAuthority('POS_MANAGE') and principal.enabled and principal.accountNonLocked")
     public ApiResponse<List<PosDtos.TerminalService>> policies(
             @PathVariable UUID terminalId, @PathVariable UUID areaId) {
         return ApiResponse.success(service.policies(terminalId, areaId));
@@ -116,6 +122,7 @@ public class PosAssignmentController {
                         + " current permissions; an existing session cannot retain removed"
                         + " capabilities.")
     @PutMapping("/pos-terminals/{terminalId}/areas/{areaId}/services/{serviceId}")
+    @PreAuthorize("hasAuthority('POS_MANAGE') and principal.enabled and principal.accountNonLocked")
     public ApiResponse<PosDtos.TerminalService> policy(
             @PathVariable UUID terminalId,
             @PathVariable UUID areaId,
@@ -130,6 +137,7 @@ public class PosAssignmentController {
                         + " override")
     @DeleteMapping("/pos-terminals/{terminalId}/areas/{areaId}/services/{serviceId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
+    @PreAuthorize("hasAuthority('POS_MANAGE') and principal.enabled and principal.accountNonLocked")
     public void removePolicy(
             @PathVariable UUID terminalId,
             @PathVariable UUID areaId,

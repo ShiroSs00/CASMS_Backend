@@ -37,6 +37,7 @@ public class CruiseStaffWorkController {
 
     @PutMapping("/staff/{userId}/activity-qualifications/{kind}/{definitionId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
+    @PreAuthorize("hasAuthority('CRUISE_STAFF_ASSIGN') and hasRole('HR_MANAGER') and principal.enabled and principal.accountNonLocked")
     public void addQualification(
             @PathVariable UUID userId, @PathVariable ActivityKind kind,
             @PathVariable UUID definitionId, @AuthenticationPrincipal CasmsPrincipal actor) {
@@ -45,6 +46,7 @@ public class CruiseStaffWorkController {
 
     @DeleteMapping("/staff/{userId}/activity-qualifications/{kind}/{definitionId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
+    @PreAuthorize("hasAuthority('CRUISE_STAFF_ASSIGN') and hasRole('HR_MANAGER') and principal.enabled and principal.accountNonLocked")
     public void removeQualification(
             @PathVariable UUID userId, @PathVariable ActivityKind kind,
             @PathVariable UUID definitionId, @AuthenticationPrincipal CasmsPrincipal actor) {
@@ -53,6 +55,7 @@ public class CruiseStaffWorkController {
 
     @PutMapping({"/cruise/{cruiseId}/staff/{userId}/service", "/cruises/{cruiseId}/staff/{userId}/service"})
     @ResponseStatus(HttpStatus.NO_CONTENT)
+    @PreAuthorize("hasAuthority('CRUISE_STAFF_ASSIGN') and hasRole('HR_MANAGER') and principal.enabled and principal.accountNonLocked")
     public void assignService(
             @PathVariable UUID cruiseId, @PathVariable UUID userId,
             @Valid @RequestBody ServiceInput input, @AuthenticationPrincipal CasmsPrincipal actor) {
@@ -61,6 +64,7 @@ public class CruiseStaffWorkController {
 
     @DeleteMapping({"/cruise/{cruiseId}/staff/{userId}/service", "/cruises/{cruiseId}/staff/{userId}/service"})
     @ResponseStatus(HttpStatus.NO_CONTENT)
+    @PreAuthorize("hasAuthority('CRUISE_STAFF_ASSIGN') and hasRole('HR_MANAGER') and principal.enabled and principal.accountNonLocked")
     public void removeService(
             @PathVariable UUID cruiseId, @PathVariable UUID userId,
             @AuthenticationPrincipal CasmsPrincipal actor) {
@@ -72,6 +76,7 @@ public class CruiseStaffWorkController {
         "/cruises/{cruiseId}/staff/{userId}/activity-shifts/{kind}/{occurrenceId}"
     })
     @ResponseStatus(HttpStatus.NO_CONTENT)
+    @PreAuthorize("hasAuthority('CRUISE_STAFF_ASSIGN') and hasRole('HR_MANAGER') and principal.enabled and principal.accountNonLocked")
     public void assignActivity(
             @PathVariable UUID cruiseId, @PathVariable UUID userId, @PathVariable ActivityKind kind,
             @PathVariable UUID occurrenceId, @AuthenticationPrincipal CasmsPrincipal actor) {
@@ -83,6 +88,7 @@ public class CruiseStaffWorkController {
         "/cruises/{cruiseId}/staff/{userId}/activity-shifts/{kind}/{occurrenceId}"
     })
     @ResponseStatus(HttpStatus.NO_CONTENT)
+    @PreAuthorize("hasAuthority('CRUISE_STAFF_ASSIGN') and hasRole('HR_MANAGER') and principal.enabled and principal.accountNonLocked")
     public void removeActivity(
             @PathVariable UUID cruiseId, @PathVariable UUID userId, @PathVariable ActivityKind kind,
             @PathVariable UUID occurrenceId, @AuthenticationPrincipal CasmsPrincipal actor) {

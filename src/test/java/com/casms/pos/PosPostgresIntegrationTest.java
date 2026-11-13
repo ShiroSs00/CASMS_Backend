@@ -60,7 +60,8 @@ class PosPostgresIntegrationTest {
     @Autowired JwtService jwt;
     @Autowired org.springframework.security.crypto.password.PasswordEncoder encoder;
     UUID ship, deck, model, area, port, cruise, booking, bp, bp2, service, account, terminal;
-    String manager, catalogManager, staff, buyer, secret, session;
+    String manager, hrManager, catalogManager, staff, buyer, secret, session;
+    UUID sourceTrip, sourceVersion;
     final List<UUID> userIds = new ArrayList<>();
     final List<UUID> passengerIds = new ArrayList<>();
 
@@ -170,6 +171,7 @@ class PosPostgresIntegrationTest {
                             bookingPassengers.saveAndFlush(a2);
                             bp2 = a2.getBookingPassengerId();
                             manager = token(user(Role.OPERATIONS_MANAGER));
+                            hrManager = token(user(Role.HR_MANAGER));
                             catalogManager = token(user(Role.ACTIVITY_SERVICE_MANAGER));
                             staff = token(user(Role.ONBOARD_STAFF));
                         });
@@ -204,6 +206,15 @@ class PosPostgresIntegrationTest {
                         201);
         terminal = UUID.fromString(device.path("terminal").path("terminalId").asText());
         secret = device.path("deviceSecret").asText();
+        sourceTrip = jdbc.queryForObject("""
+                INSERT INTO "Trip" (trip_code, name, duration_days, duration_nights, trip_type)
+                VALUES (?, 'POS itinerary', 2, 1, 'ONE_WAY') RETURNING trip_id
+                """, UUID.class, code());
+        sourceVersion = jdbc.queryForObject("""
+                INSERT INTO "TripScheduleVersion" (trip_id, version_number, status)
+                VALUES (?, 1, 'PUBLISHED') RETURNING version_id
+                """, UUID.class, sourceTrip);
+        linkToSourceVersion(cruise);
         assignEmployee(staff, area, cruise);
         assignEmployee(manager, area, cruise);
         configurePolicy(
@@ -307,14 +318,14 @@ class PosPostgresIntegrationTest {
                         .param("cruiseId", cruise.toString()),
                 manager,
                 Map.of("enabled", true),
-                404);
+                422);
         perform(get("/servicepackage/requests"), staff, null, 403);
     }
 
     @Test
     void activityAssignmentDoesNotGrantOtherOperationsOrGlobalActivityAttendance()
             throws Exception {
-        UUID activity = createActivity();
+        UUID activity = createActivityInDedicatedArea();
         configureActivity(activity, PosPermission.forResource(PosPermission.ResourceType.ACTIVITY));
         linkActivity(activity);
         grantResource(
@@ -362,9 +373,21 @@ class PosPostgresIntegrationTest {
     }
 
     @Test
-    void operationsManagerCanUseEveryPosWithoutCrewOrAreaAssignments() throws Exception {
+    void operationsManagerCanUsePosWithoutAreaAssignmentButRequiresServiceDuty() throws Exception {
         String ops = new TransactionTemplate(tm).execute(s -> token(user(Role.OPERATIONS_MANAGER)));
         String opsSession = login(ops, secret);
+        perform(
+                post("/pos/sales").header("X-POS-Session", opsSession),
+                ops,
+                input(bp, 1, "manager-without-duty"),
+                403);
+        UUID employee = jwt.extractUserId(ops);
+        perform(
+                post("/cruise/{id}/staff", cruise),
+                hrManager,
+                Map.of("userId", employee, "roleInCruise", "PORT_COORDINATOR"),
+                200);
+        assignServiceDuty(employee, cruise);
         perform(
                 post("/pos/sales").header("X-POS-Session", opsSession),
                 ops,
@@ -418,7 +441,7 @@ class PosPostgresIntegrationTest {
                 403);
         perform(
                 post("/cruise/{id}/staff", cruise),
-                manager,
+                hrManager,
                 Map.of("userId", machine.getUserId(), "roleInCruise", "ONBOARD_STAFF"),
                 422);
         perform(
@@ -564,11 +587,11 @@ class PosPostgresIntegrationTest {
     @Test
     void recordsUsageAtServerPriceReducesVirtualAllowanceAndCreatesNoPayment() throws Exception {
         long paymentCount = payments.count();
-        JsonNode sale = sell(bp, 2, "one", 201);
-        assertEquals(0, new BigDecimal("20").compareTo(sale.path("amount").decimalValue()));
+        JsonNode sale = sell(bp, 1, "one", 201);
+        assertEquals(0, new BigDecimal("10").compareTo(sale.path("amount").decimalValue()));
         JsonNode budget = statement(bp).path("budget");
-        assertEquals(80, budget.path("accountRemaining").asInt());
-        assertEquals(10, budget.path("remainingAmount").asInt());
+        assertEquals(90, budget.path("accountRemaining").asInt());
+        assertEquals(20, budget.path("remainingAmount").asInt());
         assertEquals(paymentCount, payments.count());
         assertEquals(1, count("Charge"));
         assertEquals(1, count("OnboardTransaction"));
@@ -580,20 +603,20 @@ class PosPostgresIntegrationTest {
     void retriesAreIdempotentAndDifferentPayloadCannotReuseKey() throws Exception {
         String first = sell(bp, 1, "same", 201).path("saleId").asText();
         assertEquals(first, sell(bp, 1, "same", 201).path("saleId").asText());
-        sell(bp, 2, "same", 409);
+        sell(bp2, 1, "same", 409);
         assertEquals(1, count("PosSale"));
         assertEquals(1, count("Charge"));
     }
 
     @Test
     void memberCapAndSharedAccountLimitAreBothEnforced() throws Exception {
-        sell(bp, 3, "cap", 201);
+        for (int i = 0; i < 3; i++) sell(bp, 1, "cap-" + i, 201);
         sell(bp, 1, "over-cap", 422);
         assertEquals(70, statement(bp2).path("budget").path("remainingAmount").asInt());
-        sell(bp2, 7, "rest", 201);
+        for (int i = 0; i < 7; i++) sell(bp2, 1, "rest-" + i, 201);
         sell(bp2, 1, "over-group", 422);
         assertEquals(0, statement(bp2).path("budget").path("accountRemaining").asInt());
-        assertEquals(2, count("Charge"));
+        assertEquals(10, count("Charge"));
     }
 
     @Test
@@ -602,15 +625,15 @@ class PosPostgresIntegrationTest {
                 "UPDATE \"Cruise\" SET departure_datetime=now()+interval '1 hour' WHERE"
                     + " cruise_id=?",
                 cruise);
-        allocate("100", List.of(Map.of("bookingPassengerId", bp, "amount", new BigDecimal("10"))));
-        sell(bp, 2, "early-start-over-cap", 422);
+        allocate("100", List.of(Map.of("bookingPassengerId", bp, "amount", new BigDecimal("9"))));
+        sell(bp, 1, "early-start-over-cap", 422);
         assertEquals(0, count("Charge"));
-        assertEquals(10, statement(bp).path("budget").path("remainingAmount").asInt());
+        assertEquals(9, statement(bp).path("budget").path("remainingAmount").asInt());
     }
 
     @Test
     void rejectedAndCancelledPosRequestsRestoreAllowanceThroughOriginalApi() throws Exception {
-        var sale = sell(bp, 2, "cancel", 201);
+        var sale = sell(bp, 1, "cancel", 201);
         String request = sale.path("serviceRequestId").asText();
         perform(post("/servicepackage/requests/{id}/cancel", request), buyer, null, 200);
         assertEquals(100, statement(bp).path("budget").path("accountRemaining").asInt());
@@ -761,7 +784,7 @@ class PosPostgresIntegrationTest {
         session = login(staff, secret);
         UUID id = jwt.extractUserId(staff);
         jdbc.update("UPDATE \"User\" SET status='LOCKED' WHERE user_id=?", id);
-        sell(bp, 1, "locked", 403);
+        sell(bp, 1, "locked", 401);
     }
 
     @Test
@@ -793,7 +816,8 @@ class PosPostgresIntegrationTest {
     @Test
     void allowanceCannotBeLoweredBelowUsedAmountAndRealPaymentDoesNotReplenishIt()
             throws Exception {
-        sell(bp, 2, "spent", 201);
+        sell(bp, 1, "spent-1", 201);
+        sell(bp, 1, "spent-2", 201);
         perform(
                 put("/booking/{id}/onboard-allowance", booking),
                 manager,
@@ -813,7 +837,7 @@ class PosPostgresIntegrationTest {
                 account,
                 passengerId);
         assertEquals(80, statement(bp).path("budget").path("accountRemaining").asInt());
-        assertEquals(1, statement(bp).path("history").size());
+        assertEquals(2, statement(bp).path("history").size());
     }
 
     @Test
@@ -931,7 +955,7 @@ class PosPostgresIntegrationTest {
                         ship,
                         area,
                         jwt.extractUserId(other)),
-                manager,
+                hrManager,
                 Map.of("cruiseId", cruise, "enabled", true),
                 422);
         UUID otherArea = createArea();
@@ -978,7 +1002,7 @@ class PosPostgresIntegrationTest {
         perform(
                 delete("/ships/{ship}/areas/{area}/staff/{user}", ship, area, employee)
                         .param("cruiseId", cruise.toString()),
-                manager,
+                hrManager,
                 null,
                 204);
         perform(get("/pos/session").header("X-POS-Session", session), staff, null, 403);
@@ -992,9 +1016,10 @@ class PosPostgresIntegrationTest {
     @Test
     void removingCruiseStaffBlocksExistingAreaSessionWithoutManualAreaRevocation()
             throws Exception {
+        jdbc.update("UPDATE \"Cruise\" SET status='PUBLISHED' WHERE cruise_id=?", cruise);
         perform(
                 delete("/cruise/{cruise}/staff/{user}", cruise, jwt.extractUserId(staff)),
-                manager,
+                hrManager,
                 null,
                 204);
         assertEquals(
@@ -1020,7 +1045,7 @@ class PosPostgresIntegrationTest {
         String path = "/ships/{ship}/areas/{area}/staff/{user}";
         perform(
                 put(path, ship, area, employee),
-                manager,
+                hrManager,
                 Map.of(
                         "cruiseId",
                         cruise,
@@ -1036,7 +1061,7 @@ class PosPostgresIntegrationTest {
                 403);
         perform(
                 put(path, ship, area, employee),
-                manager,
+                hrManager,
                 Map.of(
                         "cruiseId",
                         cruise,
@@ -1054,7 +1079,7 @@ class PosPostgresIntegrationTest {
                 403);
         perform(
                 put(path, ship, area, employee),
-                manager,
+                hrManager,
                 Map.of(
                         "cruiseId",
                         cruise,
@@ -1274,6 +1299,7 @@ class PosPostgresIntegrationTest {
                                     c.setReturnDatetime(Instant.now().plusSeconds(259200));
                                     return cruises.saveAndFlush(c).getCruiseId();
                                 });
+        linkToSourceVersion(otherCruise);
         assignEmployee(staff, area, otherCruise);
         perform(
                 post("/pos-terminals/{id}/sessions", terminal),
@@ -1569,6 +1595,32 @@ class PosPostgresIntegrationTest {
         sell(bp, 1, "configured", 201);
     }
 
+    private UUID createActivityInDedicatedArea() throws Exception {
+        area = createActivityArea();
+        perform(
+                put("/pos-terminals/{id}/areas/{area}", terminal, area),
+                manager,
+                Map.of("enabled", true),
+                200);
+        assignEmployee(staff, area, cruise);
+        session = perform(
+                        post("/pos-terminals/{id}/sessions", terminal),
+                        staff,
+                        Map.of("deviceSecret", secret, "areaId", area),
+                        201)
+                .path("sessionToken")
+                .asText();
+        return createActivity();
+    }
+
+    private UUID createActivityArea() {
+        UUID venue = createArea();
+        jdbc.update(
+                "UPDATE \"ShipModelObject\" SET area_usage='ACTIVITY_SPACE' WHERE ship_model_object_id=?",
+                venue);
+        return venue;
+    }
+
     private UUID createActivity() throws Exception {
         // Seed a previously planned activity: fixed/in-progress cruise plans cannot create new
         // activities.
@@ -1616,7 +1668,7 @@ class PosPostgresIntegrationTest {
     @Test
     void activityPermissionsInheritAndAuthorizeRegistrationAttendanceAndLifecycle()
             throws Exception {
-        UUID activity = createActivity();
+        UUID activity = createActivityInDedicatedArea();
         configureActivity(activity, PosPermission.forResource(PosPermission.ResourceType.ACTIVITY));
         linkActivity(activity);
         var available =
@@ -1703,7 +1755,7 @@ class PosPostgresIntegrationTest {
     @Test
     void activityPoliciesRejectWrongCategoryAndUnauthorizedManagerAndApplyLiveRestrictions()
             throws Exception {
-        UUID activity = createActivity();
+        UUID activity = createActivityInDedicatedArea();
         perform(
                 put("/activities/{id}/permissions", activity),
                 manager,
@@ -1781,7 +1833,7 @@ class PosPostgresIntegrationTest {
 
     @Test
     void activityOperationsStayWithinAssignedAreaDeckAndSessionCruise() throws Exception {
-        UUID activity = createActivity();
+        UUID activity = createActivityInDedicatedArea();
         configureActivity(activity, PosPermission.forResource(PosPermission.ResourceType.ACTIVITY));
         perform(
                 post("/pos/activities/{id}/actions/open", activity)
@@ -1789,7 +1841,7 @@ class PosPostgresIntegrationTest {
                 staff,
                 null,
                 403);
-        UUID otherArea = createArea();
+        UUID otherArea = createActivityArea();
         perform(
                 put("/ships/{ship}/areas/{area}/activities/{id}", ship, otherArea, activity),
                 manager,
@@ -2082,6 +2134,12 @@ class PosPostgresIntegrationTest {
                 .asText();
     }
 
+    private void linkToSourceVersion(UUID targetCruise) {
+        jdbc.update("""
+                UPDATE "Cruise" SET source_trip_id=?, source_version_id=? WHERE cruise_id=?
+                """, sourceTrip, sourceVersion, targetCruise);
+    }
+
     private void assignEmployee(String auth, UUID targetArea, UUID targetCruise) throws Exception {
         UUID id = jwt.extractUserId(auth);
         int count =
@@ -2101,12 +2159,12 @@ class PosPostgresIntegrationTest {
         if (count == 0)
             perform(
                     post("/cruise/{id}/staff", targetCruise),
-                    manager,
+                    hrManager,
                     Map.of("userId", id, "roleInCruise", assignmentRole),
                     200);
         perform(
                 put("/ships/{ship}/areas/{area}/staff/{user}", ship, targetArea, id),
-                manager,
+                hrManager,
                 Map.of(
                         "cruiseId",
                         targetCruise,
@@ -2120,9 +2178,20 @@ class PosPostgresIntegrationTest {
                     + " service_id=? AND enabled)",
                 Boolean.class,
                 targetArea,
-                service))
+                service)) {
+            assignServiceDuty(id, targetCruise);
             grantResource(
                     id, targetArea, targetCruise, "SERVICE", service, Map.of("enabled", true));
+        }
+    }
+
+    private void assignServiceDuty(UUID employee, UUID targetCruise) {
+        jdbc.update("""
+                INSERT INTO "CruiseStaffDuty" (cruise_staff_id, service_id, assigned_by)
+                SELECT cruise_staff_id, ?, ? FROM "CruiseStaff"
+                WHERE cruise_id=? AND user_id=? AND status='ACTIVE'
+                ON CONFLICT DO NOTHING
+                """, service, jwt.extractUserId(hrManager), targetCruise, employee);
     }
 
     private JsonNode grantResource(
@@ -2244,6 +2313,11 @@ class PosPostgresIntegrationTest {
                     "DELETE FROM \"OnboardTransaction\" WHERE onboard_account_id IN (SELECT"
                         + " settlement_onboard_account_id FROM \"Booking\" WHERE booking_id=?)",
                     booking);
+            jdbc.update("""
+                    DELETE FROM "ServiceUsage" WHERE service_request_id IN (
+                        SELECT service_request_id FROM "ServiceRequest" WHERE booking_id=?
+                    )
+                    """, booking);
             jdbc.update("DELETE FROM \"ServiceRequest\" WHERE booking_id=?", booking);
             if (account != null) {
                 jdbc.update(
@@ -2305,6 +2379,13 @@ class PosPostgresIntegrationTest {
                         + " \"Cruise\" WHERE ship_id=?)",
                     ship);
             jdbc.update(
+                    """
+                    DELETE FROM "CruiseStaffDuty" WHERE cruise_staff_id IN (
+                        SELECT cs.cruise_staff_id FROM "CruiseStaff" cs
+                        JOIN "Cruise" c ON c.cruise_id=cs.cruise_id WHERE c.ship_id=?
+                    )
+                    """, ship);
+            jdbc.update(
                     "DELETE FROM \"CruiseStaff\" WHERE cruise_id IN (SELECT cruise_id FROM"
                         + " \"Cruise\" WHERE ship_id=?)",
                     ship);
@@ -2319,11 +2400,17 @@ class PosPostgresIntegrationTest {
             jdbc.update("DELETE FROM \"Cruise\" WHERE ship_id=?", ship);
             jdbc.update("DELETE FROM \"Ship\" WHERE ship_id=?", ship);
         }
+        if (sourceVersion != null) {
+            jdbc.update("DELETE FROM \"TripScheduleVersion\" WHERE version_id=?", sourceVersion);
+        }
+        if (sourceTrip != null) jdbc.update("DELETE FROM \"Trip\" WHERE trip_id=?", sourceTrip);
         if (service != null) jdbc.update("DELETE FROM \"Service\" WHERE service_id=?", service);
         if (port != null) jdbc.update("DELETE FROM \"Port\" WHERE port_id=?", port);
         for (UUID passenger : passengerIds)
             jdbc.update("DELETE FROM \"Passenger\" WHERE passenger_id=?", passenger);
         for (UUID user : userIds) {
+            jdbc.update("DELETE FROM audit_log WHERE actor_user_id=?", user);
+            jdbc.update("DELETE FROM \"Notification\" WHERE recipient_user_id=?", user);
             jdbc.update("DELETE FROM \"UserRole\" WHERE user_id=?", user);
             jdbc.update("DELETE FROM \"User\" WHERE user_id=?", user);
         }

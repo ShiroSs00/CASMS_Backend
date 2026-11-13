@@ -104,7 +104,7 @@ public class CruiseDraftAndMaterializationPostgresIntegrationTest {
         trip.setName("Chuyến đi mẫu " + tripCode);
         trip.setStatus(TripStatus.READY);
         trip.setPlannedScope(plannedScope);
-        trip.setDurationGroup(TripDurationGroup.SHORT);
+        trip.setDurationGroup(TripDurationGroup.LONG);
         trip.setDurationDays(3);
         trip.setDurationNights(2);
         trip = tripRepository.save(trip);
@@ -115,6 +115,7 @@ public class CruiseDraftAndMaterializationPostgresIntegrationTest {
         version.setRevision(1L);
         version.setStatus(TripScheduleVersionStatus.PUBLISHED);
         version = versionRepository.save(version);
+        version.setTrip(trip);
 
         for (int i = 1; i <= 3; i++) {
             TripPlanDay day = new TripPlanDay();
@@ -250,6 +251,7 @@ public class CruiseDraftAndMaterializationPostgresIntegrationTest {
         req.setReturnPortId(portDan.getPortId());
         req.setShipId(testShip.getShipId());
         req.setSourceVersionId(version.getVersionId());
+        req.setExpectedSourceVersionRevision(version.getRevision());
 
         CruiseResponse created = cruiseService.create(req);
         assertNotNull(created);
@@ -305,6 +307,7 @@ public class CruiseDraftAndMaterializationPostgresIntegrationTest {
         req1.setDeparturePortId(portHph.getPortId());
         req1.setReturnPortId(portDan.getPortId());
         req1.setSourceVersionId(version.getVersionId());
+        req1.setExpectedSourceVersionRevision(version.getRevision());
 
         CruiseResponse first =
                 idempotencyService.execute(
@@ -368,6 +371,7 @@ public class CruiseDraftAndMaterializationPostgresIntegrationTest {
         req.setDeparturePortId(portHph.getPortId());
         req.setReturnPortId(portDan.getPortId());
         req.setSourceVersionId(version.getVersionId());
+        req.setExpectedSourceVersionRevision(version.getRevision());
 
         CruiseResponse created = cruiseService.create(req);
         assertEquals(1L, created.getRevision());
@@ -442,6 +446,7 @@ public class CruiseDraftAndMaterializationPostgresIntegrationTest {
         reqA.setDeparturePortId(portHph.getPortId());
         reqA.setReturnPortId(portDan.getPortId());
         reqA.setSourceVersionId(verA.getVersionId());
+        reqA.setExpectedSourceVersionRevision(verA.getRevision());
         cruiseService.create(reqA);
 
         CruiseCreateRequest reqB = new CruiseCreateRequest();
@@ -451,6 +456,7 @@ public class CruiseDraftAndMaterializationPostgresIntegrationTest {
         reqB.setDeparturePortId(portHph.getPortId());
         reqB.setReturnPortId(portDan.getPortId());
         reqB.setSourceVersionId(verB.getVersionId());
+        reqB.setExpectedSourceVersionRevision(verB.getRevision());
         cruiseService.create(reqB);
 
         Page<CruiseResponse> filterA =
@@ -492,6 +498,7 @@ public class CruiseDraftAndMaterializationPostgresIntegrationTest {
         req.setDeparturePortId(portHph.getPortId());
         req.setReturnPortId(portDan.getPortId());
         req.setSourceVersionId(version.getVersionId());
+        req.setExpectedSourceVersionRevision(version.getRevision());
 
         CruiseResponse created = cruiseService.create(req);
         assertEquals(CruiseStatus.DRAFT, created.getStatus());
@@ -534,6 +541,7 @@ public class CruiseDraftAndMaterializationPostgresIntegrationTest {
         req.setDepartureDatetime(departure);
         // Không truyền returnDatetime, departurePortId, returnPortId (G04)
         req.setSourceVersionId(version.getVersionId());
+        req.setExpectedSourceVersionRevision(version.getRevision());
         req.setShipId(testShip.getShipId());
 
         CruiseResponse created = cruiseService.create(req);
@@ -586,6 +594,7 @@ public class CruiseDraftAndMaterializationPostgresIntegrationTest {
         req.setCruiseName("Cruise Invalid Source");
         req.setDepartureDatetime(Instant.parse("2026-12-20T01:00:00Z"));
         req.setSourceVersionId(unpubVersion.getVersionId());
+        req.setExpectedSourceVersionRevision(unpubVersion.getRevision());
 
         BusinessException ex =
                 assertThrows(BusinessException.class, () -> cruiseService.create(req));
@@ -609,6 +618,7 @@ public class CruiseDraftAndMaterializationPostgresIntegrationTest {
         req.setDepartureDatetime(departure);
         req.setReturnDatetime(tamperedReturn);
         req.setSourceVersionId(version.getVersionId());
+        req.setExpectedSourceVersionRevision(version.getRevision());
 
         CruiseResponse created = cruiseService.create(req);
         assertNotNull(created);
@@ -639,6 +649,7 @@ public class CruiseDraftAndMaterializationPostgresIntegrationTest {
         req.setCruiseName("Cruise Shifting Test");
         req.setDepartureDatetime(departure);
         req.setSourceVersionId(version.getVersionId());
+        req.setExpectedSourceVersionRevision(version.getRevision());
 
         CruiseResponse created = cruiseService.create(req);
         long originalDuration =

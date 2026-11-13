@@ -65,6 +65,7 @@ public class OperationalProgramMappingService {
     private final ShoreExcursionRepository shoreExcursionRepository;
     private final SupplierRepository supplierRepository;
     private final RegistrationRepository registrationRepository;
+    private final ItineraryProgramPolicy itineraryProgramPolicy;
 
     @Transactional
     public OperationalProgramSyncResponse syncProgramsForCruise(UUID cruiseId) {
@@ -566,6 +567,10 @@ public class OperationalProgramMappingService {
                         continue;
                     }
 
+                    itineraryProgramPolicy.requireServedDestination(
+                            matchedStop.getCruiseStopId(),
+                            entry.getDestination() == null ? null : entry.getDestination().getDestinationId());
+
                     // BE-R05a: Quy đổi thời gian tour bờ sang múi giờ cảng thực tế (Port Time)
                     if (matchedStop.getPort() != null
                             && matchedStop.getPort().getPortId() != null) {
@@ -619,6 +624,15 @@ public class OperationalProgramMappingService {
                                 shoreExcursionRepository.findById(entry.getSourceExcursionId());
                         if (templateOpt.isPresent()) {
                             ShoreExcursion template = templateOpt.get();
+                            UUID destinationId = entry.getDestination() == null
+                                    ? null : entry.getDestination().getDestinationId();
+                            if (template.getDestination() != null
+                                    && !template.getDestination().getDestinationId().equals(destinationId)) {
+                                throw new com.casms.common.exception.BusinessException(
+                                        org.springframework.http.HttpStatus.UNPROCESSABLE_ENTITY,
+                                        "EXCURSION_SOURCE_DESTINATION_MISMATCH",
+                                        "Tour mẫu nguồn phải cùng địa điểm với tour tại lần ghé cảng");
+                            }
                             supplier = template.getSupplier();
                             minParticipants = template.getMinimumParticipants();
                             maxCapacity = template.getMaximumCapacity();

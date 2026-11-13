@@ -99,6 +99,7 @@ class ProgramCapacityGuardTest {
     private ShoreExcursionRequest input(int capacity, UUID stop, UUID supplier) {
         return new ShoreExcursionRequest(
                 stop,
+                UUID.randomUUID(),
                 supplier,
                 "Capacity shore",
                 Instant.parse("2028-03-01T02:00:00Z"),

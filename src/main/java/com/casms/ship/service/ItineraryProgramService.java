@@ -86,7 +86,7 @@ public class ItineraryProgramService {
         for (ShoreSelection selection : shores) {
             var stops = jdbc.queryForList("SELECT * FROM \"CruiseStop\" WHERE cruise_stop_id=? AND itinerary_id=? FOR UPDATE", selection.cruiseStopId(), itineraryId);
             if (stops.isEmpty()) throw new BusinessException("PORT_CALL_SCOPE_MISMATCH", "Port call must belong to this itinerary");
-            policy.requireDestination(selection.cruiseStopId(), selection.destinationId());
+            policy.requireServedDestination(selection.cruiseStopId(), selection.destinationId());
             var sources = jdbc.queryForList("SELECT * FROM \"ShoreExcursion\" WHERE shore_excursion_id=? AND cruise_stop_id IS NULL AND status='PLANNED' FOR SHARE", selection.sourceExcursionId());
             if (sources.isEmpty()) throw new BusinessException("EXCURSION_SOURCE_REQUIRED", "Select an excursion definition");
             var source = sources.getFirst();
@@ -139,7 +139,7 @@ public class ItineraryProgramService {
         var excursion = rows.getFirst(); requirePlanned(excursion);
         var stop = jdbc.queryForMap("SELECT * FROM \"CruiseStop\" WHERE cruise_stop_id=?", excursion.get("cruise_stop_id"));
         var cruise = jdbc.queryForMap("SELECT * FROM \"Cruise\" WHERE cruise_id=?", cruiseId);
-        policy.requireDestination((UUID) stop.get("cruise_stop_id"), (UUID) excursion.get("destination_id"));
+        policy.requireServedDestination((UUID) stop.get("cruise_stop_id"), (UUID) excursion.get("destination_id"));
         policy.validateExcursionTimes(stop, input.startsAt(), input.returnsAt(), cruise);
         ItineraryProgramPolicy.requireDetails(input.capacity(), input.price(), "USD", input.meetingPoint());
         if (input.location() == null || input.location().isBlank()) throw new BusinessException("PROGRAM_DETAILS_REQUIRED", "Excursion location is required");

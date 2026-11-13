@@ -106,7 +106,7 @@ public class CruiseChangeAndRecoveryPostgresIntegrationTest {
                 portRepository.findAll().stream()
                         .filter(
                                 p ->
-                                        !"HPH".equals(p.getPortCode())
+                                        !portHph.getPortId().equals(p.getPortId())
                                                 && "Asia/Ho_Chi_Minh".equals(p.getTimeZoneId())
                                                 && p.getStatus() == PortStatus.ACTIVE)
                         .findFirst()
@@ -209,7 +209,7 @@ public class CruiseChangeAndRecoveryPostgresIntegrationTest {
         trip.setCountryCodes(List.of("VN"));
         trip.setDurationDays(3);
         trip.setDurationNights(2);
-        trip.setDurationGroup(TripDurationGroup.SHORT);
+        trip.setDurationGroup(TripDurationGroup.LONG);
         trip = tripRepository.save(trip);
 
         TripScheduleVersion version = new TripScheduleVersion();
@@ -218,6 +218,7 @@ public class CruiseChangeAndRecoveryPostgresIntegrationTest {
         version.setStatus(TripScheduleVersionStatus.PUBLISHED);
         version.setTimePolicyVersion("v1.0");
         version = versionRepository.save(version);
+        version.setTrip(trip);
 
         for (int i = 1; i <= 3; i++) {
             TripPlanDay day = new TripPlanDay();
@@ -254,6 +255,7 @@ public class CruiseChangeAndRecoveryPostgresIntegrationTest {
         stop2.setCallType(CruiseStopCallType.NORMAL);
         stop2.setArrivalMethod(CruiseStopArrivalMethod.BERTH);
         stop2.setIsEmbarkation(false);
+        stop2.setIsDisembarkation(true);
         planStopRepository.save(stop2);
 
         CruiseCreateRequest req = new CruiseCreateRequest();
@@ -264,6 +266,7 @@ public class CruiseChangeAndRecoveryPostgresIntegrationTest {
         req.setReturnPortId(portDan.getPortId());
         req.setShipId(shipA.getShipId());
         req.setSourceVersionId(version.getVersionId());
+        req.setExpectedSourceVersionRevision(version.getRevision());
 
         CruiseResponse res = cruiseService.create(req);
         return cruiseRepository.findById(res.getCruiseId()).orElseThrow();
@@ -553,7 +556,7 @@ public class CruiseChangeAndRecoveryPostgresIntegrationTest {
     @DisplayName(
             "BE-R06 / Case 8: Resume cả chuyến đi kiểm tra sale readiness; từ chối khi chưa đủ điều"
                 + " kiện")
-    void test08_resumeCruise_clearsAuditOnSuccess() {
+    void test08_resumeCruise_requiresPersistedReady() {
         Instant dep = Instant.parse("2026-12-10T01:00:00Z");
         Cruise cruise = createSampleCruise("08", true, dep);
 
@@ -590,10 +593,9 @@ public class CruiseChangeAndRecoveryPostgresIntegrationTest {
                         BusinessException.class,
                         () -> cruiseService.resumeSale(targetCruiseId, resumeReq));
         assertEquals(
-                "CRUISE_NOT_SALE_READY",
+                "READY_CONFIRMATION_REQUIRED",
                 ex.getCode(),
                 "Must reject resume when sale readiness conditions are incomplete");
-        assertTrue(ex.getMessage().contains("chưa đủ điều kiện"));
     }
 
     @Test

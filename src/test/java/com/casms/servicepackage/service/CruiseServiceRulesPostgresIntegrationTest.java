@@ -1,6 +1,7 @@
 package com.casms.servicepackage.service;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -21,6 +22,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
@@ -35,6 +37,7 @@ import java.util.*;
 @WithMockUser(authorities = {"ROLE_CRUISE_MANAGER", "CRUISE_UPDATE_DRAFT", "SERVICE_CREATE"})
 class CruiseServiceRulesPostgresIntegrationTest {
     @Autowired MockMvc mvc;
+    @Autowired JdbcTemplate jdbc;
     @Autowired ObjectMapper mapper;
     @Autowired ShipRepository ships;
     @Autowired DeckRepository decks;
@@ -97,6 +100,17 @@ class CruiseServiceRulesPostgresIntegrationTest {
         cruise.setReturnDatetime(cruise.getDepartureDatetime().plusSeconds(86400));
         cruise.setStatus(CruiseStatus.DRAFT);
         cruise = cruises.saveAndFlush(cruise);
+        UUID sourceTrip = jdbc.queryForObject("""
+                INSERT INTO "Trip" (trip_code, name, duration_days, duration_nights, trip_type)
+                VALUES (?, 'Service rules itinerary', 2, 1, 'ONE_WAY') RETURNING trip_id
+                """, UUID.class, "R-" + code());
+        UUID sourceVersion = jdbc.queryForObject("""
+                INSERT INTO "TripScheduleVersion" (trip_id, version_number, status)
+                VALUES (?, 1, 'PUBLISHED') RETURNING version_id
+                """, UUID.class, sourceTrip);
+        jdbc.update("""
+                UPDATE "Cruise" SET source_trip_id=?, source_version_id=? WHERE cruise_id=?
+                """, sourceTrip, sourceVersion, cruise.getCruiseId());
         pkg = packageRow();
         var link = new TourPackageService();
         link.setTourPackage(pkg);
@@ -149,7 +163,7 @@ class CruiseServiceRulesPostgresIntegrationTest {
     @Test
     void cruiseManagerCannotCreateDefinitionEvenWithCreateAuthority() throws Exception {
         mvc.perform(
-                        post("/servicepackage/services")
+                        post("/servicepackage/services").with(csrf())
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content(
                                         "{\"serviceName\":\"New\",\"serviceType\":\"DINING\",\"price\":10,\"currencyCode\":\"USD\"}"))
@@ -160,7 +174,7 @@ class CruiseServiceRulesPostgresIntegrationTest {
     @WithMockUser(authorities = {"ROLE_ACTIVITY_SERVICE_MANAGER", "SERVICE_CREATE"})
     void activityServiceManagerCanCreateDefinition() throws Exception {
         mvc.perform(
-                        post("/servicepackage/services")
+                        post("/servicepackage/services").with(csrf())
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content(
                                         "{\"serviceName\":\"New\",\"serviceType\":\"DINING\",\"price\":10,\"currencyCode\":\"USD\"}"))
@@ -171,7 +185,7 @@ class CruiseServiceRulesPostgresIntegrationTest {
     @WithMockUser(authorities = {"ROLE_ACTIVITY_SERVICE_MANAGER", "SERVICE_CREATE"})
     void definitionCreatorCannotAttachServiceToCruise() throws Exception {
         mvc.perform(
-                        post("/servicepackage/schedules")
+                        post("/servicepackage/schedules").with(csrf())
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content(schedule()))
                 .andExpect(status().isForbidden());
@@ -180,7 +194,7 @@ class CruiseServiceRulesPostgresIntegrationTest {
     @Test
     void cruiseScheduleRejectsServiceMissingOnShip() throws Exception {
         mvc.perform(
-                        post("/servicepackage/schedules")
+                        post("/servicepackage/schedules").with(csrf())
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content(schedule()))
                 .andExpect(status().isUnprocessableEntity())
@@ -193,7 +207,7 @@ class CruiseServiceRulesPostgresIntegrationTest {
     void cruiseManagerCanScheduleAnExistingInstalledService() throws Exception {
         install();
         mvc.perform(
-                        post("/servicepackage/schedules")
+                        post("/servicepackage/schedules").with(csrf())
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content(schedule()))
                 .andExpect(status().isCreated());
@@ -202,7 +216,7 @@ class CruiseServiceRulesPostgresIntegrationTest {
     @Test
     void attachingPackageFailsAtomicallyWithMissingServiceDetails() throws Exception {
         mvc.perform(
-                        post("/cruise/{id}/packages", cruise.getCruiseId())
+                        post("/cruise/{id}/packages", cruise.getCruiseId()).with(csrf())
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content(
                                         mapper.writeValueAsBytes(

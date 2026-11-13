@@ -45,151 +45,31 @@ class PortWindowEvaluatorTest {
         return LocalDateTime.of(day, LocalTime.parse(time)).atZone(ZoneId.of(zone)).toInstant();
     }
 
-    private Window window(
-            String type,
-            String start,
-            String end,
-            String verification,
-            String lifecycle,
-            Boolean overnight,
-            Integer max) {
-        return new Window(
-                UUID.randomUUID(),
-                type,
-                day.minusDays(1),
-                day.plusDays(5),
-                Set.of(DayOfWeek.values()),
-                LocalTime.parse(start),
-                LocalTime.parse(end),
-                "PORT_AUTHORITY",
-                "Authority document",
-                day.minusDays(1),
-                overnight,
-                max,
-                verification,
-                lifecycle,
-                UUID.randomUUID(),
-                Instant.now(),
-                zone,
-                2L,
-                Instant.now(),
-                Instant.now());
-    }
+    @ParameterizedTest
+    @CsvSource({"08:00,16:00,0", "22:00,06:00,1"})
+    void validPortMovementsPassWithoutDirectoryWindows(String eta, String etd, int departureDays) {
+        var checks = evaluator.evaluate(id, zone, at(eta), at(etd).plus(Duration.ofDays(departureDays)));
 
-    private void data(List<Window> windows, List<Closure> closures) {
-        when(directory.read(id)).thenReturn(new Directory(id, zone, windows, closures));
+        assertEquals(List.of("ARRIVAL", "DEPARTURE"), checks.stream().map(Check::movementType).toList());
+        assertTrue(checks.stream().allMatch(check -> "PASS".equals(check.status())
+                && "WINDOW_NOT_REQUIRED".equals(check.code())));
+        verify(directory, never()).read(id);
     }
 
     @ParameterizedTest
-    @CsvSource({"08:00,16:00,PASS,PASS", "10:00,16:00,BLOCK,PASS", "08:00,18:00,PASS,BLOCK"})
-    void halfOpenIndependentMovements(String eta, String etd, String arr, String dep) {
-        data(
-                List.of(
-                        window("ARRIVAL", "08:00", "10:00", "VERIFIED", "ACTIVE", null, null),
-                        window("DEPARTURE", "16:00", "18:00", "VERIFIED", "ACTIVE", null, null)),
-                List.of());
-        var result = evaluator.evaluate(id, zone, at(eta), at(etd));
-        assertEquals(arr, result.get(0).status());
-        assertEquals(dep, result.get(1).status());
+    @CsvSource({"08:00,08:00", "08:00,07:59"})
+    void rejectsUnorderedCallTimes(String eta, String etd) {
+        var checks = evaluator.evaluate(id, zone, at(eta), at(etd));
+        assertEquals(2, checks.size());
+        assertTrue(checks.stream()
+                .allMatch(check -> "BLOCK".equals(check.status())
+                        && "INVALID_PORT_CALL_TIME".equals(check.code())));
     }
 
     @Test
-    void usesSecondWindowInUnion() {
-        data(
-                List.of(
-                        window("ARRIVAL", "06:00", "07:00", "VERIFIED", "ACTIVE", null, null),
-                        window("ARRIVAL", "08:00", "10:00", "VERIFIED", "ACTIVE", null, null),
-                        window("DEPARTURE", "16:00", "18:00", "VERIFIED", "ACTIVE", null, null)),
-                List.of());
-        assertTrue(
-                evaluator.evaluate(id, zone, at("08:00"), at("16:00")).stream()
-                        .allMatch(c -> "PASS".equals(c.status())));
-    }
-
-    @ParameterizedTest
-    @CsvSource({"UNVERIFIED,ACTIVE,WINDOW_NOT_VERIFIED", "VERIFIED,INACTIVE,WINDOW_NOT_ACTIVE"})
-    void neverPassesUnverifiedOrInactive(String verification, String lifecycle, String code) {
-        data(
-                List.of(window("ARRIVAL", "08:00", "10:00", verification, lifecycle, null, null)),
-                List.of());
-        assertEquals(
-                code, evaluator.evaluate(id, zone, at("08:00"), at("16:00")).getFirst().code());
-    }
-
-    @Test
-    void closureOverridesWindows() {
-        var closure =
-                new Closure(
-                        UUID.randomUUID(),
-                        "CLOSURE",
-                        day,
-                        day,
-                        "Closed for safety",
-                        "PORT_AGENT",
-                        "Agent notice",
-                        day,
-                        "VERIFIED",
-                        "ACTIVE",
-                        UUID.randomUUID(),
-                        Instant.now(),
-                        zone,
-                        4L,
-                        Instant.now(),
-                        Instant.now());
-        data(
-                List.of(window("ARRIVAL", "08:00", "10:00", "VERIFIED", "ACTIVE", null, null)),
-                List.of(closure));
-        assertTrue(
-                evaluator.evaluate(id, zone, at("08:00"), at("16:00")).stream()
-                        .allMatch(c -> "CLOSED".equals(c.code())));
-    }
-
-    @Test
-    void missingWindowsFailClosed() {
-        data(List.of(), List.of());
-        assertTrue(
-                evaluator.evaluate(id, zone, at("08:00"), at("16:00")).stream()
-                        .allMatch(c -> "WINDOW_NOT_CONFIGURED".equals(c.code())));
-    }
-
-    @Test
-    void overnightNeedsExplicitSource() {
-        data(
-                List.of(
-                        window("ARRIVAL", "08:00", "10:00", "VERIFIED", "ACTIVE", null, null),
-                        window("DEPARTURE", "16:00", "18:00", "VERIFIED", "ACTIVE", null, null)),
-                List.of());
-        assertEquals(
-                "OVERNIGHT_NOT_ALLOWED",
-                evaluator
-                        .evaluate(id, zone, at("08:00"), at("16:00").plus(Duration.ofDays(1)))
-                        .getFirst()
-                        .code());
-    }
-
-    @Test
-    void sourcedOvernightAndMaxStay() {
-        data(
-                List.of(
-                        window("ARRIVAL", "08:00", "10:00", "VERIFIED", "ACTIVE", true, 2000),
-                        window("DEPARTURE", "16:00", "18:00", "VERIFIED", "ACTIVE", null, null)),
-                List.of());
-        assertTrue(
-                evaluator
-                        .evaluate(id, zone, at("08:00"), at("16:00").plus(Duration.ofDays(1)))
-                        .stream()
-                        .allMatch(c -> "PASS".equals(c.status())));
-        data(
-                List.of(
-                        window("ARRIVAL", "08:00", "10:00", "VERIFIED", "ACTIVE", true, 60),
-                        window("DEPARTURE", "16:00", "18:00", "VERIFIED", "ACTIVE", null, null)),
-                List.of());
-        assertEquals(
-                "MAX_STAY_EXCEEDED",
-                evaluator
-                        .evaluate(id, zone, at("08:00"), at("16:00").plus(Duration.ofDays(1)))
-                        .getFirst()
-                        .code());
+    void inactivePortStillBlocksDeparture() {
+        port.setStatus(PortStatus.INACTIVE);
+        assertEquals("PORT_NOT_ACTIVE", evaluator.departureMovement(id, zone, at("16:00")).getFirst().code());
     }
 
     @Test

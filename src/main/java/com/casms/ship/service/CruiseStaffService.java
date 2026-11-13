@@ -78,13 +78,13 @@ public class CruiseStaffService {
 
     @Transactional(readOnly = true)
     public StaffOptions staffOptions(UUID cruiseId, boolean shipboardOnly) {
-        if (!cruiseRepository.existsById(cruiseId)) {
-            throw new ResourceNotFoundException("Cruise not found with id: " + cruiseId);
-        }
+        Cruise target = cruiseRepository.findById(cruiseId).orElseThrow(
+                () -> new ResourceNotFoundException("Cruise not found with id: " + cruiseId));
         List<String> roles = shipboardOnly
                 ? SHIPBOARD_ROLES
                 : ALLOWED_ASSIGNMENT_ROLES.stream().sorted().toList();
-        var assignedUsers = new HashSet<>(cruiseStaffRepository.findActiveUserIds());
+        var assignedUsers = new HashSet<>(cruiseStaffRepository.findUnavailableUserIds(
+                cruiseId, target.getDepartureDatetime(), target.getReturnDatetime()));
         List<StaffCandidate> candidates = userRepository.findByStatus(UserStatus.ACTIVE).stream()
                 .filter(CruiseStaffService::canReceiveAssignment)
                 .filter(user -> !assignedUsers.contains(user.getUserId()))
@@ -108,6 +108,9 @@ public class CruiseStaffService {
     @Transactional
     public CruiseStaffResponse assignStaff(UUID cruiseId, CruiseStaffRequest request, CasmsPrincipal actor) {
         requirePermission(actor, "CRUISE_STAFF_ASSIGN");
+        if (!actor.hasRole(Role.HR_MANAGER)) {
+            throw new AccessDeniedException("Only HR can manage cruise staffing");
+        }
         return assignStaff(cruiseId, request, actor.getUserId());
     }
 
@@ -188,10 +191,6 @@ public class CruiseStaffService {
                             conflictCruise.getDepartureDatetime(),
                             conflictCruise.getReturnDatetime()));
         }
-        if (cruiseStaffRepository.findActiveAssignment(user.getUserId()).isPresent()) {
-            throw conflict("STAFF_ALREADY_ASSIGNED_TO_OPEN_CRUISE",
-                    "Nhân viên đã được phân công vào một chuyến chưa kết thúc.");
-        }
 
         CruiseStaff staff = new CruiseStaff();
         staff.setCruise(cruise);
@@ -234,6 +233,9 @@ public class CruiseStaffService {
     @Transactional
     public void removeStaff(UUID cruiseId, UUID userId, UUID assignmentId, String reason, CasmsPrincipal actor) {
         requirePermission(actor, "CRUISE_STAFF_REMOVE");
+        if (!actor.hasRole(Role.HR_MANAGER)) {
+            throw new AccessDeniedException("Only HR can manage cruise staffing");
+        }
         removeStaff(cruiseId, userId, assignmentId, reason, actor.getUserId());
     }
 

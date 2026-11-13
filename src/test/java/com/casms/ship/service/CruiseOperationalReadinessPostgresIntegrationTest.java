@@ -42,6 +42,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -55,6 +56,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class CruiseOperationalReadinessPostgresIntegrationTest {
 
     @Autowired private CruiseService cruiseService;
+    @Autowired private JdbcTemplate jdbc;
     @Autowired private OperationalProgramMappingService operationalProgramMappingService;
     @Autowired private CruiseImpactAssessmentService cruiseImpactAssessmentService;
     @Autowired private CruiseStaffService cruiseStaffService;
@@ -176,6 +178,20 @@ public class CruiseOperationalReadinessPostgresIntegrationTest {
         return req;
     }
 
+    private void linkSource(CruiseResponse cruise) {
+        UUID sourceTrip = jdbc.queryForObject("""
+                INSERT INTO "Trip" (trip_code, name, duration_days, duration_nights, trip_type)
+                VALUES (?, 'Operational readiness itinerary', 3, 2, 'ONE_WAY') RETURNING trip_id
+                """, UUID.class, "TR-" + UUID.randomUUID().toString().substring(0, 8));
+        UUID sourceVersion = jdbc.queryForObject("""
+                INSERT INTO "TripScheduleVersion" (trip_id, version_number, status)
+                VALUES (?, 1, 'PUBLISHED') RETURNING version_id
+                """, UUID.class, sourceTrip);
+        jdbc.update("""
+                UPDATE "Cruise" SET source_trip_id=?, source_version_id=? WHERE cruise_id=?
+                """, sourceTrip, sourceVersion, cruise.getCruiseId());
+    }
+
     @Test
     @DisplayName("BE-04 / E05: Kiểm tra tính tương thích của tàu (Ship Compatibility)")
     void test_E05_ship_compatibility() {
@@ -199,6 +215,7 @@ public class CruiseOperationalReadinessPostgresIntegrationTest {
         assertTrue(compat.getIssues().isEmpty());
 
         // 2. Assign ship
+        linkSource(cruise);
         CruiseResponse assigned =
                 cruiseService.assignShip(cruise.getCruiseId(), testShip.getShipId());
         assertEquals(testShip.getShipId(), assigned.getShipId());
@@ -211,6 +228,7 @@ public class CruiseOperationalReadinessPostgresIntegrationTest {
                         ret.plus(1, ChronoUnit.DAYS),
                         null);
         CruiseResponse overlapCruise = cruiseService.create(overlapReq);
+        linkSource(overlapCruise);
 
         ShipCompatibilityResponse overlapCompat =
                 cruiseService.checkShipCompatibility(
@@ -247,6 +265,8 @@ public class CruiseOperationalReadinessPostgresIntegrationTest {
                         ret.minus(1, ChronoUnit.DAYS),
                         null);
         CruiseResponse cruise2 = cruiseService.create(req2);
+        linkSource(cruise1);
+        linkSource(cruise2);
 
         int threadCount = 2;
         ExecutorService executor = Executors.newFixedThreadPool(threadCount);
@@ -328,12 +348,20 @@ public class CruiseOperationalReadinessPostgresIntegrationTest {
         version.setStatus(TripScheduleVersionStatus.PUBLISHED);
         version.setPublishedAt(Instant.now());
         version = versionRepository.save(version);
+        version.setTrip(trip);
 
-        TripPlanDay day1 = new TripPlanDay();
-        day1.setVersion(version);
-        day1.setDayNumber(1);
-        day1.setTitle("Ngày 1: Khởi hành");
-        day1 = planDayRepository.save(day1);
+        TripPlanDay day1 = null;
+        for (int number = 1; number <= 3; number++) {
+            TripPlanDay day = new TripPlanDay();
+            day.setVersion(version);
+            day.setDayNumber(number);
+            day.setDayType(number == 2 ? ItineraryDayType.PORT_DAY : ItineraryDayType.SEA_DAY);
+            day.setTitle("Ngày " + number);
+            day = planDayRepository.save(day);
+            if (number == 1) {
+                day1 = day;
+            }
+        }
 
         TripPlanStop stop1 = new TripPlanStop();
         stop1.setVersion(version);
@@ -405,6 +433,7 @@ public class CruiseOperationalReadinessPostgresIntegrationTest {
                 buildCreateRequest(
                         "Cruise Operational Program Test", dep, ret, testShip.getShipId());
         createReq.setSourceVersionId(version.getVersionId());
+        createReq.setExpectedSourceVersionRevision(version.getRevision());
         CruiseResponse cruise = cruiseService.create(createReq);
 
         // 3. Verify programs are synced
@@ -449,13 +478,12 @@ public class CruiseOperationalReadinessPostgresIntegrationTest {
                 buildCreateRequest("Staff Readiness Test Cruise", dep, ret, testShip.getShipId());
         CruiseResponse cruise = cruiseService.create(createReq);
 
-        // 1. Without Captain: readiness should flag missing captain
+        // 1. Without crew: readiness should flag the required onboard assignment.
         CruiseReadinessResponse unready =
                 cruiseService.validateOperationalReadiness(cruise.getCruiseId());
         assertFalse(unready.isCaptainAssigned());
         assertFalse(unready.isReady());
-        assertTrue(unready.getBlockers().contains("MISSING_CAPTAIN"));
-        assertTrue(unready.getIssues().stream().anyMatch(i -> i.contains("CAPTAIN")));
+        assertTrue(unready.getBlockers().contains("MISSING_ONBOARD_STAFF"));
 
         // 2. Assign Captain
         CruiseStaffRequest staffReq = new CruiseStaffRequest();
@@ -469,7 +497,20 @@ public class CruiseOperationalReadinessPostgresIntegrationTest {
                 cruiseService.validateOperationalReadiness(cruise.getCruiseId());
         assertTrue(readyWithStaff.isCaptainAssigned());
         assertTrue(readyWithStaff.isStaffAssigned());
-        assertFalse(readyWithStaff.getBlockers().contains("MISSING_CAPTAIN"));
+        assertTrue(readyWithStaff.getBlockers().contains("MISSING_ONBOARD_STAFF"));
+
+        User onboard = new User();
+        onboard.setUsername("onboard_" + UUID.randomUUID().toString().substring(0, 8));
+        onboard.setPasswordHash("hash123");
+        onboard.setStatus(UserStatus.ACTIVE);
+        onboard.setRoles(Set.of(Role.ONBOARD_STAFF));
+        onboard = userRepository.save(onboard);
+        CruiseStaffRequest onboardRequest = new CruiseStaffRequest();
+        onboardRequest.setUserId(onboard.getUserId());
+        onboardRequest.setRoleInCruise("ONBOARD_STAFF");
+        cruiseStaffService.assignStaff(cruise.getCruiseId(), onboardRequest, testStaffUser.getUserId());
+        assertFalse(cruiseService.validateOperationalReadiness(cruise.getCruiseId())
+                .getBlockers().contains("MISSING_ONBOARD_STAFF"));
     }
 
     @Test
