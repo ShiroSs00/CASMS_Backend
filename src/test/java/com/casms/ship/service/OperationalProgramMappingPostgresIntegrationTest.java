@@ -192,6 +192,7 @@ public class OperationalProgramMappingPostgresIntegrationTest {
         version.setRevision(1L);
         version.setStatus(TripScheduleVersionStatus.PUBLISHED);
         version = versionRepository.save(version);
+        version.setTrip(trip);
 
         for (int i = 1; i <= 3; i++) {
             TripPlanDay day = new TripPlanDay();

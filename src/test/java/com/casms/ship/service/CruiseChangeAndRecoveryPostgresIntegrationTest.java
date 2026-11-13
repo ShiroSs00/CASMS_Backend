@@ -218,6 +218,7 @@ public class CruiseChangeAndRecoveryPostgresIntegrationTest {
         version.setStatus(TripScheduleVersionStatus.PUBLISHED);
         version.setTimePolicyVersion("v1.0");
         version = versionRepository.save(version);
+        version.setTrip(trip);
 
         for (int i = 1; i <= 3; i++) {
             TripPlanDay day = new TripPlanDay();
@@ -264,6 +265,7 @@ public class CruiseChangeAndRecoveryPostgresIntegrationTest {
         req.setReturnPortId(portDan.getPortId());
         req.setShipId(shipA.getShipId());
         req.setSourceVersionId(version.getVersionId());
+        req.setExpectedSourceVersionRevision(version.getRevision());
 
         CruiseResponse res = cruiseService.create(req);
         return cruiseRepository.findById(res.getCruiseId()).orElseThrow();

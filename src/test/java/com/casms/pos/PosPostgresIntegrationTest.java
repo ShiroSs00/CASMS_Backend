@@ -318,14 +318,14 @@ class PosPostgresIntegrationTest {
                         .param("cruiseId", cruise.toString()),
                 manager,
                 Map.of("enabled", true),
-                404);
+                422);
         perform(get("/servicepackage/requests"), staff, null, 403);
     }
 
     @Test
     void activityAssignmentDoesNotGrantOtherOperationsOrGlobalActivityAttendance()
             throws Exception {
-        UUID activity = createActivity();
+        UUID activity = createActivityInDedicatedArea();
         configureActivity(activity, PosPermission.forResource(PosPermission.ResourceType.ACTIVITY));
         linkActivity(activity);
         grantResource(
@@ -373,9 +373,21 @@ class PosPostgresIntegrationTest {
     }
 
     @Test
-    void operationsManagerCanUseEveryPosWithoutCrewOrAreaAssignments() throws Exception {
+    void operationsManagerCanUsePosWithoutAreaAssignmentButRequiresServiceDuty() throws Exception {
         String ops = new TransactionTemplate(tm).execute(s -> token(user(Role.OPERATIONS_MANAGER)));
         String opsSession = login(ops, secret);
+        perform(
+                post("/pos/sales").header("X-POS-Session", opsSession),
+                ops,
+                input(bp, 1, "manager-without-duty"),
+                403);
+        UUID employee = jwt.extractUserId(ops);
+        perform(
+                post("/cruise/{id}/staff", cruise),
+                hrManager,
+                Map.of("userId", employee, "roleInCruise", "PORT_COORDINATOR"),
+                200);
+        assignServiceDuty(employee, cruise);
         perform(
                 post("/pos/sales").header("X-POS-Session", opsSession),
                 ops,
@@ -575,11 +587,11 @@ class PosPostgresIntegrationTest {
     @Test
     void recordsUsageAtServerPriceReducesVirtualAllowanceAndCreatesNoPayment() throws Exception {
         long paymentCount = payments.count();
-        JsonNode sale = sell(bp, 2, "one", 201);
-        assertEquals(0, new BigDecimal("20").compareTo(sale.path("amount").decimalValue()));
+        JsonNode sale = sell(bp, 1, "one", 201);
+        assertEquals(0, new BigDecimal("10").compareTo(sale.path("amount").decimalValue()));
         JsonNode budget = statement(bp).path("budget");
-        assertEquals(80, budget.path("accountRemaining").asInt());
-        assertEquals(10, budget.path("remainingAmount").asInt());
+        assertEquals(90, budget.path("accountRemaining").asInt());
+        assertEquals(20, budget.path("remainingAmount").asInt());
         assertEquals(paymentCount, payments.count());
         assertEquals(1, count("Charge"));
         assertEquals(1, count("OnboardTransaction"));
@@ -591,20 +603,20 @@ class PosPostgresIntegrationTest {
     void retriesAreIdempotentAndDifferentPayloadCannotReuseKey() throws Exception {
         String first = sell(bp, 1, "same", 201).path("saleId").asText();
         assertEquals(first, sell(bp, 1, "same", 201).path("saleId").asText());
-        sell(bp, 2, "same", 409);
+        sell(bp2, 1, "same", 409);
         assertEquals(1, count("PosSale"));
         assertEquals(1, count("Charge"));
     }
 
     @Test
     void memberCapAndSharedAccountLimitAreBothEnforced() throws Exception {
-        sell(bp, 3, "cap", 201);
+        for (int i = 0; i < 3; i++) sell(bp, 1, "cap-" + i, 201);
         sell(bp, 1, "over-cap", 422);
         assertEquals(70, statement(bp2).path("budget").path("remainingAmount").asInt());
-        sell(bp2, 7, "rest", 201);
+        for (int i = 0; i < 7; i++) sell(bp2, 1, "rest-" + i, 201);
         sell(bp2, 1, "over-group", 422);
         assertEquals(0, statement(bp2).path("budget").path("accountRemaining").asInt());
-        assertEquals(2, count("Charge"));
+        assertEquals(10, count("Charge"));
     }
 
     @Test
@@ -613,15 +625,15 @@ class PosPostgresIntegrationTest {
                 "UPDATE \"Cruise\" SET departure_datetime=now()+interval '1 hour' WHERE"
                     + " cruise_id=?",
                 cruise);
-        allocate("100", List.of(Map.of("bookingPassengerId", bp, "amount", new BigDecimal("10"))));
-        sell(bp, 2, "early-start-over-cap", 422);
+        allocate("100", List.of(Map.of("bookingPassengerId", bp, "amount", new BigDecimal("9"))));
+        sell(bp, 1, "early-start-over-cap", 422);
         assertEquals(0, count("Charge"));
-        assertEquals(10, statement(bp).path("budget").path("remainingAmount").asInt());
+        assertEquals(9, statement(bp).path("budget").path("remainingAmount").asInt());
     }
 
     @Test
     void rejectedAndCancelledPosRequestsRestoreAllowanceThroughOriginalApi() throws Exception {
-        var sale = sell(bp, 2, "cancel", 201);
+        var sale = sell(bp, 1, "cancel", 201);
         String request = sale.path("serviceRequestId").asText();
         perform(post("/servicepackage/requests/{id}/cancel", request), buyer, null, 200);
         assertEquals(100, statement(bp).path("budget").path("accountRemaining").asInt());
@@ -772,7 +784,7 @@ class PosPostgresIntegrationTest {
         session = login(staff, secret);
         UUID id = jwt.extractUserId(staff);
         jdbc.update("UPDATE \"User\" SET status='LOCKED' WHERE user_id=?", id);
-        sell(bp, 1, "locked", 403);
+        sell(bp, 1, "locked", 401);
     }
 
     @Test
@@ -804,7 +816,8 @@ class PosPostgresIntegrationTest {
     @Test
     void allowanceCannotBeLoweredBelowUsedAmountAndRealPaymentDoesNotReplenishIt()
             throws Exception {
-        sell(bp, 2, "spent", 201);
+        sell(bp, 1, "spent-1", 201);
+        sell(bp, 1, "spent-2", 201);
         perform(
                 put("/booking/{id}/onboard-allowance", booking),
                 manager,
@@ -824,7 +837,7 @@ class PosPostgresIntegrationTest {
                 account,
                 passengerId);
         assertEquals(80, statement(bp).path("budget").path("accountRemaining").asInt());
-        assertEquals(1, statement(bp).path("history").size());
+        assertEquals(2, statement(bp).path("history").size());
     }
 
     @Test
@@ -1582,6 +1595,32 @@ class PosPostgresIntegrationTest {
         sell(bp, 1, "configured", 201);
     }
 
+    private UUID createActivityInDedicatedArea() throws Exception {
+        area = createActivityArea();
+        perform(
+                put("/pos-terminals/{id}/areas/{area}", terminal, area),
+                manager,
+                Map.of("enabled", true),
+                200);
+        assignEmployee(staff, area, cruise);
+        session = perform(
+                        post("/pos-terminals/{id}/sessions", terminal),
+                        staff,
+                        Map.of("deviceSecret", secret, "areaId", area),
+                        201)
+                .path("sessionToken")
+                .asText();
+        return createActivity();
+    }
+
+    private UUID createActivityArea() {
+        UUID venue = createArea();
+        jdbc.update(
+                "UPDATE \"ShipModelObject\" SET area_usage='ACTIVITY_SPACE' WHERE ship_model_object_id=?",
+                venue);
+        return venue;
+    }
+
     private UUID createActivity() throws Exception {
         // Seed a previously planned activity: fixed/in-progress cruise plans cannot create new
         // activities.
@@ -1629,7 +1668,7 @@ class PosPostgresIntegrationTest {
     @Test
     void activityPermissionsInheritAndAuthorizeRegistrationAttendanceAndLifecycle()
             throws Exception {
-        UUID activity = createActivity();
+        UUID activity = createActivityInDedicatedArea();
         configureActivity(activity, PosPermission.forResource(PosPermission.ResourceType.ACTIVITY));
         linkActivity(activity);
         var available =
@@ -1716,7 +1755,7 @@ class PosPostgresIntegrationTest {
     @Test
     void activityPoliciesRejectWrongCategoryAndUnauthorizedManagerAndApplyLiveRestrictions()
             throws Exception {
-        UUID activity = createActivity();
+        UUID activity = createActivityInDedicatedArea();
         perform(
                 put("/activities/{id}/permissions", activity),
                 manager,
@@ -1794,7 +1833,7 @@ class PosPostgresIntegrationTest {
 
     @Test
     void activityOperationsStayWithinAssignedAreaDeckAndSessionCruise() throws Exception {
-        UUID activity = createActivity();
+        UUID activity = createActivityInDedicatedArea();
         configureActivity(activity, PosPermission.forResource(PosPermission.ResourceType.ACTIVITY));
         perform(
                 post("/pos/activities/{id}/actions/open", activity)
@@ -1802,7 +1841,7 @@ class PosPostgresIntegrationTest {
                 staff,
                 null,
                 403);
-        UUID otherArea = createArea();
+        UUID otherArea = createActivityArea();
         perform(
                 put("/ships/{ship}/areas/{area}/activities/{id}", ship, otherArea, activity),
                 manager,
@@ -2140,15 +2179,19 @@ class PosPostgresIntegrationTest {
                 Boolean.class,
                 targetArea,
                 service)) {
-            jdbc.update("""
-                    INSERT INTO "CruiseStaffDuty" (cruise_staff_id, service_id, assigned_by)
-                    SELECT cruise_staff_id, ?, ? FROM "CruiseStaff"
-                    WHERE cruise_id=? AND user_id=? AND status='ACTIVE'
-                    ON CONFLICT DO NOTHING
-                    """, service, jwt.extractUserId(hrManager), targetCruise, id);
+            assignServiceDuty(id, targetCruise);
             grantResource(
                     id, targetArea, targetCruise, "SERVICE", service, Map.of("enabled", true));
         }
+    }
+
+    private void assignServiceDuty(UUID employee, UUID targetCruise) {
+        jdbc.update("""
+                INSERT INTO "CruiseStaffDuty" (cruise_staff_id, service_id, assigned_by)
+                SELECT cruise_staff_id, ?, ? FROM "CruiseStaff"
+                WHERE cruise_id=? AND user_id=? AND status='ACTIVE'
+                ON CONFLICT DO NOTHING
+                """, service, jwt.extractUserId(hrManager), targetCruise, employee);
     }
 
     private JsonNode grantResource(

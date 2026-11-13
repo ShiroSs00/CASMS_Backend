@@ -1711,7 +1711,8 @@ class ShipModelImportPostgresIntegrationTest {
     }
 
     private Path committedBundle(String version) throws IOException {
-        Path root = Path.of("model-assets", "zaandam", "v10").toAbsolutePath();
+        Path root = Path.of(System.getProperty("casms.test.zaandamBundle",
+                "model-assets/zaandam/v10")).toAbsolutePath();
         Path archive = Files.createTempFile("casms-zaandam-", ".zip");
         try (ZipOutputStream zip =
                 new ZipOutputStream(new BufferedOutputStream(Files.newOutputStream(archive)))) {

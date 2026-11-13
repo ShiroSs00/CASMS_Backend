@@ -148,6 +148,7 @@ public class CruiseTimezoneAndSchedulePostgresIntegrationTest {
         version = versionRepository.save(version);
 
         List<TripPlanDay> days = new ArrayList<>();
+        version.setTrip(trip);
         for (int i = 1; i <= 3; i++) {
             TripPlanDay d = new TripPlanDay();
             d.setVersion(version);
@@ -378,6 +379,7 @@ public class CruiseTimezoneAndSchedulePostgresIntegrationTest {
         req.setReturnPortId(portHph.getPortId());
         req.setShipId(testShip.getShipId());
         req.setSourceVersionId(version.getVersionId());
+        req.setExpectedSourceVersionRevision(version.getRevision());
 
         CruiseResponse created = cruiseService.create(req);
         List<OnboardActivity> acts =
@@ -465,6 +467,7 @@ public class CruiseTimezoneAndSchedulePostgresIntegrationTest {
         req.setReturnPortId(portHph.getPortId());
         req.setShipId(testShip.getShipId());
         req.setSourceVersionId(version.getVersionId());
+        req.setExpectedSourceVersionRevision(version.getRevision());
 
         CruiseResponse created = cruiseService.create(req);
         CruiseSchedulePreviewResponse schedule =
@@ -663,6 +666,7 @@ public class CruiseTimezoneAndSchedulePostgresIntegrationTest {
         req.setReturnPortId(portHph.getPortId());
         req.setShipId(testShip.getShipId());
         req.setSourceVersionId(version.getVersionId());
+        req.setExpectedSourceVersionRevision(version.getRevision());
 
         CruiseResponse materializedCruise = cruiseService.create(req);
         CruiseSchedulePreviewResponse resMaterialized =
@@ -729,6 +733,7 @@ public class CruiseTimezoneAndSchedulePostgresIntegrationTest {
         req.setReturnPortId(portHph.getPortId());
         req.setShipId(testShip.getShipId());
         req.setSourceVersionId(version.getVersionId());
+        req.setExpectedSourceVersionRevision(version.getRevision());
 
         CruiseResponse created = cruiseService.create(req);
         Itinerary itinerary =

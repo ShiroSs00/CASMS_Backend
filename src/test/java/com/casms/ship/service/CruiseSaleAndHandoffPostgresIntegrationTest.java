@@ -1225,6 +1225,7 @@ public class CruiseSaleAndHandoffPostgresIntegrationTest {
         createReq.setReturnPortId(portDan.getPortId());
         createReq.setShipId(testShip.getShipId());
         createReq.setSourceVersionId(version.getVersionId());
+        createReq.setExpectedSourceVersionRevision(version.getRevision());
         CruiseResponse cruise = cruiseService.create(createReq);
 
         // Assign captain and package

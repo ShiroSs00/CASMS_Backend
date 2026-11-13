@@ -328,6 +328,7 @@ public class CruiseOperationalReadinessPostgresIntegrationTest {
         version.setStatus(TripScheduleVersionStatus.PUBLISHED);
         version.setPublishedAt(Instant.now());
         version = versionRepository.save(version);
+        version.setTrip(trip);
 
         TripPlanDay day1 = new TripPlanDay();
         day1.setVersion(version);
