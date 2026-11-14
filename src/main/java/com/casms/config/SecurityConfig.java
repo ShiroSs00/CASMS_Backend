@@ -50,6 +50,7 @@ public class SecurityConfig {
                                         new AntPathRequestMatcher("/auth/**"),
                                         new AntPathRequestMatcher("/booking/**"),
                                         new AntPathRequestMatcher("/payment/sepay/**"),
+                                        new AntPathRequestMatcher("/payment/guest/**"),
                                         new AntPathRequestMatcher("/h2-console/**"),
                                         new AntPathRequestMatcher("/v3/api-docs/**"),
                                         new AntPathRequestMatcher("/swagger-ui/**"),
@@ -84,7 +85,8 @@ public class SecurityConfig {
                                                 "/booking/lookup",
                                                 "/booking/lookup/**",
                                                 "/booking/recovery",
-                                                "/payment/sepay/**")
+                                                "/payment/sepay/**",
+                                                "/payment/guest/**")
                                         .permitAll()
                                         .requestMatchers(
                                                 HttpMethod.GET,
