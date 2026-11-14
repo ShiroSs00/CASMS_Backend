@@ -30,6 +30,15 @@ classDiagram
         +getInvoice(invoiceId) ApiResponse~InvoiceResponse~
     }
 
+    class GuestPaymentExperienceController {
+        -GuestPaymentExperienceService guestPaymentService
+        +processCreditCard(request) ApiResponse~CreditCardPaymentResponse~
+        +validatePromoCode(request) ApiResponse~PromoCodeResponse~
+        +createGroupSplit(request) ApiResponse~GroupSplitResponse~
+        +getGroupSplitStatus(splitGroupId) ApiResponse~GroupSplitResponse~
+        +requestVatInvoice(request) ApiResponse~CorporateVatInvoiceResponse~
+    }
+
     %% 2. Service Layer
     class PaymentService {
         -PaymentRepository paymentRepo
@@ -39,6 +48,17 @@ classDiagram
         +confirmPayment(paymentId) PaymentResponse
         +matchWithBooking(transactionRef, amount) boolean
         +updateInstallmentProgress(bookingId, paidAmount) void
+    }
+
+    class GuestPaymentExperienceService {
+        -BookingRepository bookingRepo
+        -PaymentRepository paymentRepo
+        -PaymentService paymentService
+        -InvoiceRepository invoiceRepo
+        +processCreditCardPayment(request) CreditCardPaymentResponse
+        +validateAndApplyPromoCode(request) PromoCodeResponse
+        +createGroupSplitPayment(request) GroupSplitResponse
+        +issueCorporateVatInvoice(request) CorporateVatInvoiceResponse
     }
 
     class SepayService {
@@ -137,6 +157,11 @@ classDiagram
     PaymentController --> PaymentService : delegatesTo
     SepayController --> SepayService : delegatesTo
     InvoiceController --> InvoiceService : delegatesTo
+    GuestPaymentExperienceController --> GuestPaymentExperienceService : delegatesTo
+
+    GuestPaymentExperienceService --> PaymentRepository : accesses
+    GuestPaymentExperienceService --> InvoiceRepository : accesses
+    GuestPaymentExperienceService --> PaymentService : syncsInstallments
 
     SepayService --> SepayTransactionRepository : accesses
     SepayService --> PaymentService : triggersSettlement

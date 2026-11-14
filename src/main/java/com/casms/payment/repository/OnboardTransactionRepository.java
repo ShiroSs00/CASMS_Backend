@@ -12,4 +12,6 @@ import java.util.UUID;
 @Repository
 public interface OnboardTransactionRepository extends JpaRepository<OnboardTransaction, UUID> {
     List<OnboardTransaction> findTop100BySyncStatusOrderByTransactionTimeAsc(TransactionSyncStatus syncStatus);
+
+    List<OnboardTransaction> findByOnboardAccount_OnboardAccountIdOrderByTransactionTimeDesc(UUID onboardAccountId);
 }

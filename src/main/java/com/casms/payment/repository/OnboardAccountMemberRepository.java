@@ -5,7 +5,10 @@ import com.casms.payment.entity.OnboardAccountMember;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
+import java.util.List;
 import java.util.UUID;
 
 @Repository
-public interface OnboardAccountMemberRepository extends JpaRepository<OnboardAccountMember, UUID> {}
+public interface OnboardAccountMemberRepository extends JpaRepository<OnboardAccountMember, UUID> {
+    List<OnboardAccountMember> findByOnboardAccount_OnboardAccountId(UUID onboardAccountId);
+}
