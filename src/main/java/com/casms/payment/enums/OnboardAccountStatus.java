@@ -4,5 +4,6 @@ public enum OnboardAccountStatus {
     PENDING_ACTIVATION,
     ACTIVE,
     POSTING_BLOCKED,
+    SUSPENDED,
     CLOSED
 }

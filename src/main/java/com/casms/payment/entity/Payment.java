@@ -91,4 +91,67 @@ public class Payment {
 
     @Column(name = "idempotency_key", nullable = false, unique = true, length = 255)
     private String idempotencyKey;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "registered_payment_method_id")
+    private RegisteredPaymentMethod registeredPaymentMethod;
+
+    @Column(name = "provider", length = 50)
+    private String provider;
+
+    @Column(name = "payment_token", length = 255)
+    private String paymentToken;
+
+    @Column(name = "authorized_amount", precision = 19, scale = 4)
+    private BigDecimal authorizedAmount;
+
+    @Column(name = "captured_amount", precision = 19, scale = 4)
+    private BigDecimal capturedAmount;
+
+    @Column(name = "refunded_amount", nullable = false, precision = 19, scale = 4)
+    private BigDecimal refundedAmount = BigDecimal.ZERO;
+
+    @Column(name = "original_amount", precision = 19, scale = 4)
+    private BigDecimal originalAmount;
+
+    @JdbcTypeCode(SqlTypes.CHAR)
+    @Column(name = "original_currency", columnDefinition = "char(3)")
+    private String originalCurrency;
+
+    @Column(name = "converted_amount", precision = 19, scale = 4)
+    private BigDecimal convertedAmount;
+
+    @JdbcTypeCode(SqlTypes.CHAR)
+    @Column(name = "settlement_currency", columnDefinition = "char(3)")
+    private String settlementCurrency;
+
+    @Column(name = "exchange_rate_applied", precision = 19, scale = 6)
+    private BigDecimal exchangeRateApplied;
+
+    @Column(name = "exchange_rate_source", length = 100)
+    private String exchangeRateSource;
+
+    @Column(name = "exchange_rate_timestamp")
+    private Instant exchangeRateTimestamp;
+
+    @Column(name = "authorized_at")
+    private Instant authorizedAt;
+
+    @Column(name = "captured_at")
+    private Instant capturedAt;
+
+    @Column(name = "updated_at", nullable = false)
+    private Instant updatedAt = Instant.now();
+
+    @PrePersist
+    protected void onCreate() {
+        if (updatedAt == null) {
+            updatedAt = Instant.now();
+        }
+    }
+
+    @PreUpdate
+    protected void onUpdate() {
+        updatedAt = Instant.now();
+    }
 }

@@ -4,5 +4,6 @@ public enum PaymentMethod {
     Cash,
     GatewaySandbox,
     Sepay,
-    CreditCard
+    CreditCard,
+    TokenizedCard
 }
