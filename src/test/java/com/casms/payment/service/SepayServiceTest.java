@@ -998,4 +998,18 @@ class SepayServiceTest {
                         () -> sepayService.createCardCheckout(req, null, true));
         assertEquals("CARD_BRAND_MISMATCH", ex.getCode());
     }
+
+    @Test
+    @DisplayName("Bảo mật chống IDOR: Người dùng ẩn danh (userId == null) không thể truy cập đơn của hành khách khác")
+    void getPaymentOptions_AnonymousUserBlockedWhenBookingHasOwner_ThrowsAccessDenied() {
+        com.casms.identity.entity.User owner = new com.casms.identity.entity.User();
+        owner.setUserId(UUID.randomUUID());
+        booking.setBookedByUser(owner);
+
+        when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(booking));
+
+        org.junit.jupiter.api.Assertions.assertThrows(
+                org.springframework.security.access.AccessDeniedException.class,
+                () -> sepayService.getPaymentOptions(bookingId, null, false));
+    }
 }

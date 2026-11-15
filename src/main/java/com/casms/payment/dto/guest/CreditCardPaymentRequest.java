@@ -63,5 +63,24 @@ public class CreditCardPaymentRequest {
 
     @Schema(description = "Email nhận hoá đơn điện tử")
     private String vatEmail;
+
+    @Override
+    public String toString() {
+        String maskedCard = (cardNumber != null && cardNumber.replaceAll("\\s+", "").length() >= 4)
+                ? "**** **** **** " + cardNumber.replaceAll("\\s+", "").substring(cardNumber.replaceAll("\\s+", "").length() - 4)
+                : "****";
+        return "CreditCardPaymentRequest{" +
+                "bookingId=" + bookingId +
+                ", installmentId=" + installmentId +
+                ", amount=" + amount +
+                ", currency='" + currency + '\'' +
+                ", cardLast4='" + maskedCard + '\'' +
+                ", cardHolderName='" + cardHolderName + '\'' +
+                ", expiryDate='" + expiryDate + '\'' +
+                ", cvv='***'" +
+                ", idempotencyKey='" + idempotencyKey + '\'' +
+                ", requiresVatInvoice=" + requiresVatInvoice +
+                '}';
+    }
 }
 

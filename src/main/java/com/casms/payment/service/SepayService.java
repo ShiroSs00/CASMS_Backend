@@ -1532,9 +1532,19 @@ public class SepayService {
         // 2. Xác thực API Key nếu có cấu hình
         if (sepayProperties.getApiKey() != null && !sepayProperties.getApiKey().isBlank()) {
             String expected = sepayProperties.getApiKey().trim();
-            if (authHeader == null
-                    || (!authHeader.contains(expected)
-                            && !authHeader.equalsIgnoreCase("Apikey " + expected))) {
+            boolean valid = false;
+            if (authHeader != null && !authHeader.isBlank()) {
+                String token = authHeader.trim();
+                if (token.regionMatches(true, 0, "Apikey ", 0, 7)) {
+                    token = token.substring(7).trim();
+                } else if (token.regionMatches(true, 0, "Bearer ", 0, 7)) {
+                    token = token.substring(7).trim();
+                }
+                valid = java.security.MessageDigest.isEqual(
+                        expected.getBytes(StandardCharsets.UTF_8),
+                        token.getBytes(StandardCharsets.UTF_8));
+            }
+            if (!valid) {
                 log.error("Unauthorized SePay webhook attempt: invalid API key header");
                 throw new BusinessException(
                         HttpStatus.UNAUTHORIZED,
@@ -2486,12 +2496,14 @@ public class SepayService {
     }
 
     private void assertAccess(Booking booking, UUID userId, boolean canReadAll) {
-        if (!canReadAll
-                && userId != null
-                && booking.getBookedByUser() != null
-                && !userId.equals(booking.getBookedByUser().getUserId())) {
-            throw new AccessDeniedException(
-                    "Bạn chỉ có thể xem hoặc thực hiện thanh toán cho đơn của chính mình");
+        if (canReadAll) {
+            return;
+        }
+        if (booking != null && booking.getBookedByUser() != null) {
+            if (userId == null || !userId.equals(booking.getBookedByUser().getUserId())) {
+                throw new AccessDeniedException(
+                        "Bạn chỉ có thể xem hoặc thực hiện thanh toán cho đơn của chính mình");
+            }
         }
     }
 }
