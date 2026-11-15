@@ -9,12 +9,14 @@ import com.casms.common.exception.BusinessException;
 import com.casms.common.exception.ResourceNotFoundException;
 import com.casms.payment.config.SepayProperties;
 import com.casms.payment.dto.request.PaymentConfirmRequest;
+import com.casms.payment.dto.request.SepayCardCheckoutRequest;
 import com.casms.payment.dto.request.SepayCheckoutRequest;
 import com.casms.payment.dto.request.SepayQuickCheckoutRequest;
 import com.casms.payment.dto.request.SepayWebhookPayload;
 import com.casms.payment.dto.response.BookingPaymentOptionsResponse;
 import com.casms.payment.dto.response.PaymentStatusCheckResponse;
 import com.casms.payment.dto.response.SepayCheckoutResponse;
+import com.casms.payment.dto.response.SepayConfigResponse;
 import com.casms.payment.dto.response.SepayWebhookResponse;
 import com.casms.payment.entity.Installment;
 import com.casms.payment.entity.Payment;
@@ -64,6 +66,26 @@ public class SepayService {
     private static final DateTimeFormatter SEPAY_DATE_FORMATTER =
             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
+    /** Lấy thông tin cấu hình SePay hiện hành (Hỗ trợ VND, USD, VietQR, Visa, Mastercard). */
+    @Transactional(readOnly = true)
+    public SepayConfigResponse getSepayConfig() {
+        return SepayConfigResponse.builder()
+                .enabled(sepayProperties.isEnabled())
+                .cardEnabled(isCardPaymentEnabled())
+                .defaultCurrency(resolveDefaultCurrency())
+                .supportedCurrencies(resolveSupportedCurrencies())
+                .supportedCardBrands(resolveSupportedCardBrands())
+                .supportedPaymentChannels(resolveSupportedPaymentChannels())
+                .usdToVndRate(resolveDefaultExchangeRate())
+                .bankName(sepayProperties.getBankName())
+                .accountNumber(sepayProperties.getAccountNumber())
+                .accountName(sepayProperties.getAccountName())
+                .merchantId(resolveMerchantId())
+                .cardGatewayUrl(resolveCardGatewayUrl())
+                .threeDSecureEnabled(sepayProperties.isThreeDSecureEnabled())
+                .build();
+    }
+
     /** Lấy chi tiết 3 hình thức thanh toán (FULL, DEPOSIT, STAGE) của một đơn đặt tour. */
     @Transactional(readOnly = true)
     public BookingPaymentOptionsResponse getPaymentOptions(
@@ -82,10 +104,8 @@ public class SepayService {
                 booking.getAgreedFareAmount() != null
                         ? booking.getAgreedFareAmount()
                         : BigDecimal.ZERO;
-        BigDecimal exchangeRate = sepayProperties.getUsdToVndRate();
-        if (exchangeRate == null || exchangeRate.compareTo(BigDecimal.ZERO) <= 0) {
-            exchangeRate = BigDecimal.valueOf(25400);
-        }
+        BigDecimal exchangeRate = resolveDefaultExchangeRate();
+        boolean isBookingVnd = "VND".equalsIgnoreCase(booking.getCurrency());
 
         BigDecimal totalPaid =
                 paymentRepository.findForBooking(bookingId).stream()
@@ -110,11 +130,18 @@ public class SepayService {
         boolean fullAvailable =
                 outstanding.compareTo(BigDecimal.ZERO) > 0
                         && booking.getBookingStatus() != BookingStatus.Cancelled;
-        BigDecimal fullVnd = outstanding.multiply(exchangeRate).setScale(0, RoundingMode.HALF_UP);
+        BigDecimal fullUsd =
+                isBookingVnd
+                        ? outstanding.divide(exchangeRate, 4, RoundingMode.HALF_UP)
+                        : outstanding;
+        BigDecimal fullVnd =
+                isBookingVnd
+                        ? outstanding.setScale(0, RoundingMode.HALF_UP)
+                        : outstanding.multiply(exchangeRate).setScale(0, RoundingMode.HALF_UP);
         BookingPaymentOptionsResponse.FullPaymentOption fullOption =
                 BookingPaymentOptionsResponse.FullPaymentOption.builder()
                         .isAvailable(fullAvailable)
-                        .amountUsd(outstanding)
+                        .amountUsd(fullUsd)
                         .amountVnd(fullVnd)
                         .description(
                                 "Thanh toán toàn bộ 100% số tiền còn lại ("
@@ -144,22 +171,36 @@ public class SepayService {
                             && outstanding.compareTo(BigDecimal.ZERO) > 0
                             && booking.getBookingStatus() != BookingStatus.Cancelled;
 
+            BigDecimal reqInst1Usd =
+                    isBookingVnd
+                            ? inst1.getRequiredAmount().divide(exchangeRate, 4, RoundingMode.HALF_UP)
+                            : inst1.getRequiredAmount();
+            BigDecimal reqInst1Vnd =
+                    isBookingVnd
+                            ? inst1.getRequiredAmount().setScale(0, RoundingMode.HALF_UP)
+                            : inst1.getRequiredAmount()
+                                    .multiply(exchangeRate)
+                                    .setScale(0, RoundingMode.HALF_UP);
+            BigDecimal remInst1Usd =
+                    isBookingVnd
+                            ? remInst1.divide(exchangeRate, 4, RoundingMode.HALF_UP)
+                            : remInst1;
+            BigDecimal remInst1Vnd =
+                    isBookingVnd
+                            ? remInst1.setScale(0, RoundingMode.HALF_UP)
+                            : remInst1.multiply(exchangeRate).setScale(0, RoundingMode.HALF_UP);
+
             depositOption =
                     BookingPaymentOptionsResponse.DepositPaymentOption.builder()
                             .isAvailable(isDepositAvail)
                             .isPaid(isDepositPaid)
                             .installmentId(inst1.getInstallmentId())
                             .sequenceNo(inst1.getSequenceNo())
-                            .requiredAmountUsd(inst1.getRequiredAmount())
-                            .requiredAmountVnd(
-                                    inst1.getRequiredAmount()
-                                            .multiply(exchangeRate)
-                                            .setScale(0, RoundingMode.HALF_UP))
+                            .requiredAmountUsd(reqInst1Usd)
+                            .requiredAmountVnd(reqInst1Vnd)
                             .paidAmountUsd(paidForInst1)
-                            .remainingAmountUsd(remInst1)
-                            .remainingAmountVnd(
-                                    remInst1.multiply(exchangeRate)
-                                            .setScale(0, RoundingMode.HALF_UP))
+                            .remainingAmountUsd(remInst1Usd)
+                            .remainingAmountVnd(remInst1Vnd)
                             .dueAt(inst1.getDueAt())
                             .description(
                                     "Đặt cọc giữ chỗ ("
@@ -205,21 +246,35 @@ public class SepayService {
                         };
             }
 
+            BigDecimal reqStageUsd =
+                    isBookingVnd
+                            ? inst.getRequiredAmount().divide(exchangeRate, 4, RoundingMode.HALF_UP)
+                            : inst.getRequiredAmount();
+            BigDecimal reqStageVnd =
+                    isBookingVnd
+                            ? inst.getRequiredAmount().setScale(0, RoundingMode.HALF_UP)
+                            : inst.getRequiredAmount()
+                                    .multiply(exchangeRate)
+                                    .setScale(0, RoundingMode.HALF_UP);
+            BigDecimal remStageUsd =
+                    isBookingVnd
+                            ? remInst.divide(exchangeRate, 4, RoundingMode.HALF_UP)
+                            : remInst;
+            BigDecimal remStageVnd =
+                    isBookingVnd
+                            ? remInst.setScale(0, RoundingMode.HALF_UP)
+                            : remInst.multiply(exchangeRate).setScale(0, RoundingMode.HALF_UP);
+
             stageDetails.add(
                     BookingPaymentOptionsResponse.StageDetail.builder()
                             .installmentId(inst.getInstallmentId())
                             .sequenceNo(inst.getSequenceNo())
                             .installmentType(inst.getInstallmentType().name())
-                            .requiredAmountUsd(inst.getRequiredAmount())
-                            .requiredAmountVnd(
-                                    inst.getRequiredAmount()
-                                            .multiply(exchangeRate)
-                                            .setScale(0, RoundingMode.HALF_UP))
+                            .requiredAmountUsd(reqStageUsd)
+                            .requiredAmountVnd(reqStageVnd)
                             .paidAmountUsd(paidForInst)
-                            .remainingAmountUsd(remInst)
-                            .remainingAmountVnd(
-                                    remInst.multiply(exchangeRate)
-                                            .setScale(0, RoundingMode.HALF_UP))
+                            .remainingAmountUsd(remStageUsd)
+                            .remainingAmountVnd(remStageVnd)
                             .dueAt(inst.getDueAt())
                             .status(inst.getStatus().name())
                             .isPaid(isPaid)
@@ -242,20 +297,38 @@ public class SepayService {
         else if (installments.size() == 2) plan = PaymentPlan.DEPOSIT;
         else if (installments.size() >= 3) plan = PaymentPlan.STAGES;
 
+        BigDecimal agreedFareUsd =
+                isBookingVnd
+                        ? agreedFare.divide(exchangeRate, 4, RoundingMode.HALF_UP)
+                        : agreedFare;
+        BigDecimal agreedFareVnd =
+                isBookingVnd
+                        ? agreedFare.setScale(0, RoundingMode.HALF_UP)
+                        : agreedFare.multiply(exchangeRate).setScale(0, RoundingMode.HALF_UP);
+        BigDecimal totalPaidUsd =
+                isBookingVnd
+                        ? totalPaid.divide(exchangeRate, 4, RoundingMode.HALF_UP)
+                        : totalPaid;
+        BigDecimal totalPaidVnd =
+                isBookingVnd
+                        ? totalPaid.setScale(0, RoundingMode.HALF_UP)
+                        : totalPaid.multiply(exchangeRate).setScale(0, RoundingMode.HALF_UP);
+
         return BookingPaymentOptionsResponse.builder()
                 .bookingId(bookingId)
                 .bookingReference(booking.getBookingReference())
                 .bookingStatus(booking.getBookingStatus())
                 .currency(booking.getCurrency())
-                .agreedFareAmount(agreedFare)
-                .agreedFareAmountVnd(
-                        agreedFare.multiply(exchangeRate).setScale(0, RoundingMode.HALF_UP))
-                .totalPaidAmount(totalPaid)
-                .totalPaidAmountVnd(
-                        totalPaid.multiply(exchangeRate).setScale(0, RoundingMode.HALF_UP))
-                .outstandingBalance(outstanding)
+                .agreedFareAmount(agreedFareUsd)
+                .agreedFareAmountVnd(agreedFareVnd)
+                .totalPaidAmount(totalPaidUsd)
+                .totalPaidAmountVnd(totalPaidVnd)
+                .outstandingBalance(fullUsd)
                 .outstandingBalanceVnd(fullVnd)
                 .exchangeRate(exchangeRate)
+                .supportedCurrencies(resolveSupportedCurrencies())
+                .supportedPaymentChannels(resolveSupportedPaymentChannels())
+                .supportedCardBrands(resolveSupportedCardBrands())
                 .configuredPaymentPlan(plan)
                 .fullPaymentOption(fullOption)
                 .depositPaymentOption(depositOption)
@@ -274,9 +347,11 @@ public class SepayService {
     public SepayCheckoutResponse createCheckout(
             SepayCheckoutRequest request, UUID userId, boolean canReadAll) {
         log.info(
-                "Creating SePay checkout for booking {} with payment type {}",
+                "Creating SePay checkout for booking {} with payment type {}, currency={}, channel={}",
                 request.getBookingId(),
-                request.getPaymentType());
+                request.getPaymentType(),
+                request.getCurrency(),
+                request.getPaymentChannel());
 
         Booking booking =
                 bookingRepository
@@ -305,7 +380,15 @@ public class SepayService {
                 request.getCustomExchangeRate() != null
                                 && request.getCustomExchangeRate().compareTo(BigDecimal.ZERO) > 0
                         ? request.getCustomExchangeRate()
-                        : sepayProperties.getUsdToVndRate();
+                        : resolveDefaultExchangeRate();
+        String paymentCurrency =
+                normalizeSupportedCurrency(request.getCurrency(), resolveDefaultCurrency());
+        String paymentChannel =
+                resolvePaymentChannel(
+                        request.getPaymentChannel(),
+                        request.getCardBrand(),
+                        request.getCardNumber(),
+                        request.getCardToken());
 
         // Tính số dư còn lại
         BigDecimal agreedFare =
@@ -335,13 +418,13 @@ public class SepayService {
                 installmentRepository.findByBookingBookingIdOrderBySequenceNoAsc(
                         booking.getBookingId());
 
-        BigDecimal amountUsd;
+        BigDecimal bookingBaseAmount;
         Installment targetInstallment = null;
         String stageDesc;
 
         switch (request.getPaymentType()) {
             case FULL -> {
-                amountUsd = outstanding;
+                bookingBaseAmount = outstanding;
                 // Gán installment mục tiêu là đợt chưa trả đầu tiên
                 targetInstallment =
                         findFirstUnpaidInstallment(booking.getBookingId(), installments);
@@ -349,7 +432,7 @@ public class SepayService {
             }
             case DEPOSIT -> {
                 if (installments.isEmpty()) {
-                    amountUsd =
+                    bookingBaseAmount =
                             booking.getRequiredDepositAmount() != null
                                     ? booking.getRequiredDepositAmount()
                                     : outstanding;
@@ -367,14 +450,14 @@ public class SepayService {
                                 "DEPOSIT_ALREADY_PAID",
                                 "Tiền cọc cho đơn đặt chỗ này đã được thanh toán trước đó!");
                     }
-                    amountUsd = remainingForDeposit;
+                    bookingBaseAmount = remainingForDeposit;
                     targetInstallment = inst1;
                     stageDesc = "Thanh toán đặt cọc (Đợt 1)";
                 }
             }
             case STAGE -> {
                 if (installments.isEmpty()) {
-                    amountUsd = outstanding;
+                    bookingBaseAmount = outstanding;
                     stageDesc = "Thanh toán tour";
                 } else {
                     if (request.getInstallmentId() != null) {
@@ -435,7 +518,7 @@ public class SepayService {
                                         + targetInstallment.getSequenceNo()
                                         + " đã được thanh toán đầy đủ!");
                     }
-                    amountUsd = remainingForStage;
+                    bookingBaseAmount = remainingForStage;
                     stageDesc =
                             "Thanh toán đợt "
                                     + targetInstallment.getSequenceNo()
@@ -451,7 +534,43 @@ public class SepayService {
                             "Hình thức thanh toán không hợp lệ");
         }
 
-        BigDecimal amountVnd = amountUsd.multiply(exchangeRate).setScale(0, RoundingMode.HALF_UP);
+        boolean isBookingVnd = "VND".equalsIgnoreCase(booking.getCurrency());
+        BigDecimal amountUsd =
+                isBookingVnd
+                        ? bookingBaseAmount.divide(exchangeRate, 4, RoundingMode.HALF_UP)
+                        : bookingBaseAmount;
+        BigDecimal amountVnd =
+                isBookingVnd
+                        ? bookingBaseAmount.setScale(0, RoundingMode.HALF_UP)
+                        : bookingBaseAmount.multiply(exchangeRate).setScale(0, RoundingMode.HALF_UP);
+
+        // Nếu khách chọn thanh toán bằng thẻ quốc tế VISA hoặc MASTERCARD qua SePay
+        if (!"VIETQR".equalsIgnoreCase(paymentChannel)) {
+            SepayCardCheckoutRequest cardReq =
+                    SepayCardCheckoutRequest.builder()
+                            .bookingId(booking.getBookingId())
+                            .paymentType(request.getPaymentType())
+                            .installmentId(request.getInstallmentId())
+                            .sequenceNo(request.getSequenceNo())
+                            .currency(paymentCurrency)
+                            .cardBrand(
+                                    request.getCardBrand() != null
+                                            ? request.getCardBrand()
+                                            : paymentChannel)
+                            .cardNumber(request.getCardNumber())
+                            .cardHolderName(request.getCardHolderName())
+                            .expiryMonth(request.getExpiryMonth())
+                            .expiryYear(request.getExpiryYear())
+                            .cvv(request.getCvv())
+                            .cardToken(request.getCardToken())
+                            .customExchangeRate(exchangeRate)
+                            .idempotencyKey(request.getIdempotencyKey())
+                            .autoCapture(request.getAutoCapture())
+                            .build();
+            return createCardCheckout(cardReq, userId, canReadAll);
+        }
+
+        BigDecimal chargedAmount = "USD".equalsIgnoreCase(paymentCurrency) ? amountUsd : amountVnd;
 
         // Sinh mã chuyển khoản chuẩn SePay (chỉ gồm ký tự chữ và số)
         String cleanRef = booking.getBookingReference().replaceAll("[^A-Za-z0-9]", "");
@@ -477,7 +596,15 @@ public class SepayService {
                         "PAYMENT_ALREADY_CONFIRMED",
                         "Lệnh thanh toán này đã được xác nhận thành công trước đó!");
             }
-            payment.setRequestedAmount(amountUsd);
+            payment.setRequestedAmount(bookingBaseAmount);
+            payment.setOriginalAmount(chargedAmount);
+            payment.setOriginalCurrency(paymentCurrency);
+            payment.setConvertedAmount(chargedAmount);
+            payment.setSettlementCurrency(paymentCurrency);
+            payment.setExchangeRateApplied(exchangeRate);
+            payment.setExchangeRateSource("SEPAY_CONFIG");
+            payment.setExchangeRateTimestamp(Instant.now());
+            payment.setProvider("SEPAY_VIETQR");
             payment.setInternalReceiptReference(transferContent);
             payment.setRequestedAt(Instant.now());
             payment = paymentRepository.save(payment);
@@ -502,7 +629,15 @@ public class SepayService {
 
             if (!pendingList.isEmpty()) {
                 payment = pendingList.get(0);
-                payment.setRequestedAmount(amountUsd);
+                payment.setRequestedAmount(bookingBaseAmount);
+                payment.setOriginalAmount(chargedAmount);
+                payment.setOriginalCurrency(paymentCurrency);
+                payment.setConvertedAmount(chargedAmount);
+                payment.setSettlementCurrency(paymentCurrency);
+                payment.setExchangeRateApplied(exchangeRate);
+                payment.setExchangeRateSource("SEPAY_CONFIG");
+                payment.setExchangeRateTimestamp(Instant.now());
+                payment.setProvider("SEPAY_VIETQR");
                 payment.setInternalReceiptReference(transferContent);
                 payment.setIdempotencyKey(idempotencyKey);
                 payment.setRequestedAt(Instant.now());
@@ -513,8 +648,16 @@ public class SepayService {
                 payment.setInstallment(targetInstallment);
                 payment.setOperationType(PaymentOperationType.Collect);
                 payment.setPaymentMethod(PaymentMethod.Sepay);
-                payment.setRequestedAmount(amountUsd);
+                payment.setProvider("SEPAY_VIETQR");
+                payment.setRequestedAmount(bookingBaseAmount);
                 payment.setCurrency(booking.getCurrency());
+                payment.setOriginalAmount(chargedAmount);
+                payment.setOriginalCurrency(paymentCurrency);
+                payment.setConvertedAmount(chargedAmount);
+                payment.setSettlementCurrency(paymentCurrency);
+                payment.setExchangeRateApplied(exchangeRate);
+                payment.setExchangeRateSource("SEPAY_CONFIG");
+                payment.setExchangeRateTimestamp(Instant.now());
                 payment.setRequestedAt(Instant.now());
                 payment.setStatus(PaymentStatus.Pending);
                 payment.setIdempotencyKey(idempotencyKey);
@@ -534,6 +677,21 @@ public class SepayService {
                         encodedContent,
                         sepayProperties.getQrTemplate());
 
+        String instructions =
+                "USD".equalsIgnoreCase(paymentCurrency)
+                        ? "Thanh toán qua SePay theo đơn vị USD ("
+                                + amountUsd
+                                + " USD ~ "
+                                + amountVnd
+                                + " VNĐ) hoặc mở ứng dụng ngân hàng quét mã QR với nội dung '"
+                                + transferContent
+                                + "'. Hỗ trợ thanh toán cả bằng thẻ quốc tế Visa / Mastercard."
+                        : "Mở ứng dụng ngân hàng quét mã QR hoặc chuyển khoản chính xác "
+                                + amountVnd
+                                + " VNĐ với nội dung '"
+                                + transferContent
+                                + "'. Hệ thống sẽ tự động xác nhận trong vòng vài giây.";
+
         return SepayCheckoutResponse.builder()
                 .paymentId(payment.getPaymentId())
                 .bookingId(booking.getBookingId())
@@ -546,6 +704,11 @@ public class SepayService {
                 .amountUsd(amountUsd)
                 .amountVnd(amountVnd)
                 .exchangeRate(exchangeRate)
+                .paymentCurrency(paymentCurrency)
+                .chargedAmount(chargedAmount)
+                .paymentChannel("VIETQR")
+                .supportedCurrencies(resolveSupportedCurrencies())
+                .supportedCardBrands(resolveSupportedCardBrands())
                 .bankName(sepayProperties.getBankName())
                 .accountNumber(sepayProperties.getAccountNumber())
                 .accountHolderName(sepayProperties.getAccountName())
@@ -553,33 +716,116 @@ public class SepayService {
                 .qrCodeUrl(qrUrl)
                 .status(payment.getStatus())
                 .createdAt(payment.getRequestedAt())
-                .instructions(
-                        "Mở ứng dụng ngân hàng quét mã QR hoặc chuyển khoản chính xác "
-                                + amountVnd
-                                + " VNĐ với nội dung '"
-                                + transferContent
-                                + "'. Hệ thống sẽ tự động xác nhận trong vòng vài giây.")
+                .instructions(instructions)
                 .build();
     }
 
     /**
-     * Tạo yêu cầu thanh toán nhanh theo số tiền (Quick Checkout). Lưu bản ghi Payment với trạng
-     * thái Pending vào CSDL và sinh mã VietQR.
+     * Tạo yêu cầu thanh toán nhanh theo số tiền (Quick Checkout) hỗ trợ cả VND (Tiền Việt) và USD,
+     * cũng như kênh VietQR hoặc thẻ quốc tế Visa / Mastercard.
      */
     @Transactional
     public SepayCheckoutResponse createQuickCheckout(SepayQuickCheckoutRequest request) {
-        log.info("Creating SePay quick checkout for amount {} VND", request.getAmountVnd());
+        BigDecimal exchangeRate =
+                request.getCustomExchangeRate() != null
+                                && request.getCustomExchangeRate().compareTo(BigDecimal.ZERO) > 0
+                        ? request.getCustomExchangeRate()
+                        : resolveDefaultExchangeRate();
 
-        BigDecimal amountVnd = request.getAmountVnd();
-        if (amountVnd == null || amountVnd.compareTo(BigDecimal.valueOf(2000)) < 0) {
-            throw new BusinessException(
-                    HttpStatus.BAD_REQUEST,
-                    "INVALID_AMOUNT",
-                    "Số tiền thanh toán tối thiểu là 2.000 VNĐ");
+        // Xác định loại tiền tệ (VND hoặc USD) và số tiền tương ứng
+        String paymentCurrency;
+        if (request.getCurrency() != null && !request.getCurrency().isBlank()) {
+            paymentCurrency = normalizeSupportedCurrency(request.getCurrency(), "VND");
+        } else if (request.getAmountUsd() != null && request.getAmountVnd() == null) {
+            paymentCurrency = "USD";
+        } else {
+            paymentCurrency = "VND";
         }
 
-        BigDecimal exchangeRate = sepayProperties.getUsdToVndRate();
-        BigDecimal amountUsd = amountVnd.divide(exchangeRate, 2, RoundingMode.HALF_UP);
+        BigDecimal amountVnd;
+        BigDecimal amountUsd;
+        if ("USD".equalsIgnoreCase(paymentCurrency)) {
+            BigDecimal rawUsd =
+                    request.getAmountUsd() != null ? request.getAmountUsd() : request.getAmount();
+            if (rawUsd == null && request.getAmountVnd() != null) {
+                rawUsd = request.getAmountVnd().divide(exchangeRate, 2, RoundingMode.HALF_UP);
+            }
+            if (rawUsd == null || rawUsd.compareTo(new BigDecimal("0.01")) < 0) {
+                throw new BusinessException(
+                        HttpStatus.BAD_REQUEST,
+                        "INVALID_AMOUNT",
+                        "Số tiền thanh toán USD tối thiểu là 0.01 USD");
+            }
+            amountUsd = rawUsd.setScale(2, RoundingMode.HALF_UP);
+            amountVnd =
+                    request.getAmountVnd() != null
+                            ? request.getAmountVnd().setScale(0, RoundingMode.HALF_UP)
+                            : amountUsd.multiply(exchangeRate).setScale(0, RoundingMode.HALF_UP);
+        } else {
+            BigDecimal rawVnd =
+                    request.getAmountVnd() != null ? request.getAmountVnd() : request.getAmount();
+            if (rawVnd == null && request.getAmountUsd() != null) {
+                rawVnd =
+                        request.getAmountUsd()
+                                .multiply(exchangeRate)
+                                .setScale(0, RoundingMode.HALF_UP);
+            }
+            if (rawVnd == null || rawVnd.compareTo(BigDecimal.valueOf(2000)) < 0) {
+                throw new BusinessException(
+                        HttpStatus.BAD_REQUEST,
+                        "INVALID_AMOUNT",
+                        "Số tiền thanh toán tối thiểu là 2.000 VNĐ");
+            }
+            amountVnd = rawVnd.setScale(0, RoundingMode.HALF_UP);
+            amountUsd =
+                    request.getAmountUsd() != null
+                            ? request.getAmountUsd()
+                            : amountVnd.divide(exchangeRate, 2, RoundingMode.HALF_UP);
+        }
+
+        String paymentChannel =
+                resolvePaymentChannel(
+                        request.getPaymentChannel(),
+                        request.getCardBrand(),
+                        request.getCardNumber(),
+                        request.getCardToken());
+
+        // Nếu khách chọn thanh toán nhanh bằng thẻ quốc tế Visa / Mastercard (bằng VND hoặc USD)
+        if (!"VIETQR".equalsIgnoreCase(paymentChannel)) {
+            SepayCardCheckoutRequest cardReq =
+                    SepayCardCheckoutRequest.builder()
+                            .bookingId(request.getBookingId())
+                            .paymentType(PaymentType.FULL)
+                            .currency(paymentCurrency)
+                            .amount(
+                                    "USD".equalsIgnoreCase(paymentCurrency)
+                                            ? amountUsd
+                                            : amountVnd)
+                            .amountVnd(amountVnd)
+                            .amountUsd(amountUsd)
+                            .cardBrand(
+                                    request.getCardBrand() != null
+                                            ? request.getCardBrand()
+                                            : paymentChannel)
+                            .cardNumber(request.getCardNumber())
+                            .cardHolderName(request.getCardHolderName())
+                            .expiryMonth(request.getExpiryMonth())
+                            .expiryYear(request.getExpiryYear())
+                            .cvv(request.getCvv())
+                            .cardToken(request.getCardToken())
+                            .customExchangeRate(exchangeRate)
+                            .description(request.getDescription())
+                            .idempotencyKey(request.getIdempotencyKey())
+                            .autoCapture(request.getAutoCapture())
+                            .build();
+            return createCardCheckout(cardReq, null, true);
+        }
+
+        log.info(
+                "Creating SePay quick checkout: currency={}, amountVnd={}, amountUsd={}",
+                paymentCurrency,
+                amountVnd,
+                amountUsd);
 
         Booking booking = null;
         if (request.getBookingId() != null) {
@@ -609,6 +855,12 @@ public class SepayService {
                         ? request.getIdempotencyKey().trim()
                         : defaultIdempotencyKey;
 
+        BigDecimal chargedAmount = "USD".equalsIgnoreCase(paymentCurrency) ? amountUsd : amountVnd;
+        BigDecimal requestedBaseAmount =
+                booking != null && "VND".equalsIgnoreCase(booking.getCurrency())
+                        ? amountVnd
+                        : amountUsd;
+
         // Kiểm tra nếu đã có Payment tương ứng đang Pending
         Optional<Payment> existingPaymentOpt =
                 paymentRepository.findByIdempotencyKey(idempotencyKey);
@@ -621,7 +873,15 @@ public class SepayService {
                         "PAYMENT_ALREADY_CONFIRMED",
                         "Lệnh thanh toán nhanh này đã được xác nhận trước đó!");
             }
-            payment.setRequestedAmount(amountUsd);
+            payment.setRequestedAmount(requestedBaseAmount);
+            payment.setOriginalAmount(chargedAmount);
+            payment.setOriginalCurrency(paymentCurrency);
+            payment.setConvertedAmount(chargedAmount);
+            payment.setSettlementCurrency(paymentCurrency);
+            payment.setExchangeRateApplied(exchangeRate);
+            payment.setExchangeRateSource("SEPAY_CONFIG");
+            payment.setExchangeRateTimestamp(Instant.now());
+            payment.setProvider("SEPAY_VIETQR");
             payment.setRequestedAt(Instant.now());
             payment = paymentRepository.save(payment);
         } else {
@@ -631,11 +891,19 @@ public class SepayService {
             }
             payment.setOperationType(PaymentOperationType.Collect);
             payment.setPaymentMethod(PaymentMethod.Sepay);
-            payment.setRequestedAmount(amountUsd);
+            payment.setProvider("SEPAY_VIETQR");
+            payment.setRequestedAmount(requestedBaseAmount);
             payment.setCurrency(
                     booking != null && booking.getCurrency() != null
                             ? booking.getCurrency()
                             : "USD");
+            payment.setOriginalAmount(chargedAmount);
+            payment.setOriginalCurrency(paymentCurrency);
+            payment.setConvertedAmount(chargedAmount);
+            payment.setSettlementCurrency(paymentCurrency);
+            payment.setExchangeRateApplied(exchangeRate);
+            payment.setExchangeRateSource("SEPAY_CONFIG");
+            payment.setExchangeRateTimestamp(Instant.now());
             payment.setRequestedAt(Instant.now());
             payment.setStatus(PaymentStatus.Pending);
             payment.setIdempotencyKey(idempotencyKey);
@@ -663,6 +931,11 @@ public class SepayService {
                 .amountUsd(amountUsd)
                 .amountVnd(amountVnd)
                 .exchangeRate(exchangeRate)
+                .paymentCurrency(paymentCurrency)
+                .chargedAmount(chargedAmount)
+                .paymentChannel("VIETQR")
+                .supportedCurrencies(resolveSupportedCurrencies())
+                .supportedCardBrands(resolveSupportedCardBrands())
                 .bankName(sepayProperties.getBankName())
                 .accountNumber(sepayProperties.getAccountNumber())
                 .accountHolderName(sepayProperties.getAccountName())
@@ -676,6 +949,565 @@ public class SepayService {
                                 + " VNĐ với nội dung '"
                                 + transferContent
                                 + "'. Hệ thống sẽ tự động xác nhận trong vòng vài giây.")
+                .build();
+    }
+
+    /**
+     * Thanh toán qua cổng SePay bằng thẻ quốc tế **VISA** hoặc **MASTERCARD**, hỗ trợ cả **Tiền
+     * Việt (VND)** và **Đô la Mỹ (USD)**.
+     *
+     * <ul>
+     *   <li>Hỗ trợ thanh toán theo đơn đặt chỗ (`bookingId` + `FULL` / `DEPOSIT` / `STAGE`) hoặc
+     *       thanh toán nhanh theo số tiền (`amount` / `amountVnd` / `amountUsd`).
+     *   <li>Tự động nhận diện thương hiệu thẻ `VISA` (đầu số `4`) hoặc `MASTERCARD` (đầu số
+     *       `51-55`, `2221-2720`) hoặc nhận từ `cardBrand` / `cardToken`.
+     *   <li>Tuân thủ chuẩn bảo mật PCI-DSS: không lưu số thẻ gốc (PAN) hay mã CVV xuống CSDL; chỉ
+     *       lưu 4 số cuối đã che (`**** **** **** 4242`) và `paymentToken`.
+     *   <li>Nếu `autoCapture = true` (mặc định khi có thông tin thẻ/token), tự động uỷ quyền &
+     *       gạch nợ ngay, tạo bản ghi đối soát `SepayTransaction`, xác nhận `Payment`, và phân bổ
+     *       tiền thừa (surplus) theo cơ chế Waterfall cho các đợt trả góp tiếp theo.
+     * </ul>
+     */
+    @Transactional
+    public SepayCheckoutResponse createCardCheckout(
+            SepayCardCheckoutRequest request, UUID userId, boolean canReadAll) {
+        if (!sepayProperties.isEnabled()) {
+            throw new BusinessException(
+                    HttpStatus.SERVICE_UNAVAILABLE,
+                    "SEPAY_DISABLED",
+                    "Cổng thanh toán SePay hiện đang tạm ngưng");
+        }
+        if (!isCardPaymentEnabled()) {
+            throw new BusinessException(
+                    HttpStatus.SERVICE_UNAVAILABLE,
+                    "SEPAY_CARD_DISABLED",
+                    "Tính năng thanh toán thẻ quốc tế Visa/Mastercard qua SePay đang tạm khóa");
+        }
+
+        BigDecimal exchangeRate =
+                request.getCustomExchangeRate() != null
+                                && request.getCustomExchangeRate().compareTo(BigDecimal.ZERO) > 0
+                        ? request.getCustomExchangeRate()
+                        : resolveDefaultExchangeRate();
+
+        // 1. Xác định đơn vị tiền tệ thanh toán: VND (Tiền Việt) hoặc USD
+        String rawCurrency = request.getCurrency();
+        if ((rawCurrency == null || rawCurrency.isBlank())) {
+            if (request.getAmountUsd() != null && request.getAmountVnd() == null) {
+                rawCurrency = "USD";
+            } else if (request.getAmountVnd() != null && request.getAmountUsd() == null) {
+                rawCurrency = "VND";
+            } else {
+                rawCurrency = resolveDefaultCurrency();
+            }
+        }
+        String paymentCurrency = normalizeSupportedCurrency(rawCurrency, "VND");
+
+        // 2. Xác thực thương hiệu thẻ quốc tế (VISA hoặc MASTERCARD) & che số thẻ PCI-DSS
+        String cardBrand =
+                resolveAndValidateCardBrand(
+                        request.getCardBrand(), request.getCardNumber(), request.getCardToken());
+        String maskedCard = maskCardNumber(request.getCardNumber(), request.getCardToken(), cardBrand);
+        String resolvedToken =
+                resolveCardToken(request.getCardToken(), request.getCardNumber(), cardBrand);
+
+        // 3. Tính toán số tiền thanh toán từ Booking (nếu có) hoặc từ số tiền trực tiếp
+        Booking booking = null;
+        Installment targetInstallment = null;
+        PaymentType effectivePaymentType =
+                request.getPaymentType() != null ? request.getPaymentType() : PaymentType.FULL;
+        String stageDesc =
+                request.getDescription() != null && !request.getDescription().isBlank()
+                        ? request.getDescription()
+                        : "Thanh toán bằng thẻ quốc tế " + cardBrand + " (" + paymentCurrency + ")";
+
+        BigDecimal amountUsd;
+        BigDecimal amountVnd;
+        BigDecimal bookingBaseAmount;
+
+        if (request.getBookingId() != null) {
+            booking =
+                    bookingRepository
+                            .findById(request.getBookingId())
+                            .orElseThrow(
+                                    () ->
+                                            new ResourceNotFoundException(
+                                                    "Booking not found with id: "
+                                                            + request.getBookingId()));
+            assertAccess(booking, userId, canReadAll);
+
+            if (booking.getBookingStatus() == BookingStatus.Cancelled) {
+                throw new BusinessException(
+                        "BOOKING_CANCELLED", "Không thể thanh toán cho đơn đặt chỗ đã bị hủy");
+            }
+            if (booking.getBookingStatus() == BookingStatus.Draft
+                    && booking.getHoldExpiresAt() != null
+                    && Instant.now().isAfter(booking.getHoldExpiresAt())) {
+                throw new BusinessException(
+                        "BOOKING_HOLD_EXPIRED",
+                        "Thời gian giữ chỗ của đơn đã hết hạn. Vui lòng tạo đơn mới.");
+            }
+
+            BigDecimal agreedFare =
+                    booking.getAgreedFareAmount() != null
+                            ? booking.getAgreedFareAmount()
+                            : BigDecimal.ZERO;
+            BigDecimal totalPaid =
+                    paymentRepository.findForBooking(booking.getBookingId()).stream()
+                            .filter(
+                                    p ->
+                                            p.getStatus() == PaymentStatus.Confirmed
+                                                    && p.getOperationType()
+                                                            == PaymentOperationType.Collect
+                                                    && p.getConfirmedAmount() != null)
+                            .map(Payment::getConfirmedAmount)
+                            .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+            BigDecimal outstanding = agreedFare.subtract(totalPaid);
+            if (outstanding.compareTo(BigDecimal.ZERO) <= 0) {
+                throw new BusinessException(
+                        HttpStatus.BAD_REQUEST,
+                        "BOOKING_ALREADY_PAID",
+                        "Đơn đặt chỗ này đã được thanh toán toàn bộ!");
+            }
+
+            List<Installment> installments =
+                    installmentRepository.findByBookingBookingIdOrderBySequenceNoAsc(
+                            booking.getBookingId());
+
+            boolean hasExplicitCustomAmount =
+                    request.getAmount() != null
+                            || request.getAmountVnd() != null
+                            || request.getAmountUsd() != null;
+
+            if (hasExplicitCustomAmount && request.getPaymentType() == null) {
+                targetInstallment =
+                        findFirstUnpaidInstallment(booking.getBookingId(), installments);
+                if ("USD".equalsIgnoreCase(paymentCurrency)) {
+                    BigDecimal rawUsd =
+                            request.getAmountUsd() != null
+                                    ? request.getAmountUsd()
+                                    : request.getAmount();
+                    amountUsd = rawUsd.setScale(2, RoundingMode.HALF_UP);
+                    amountVnd =
+                            amountUsd.multiply(exchangeRate).setScale(0, RoundingMode.HALF_UP);
+                } else {
+                    BigDecimal rawVnd =
+                            request.getAmountVnd() != null
+                                    ? request.getAmountVnd()
+                                    : request.getAmount();
+                    amountVnd = rawVnd.setScale(0, RoundingMode.HALF_UP);
+                    amountUsd = amountVnd.divide(exchangeRate, 4, RoundingMode.HALF_UP);
+                }
+                bookingBaseAmount =
+                        "VND".equalsIgnoreCase(booking.getCurrency()) ? amountVnd : amountUsd;
+            } else {
+                switch (effectivePaymentType) {
+                    case FULL -> {
+                        bookingBaseAmount = outstanding;
+                        targetInstallment =
+                                findFirstUnpaidInstallment(booking.getBookingId(), installments);
+                        stageDesc =
+                                "Thanh toán toàn bộ 100% qua thẻ "
+                                        + cardBrand
+                                        + " ("
+                                        + paymentCurrency
+                                        + ")";
+                    }
+                    case DEPOSIT -> {
+                        if (installments.isEmpty()) {
+                            bookingBaseAmount =
+                                    booking.getRequiredDepositAmount() != null
+                                            ? booking.getRequiredDepositAmount()
+                                            : outstanding;
+                            stageDesc =
+                                    "Thanh toán đặt cọc qua thẻ "
+                                            + cardBrand
+                                            + " ("
+                                            + paymentCurrency
+                                            + ")";
+                        } else {
+                            Installment inst1 = installments.get(0);
+                            BigDecimal paidForInst1 =
+                                    getPaidAmountForInstallment(
+                                            booking.getBookingId(), inst1.getInstallmentId());
+                            BigDecimal remainingForDeposit =
+                                    inst1.getRequiredAmount().subtract(paidForInst1);
+                            if (remainingForDeposit.compareTo(BigDecimal.ZERO) <= 0) {
+                                throw new BusinessException(
+                                        HttpStatus.BAD_REQUEST,
+                                        "DEPOSIT_ALREADY_PAID",
+                                        "Tiền cọc cho đơn đặt chỗ này đã được thanh toán trước đó!");
+                            }
+                            bookingBaseAmount = remainingForDeposit;
+                            targetInstallment = inst1;
+                            stageDesc =
+                                    "Thanh toán đặt cọc (Đợt 1) qua thẻ "
+                                            + cardBrand
+                                            + " ("
+                                            + paymentCurrency
+                                            + ")";
+                        }
+                    }
+                    case STAGE -> {
+                        if (installments.isEmpty()) {
+                            bookingBaseAmount = outstanding;
+                        } else {
+                            if (request.getInstallmentId() != null) {
+                                targetInstallment =
+                                        installmentRepository
+                                                .findById(request.getInstallmentId())
+                                                .orElseThrow(
+                                                        () ->
+                                                                new ResourceNotFoundException(
+                                                                        "Installment not found with id: "
+                                                                                + request
+                                                                                        .getInstallmentId()));
+                                if (!targetInstallment
+                                        .getBooking()
+                                        .getBookingId()
+                                        .equals(booking.getBookingId())) {
+                                    throw new BusinessException(
+                                            HttpStatus.BAD_REQUEST,
+                                            "INSTALLMENT_BOOKING_MISMATCH",
+                                            "Đợt thanh toán không thuộc đơn đặt tour này");
+                                }
+                            } else if (request.getSequenceNo() != null) {
+                                targetInstallment =
+                                        installments.stream()
+                                                .filter(
+                                                        i ->
+                                                                i.getSequenceNo()
+                                                                        .equals(
+                                                                                request
+                                                                                        .getSequenceNo()))
+                                                .findFirst()
+                                                .orElseThrow(
+                                                        () ->
+                                                                new BusinessException(
+                                                                        HttpStatus.BAD_REQUEST,
+                                                                        "STAGE_NOT_FOUND",
+                                                                        "Không tìm thấy đợt thanh toán số "
+                                                                                + request
+                                                                                        .getSequenceNo()));
+                            } else {
+                                targetInstallment =
+                                        findFirstUnpaidInstallment(
+                                                booking.getBookingId(), installments);
+                                if (targetInstallment == null) {
+                                    throw new BusinessException(
+                                            HttpStatus.BAD_REQUEST,
+                                            "ALL_STAGES_PAID",
+                                            "Tất cả các đợt thanh toán của đơn đặt tour này đã hoàn tất!");
+                                }
+                            }
+
+                            BigDecimal paidForTarget =
+                                    getPaidAmountForInstallment(
+                                            booking.getBookingId(),
+                                            targetInstallment.getInstallmentId());
+                            BigDecimal remainingForStage =
+                                    targetInstallment.getRequiredAmount().subtract(paidForTarget);
+                            if (remainingForStage.compareTo(BigDecimal.ZERO) <= 0) {
+                                throw new BusinessException(
+                                        HttpStatus.BAD_REQUEST,
+                                        "STAGE_ALREADY_PAID",
+                                        "Đợt thanh toán số "
+                                                + targetInstallment.getSequenceNo()
+                                                + " đã được thanh toán đầy đủ!");
+                            }
+                            bookingBaseAmount = remainingForStage;
+                            stageDesc =
+                                    "Thanh toán đợt "
+                                            + targetInstallment.getSequenceNo()
+                                            + " qua thẻ "
+                                            + cardBrand
+                                            + " ("
+                                            + paymentCurrency
+                                            + ")";
+                        }
+                    }
+                    default ->
+                            throw new BusinessException(
+                                    HttpStatus.BAD_REQUEST,
+                                    "INVALID_PAYMENT_TYPE",
+                                    "Hình thức thanh toán không hợp lệ");
+                }
+
+                boolean isBookingVnd = "VND".equalsIgnoreCase(booking.getCurrency());
+                amountUsd =
+                        isBookingVnd
+                                ? bookingBaseAmount.divide(exchangeRate, 4, RoundingMode.HALF_UP)
+                                : bookingBaseAmount;
+                amountVnd =
+                        isBookingVnd
+                                ? bookingBaseAmount.setScale(0, RoundingMode.HALF_UP)
+                                : bookingBaseAmount
+                                        .multiply(exchangeRate)
+                                        .setScale(0, RoundingMode.HALF_UP);
+            }
+        } else {
+            // Thanh toán thẻ trực tiếp theo số tiền (không cần bookingId)
+            if ("USD".equalsIgnoreCase(paymentCurrency)) {
+                BigDecimal rawUsd =
+                        request.getAmountUsd() != null
+                                ? request.getAmountUsd()
+                                : request.getAmount();
+                if (rawUsd == null && request.getAmountVnd() != null) {
+                    rawUsd = request.getAmountVnd().divide(exchangeRate, 2, RoundingMode.HALF_UP);
+                }
+                if (rawUsd == null || rawUsd.compareTo(new BigDecimal("0.01")) < 0) {
+                    throw new BusinessException(
+                            HttpStatus.BAD_REQUEST,
+                            "INVALID_AMOUNT",
+                            "Số tiền thanh toán thẻ bằng USD tối thiểu là 0.01 USD");
+                }
+                amountUsd = rawUsd.setScale(2, RoundingMode.HALF_UP);
+                amountVnd =
+                        request.getAmountVnd() != null
+                                ? request.getAmountVnd().setScale(0, RoundingMode.HALF_UP)
+                                : amountUsd
+                                        .multiply(exchangeRate)
+                                        .setScale(0, RoundingMode.HALF_UP);
+            } else {
+                BigDecimal rawVnd =
+                        request.getAmountVnd() != null
+                                ? request.getAmountVnd()
+                                : request.getAmount();
+                if (rawVnd == null && request.getAmountUsd() != null) {
+                    rawVnd =
+                            request.getAmountUsd()
+                                    .multiply(exchangeRate)
+                                    .setScale(0, RoundingMode.HALF_UP);
+                }
+                if (rawVnd == null || rawVnd.compareTo(BigDecimal.valueOf(2000)) < 0) {
+                    throw new BusinessException(
+                            HttpStatus.BAD_REQUEST,
+                            "INVALID_AMOUNT",
+                            "Số tiền thanh toán thẻ bằng VNĐ tối thiểu là 2.000 VNĐ");
+                }
+                amountVnd = rawVnd.setScale(0, RoundingMode.HALF_UP);
+                amountUsd =
+                        request.getAmountUsd() != null
+                                ? request.getAmountUsd()
+                                : amountVnd.divide(exchangeRate, 2, RoundingMode.HALF_UP);
+            }
+            bookingBaseAmount = amountUsd;
+        }
+
+        BigDecimal chargedAmount =
+                "USD".equalsIgnoreCase(paymentCurrency)
+                        ? amountUsd.setScale(2, RoundingMode.HALF_UP)
+                        : amountVnd;
+
+        String cleanRef =
+                booking != null
+                        ? booking.getBookingReference().replaceAll("[^A-Za-z0-9]", "")
+                        : "CARD" + (1000 + (int) (Math.random() * 9000));
+        String stageSuffix =
+                targetInstallment != null ? "S" + targetInstallment.getSequenceNo() : "F";
+        String transferContent = "CASMS " + cleanRef + stageSuffix;
+
+        String defaultIdempotencyKey =
+                "SEPAY-"
+                        + cardBrand
+                        + "-"
+                        + paymentCurrency
+                        + "-"
+                        + cleanRef
+                        + "-"
+                        + stageSuffix;
+        String idempotencyKey =
+                (request.getIdempotencyKey() != null && !request.getIdempotencyKey().isBlank())
+                        ? request.getIdempotencyKey().trim()
+                        : defaultIdempotencyKey;
+
+        Optional<Payment> existingPaymentOpt =
+                paymentRepository.findByIdempotencyKey(idempotencyKey);
+        Payment payment;
+        if (existingPaymentOpt.isPresent()) {
+            payment = existingPaymentOpt.get();
+            if (payment.getStatus() == PaymentStatus.Confirmed) {
+                throw new BusinessException(
+                        HttpStatus.BAD_REQUEST,
+                        "PAYMENT_ALREADY_CONFIRMED",
+                        "Giao dịch thẻ này đã được xác nhận thành công trước đó!");
+            }
+        } else {
+            payment = new Payment();
+        }
+
+        payment.setBooking(booking);
+        payment.setInstallment(targetInstallment);
+        payment.setOperationType(PaymentOperationType.Collect);
+        payment.setPaymentMethod(PaymentMethod.Sepay);
+        payment.setProvider("SEPAY_" + cardBrand);
+        payment.setPaymentToken(resolvedToken);
+        payment.setRequestedAmount(bookingBaseAmount);
+        payment.setCurrency(
+                booking != null && booking.getCurrency() != null
+                        ? booking.getCurrency()
+                        : paymentCurrency);
+        payment.setOriginalAmount(chargedAmount);
+        payment.setOriginalCurrency(paymentCurrency);
+        payment.setConvertedAmount(chargedAmount);
+        payment.setSettlementCurrency(paymentCurrency);
+        payment.setExchangeRateApplied(exchangeRate);
+        payment.setExchangeRateSource("SEPAY_CONFIG");
+        payment.setExchangeRateTimestamp(Instant.now());
+        payment.setRequestedAt(Instant.now());
+        payment.setStatus(PaymentStatus.Pending);
+        payment.setIdempotencyKey(idempotencyKey);
+        payment.setInternalReceiptReference(transferContent);
+        payment = paymentRepository.save(payment);
+
+        boolean hasCardCredentials =
+                (request.getCardNumber() != null && !request.getCardNumber().isBlank())
+                        || (request.getCardToken() != null && !request.getCardToken().isBlank());
+        boolean shouldAutoCapture =
+                request.getAutoCapture() != null ? request.getAutoCapture() : hasCardCredentials;
+
+        String processorRef =
+                "SEPAY-"
+                        + cardBrand
+                        + "-"
+                        + paymentCurrency
+                        + "-"
+                        + UUID.randomUUID().toString().substring(0, 8).toUpperCase(Locale.ROOT);
+        String checkoutUrl =
+                String.format(
+                        "%s?merchant=%s&paymentId=%s&brand=%s&currency=%s&amount=%s",
+                        resolveCardGatewayUrl(),
+                        resolveMerchantId(),
+                        payment.getPaymentId(),
+                        cardBrand,
+                        paymentCurrency,
+                        chargedAmount.toPlainString());
+
+        if (shouldAutoCapture) {
+            // Lưu lịch sử giao dịch cổng thẻ SePay (SepayTransaction)
+            SepayTransaction tx = new SepayTransaction();
+            tx.setSepayId(Math.abs(UUID.randomUUID().getMostSignificantBits() % 900_000_000L) + 100_000_000L);
+            tx.setGateway("SEPAY_" + cardBrand);
+            tx.setAccountNumber(maskedCard);
+            tx.setTransferType("in");
+            tx.setTransferAmount(chargedAmount);
+            tx.setCode(transferContent);
+            tx.setContent(
+                    transferContent
+                            + " | "
+                            + cardBrand
+                            + " "
+                            + maskedCard
+                            + " | "
+                            + chargedAmount
+                            + " "
+                            + paymentCurrency);
+            tx.setReferenceCode(processorRef);
+            tx.setDescription(stageDesc);
+            tx.setPayment(payment);
+            tx.setBooking(booking);
+            tx.setTransactionDate(Instant.now());
+            tx.setMatchedAt(Instant.now());
+            tx.setStatus(SepayTransactionStatus.PROCESSED);
+            sepayTransactionRepository.save(tx);
+
+            if (booking != null && payment.getPaymentId() != null) {
+                BigDecimal firstConfirmAmount =
+                        targetInstallment != null
+                                ? bookingBaseAmount.min(targetInstallment.getRequiredAmount())
+                                : bookingBaseAmount;
+                if (firstConfirmAmount.compareTo(BigDecimal.ZERO) <= 0) {
+                    firstConfirmAmount = bookingBaseAmount;
+                }
+                PaymentConfirmRequest confirmReq =
+                        new PaymentConfirmRequest(firstConfirmAmount, processorRef);
+                paymentService.confirmPayment(payment.getPaymentId(), confirmReq);
+                payment.setStatus(PaymentStatus.Confirmed);
+                payment.setConfirmedAmount(firstConfirmAmount);
+                payment.setAuthorizedAmount(bookingBaseAmount);
+                payment.setCapturedAmount(bookingBaseAmount);
+                payment.setConfirmedAt(Instant.now());
+                payment.setCapturedAt(Instant.now());
+                payment.setProcessorReference(processorRef);
+
+                // Phân bổ tiền thừa (surplus) nếu khách trả gộp nhiều đợt qua thẻ Visa/Mastercard
+                BigDecimal surplusBase = bookingBaseAmount.subtract(firstConfirmAmount);
+                if (surplusBase.compareTo(BigDecimal.valueOf(0.01)) > 0) {
+                    allocateSurplusToSubsequentInstallments(
+                            booking,
+                            surplusBase,
+                            payment.getCurrency(),
+                            processorRef,
+                            payment.getProvider());
+                }
+            } else {
+                payment.setStatus(PaymentStatus.Confirmed);
+                payment.setConfirmedAmount(bookingBaseAmount);
+                payment.setAuthorizedAmount(bookingBaseAmount);
+                payment.setCapturedAmount(bookingBaseAmount);
+                payment.setConfirmedAt(Instant.now());
+                payment.setCapturedAt(Instant.now());
+                payment.setProcessorReference(processorRef);
+                payment = paymentRepository.save(payment);
+            }
+        }
+
+        String instructions =
+                payment.getStatus() == PaymentStatus.Confirmed
+                        ? "Thanh toán thẻ quốc tế "
+                                + cardBrand
+                                + " ("
+                                + maskedCard
+                                + ") số tiền "
+                                + chargedAmount
+                                + " "
+                                + paymentCurrency
+                                + " qua SePay đã được uỷ quyền và xác nhận thành công (Mã GD: "
+                                + processorRef
+                                + ")."
+                        : "Vui lòng hoàn tất xác thực 3D-Secure cho thẻ "
+                                + cardBrand
+                                + " với số tiền "
+                                + chargedAmount
+                                + " "
+                                + paymentCurrency
+                                + " tại cổng thanh toán SePay: "
+                                + checkoutUrl;
+
+        return SepayCheckoutResponse.builder()
+                .paymentId(payment.getPaymentId())
+                .bookingId(booking != null ? booking.getBookingId() : null)
+                .bookingReference(booking != null ? booking.getBookingReference() : transferContent)
+                .paymentType(effectivePaymentType)
+                .installmentId(
+                        targetInstallment != null ? targetInstallment.getInstallmentId() : null)
+                .sequenceNo(targetInstallment != null ? targetInstallment.getSequenceNo() : null)
+                .stageDescription(stageDesc)
+                .amountUsd(amountUsd)
+                .amountVnd(amountVnd)
+                .exchangeRate(exchangeRate)
+                .paymentCurrency(paymentCurrency)
+                .chargedAmount(chargedAmount)
+                .paymentChannel(cardBrand)
+                .cardBrand(cardBrand)
+                .maskedCardNumber(maskedCard)
+                .cardHolderName(request.getCardHolderName())
+                .processorReference(
+                        payment.getStatus() == PaymentStatus.Confirmed ? processorRef : null)
+                .checkoutUrl(checkoutUrl)
+                .supportedCurrencies(resolveSupportedCurrencies())
+                .supportedCardBrands(resolveSupportedCardBrands())
+                .bankName("SEPAY_" + cardBrand)
+                .accountNumber(maskedCard)
+                .accountHolderName(
+                        request.getCardHolderName() != null
+                                ? request.getCardHolderName()
+                                : sepayProperties.getAccountName())
+                .transferContent(transferContent)
+                .status(payment.getStatus())
+                .createdAt(payment.getRequestedAt())
+                .instructions(instructions)
                 .build();
     }
 
@@ -795,14 +1627,18 @@ public class SepayService {
                                     ? matchedPayment.getInternalReceiptReference()
                                     : "N/A");
 
-            BigDecimal exchangeRate = sepayProperties.getUsdToVndRate();
-            if (exchangeRate == null || exchangeRate.compareTo(BigDecimal.ZERO) <= 0) {
-                exchangeRate = BigDecimal.valueOf(25400);
-            }
+            BigDecimal exchangeRate = resolveDefaultExchangeRate();
             boolean isVndCurrency =
                     "VND".equalsIgnoreCase(matchedPayment.getCurrency())
                             || (matchedBooking != null
                                     && "VND".equalsIgnoreCase(matchedBooking.getCurrency()));
+            String webhookCurrency =
+                    normalizeSupportedCurrency(payload.getCurrency(), "VND");
+            BigDecimal rawTransferAmount =
+                    payload.getTransferAmount() != null
+                            ? payload.getTransferAmount()
+                            : BigDecimal.ZERO;
+
             BigDecimal expectedVnd =
                     isVndCurrency
                             ? matchedPayment.getRequestedAmount().setScale(0, RoundingMode.HALF_UP)
@@ -811,9 +1647,11 @@ public class SepayService {
                                     .multiply(exchangeRate)
                                     .setScale(0, RoundingMode.HALF_UP);
             BigDecimal receivedVnd =
-                    payload.getTransferAmount() != null
-                            ? payload.getTransferAmount()
-                            : BigDecimal.ZERO;
+                    "USD".equalsIgnoreCase(webhookCurrency)
+                            ? rawTransferAmount
+                                    .multiply(exchangeRate)
+                                    .setScale(0, RoundingMode.HALF_UP)
+                            : rawTransferAmount;
 
             // Kiểm tra dung sai số tiền
             double diff = Math.abs(receivedVnd.subtract(expectedVnd).doubleValue());
@@ -822,8 +1660,10 @@ public class SepayService {
 
             if (receivedVnd.compareTo(expectedVnd) < 0 && diff > maxAllowedDiff) {
                 log.warn(
-                        "Transfer amount mismatch: received {} VND, expected {} VND",
+                        "Transfer amount mismatch: received {} VND ({} {}), expected {} VND",
                         receivedVnd,
+                        rawTransferAmount,
+                        webhookCurrency,
                         expectedVnd);
                 tx.setStatus(SepayTransactionStatus.AMOUNT_MISMATCH);
                 sepayTransactionRepository.save(tx);
@@ -850,12 +1690,17 @@ public class SepayService {
 
                 // --- XỬ LÝ THANH TOÁN GỘP & TIỀN THỪA (SURPLUS / BUNDLED ALLOCATION) ---
                 int surplusStagesAllocated = 0;
-                BigDecimal receivedUsd =
-                        isVndCurrency
-                                ? receivedVnd
-                                : receivedVnd.divide(exchangeRate, 4, RoundingMode.HALF_UP);
-                BigDecimal confirmedUsd = matchedPayment.getRequestedAmount();
-                BigDecimal surplusUsd = receivedUsd.subtract(confirmedUsd);
+                BigDecimal receivedInPaymentCurrency;
+                if (isVndCurrency) {
+                    receivedInPaymentCurrency = receivedVnd;
+                } else if ("USD".equalsIgnoreCase(webhookCurrency)) {
+                    receivedInPaymentCurrency = rawTransferAmount;
+                } else {
+                    receivedInPaymentCurrency =
+                            receivedVnd.divide(exchangeRate, 4, RoundingMode.HALF_UP);
+                }
+                BigDecimal confirmedAmount = matchedPayment.getRequestedAmount();
+                BigDecimal surplusUsd = receivedInPaymentCurrency.subtract(confirmedAmount);
 
                 if (surplusUsd.compareTo(BigDecimal.valueOf(0.01)) > 0 && matchedBooking != null) {
                     List<Installment> installments =
@@ -984,17 +1829,21 @@ public class SepayService {
 
         // Trường hợp khách chuyển trực tiếp không có pending payment: tự động tạo payment mới cho
         // đợt tiếp theo
-        BigDecimal receivedVnd =
+        String webhookCurrency = normalizeSupportedCurrency(payload.getCurrency(), "VND");
+        BigDecimal rawTransferAmount =
                 payload.getTransferAmount() != null ? payload.getTransferAmount() : BigDecimal.ZERO;
-        BigDecimal exchangeRate = sepayProperties.getUsdToVndRate();
-        if (exchangeRate == null || exchangeRate.compareTo(BigDecimal.ZERO) <= 0) {
-            exchangeRate = BigDecimal.valueOf(25400);
-        }
+        BigDecimal exchangeRate = resolveDefaultExchangeRate();
+        BigDecimal receivedVnd =
+                "USD".equalsIgnoreCase(webhookCurrency)
+                        ? rawTransferAmount.multiply(exchangeRate).setScale(0, RoundingMode.HALF_UP)
+                        : rawTransferAmount;
         boolean isVndCurrency = "VND".equalsIgnoreCase(matchedBooking.getCurrency());
         BigDecimal receivedInBookingCurrency =
                 isVndCurrency
                         ? receivedVnd
-                        : receivedVnd.divide(exchangeRate, 4, RoundingMode.HALF_UP);
+                        : ("USD".equalsIgnoreCase(webhookCurrency)
+                                ? rawTransferAmount
+                                : receivedVnd.divide(exchangeRate, 4, RoundingMode.HALF_UP));
 
         List<Installment> installments =
                 installmentRepository.findByBookingBookingIdOrderBySequenceNoAsc(
@@ -1310,8 +2159,17 @@ public class SepayService {
     private SepayTransaction recordSepayTransaction(SepayWebhookPayload payload) {
         SepayTransaction tx = new SepayTransaction();
         tx.setSepayId(payload.getId() != null ? payload.getId() : System.currentTimeMillis());
-        tx.setGateway(payload.getGateway());
-        tx.setAccountNumber(payload.getAccountNumber());
+        String gateway = payload.getGateway();
+        if ((gateway == null || gateway.isBlank()) && payload.getCardBrand() != null) {
+            gateway = "SEPAY_" + payload.getCardBrand().trim().toUpperCase(Locale.ROOT);
+        } else if ((gateway == null || gateway.isBlank()) && payload.getPaymentChannel() != null) {
+            gateway = "SEPAY_" + payload.getPaymentChannel().trim().toUpperCase(Locale.ROOT);
+        }
+        tx.setGateway(gateway);
+        tx.setAccountNumber(
+                payload.getAccountNumber() != null
+                        ? payload.getAccountNumber()
+                        : payload.getMaskedCardNumber());
         tx.setTransferType(payload.getTransferType());
         tx.setTransferAmount(
                 payload.getTransferAmount() != null
@@ -1351,6 +2209,280 @@ public class SepayService {
             return payload.getReferenceCode().trim();
         }
         return "SEPAY-TX-" + UUID.randomUUID().toString().substring(0, 8);
+    }
+
+    private BigDecimal resolveDefaultExchangeRate() {
+        BigDecimal rate = sepayProperties.getUsdToVndRate();
+        return (rate != null && rate.compareTo(BigDecimal.ZERO) > 0)
+                ? rate
+                : BigDecimal.valueOf(25400);
+    }
+
+    private String resolveDefaultCurrency() {
+        String def = sepayProperties.getDefaultCurrency();
+        return (def != null && !def.isBlank()) ? def.trim().toUpperCase(Locale.ROOT) : "VND";
+    }
+
+    private List<String> resolveSupportedCurrencies() {
+        List<String> list = sepayProperties.getSupportedCurrencies();
+        return (list != null && !list.isEmpty()) ? list : List.of("VND", "USD");
+    }
+
+    private List<String> resolveSupportedCardBrands() {
+        List<String> list = sepayProperties.getSupportedCardBrands();
+        return (list != null && !list.isEmpty()) ? list : List.of("VISA", "MASTERCARD");
+    }
+
+    private List<String> resolveSupportedPaymentChannels() {
+        List<String> list = sepayProperties.getSupportedPaymentChannels();
+        return (list != null && !list.isEmpty())
+                ? list
+                : List.of("VIETQR", "VISA", "MASTERCARD");
+    }
+
+    private String resolveMerchantId() {
+        String id = sepayProperties.getMerchantId();
+        return (id != null && !id.isBlank()) ? id.trim() : "CASMS-SEPAY-INTL-001";
+    }
+
+    private String resolveCardGatewayUrl() {
+        String url = sepayProperties.getCardGatewayUrl();
+        return (url != null && !url.isBlank())
+                ? url.trim()
+                : "https://pay.sepay.vn/v1/card-checkout";
+    }
+
+    private boolean isCardPaymentEnabled() {
+        return !Boolean.FALSE.equals(sepayProperties.getCardEnabled());
+    }
+
+    private String normalizeSupportedCurrency(String rawCurrency, String fallback) {
+        if (rawCurrency == null || rawCurrency.isBlank()) {
+            return fallback != null ? fallback.toUpperCase(Locale.ROOT) : "VND";
+        }
+        String rawUpper = rawCurrency.trim().toUpperCase(Locale.ROOT);
+        final String cleaned = "VNĐ".equals(rawUpper) ? "VND" : rawUpper;
+        List<String> supported = resolveSupportedCurrencies();
+        boolean isAllowed =
+                supported.stream().anyMatch(c -> c.equalsIgnoreCase(cleaned))
+                        || "VND".equals(cleaned)
+                        || "USD".equals(cleaned);
+        if (!isAllowed) {
+            throw new BusinessException(
+                    HttpStatus.BAD_REQUEST,
+                    "UNSUPPORTED_SEPAY_CURRENCY",
+                    "SePay chỉ hỗ trợ thanh toán bằng Tiền Việt (VND) hoặc Đô la Mỹ (USD). Giá trị nhận được: "
+                            + rawCurrency);
+        }
+        return cleaned;
+    }
+
+    private String resolvePaymentChannel(
+            String rawChannel, String cardBrand, String cardNumber, String cardToken) {
+        if ((rawChannel == null || rawChannel.isBlank())) {
+            if ((cardBrand != null && !cardBrand.isBlank())
+                    || (cardNumber != null && !cardNumber.isBlank())
+                    || (cardToken != null && !cardToken.isBlank())) {
+                return resolveAndValidateCardBrand(cardBrand, cardNumber, cardToken);
+            }
+            return "VIETQR";
+        }
+        String ch = rawChannel.trim().toUpperCase(Locale.ROOT);
+        if ("VIETQR".equals(ch) || "QR".equals(ch) || "BANK".equals(ch) || "BANK_TRANSFER".equals(ch)) {
+            return "VIETQR";
+        }
+        if ("CARD".equals(ch) || "VISA".equals(ch) || "MASTERCARD".equals(ch) || "MASTER".equals(ch) || "MC".equals(ch)) {
+            String brandHint = "CARD".equals(ch) ? cardBrand : ch;
+            return resolveAndValidateCardBrand(brandHint, cardNumber, cardToken);
+        }
+        throw new BusinessException(
+                HttpStatus.BAD_REQUEST,
+                "UNSUPPORTED_PAYMENT_CHANNEL",
+                "Kênh thanh toán SePay không hợp lệ (chỉ hỗ trợ VIETQR, VISA, MASTERCARD): "
+                        + rawChannel);
+    }
+
+    private String resolveAndValidateCardBrand(
+            String requestedBrand, String cardNumber, String cardToken) {
+        String detectedFromPan = null;
+        if (cardNumber != null && !cardNumber.isBlank()) {
+            String digits = cardNumber.replaceAll("[\\s-]", "");
+            if (!digits.matches("\\d{13,19}")) {
+                throw new BusinessException(
+                        HttpStatus.BAD_REQUEST,
+                        "INVALID_CARD_NUMBER",
+                        "Số thẻ quốc tế không hợp lệ (phải gồm 13-19 chữ số)");
+            }
+            if (digits.startsWith("4")) {
+                detectedFromPan = "VISA";
+            } else if (isMastercardBin(digits)) {
+                detectedFromPan = "MASTERCARD";
+            } else {
+                throw new BusinessException(
+                        HttpStatus.BAD_REQUEST,
+                        "UNSUPPORTED_CARD_BRAND",
+                        "Số thẻ không thuộc dải BIN của VISA (4...) hoặc MASTERCARD (51-55, 2221-2720)");
+            }
+        }
+
+        String normalizedRequested = null;
+        if (requestedBrand != null && !requestedBrand.isBlank()) {
+            String upper = requestedBrand.trim().toUpperCase(Locale.ROOT);
+            if ("VISA".equals(upper) || "SEPAY_VISA".equals(upper)) {
+                normalizedRequested = "VISA";
+            } else if ("MASTERCARD".equals(upper)
+                    || "MASTER".equals(upper)
+                    || "MC".equals(upper)
+                    || "SEPAY_MASTERCARD".equals(upper)) {
+                normalizedRequested = "MASTERCARD";
+            } else {
+                throw new BusinessException(
+                        HttpStatus.BAD_REQUEST,
+                        "UNSUPPORTED_CARD_BRAND",
+                        "SePay chỉ hỗ trợ thẻ quốc tế VISA hoặc MASTERCARD. Giá trị nhận được: "
+                                + requestedBrand);
+            }
+        }
+
+        if (detectedFromPan != null
+                && normalizedRequested != null
+                && !detectedFromPan.equals(normalizedRequested)) {
+            throw new BusinessException(
+                    HttpStatus.BAD_REQUEST,
+                    "CARD_BRAND_MISMATCH",
+                    "Số thẻ nhập vào là thẻ "
+                            + detectedFromPan
+                            + " nhưng thương hiệu thẻ chọn là "
+                            + normalizedRequested);
+        }
+
+        if (detectedFromPan != null) {
+            return detectedFromPan;
+        }
+        if (normalizedRequested != null) {
+            return normalizedRequested;
+        }
+        if (cardToken != null && !cardToken.isBlank()) {
+            String lowerTok = cardToken.toLowerCase(Locale.ROOT);
+            if (lowerTok.contains("master") || lowerTok.contains("_mc_")) {
+                return "MASTERCARD";
+            }
+            return "VISA";
+        }
+        return "VISA";
+    }
+
+    private boolean isMastercardBin(String digits) {
+        if (digits.length() >= 2) {
+            int prefix2 = Integer.parseInt(digits.substring(0, 2));
+            if (prefix2 >= 51 && prefix2 <= 55) {
+                return true;
+            }
+        }
+        if (digits.length() >= 4) {
+            int prefix4 = Integer.parseInt(digits.substring(0, 4));
+            if (prefix4 >= 2221 && prefix4 <= 2720) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private String maskCardNumber(String cardNumber, String cardToken, String cardBrand) {
+        if (cardNumber != null && !cardNumber.isBlank()) {
+            String digits = cardNumber.replaceAll("[\\s-]", "");
+            if (digits.length() >= 4) {
+                return "**** **** **** " + digits.substring(digits.length() - 4);
+            }
+        }
+        if (cardToken != null && !cardToken.isBlank()) {
+            String digits = cardToken.replaceAll("[^0-9]", "");
+            if (digits.length() >= 4) {
+                return "**** **** **** " + digits.substring(digits.length() - 4);
+            }
+        }
+        return "MASTERCARD".equalsIgnoreCase(cardBrand)
+                ? "**** **** **** 5412"
+                : "**** **** **** 4242";
+    }
+
+    private String resolveCardToken(String cardToken, String cardNumber, String cardBrand) {
+        if (cardToken != null && !cardToken.isBlank()) {
+            return cardToken.trim();
+        }
+        String last4 = "4242";
+        if (cardNumber != null && !cardNumber.isBlank()) {
+            String digits = cardNumber.replaceAll("[\\s-]", "");
+            if (digits.length() >= 4) {
+                last4 = digits.substring(digits.length() - 4);
+            }
+        } else if ("MASTERCARD".equalsIgnoreCase(cardBrand)) {
+            last4 = "5412";
+        }
+        return "tok_sepay_" + cardBrand.toLowerCase(Locale.ROOT) + "_" + last4;
+    }
+
+    private void allocateSurplusToSubsequentInstallments(
+            Booking booking,
+            BigDecimal surplusAmount,
+            String currency,
+            String processorRef,
+            String provider) {
+        List<Installment> installments =
+                installmentRepository.findByBookingBookingIdOrderBySequenceNoAsc(
+                        booking.getBookingId());
+        Map<UUID, BigDecimal> paidMap =
+                calculateWaterfallInstallmentPaidAmounts(booking.getBookingId(), installments);
+
+        int surplusStagesAllocated = 0;
+        BigDecimal remainingSurplus = surplusAmount;
+        for (Installment inst : installments) {
+            if (remainingSurplus.compareTo(BigDecimal.valueOf(0.01)) <= 0) {
+                break;
+            }
+            BigDecimal paid = paidMap.getOrDefault(inst.getInstallmentId(), BigDecimal.ZERO);
+            BigDecimal needed = inst.getRequiredAmount().subtract(paid);
+            if (needed.compareTo(BigDecimal.ZERO) <= 0) {
+                continue;
+            }
+            BigDecimal alloc = remainingSurplus.min(needed);
+            if (alloc.compareTo(BigDecimal.ZERO) > 0) {
+                surplusStagesAllocated++;
+                String cleanRef = booking.getBookingReference().replaceAll("[^A-Za-z0-9]", "");
+                String surplusKey =
+                        "SEPAY-CARD-SURPLUS-"
+                                + processorRef
+                                + "-S"
+                                + inst.getSequenceNo();
+
+                Payment surplusPayment = new Payment();
+                surplusPayment.setBooking(booking);
+                surplusPayment.setInstallment(inst);
+                surplusPayment.setOperationType(PaymentOperationType.Collect);
+                surplusPayment.setPaymentMethod(PaymentMethod.Sepay);
+                surplusPayment.setProvider(provider);
+                surplusPayment.setRequestedAmount(alloc);
+                surplusPayment.setConfirmedAmount(alloc);
+                surplusPayment.setAuthorizedAmount(alloc);
+                surplusPayment.setCapturedAmount(alloc);
+                surplusPayment.setCurrency(currency);
+                surplusPayment.setRequestedAt(Instant.now());
+                surplusPayment.setConfirmedAt(Instant.now());
+                surplusPayment.setCapturedAt(Instant.now());
+                surplusPayment.setStatus(PaymentStatus.Confirmed);
+                surplusPayment.setProcessorReference(processorRef + "-S" + inst.getSequenceNo());
+                surplusPayment.setInternalReceiptReference(
+                        "CASMS " + cleanRef + "S" + inst.getSequenceNo());
+                surplusPayment.setIdempotencyKey(surplusKey);
+                paymentRepository.save(surplusPayment);
+
+                paidMap.put(inst.getInstallmentId(), paid.add(alloc));
+                remainingSurplus = remainingSurplus.subtract(alloc);
+            }
+        }
+        if (surplusStagesAllocated > 0) {
+            paymentService.allocateInstallmentsAndSync(booking);
+        }
     }
 
     private void assertAccess(Booking booking, UUID userId, boolean canReadAll) {

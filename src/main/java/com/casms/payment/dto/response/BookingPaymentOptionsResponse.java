@@ -56,6 +56,15 @@ public class BookingPaymentOptionsResponse {
     @Schema(description = "Tỷ giá quy đổi hiện hành (USD -> VNĐ)")
     private BigDecimal exchangeRate;
 
+    @Schema(description = "Danh sách tiền tệ hỗ trợ thanh toán qua SePay (VND, USD)")
+    private List<String> supportedCurrencies;
+
+    @Schema(description = "Danh sách kênh thanh toán SePay hỗ trợ (VIETQR, VISA, MASTERCARD)")
+    private List<String> supportedPaymentChannels;
+
+    @Schema(description = "Danh sách thương hiệu thẻ quốc tế hỗ trợ (VISA, MASTERCARD)")
+    private List<String> supportedCardBrands;
+
     @Schema(description = "Kế hoạch thanh toán đã đăng ký ban đầu")
     private PaymentPlan configuredPaymentPlan;
 

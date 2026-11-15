@@ -98,3 +98,18 @@ casms:
       usd-to-vnd-rate: ${SEPAY_USD_TO_VND_RATE:25400}
       qr-template: ${SEPAY_QR_TEMPLATE:compact}
       tolerance-percent: ${SEPAY_TOLERANCE_PERCENT:1.0}
+      card-enabled: ${SEPAY_CARD_ENABLED:true}
+      default-currency: ${SEPAY_DEFAULT_CURRENCY:VND}
+      supported-currencies:
+        - VND
+        - USD
+      supported-card-brands:
+        - VISA
+        - MASTERCARD
+      supported-payment-channels:
+        - VIETQR
+        - VISA
+        - MASTERCARD
+      merchant-id: ${SEPAY_MERCHANT_ID:CASMS-SEPAY-INTL-001}
+      card-gateway-url: ${SEPAY_CARD_GATEWAY_URL:https://pay.sepay.vn/v1/card-checkout}
+      three-d-secure-enabled: ${SEPAY_3DS_ENABLED:true}
