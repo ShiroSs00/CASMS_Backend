@@ -94,6 +94,12 @@ public class SepayCardCheckoutRequest {
     @Schema(description = "Mã Idempotency chống tạo lệnh trùng lặp")
     private String idempotencyKey;
 
+    @Schema(description = "Miễn phụ phí quẹt thẻ (áp dụng cho khách VIP hoặc chiến dịch đặc biệt)")
+    private Boolean waiveSurcharge;
+
+    @Schema(description = "Tỷ lệ phụ phí thẻ tuỳ chỉnh (%) nếu muốn ghi đè cấu hình mặc định", example = "2.00")
+    private BigDecimal customSurchargePercent;
+
     @Schema(
             description =
                     "Tự động uỷ quyền & gạch nợ ngay lập tức qua cổng thẻ SePay (mặc định: true)",

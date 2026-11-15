@@ -94,7 +94,7 @@ public class ChargeDisputeService {
         dispute.setPassenger(passenger);
         dispute.setDisputedAmount(request.getDisputedAmount());
         dispute.setReasonCode(request.getReasonCode());
-        dispute.setDescription(request.getDescription().trim());
+        dispute.setDescription(request.getDescription() != null ? request.getDescription().trim() : "");
         dispute.setStatus(ChargeDisputeStatus.OPEN);
         dispute.setReportedAt(Instant.now());
 
@@ -141,7 +141,7 @@ public class ChargeDisputeService {
         }
 
         dispute.setResolutionType(request.getResolutionType());
-        dispute.setResolutionNote(request.getResolutionNote().trim());
+        dispute.setResolutionNote(request.getResolutionNote() != null ? request.getResolutionNote().trim() : "");
         dispute.setApprovedAmount(request.getApprovedAmount());
         dispute.setStatus(ChargeDisputeStatus.RESOLVED);
         dispute.setAssignedToUser(staff);

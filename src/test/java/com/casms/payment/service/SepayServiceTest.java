@@ -10,6 +10,7 @@ import com.casms.booking.repository.BookingRepository;
 import com.casms.booking.service.BookingService;
 import com.casms.common.exception.BusinessException;
 import com.casms.payment.config.SepayProperties;
+import com.casms.payment.dto.request.CardSurchargeConfigRequest;
 import com.casms.payment.dto.request.PaymentConfirmRequest;
 import com.casms.payment.dto.request.SepayCardCheckoutRequest;
 import com.casms.payment.dto.request.SepayCheckoutRequest;
@@ -1011,5 +1012,60 @@ class SepayServiceTest {
         org.junit.jupiter.api.Assertions.assertThrows(
                 org.springframework.security.access.AccessDeniedException.class,
                 () -> sepayService.getPaymentOptions(bookingId, null, false));
+    }
+
+    @Test
+    @DisplayName("Cập nhật tỷ lệ phụ phí thẻ linh hoạt tại runtime (Admin / Manager) thành công")
+    void updateSurchargeConfig_Success() {
+        java.util.Map<String, BigDecimal> brandMap = new java.util.concurrent.ConcurrentHashMap<>();
+        brandMap.put("VISA", new BigDecimal("2.50"));
+        when(sepayProperties.getBrandSurchargeRates()).thenReturn(brandMap);
+        when(sepayProperties.isEnabled()).thenReturn(true);
+
+        CardSurchargeConfigRequest req = new CardSurchargeConfigRequest();
+        req.setCardSurchargeEnabled(true);
+        req.setCardSurchargePercent(new BigDecimal("3.00"));
+        req.setDomesticCardSurchargePercent(new BigDecimal("1.20"));
+        req.setBrandSurchargeRates(java.util.Map.of("AMEX", new BigDecimal("4.00"), "VISA", new BigDecimal("2.20")));
+
+        SepayConfigResponse resp = sepayService.updateSurchargeConfig(req, UUID.randomUUID(), true);
+
+        assertNotNull(resp);
+        verify(sepayProperties).setCardSurchargeEnabled(true);
+        verify(sepayProperties).setCardSurchargePercent(new BigDecimal("3.00"));
+        verify(sepayProperties).setDomesticCardSurchargePercent(new BigDecimal("1.20"));
+        assertEquals(new BigDecimal("4.00"), brandMap.get("AMEX"));
+        assertEquals(new BigDecimal("2.20"), brandMap.get("VISA"));
+    }
+
+    @Test
+    @DisplayName("Cập nhật tỷ lệ phụ phí thẻ bị từ chối nếu không có quyền PAYMENT_PROCESS")
+    void updateSurchargeConfig_Unauthorized_ThrowsForbidden() {
+        CardSurchargeConfigRequest req = new CardSurchargeConfigRequest();
+        req.setCardSurchargePercent(new BigDecimal("3.00"));
+
+        BusinessException ex = assertThrows(
+                BusinessException.class,
+                () -> sepayService.updateSurchargeConfig(req, UUID.randomUUID(), false));
+        assertEquals("FORBIDDEN", ex.getCode());
+    }
+
+    @Test
+    @DisplayName("SepayProperties tính phụ phí động linh hoạt theo từng loại thẻ: VISA, JCB, AMEX, NAPAS")
+    void sepayProperties_ResolveCardSurcharge_BrandSpecific() {
+        SepayProperties props = new SepayProperties();
+        assertEquals(new BigDecimal("2.50"), props.resolveCardSurcharge("VISA"));
+        assertEquals(new BigDecimal("2.50"), props.resolveCardSurcharge("MASTERCARD"));
+        assertEquals(new BigDecimal("2.00"), props.resolveCardSurcharge("JCB"));
+        assertEquals(new BigDecimal("3.50"), props.resolveCardSurcharge("AMEX"));
+        assertEquals(new BigDecimal("1.50"), props.resolveCardSurcharge("NAPAS"));
+        assertEquals(new BigDecimal("1.50"), props.resolveCardSurcharge("ATM"));
+        // fallback to default
+        assertEquals(new BigDecimal("2.50"), props.resolveCardSurcharge("DISCOVER"));
+
+        // When disabled
+        props.setCardSurchargeEnabled(false);
+        assertEquals(BigDecimal.ZERO, props.resolveCardSurcharge("VISA"));
+        assertEquals(BigDecimal.ZERO, props.resolveCardSurcharge("AMEX"));
     }
 }

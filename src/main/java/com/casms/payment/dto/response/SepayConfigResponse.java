@@ -60,7 +60,13 @@ public class SepayConfigResponse {
     @Schema(description = "Phụ phí quẹt thẻ quốc tế Visa / Mastercard (%)", example = "2.50")
     private BigDecimal cardSurchargePercent;
 
+    @Schema(description = "Phụ phí quẹt thẻ nội địa ATM/NAPAS (%)", example = "1.50")
+    private BigDecimal domesticCardSurchargePercent;
+
     @Schema(description = "Trạng thái áp dụng phụ phí quẹt thẻ")
     private boolean cardSurchargeEnabled;
+
+    @Schema(description = "Bảng tỷ lệ phụ phí chi tiết theo từng thương hiệu thẻ (VISA, MASTERCARD, JCB, AMEX, NAPAS)")
+    private java.util.Map<String, BigDecimal> brandSurchargeRates;
 }
 

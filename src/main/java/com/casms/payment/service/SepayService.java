@@ -8,6 +8,7 @@ import com.casms.booking.service.BookingService;
 import com.casms.common.exception.BusinessException;
 import com.casms.common.exception.ResourceNotFoundException;
 import com.casms.payment.config.SepayProperties;
+import com.casms.payment.dto.request.CardSurchargeConfigRequest;
 import com.casms.payment.dto.request.PaymentConfirmRequest;
 import com.casms.payment.dto.request.SepayCardCheckoutRequest;
 import com.casms.payment.dto.request.SepayCheckoutRequest;
@@ -84,8 +85,44 @@ public class SepayService {
                 .cardGatewayUrl(resolveCardGatewayUrl())
                 .threeDSecureEnabled(sepayProperties.isThreeDSecureEnabled())
                 .cardSurchargePercent(sepayProperties.getCardSurchargePercent())
+                .domesticCardSurchargePercent(sepayProperties.getDomesticCardSurchargePercent())
                 .cardSurchargeEnabled(sepayProperties.isCardSurchargeEnabled())
+                .brandSurchargeRates(sepayProperties.getBrandSurchargeRates() != null
+                        ? new HashMap<>(sepayProperties.getBrandSurchargeRates())
+                        : Collections.emptyMap())
                 .build();
+    }
+
+    /** Cập nhật tỷ lệ phụ phí quẹt thẻ linh hoạt tại runtime (Admin / Manager). */
+    public SepayConfigResponse updateSurchargeConfig(
+            CardSurchargeConfigRequest request, UUID userId, boolean canManage) {
+        if (!canManage) {
+            throw new BusinessException(
+                    HttpStatus.FORBIDDEN,
+                    "FORBIDDEN",
+                    "Bạn không có quyền thay đổi cấu hình phụ phí thanh toán");
+        }
+        if (request == null) {
+            return getSepayConfig();
+        }
+        if (request.getCardSurchargeEnabled() != null) {
+            sepayProperties.setCardSurchargeEnabled(request.getCardSurchargeEnabled());
+        }
+        if (request.getCardSurchargePercent() != null) {
+            sepayProperties.setCardSurchargePercent(request.getCardSurchargePercent());
+        }
+        if (request.getDomesticCardSurchargePercent() != null) {
+            sepayProperties.setDomesticCardSurchargePercent(request.getDomesticCardSurchargePercent());
+        }
+        if (request.getBrandSurchargeRates() != null && sepayProperties.getBrandSurchargeRates() != null) {
+            request.getBrandSurchargeRates().forEach((brand, rate) -> {
+                if (brand != null && rate != null) {
+                    sepayProperties.getBrandSurchargeRates().put(brand.trim().toUpperCase(Locale.ROOT), rate);
+                }
+            });
+        }
+        log.info("Card surcharge config updated by user: {}", userId);
+        return getSepayConfig();
     }
 
     /** Lấy chi tiết 3 hình thức thanh toán (FULL, DEPOSIT, STAGE) của một đơn đặt tour. */
@@ -1302,6 +1339,21 @@ public class SepayService {
                         ? amountUsd.setScale(2, RoundingMode.HALF_UP)
                         : amountVnd;
 
+        BigDecimal surchargePercent;
+        if (Boolean.TRUE.equals(request.getWaiveSurcharge())) {
+            surchargePercent = BigDecimal.ZERO;
+        } else if (request.getCustomSurchargePercent() != null) {
+            surchargePercent = request.getCustomSurchargePercent();
+        } else if (sepayProperties != null && sepayProperties.isCardSurchargeEnabled()) {
+            BigDecimal resolved = sepayProperties.resolveCardSurcharge(cardBrand);
+            surchargePercent = (resolved != null) ? resolved
+                    : (sepayProperties.getCardSurchargePercent() != null ? sepayProperties.getCardSurchargePercent() : BigDecimal.ZERO);
+        } else {
+            surchargePercent = BigDecimal.ZERO;
+        }
+        BigDecimal surchargeAmount = chargedAmount.multiply(surchargePercent).divide(new BigDecimal("100"), "USD".equalsIgnoreCase(paymentCurrency) ? 2 : 0, RoundingMode.HALF_UP);
+        BigDecimal totalAmountWithSurcharge = chargedAmount.add(surchargeAmount);
+
         String cleanRef =
                 booking != null
                         ? booking.getBookingReference().replaceAll("[^A-Za-z0-9]", "")
@@ -1491,6 +1543,9 @@ public class SepayService {
                 .exchangeRate(exchangeRate)
                 .paymentCurrency(paymentCurrency)
                 .chargedAmount(chargedAmount)
+                .surchargePercent(surchargePercent)
+                .surchargeAmount(surchargeAmount)
+                .totalAmountWithSurcharge(totalAmountWithSurcharge)
                 .paymentChannel(cardBrand)
                 .cardBrand(cardBrand)
                 .maskedCardNumber(maskedCard)

@@ -59,6 +59,15 @@ public class SepayCheckoutResponse {
     @Schema(description = "Số tiền thực thu theo đơn vị tiền tệ khách chọn (VND hoặc USD)")
     private BigDecimal chargedAmount;
 
+    @Schema(description = "Tỷ lệ phụ phí thẻ ngân hàng áp dụng (%)", example = "2.50")
+    private BigDecimal surchargePercent;
+
+    @Schema(description = "Số tiền phụ phí quẹt thẻ", example = "190500")
+    private BigDecimal surchargeAmount;
+
+    @Schema(description = "Tổng số tiền thanh toán bao gồm phụ phí thẻ", example = "7810500")
+    private BigDecimal totalAmountWithSurcharge;
+
     @Schema(description = "Kênh thanh toán qua SePay (VIETQR, VISA, MASTERCARD)")
     private String paymentChannel;
 
