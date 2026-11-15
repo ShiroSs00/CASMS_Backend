@@ -81,4 +81,26 @@ public class OnboardTransaction {
 
     @Column(name = "description", length = 500)
     private String description;
+
+    @Column(name = "pos_terminal_id")
+    private UUID posTerminalId;
+
+    @Column(name = "device_reference", length = 100)
+    private String deviceReference;
+
+    @Column(name = "idempotency_key", unique = true, length = 100)
+    private String idempotencyKey;
+
+    @Column(name = "service_reference", length = 255)
+    private String serviceReference;
+
+    @Column(name = "created_at", nullable = false)
+    private Instant createdAt = Instant.now();
+
+    @PrePersist
+    protected void onCreate() {
+        if (createdAt == null) {
+            createdAt = Instant.now();
+        }
+    }
 }

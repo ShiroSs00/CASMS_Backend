@@ -1981,7 +1981,7 @@ public class BookingService {
             case Cash ->
                     payment.getInternalReceiptReference() != null
                             && !payment.getInternalReceiptReference().isBlank();
-            case GatewaySandbox, Sepay, CreditCard ->
+            case GatewaySandbox, Sepay, CreditCard, TokenizedCard ->
                     payment.getProcessorReference() != null
                             && !payment.getProcessorReference().isBlank();
         };

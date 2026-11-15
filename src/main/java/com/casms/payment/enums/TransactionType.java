@@ -5,5 +5,6 @@ public enum TransactionType {
     PAYMENT,
     REFUND,
     VOID,
-    ADJUSTMENT
+    ADJUSTMENT,
+    REVERSAL
 }
