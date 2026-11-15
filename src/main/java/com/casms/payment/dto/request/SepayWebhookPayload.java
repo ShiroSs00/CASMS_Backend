@@ -47,4 +47,16 @@ public class SepayWebhookPayload {
 
     /** Chuỗi miêu tả đầy đủ do ngân hàng trả về. */
     private String description;
+
+    /** Đơn vị tiền tệ của giao dịch ("VND" hoặc "USD", mặc định "VND"). */
+    private String currency;
+
+    /** Thương hiệu thẻ quốc tế nếu giao dịch qua cổng thẻ SePay ("VISA", "MASTERCARD"). */
+    private String cardBrand;
+
+    /** Số thẻ đã che (ví dụ: **** **** **** 4242) nếu thanh toán bằng thẻ Visa/Mastercard. */
+    private String maskedCardNumber;
+
+    /** Kênh thanh toán ("VIETQR", "VISA", "MASTERCARD"). */
+    private String paymentChannel;
 }

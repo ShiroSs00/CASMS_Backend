@@ -13,6 +13,7 @@ import lombok.Setter;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 @Getter
@@ -51,6 +52,36 @@ public class SepayCheckoutResponse {
 
     @Schema(description = "Tỷ giá quy đổi áp dụng (USD -> VND)")
     private BigDecimal exchangeRate;
+
+    @Schema(description = "Đơn vị tiền tệ thanh toán khách đã chọn (VND hoặc USD)")
+    private String paymentCurrency;
+
+    @Schema(description = "Số tiền thực thu theo đơn vị tiền tệ khách chọn (VND hoặc USD)")
+    private BigDecimal chargedAmount;
+
+    @Schema(description = "Kênh thanh toán qua SePay (VIETQR, VISA, MASTERCARD)")
+    private String paymentChannel;
+
+    @Schema(description = "Thương hiệu thẻ quốc tế sử dụng (VISA, MASTERCARD)")
+    private String cardBrand;
+
+    @Schema(description = "Số thẻ quốc tế đã che (PCI-DSS masked PAN)")
+    private String maskedCardNumber;
+
+    @Schema(description = "Tên chủ thẻ quốc tế")
+    private String cardHolderName;
+
+    @Schema(description = "Mã tham chiếu giao dịch cổng thanh toán SePay / Visa / Mastercard")
+    private String processorReference;
+
+    @Schema(description = "Đường dẫn cổng thanh toán thẻ quốc tế SePay (Visa / Mastercard)")
+    private String checkoutUrl;
+
+    @Schema(description = "Danh sách tiền tệ được hỗ trợ (VND, USD)")
+    private List<String> supportedCurrencies;
+
+    @Schema(description = "Danh sách loại thẻ quốc tế được hỗ trợ (VISA, MASTERCARD)")
+    private List<String> supportedCardBrands;
 
     @Schema(description = "Tên ngân hàng thụ hưởng")
     private String bankName;
