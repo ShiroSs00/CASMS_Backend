@@ -117,6 +117,37 @@ class GuestPaymentExperienceServiceTest {
     }
 
     @Test
+    @DisplayName("Thanh toán thẻ USD cho booking VND thành công và quy đổi tỷ giá")
+    void testProcessCreditCardPayment_UsdConversion_Success() {
+        when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(mockBooking));
+        when(sepayProperties.getUsdToVndRate()).thenReturn(new BigDecimal("25400"));
+        when(paymentRepository.save(any(Payment.class))).thenAnswer(invocation -> {
+            Payment p = invocation.getArgument(0);
+            p.setPaymentId(UUID.randomUUID());
+            return p;
+        });
+
+        CreditCardPaymentRequest request = new CreditCardPaymentRequest();
+        request.setBookingId(bookingId);
+        request.setAmount(new BigDecimal("100.00"));
+        request.setCardNumber("5555 5555 5555 4444");
+        request.setCardHolderName("JOHN DOE");
+        request.setExpiryDate("10/29");
+        request.setCvv("999");
+        request.setCurrency("USD");
+
+        CreditCardPaymentResponse response = guestPaymentExperienceService.processCreditCardPayment(request);
+
+        assertThat(response).isNotNull();
+        assertThat(response.getPaymentStatus()).isEqualTo(PaymentStatus.Confirmed);
+        assertThat(response.getCardBrand()).isEqualTo("MASTERCARD");
+        assertThat(response.getCardLast4()).isEqualTo("4444");
+        assertThat(response.getCurrency()).isEqualTo("USD");
+        assertThat(response.getAmount()).isEqualByComparingTo(new BigDecimal("100.00"));
+        assertThat(response.getMessage()).contains("2,540,000 VNĐ");
+    }
+
+    @Test
     @DisplayName("Kiểm tra mã khuyến mãi SUMMER2026 giảm 10%")
     void testValidatePromoCode_Summer2026() {
         PromoCodeValidateRequest request = new PromoCodeValidateRequest();
