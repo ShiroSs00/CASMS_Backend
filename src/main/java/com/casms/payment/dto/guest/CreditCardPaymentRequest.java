@@ -23,7 +23,7 @@ public class CreditCardPaymentRequest {
 
     @Schema(description = "Số tiền thanh toán", requiredMode = Schema.RequiredMode.REQUIRED)
     @NotNull(message = "Payment amount is required")
-    @DecimalMin(value = "1000", message = "Amount must be at least 1,000 VND")
+    @DecimalMin(value = "0.01", message = "Amount must be at least 0.01")
     private BigDecimal amount;
 
     @Schema(description = "Đơn vị tiền tệ", example = "VND")

@@ -64,7 +64,22 @@ public class GuestPaymentExperienceService {
             throw new BusinessException(HttpStatus.BAD_REQUEST, "BOOKING_CANCELLED", "Không thể thanh toán cho đơn hàng đã bị hủy");
         }
 
-        // 1. Kiểm tra tính hợp lệ của số thẻ (Luhn Algorithm)
+        // 1. Kiểm tra tiền tệ và số tiền hợp lệ
+        String payCurrency = request.getCurrency() != null && !request.getCurrency().isBlank()
+                ? request.getCurrency().trim().toUpperCase()
+                : "VND";
+        if (!"VND".equals(payCurrency) && !"USD".equals(payCurrency)) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "UNSUPPORTED_CURRENCY", "Hệ thống chỉ hỗ trợ thanh toán bằng VND hoặc USD qua thẻ Visa/Mastercard");
+        }
+
+        if ("VND".equals(payCurrency) && request.getAmount().compareTo(new BigDecimal("1000")) < 0) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "INVALID_AMOUNT", "Số tiền thanh toán tối thiểu là 1.000 VNĐ");
+        }
+        if ("USD".equals(payCurrency) && request.getAmount().compareTo(new BigDecimal("0.10")) < 0) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "INVALID_AMOUNT", "Số tiền thanh toán tối thiểu là 0.10 USD");
+        }
+
+        // 2. Kiểm tra tính hợp lệ của số thẻ (Luhn Algorithm)
         String rawCardNumber = request.getCardNumber().replaceAll("\\s+", "").replaceAll("-", "");
         if (rawCardNumber.length() < 13 || rawCardNumber.length() > 19 || !rawCardNumber.matches("\\d+")) {
             throw new BusinessException(HttpStatus.BAD_REQUEST, "INVALID_CARD_NUMBER", "Số thẻ tín dụng không hợp lệ");
@@ -73,13 +88,13 @@ public class GuestPaymentExperienceService {
             throw new BusinessException(HttpStatus.BAD_REQUEST, "INVALID_CARD_CHECKSUM", "Số thẻ không đúng theo tiêu chuẩn quốc tế (Luhn Check failed)");
         }
 
-        // 2. Kiểm tra ngày hết hạn (MM/YY)
+        // 3. Kiểm tra ngày hết hạn (MM/YY)
         String expiry = request.getExpiryDate().trim();
         if (!expiry.matches("(0[1-9]|1[0-2])/\\d{2}")) {
             throw new BusinessException(HttpStatus.BAD_REQUEST, "INVALID_EXPIRY_DATE", "Ngày hết hạn phải theo định dạng MM/YY");
         }
 
-        // 3. Kiểm tra mã bảo mật CVV
+        // 4. Kiểm tra mã bảo mật CVV
         String cvv = request.getCvv().trim();
         if (!cvv.matches("\\d{3,4}")) {
             throw new BusinessException(HttpStatus.BAD_REQUEST, "INVALID_CVV", "Mã CVV/CVC phải gồm 3 hoặc 4 chữ số");
@@ -89,7 +104,25 @@ public class GuestPaymentExperienceService {
         String cardLast4 = rawCardNumber.substring(rawCardNumber.length() - 4);
         String authCode = "CC-AUTH-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
 
-        // 4. Tìm installment mục tiêu (nếu có)
+        // 5. Quy đổi tỷ giá nếu đơn vị thanh toán khác đơn vị tiền tệ của booking
+        String bookingCurrency = booking.getCurrency() != null ? booking.getCurrency().trim().toUpperCase() : "VND";
+        BigDecimal exchangeRate = (sepayProperties != null && sepayProperties.getUsdToVndRate() != null)
+                ? sepayProperties.getUsdToVndRate()
+                : new BigDecimal("25400");
+
+        BigDecimal amountInBookingCurrency = request.getAmount();
+        String conversionNotice = "";
+        if ("USD".equals(payCurrency) && "VND".equals(bookingCurrency)) {
+            amountInBookingCurrency = request.getAmount().multiply(exchangeRate).setScale(0, RoundingMode.HALF_UP);
+            conversionNotice = String.format(" (Quy đổi: %s USD = %,.0f VNĐ, tỷ giá %,.0f VNĐ/USD)",
+                    request.getAmount().toPlainString(), amountInBookingCurrency, exchangeRate);
+        } else if ("VND".equals(payCurrency) && "USD".equals(bookingCurrency)) {
+            amountInBookingCurrency = request.getAmount().divide(exchangeRate, 2, RoundingMode.HALF_UP);
+            conversionNotice = String.format(" (Quy đổi: %,.0f VNĐ = %s USD, tỷ giá %,.0f VNĐ/USD)",
+                    request.getAmount(), amountInBookingCurrency.toPlainString(), exchangeRate);
+        }
+
+        // 6. Tìm installment mục tiêu (nếu có)
         Installment targetInstallment = null;
         if (request.getInstallmentId() != null) {
             targetInstallment = installmentRepository.findById(request.getInstallmentId()).orElse(null);
@@ -103,7 +136,7 @@ public class GuestPaymentExperienceService {
             }
         }
 
-        // 5. Tạo bản ghi Payment với phương thức CreditCard
+        // 7. Tạo bản ghi Payment với phương thức CreditCard
         String idempotencyKey = request.getIdempotencyKey() != null && !request.getIdempotencyKey().isBlank()
                 ? request.getIdempotencyKey().trim()
                 : "CC-" + UUID.randomUUID();
@@ -114,8 +147,8 @@ public class GuestPaymentExperienceService {
         payment.setOperationType(PaymentOperationType.Collect);
         payment.setPaymentMethod(PaymentMethod.CreditCard);
         payment.setRequestedAmount(request.getAmount());
-        payment.setConfirmedAmount(request.getAmount());
-        payment.setCurrency(request.getCurrency() != null ? request.getCurrency() : "VND");
+        payment.setConfirmedAmount(amountInBookingCurrency);
+        payment.setCurrency(bookingCurrency);
         payment.setStatus(PaymentStatus.Confirmed);
         payment.setProcessorReference(authCode);
         payment.setRequestedAt(Instant.now());
@@ -124,10 +157,10 @@ public class GuestPaymentExperienceService {
 
         Payment savedPayment = paymentRepository.save(payment);
 
-        // 6. Đồng bộ đợt trả góp và cập nhật trạng thái đơn đặt
+        // 8. Đồng bộ đợt trả góp và cập nhật trạng thái đơn đặt
         paymentService.allocateInstallmentsAndSync(booking);
 
-        // 7. Nếu khách hàng tick yêu cầu xuất hóa đơn đỏ VAT doanh nghiệp
+        // 9. Nếu khách hàng tick yêu cầu xuất hóa đơn đỏ VAT doanh nghiệp
         String vatInvoiceRef = null;
         if (Boolean.TRUE.equals(request.getRequiresVatInvoice())
                 && request.getCompanyName() != null && !request.getCompanyName().isBlank()
@@ -150,14 +183,14 @@ public class GuestPaymentExperienceService {
                 .bookingId(booking.getBookingId())
                 .bookingReference(booking.getBookingReference())
                 .amount(request.getAmount())
-                .currency(payment.getCurrency())
+                .currency(payCurrency)
                 .paymentStatus(savedPayment.getStatus())
                 .authorizationCode(authCode)
                 .cardLast4(cardLast4)
                 .cardBrand(cardBrand)
                 .bookingStatus(refreshedBooking.getBookingStatus())
                 .paidAt(savedPayment.getConfirmedAt())
-                .message("Thanh toán thẻ quốc tế " + cardBrand + " thành công qua cổng thanh toán bảo mật 3D-Secure")
+                .message("Thanh toán thẻ quốc tế " + cardBrand + " thành công qua cổng thanh toán bảo mật 3D-Secure" + conversionNotice)
                 .vatInvoiceReference(vatInvoiceRef)
                 .build();
     }
