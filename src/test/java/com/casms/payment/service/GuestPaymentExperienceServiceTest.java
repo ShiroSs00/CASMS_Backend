@@ -371,5 +371,145 @@ class GuestPaymentExperienceServiceTest {
                 com.casms.common.exception.BusinessException.class,
                 () -> guestPaymentExperienceService.processExpressFolioCheckout(request));
     }
+
+    @Test
+    @DisplayName("Thanh toán thẻ quốc tế tự động tính phụ phí quẹt thẻ (Card Surcharge 2.5%)")
+    void testProcessCreditCardPayment_IncludesCardSurcharge() {
+        when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(mockBooking));
+        when(sepayProperties.isCardSurchargeEnabled()).thenReturn(true);
+        when(sepayProperties.getCardSurchargePercent()).thenReturn(new BigDecimal("2.50"));
+        when(paymentRepository.save(any(Payment.class))).thenAnswer(inv -> {
+            Payment p = inv.getArgument(0);
+            p.setPaymentId(UUID.randomUUID());
+            return p;
+        });
+
+        CreditCardPaymentRequest request = new CreditCardPaymentRequest();
+        request.setBookingId(bookingId);
+        request.setAmount(new BigDecimal("10000000"));
+        request.setCardNumber("4111 1111 1111 1111");
+        request.setCardHolderName("NGUYEN VAN A");
+        request.setExpiryDate("12/28");
+        request.setCvv("123");
+        request.setCurrency("VND");
+
+        CreditCardPaymentResponse response = guestPaymentExperienceService.processCreditCardPayment(request);
+
+        assertThat(response).isNotNull();
+        assertThat(response.getBaseAmount()).isEqualByComparingTo(new BigDecimal("10000000"));
+        assertThat(response.getSurchargePercent()).isEqualByComparingTo(new BigDecimal("2.50"));
+        assertThat(response.getSurchargeAmount()).isEqualByComparingTo(new BigDecimal("250000.00"));
+        assertThat(response.getTotalAmountWithSurcharge()).isEqualByComparingTo(new BigDecimal("10250000.00"));
+        assertThat(response.getMessage()).contains("Phụ phí quẹt thẻ 2.5%");
+    }
+
+    @Test
+    @DisplayName("Express Check-out ghi nhận tiền tip cho thủy thủ đoàn và tính phụ phí thẻ")
+    void testProcessExpressFolioCheckout_WithGratuityAndCardSurcharge() {
+        UUID accountId = UUID.randomUUID();
+        OnboardAccount account = new OnboardAccount();
+        account.setOnboardAccountId(accountId);
+        account.setStatus(OnboardAccountStatus.ACTIVE);
+        account.setCreditLimit(new BigDecimal("20000000"));
+
+        OnboardTransaction tx = new OnboardTransaction();
+        tx.setTransactionId(UUID.randomUUID());
+        tx.setTransactionType(com.casms.payment.enums.TransactionType.CHARGE);
+        tx.setAmount(new BigDecimal("1000000"));
+        tx.setStatus(com.casms.payment.enums.TransactionStatus.POSTED);
+
+        when(onboardAccountRepository.findById(accountId)).thenReturn(Optional.of(account));
+        when(onboardTransactionRepository.findByOnboardAccount_OnboardAccountIdOrderByTransactionTimeDesc(accountId))
+                .thenReturn(java.util.List.of(tx));
+        when(invoiceRepository.save(any(Invoice.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(sepayProperties.isCardSurchargeEnabled()).thenReturn(true);
+        when(sepayProperties.getCardSurchargePercent()).thenReturn(new BigDecimal("2.50"));
+
+        ExpressFolioCheckoutRequest request = new ExpressFolioCheckoutRequest();
+        request.setOnboardAccountId(accountId);
+        request.setPaymentMethod(PaymentMethod.CreditCard);
+        request.setConfirmedByGuest(true);
+        request.setGratuityAmount(new BigDecimal("200000"));
+        request.setGratuityType("GENERAL_CREW_POOL");
+
+        ExpressFolioCheckoutResponse response = guestPaymentExperienceService.processExpressFolioCheckout(request);
+
+        assertThat(response).isNotNull();
+        assertThat(response.getGratuityAmount()).isEqualByComparingTo(new BigDecimal("200000"));
+        assertThat(response.getGratuityType()).isEqualTo("GENERAL_CREW_POOL");
+        // totalChargesWithGratuity = 1,000,000 + 200,000 = 1,200,000. Surcharge 2.5% = 30,000. Total = 1,230,000.
+        assertThat(response.getTotalChargesAmount()).isEqualByComparingTo(new BigDecimal("1200000"));
+        assertThat(response.getCardSurchargeAmount()).isEqualByComparingTo(new BigDecimal("30000"));
+        assertThat(response.getAdditionalPaidAmount()).isEqualByComparingTo(new BigDecimal("1230000"));
+        assertThat(response.getClearanceNotice()).contains("tiền tip 200,000 VNĐ");
+        verify(onboardTransactionRepository, atLeastOnce()).save(any(OnboardTransaction.class));
+    }
+
+    @Test
+    @DisplayName("Nâng hạng phòng trực tiếp trên tàu (Cabin Upgrade) thành công")
+    void testProcessOnboardUpgrade_CabinUpgrade_Success() {
+        UUID accountId = UUID.randomUUID();
+        OnboardAccount account = new OnboardAccount();
+        account.setOnboardAccountId(accountId);
+        account.setStatus(OnboardAccountStatus.ACTIVE);
+        account.setCreditLimit(new BigDecimal("10000000"));
+
+        when(onboardAccountRepository.findById(accountId)).thenReturn(Optional.of(account));
+        when(onboardTransactionRepository.save(any(OnboardTransaction.class))).thenAnswer(inv -> {
+            OnboardTransaction t = inv.getArgument(0);
+            t.setTransactionId(UUID.randomUUID());
+            return t;
+        });
+
+        OnboardUpgradeRequest request = new OnboardUpgradeRequest();
+        request.setOnboardAccountId(accountId);
+        request.setUpgradeType("CABIN_UPGRADE");
+        request.setNewCabinNumber("Suite President - Deck 8");
+        request.setFareDifference(new BigDecimal("4500000"));
+        request.setCurrency("VND");
+        request.setNotes("Khách muốn nâng hạng phòng ngắm hoàng hôn Vịnh Lan Hạ");
+
+        OnboardUpgradeResponse response = guestPaymentExperienceService.processOnboardUpgrade(request);
+
+        assertThat(response).isNotNull();
+        assertThat(response.getUpgradeType()).isEqualTo("CABIN_UPGRADE");
+        assertThat(response.getNewCabinNumber()).isEqualTo("Suite President - Deck 8");
+        assertThat(response.getFareDifference()).isEqualByComparingTo(new BigDecimal("4500000"));
+        assertThat(response.getMessage()).contains("Suite President - Deck 8");
+        verify(onboardTransactionRepository, times(1)).save(any(OnboardTransaction.class));
+    }
+
+    @Test
+    @DisplayName("Kéo dài tour trực tiếp trên tàu (Itinerary Extension 2N1Đ -> 3N2Đ) thành công")
+    void testProcessOnboardUpgrade_ItineraryExtension_Success() {
+        UUID accountId = UUID.randomUUID();
+        OnboardAccount account = new OnboardAccount();
+        account.setOnboardAccountId(accountId);
+        account.setStatus(OnboardAccountStatus.ACTIVE);
+        account.setCreditLimit(new BigDecimal("10000000"));
+
+        when(onboardAccountRepository.findById(accountId)).thenReturn(Optional.of(account));
+        when(onboardTransactionRepository.save(any(OnboardTransaction.class))).thenAnswer(inv -> {
+            OnboardTransaction t = inv.getArgument(0);
+            t.setTransactionId(UUID.randomUUID());
+            return t;
+        });
+
+        OnboardUpgradeRequest request = new OnboardUpgradeRequest();
+        request.setOnboardAccountId(accountId);
+        request.setUpgradeType("ITINERARY_EXTENSION");
+        request.setAdditionalNights(1);
+        request.setFareDifference(new BigDecimal("3000000"));
+        request.setCurrency("VND");
+        request.setNotes("Khách muốn ở lại thêm 1 đêm khám phá Hang Sáng Tối");
+
+        OnboardUpgradeResponse response = guestPaymentExperienceService.processOnboardUpgrade(request);
+
+        assertThat(response).isNotNull();
+        assertThat(response.getUpgradeType()).isEqualTo("ITINERARY_EXTENSION");
+        assertThat(response.getAdditionalNights()).isEqualTo(1);
+        assertThat(response.getFareDifference()).isEqualByComparingTo(new BigDecimal("3000000"));
+        assertThat(response.getMessage()).contains("kéo dài hải trình");
+    }
 }
 

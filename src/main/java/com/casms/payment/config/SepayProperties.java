@@ -70,5 +70,14 @@ public class SepayProperties {
 
     /** Bật xác thực bảo mật 3D-Secure (3DS2) cho giao dịch thẻ Visa / Mastercard. */
     private boolean threeDSecureEnabled = true;
+
+    /** Phụ phí thanh toán thẻ quốc tế Visa / Mastercard (thông thường 2.0% - 3.0% trên các du thuyền 5 sao Hạ Long). */
+    private BigDecimal cardSurchargePercent = new BigDecimal("2.50");
+
+    /** Phụ phí thanh toán thẻ nội địa ATM (thông thường 1.0% - 1.5%). */
+    private BigDecimal domesticCardSurchargePercent = new BigDecimal("1.50");
+
+    /** Bật / tắt áp dụng phụ phí khi thanh toán bằng thẻ. */
+    private boolean cardSurchargeEnabled = true;
 }
 

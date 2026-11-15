@@ -237,11 +237,24 @@ public class GuestPaymentExperienceService {
         // Nạp lại booking để lấy trạng thái mới nhất sau sync
         Booking refreshedBooking = bookingRepository.findById(booking.getBookingId()).orElse(booking);
 
+        BigDecimal surchargePercent = (sepayProperties != null && sepayProperties.isCardSurchargeEnabled() && sepayProperties.getCardSurchargePercent() != null)
+                ? sepayProperties.getCardSurchargePercent()
+                : BigDecimal.ZERO;
+        BigDecimal surchargeAmount = request.getAmount().multiply(surchargePercent).divide(new BigDecimal("100"), 2, RoundingMode.HALF_UP);
+        BigDecimal totalAmountWithSurcharge = request.getAmount().add(surchargeAmount);
+        String surchargeNotice = surchargeAmount.signum() > 0
+                ? String.format(" (Phụ phí quẹt thẻ %s%%: %s %s)", surchargePercent.stripTrailingZeros().toPlainString(), surchargeAmount.toPlainString(), payCurrency)
+                : "";
+
         return CreditCardPaymentResponse.builder()
                 .paymentId(savedPayment.getPaymentId())
                 .bookingId(booking.getBookingId())
                 .bookingReference(booking.getBookingReference())
                 .amount(request.getAmount())
+                .baseAmount(request.getAmount())
+                .surchargePercent(surchargePercent)
+                .surchargeAmount(surchargeAmount)
+                .totalAmountWithSurcharge(totalAmountWithSurcharge)
                 .currency(payCurrency)
                 .paymentStatus(savedPayment.getStatus())
                 .authorizationCode(authCode)
@@ -249,7 +262,7 @@ public class GuestPaymentExperienceService {
                 .cardBrand(cardBrand)
                 .bookingStatus(refreshedBooking.getBookingStatus())
                 .paidAt(savedPayment.getConfirmedAt())
-                .message("Thanh toán thẻ quốc tế " + cardBrand + " (" + cardLast4 + ") thành công qua cổng thanh toán bảo mật 3D-Secure" + conversionNotice)
+                .message("Thanh toán thẻ quốc tế " + cardBrand + " (" + cardLast4 + ") thành công qua cổng thanh toán bảo mật 3D-Secure" + surchargeNotice + conversionNotice)
                 .vatInvoiceReference(vatInvoiceRef)
                 .build();
     }
@@ -716,17 +729,57 @@ public class GuestPaymentExperienceService {
         BigDecimal totalCharges = statement.getTotalCharges();
         BigDecimal depositHeld = statement.getSecurityDepositHeld();
 
+        // 1. Ghi nhận tiền thưởng / tip tự nguyện tặng thủy thủ đoàn & nhân viên
+        BigDecimal gratuity = BigDecimal.ZERO;
+        String gratuityType = request.getGratuityType() != null && !request.getGratuityType().isBlank()
+                ? request.getGratuityType().trim()
+                : "GENERAL_CREW_POOL";
+        String staffName = request.getTargetStaffName() != null ? request.getTargetStaffName().trim() : null;
+
+        if (request.getGratuityAmount() != null && request.getGratuityAmount().signum() > 0) {
+            gratuity = request.getGratuityAmount();
+            OnboardTransaction tipTx = new OnboardTransaction();
+            tipTx.setOnboardAccount(account);
+            tipTx.setPassenger(account.getPrimaryPassenger());
+            tipTx.setTransactionType(TransactionType.CHARGE);
+            tipTx.setAmount(gratuity);
+            tipTx.setCurrencyCode(account.getBaseCurrency() != null ? account.getBaseCurrency() : "VND");
+            tipTx.setTransactionTime(Instant.now());
+            tipTx.setPostedAt(Instant.now());
+            tipTx.setStatus(TransactionStatus.POSTED);
+            tipTx.setSourceType("GRATUITY");
+            tipTx.setServiceReference(gratuityType);
+            tipTx.setDescription("Tiền tip cảm ơn (" + ("INDIVIDUAL_STAFF".equalsIgnoreCase(gratuityType) ? "Tip riêng nhân viên: " + (staffName != null ? staffName : "N/A") : "Hòm tip chung lễ tân tặng thủy thủ đoàn") + ")");
+            onboardTransactionRepository.save(tipTx);
+        }
+
+        BigDecimal totalChargesWithGratuity = totalCharges.add(gratuity);
         BigDecimal depositOffset = depositHeld;
-        BigDecimal additionalPaid = BigDecimal.ZERO;
+        BigDecimal netBeforeSurcharge = BigDecimal.ZERO;
         BigDecimal refundDue = BigDecimal.ZERO;
 
-        if (totalCharges.compareTo(depositHeld) > 0) {
+        if (totalChargesWithGratuity.compareTo(depositHeld) > 0) {
             depositOffset = depositHeld;
-            additionalPaid = totalCharges.subtract(depositHeld);
+            netBeforeSurcharge = totalChargesWithGratuity.subtract(depositHeld);
         } else {
-            depositOffset = totalCharges;
-            refundDue = depositHeld.subtract(totalCharges);
+            depositOffset = totalChargesWithGratuity;
+            refundDue = depositHeld.subtract(totalChargesWithGratuity);
         }
+
+        // 2. Phụ phí thanh toán thẻ ngân hàng (Credit / Debit Card Processing Surcharge)
+        BigDecimal cardSurchargeAmount = BigDecimal.ZERO;
+        PaymentMethod pMethod = request.getPaymentMethod() != null ? request.getPaymentMethod() : PaymentMethod.CreditCard;
+
+        if ((pMethod == PaymentMethod.CreditCard || pMethod == PaymentMethod.Sepay)
+                && netBeforeSurcharge.signum() > 0
+                && !Boolean.TRUE.equals(request.getWaiveCardSurcharge())) {
+            BigDecimal surchargePercent = (sepayProperties != null && sepayProperties.isCardSurchargeEnabled() && sepayProperties.getCardSurchargePercent() != null)
+                    ? sepayProperties.getCardSurchargePercent()
+                    : new BigDecimal("2.50");
+            cardSurchargeAmount = netBeforeSurcharge.multiply(surchargePercent).divide(new BigDecimal("100"), 0, RoundingMode.HALF_UP);
+        }
+
+        BigDecimal additionalPaid = netBeforeSurcharge.add(cardSurchargeAmount);
 
         String finalStatementRef = "STMT-FINAL-" + (System.currentTimeMillis() % 1000000);
         String clearancePassToken = "GANGWAY-PASS-" + UUID.randomUUID().toString().toUpperCase(Locale.ROOT);
@@ -747,7 +800,7 @@ public class GuestPaymentExperienceService {
         finalInvoice.setIssuedAt(Instant.now());
         finalInvoice.setSourceCutoffAt(Instant.now());
         finalInvoice.setCurrency(account.getBaseCurrency() != null ? account.getBaseCurrency() : "VND");
-        finalInvoice.setSnapshotTotalAmount(totalCharges);
+        finalInvoice.setSnapshotTotalAmount(totalChargesWithGratuity);
         finalInvoice.setSnapshotNetAmountDue(additionalPaid);
         finalInvoice.setStatus(InvoiceStatus.Issued);
         finalInvoice.setDocumentReference("DOC-" + finalStatementRef);
@@ -768,20 +821,32 @@ public class GuestPaymentExperienceService {
         // Xóa deposit cache sau khi quyết toán
         securityDepositCache.remove(accId);
 
+        String surchargeNote = cardSurchargeAmount.signum() > 0
+                ? String.format(" (bao gồm phụ phí cà thẻ: %,d VNĐ)", cardSurchargeAmount.longValue())
+                : (pMethod == PaymentMethod.Cash ? " (Thanh toán tiền mặt: miễn phụ phí thẻ)" : "");
+        String tipNote = gratuity.signum() > 0
+                ? String.format(". Đội tàu xin chân thành cảm ơn quý khách đã gửi tặng số tiền tip %,d VNĐ", gratuity.longValue())
+                : "";
+
         String notice = additionalPaid.signum() > 0
-                ? "Quý khách đã thanh toán số dư " + String.format("%,d", additionalPaid.longValue()) + " VNĐ thành công. Tài khoản phòng đã được tất toán."
+                ? "Quý khách đã thanh toán số dư " + String.format("%,d", additionalPaid.longValue()) + " VNĐ thành công" + surchargeNote + tipNote + ". Tài khoản phòng đã được tất toán."
                 : (refundDue.signum() > 0
-                ? "Tài khoản phòng đã tất toán. Số tiền cọc dư " + String.format("%,d", refundDue.longValue()) + " VNĐ sẽ được hoàn tự động về thẻ của quý khách trong 24-48h."
-                : "Tài khoản phòng đã được cân đối hoàn toàn. Quý khách đã hoàn tất thủ tục rời tàu.");
+                ? "Tài khoản phòng đã tất toán" + tipNote + ". Số tiền cọc dư " + String.format("%,d", refundDue.longValue()) + " VNĐ sẽ được hoàn tự động về thẻ của quý khách trong 24-48h."
+                : "Tài khoản phòng đã được cân đối hoàn toàn" + tipNote + ". Quý khách đã hoàn tất thủ tục rời tàu.");
 
         return ExpressFolioCheckoutResponse.builder()
                 .finalSettlementId(settlement.getFinalSettlementId() != null ? settlement.getFinalSettlementId() : UUID.randomUUID())
                 .onboardAccountId(accId)
                 .finalStatementReference(finalStatementRef)
-                .totalChargesAmount(totalCharges)
+                .totalChargesAmount(totalChargesWithGratuity)
                 .depositOffsetAmount(depositOffset)
                 .additionalPaidAmount(additionalPaid)
                 .refundDueAmount(refundDue)
+                .gratuityAmount(gratuity)
+                .gratuityType(gratuity.signum() > 0 ? gratuityType : null)
+                .targetStaffName(staffName)
+                .cardSurchargeAmount(cardSurchargeAmount)
+                .paymentMethodUsed(pMethod.name())
                 .settlementStatus("SETTLED_AND_CLEARED")
                 .gangwayClearancePassToken(clearancePassToken)
                 .clearanceQrData(qrData)
@@ -828,6 +893,99 @@ public class GuestPaymentExperienceService {
                 .status("HELD_ACTIVE")
                 .heldAt(Instant.now())
                 .policyTerms("Khoản cọc đảm bảo sẽ được cấn trừ tự động vào hóa đơn dịch vụ tiêu dùng khi quý khách làm thủ tục Express Check-out rời tàu. Số tiền thừa còn lại (nếu có) sẽ được hoàn trả đầy đủ.")
+                .build();
+    }
+
+    // =========================================================================
+    // 8. NÂNG HẠNG PHÒNG TRỰC TIẾP & ĐỔI TOUR TRÊN TÀU (IN-CRUISE UPGRADE & EXTENSION)
+    // =========================================================================
+    @Transactional
+    public OnboardUpgradeResponse processOnboardUpgrade(OnboardUpgradeRequest request) {
+        return processOnboardUpgrade(request, null);
+    }
+
+    @Transactional
+    public OnboardUpgradeResponse processOnboardUpgrade(OnboardUpgradeRequest request, CasmsPrincipal principal) {
+        log.info("Processing onboard upgrade for account: {}, type: {}, fareDifference: {}",
+                request.getOnboardAccountId(), request.getUpgradeType(), request.getFareDifference());
+
+        UUID accId = request.getOnboardAccountId();
+        OnboardAccount account = onboardAccountRepository.findById(accId)
+                .orElseThrow(() -> new ResourceNotFoundException("OnboardAccount not found with id: " + accId));
+
+        assertAccountAccess(account, principal);
+
+        if (account.getStatus() != OnboardAccountStatus.ACTIVE) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "ACCOUNT_NOT_ACTIVE",
+                    "Chỉ có thể nâng hạng dịch vụ khi tài khoản phòng đang ở trạng thái ACTIVE");
+        }
+
+        if (request.getFareDifference() == null || request.getFareDifference().compareTo(BigDecimal.ZERO) <= 0) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "INVALID_UPGRADE_FARE",
+                    "Số tiền chênh lệch nâng hạng phải lớn hơn 0");
+        }
+
+        String type = request.getUpgradeType() != null && !request.getUpgradeType().isBlank()
+                ? request.getUpgradeType().trim().toUpperCase(Locale.ROOT)
+                : "CABIN_UPGRADE";
+        String currency = request.getCurrency() != null && !request.getCurrency().isBlank()
+                ? request.getCurrency().trim().toUpperCase(Locale.ROOT)
+                : (account.getBaseCurrency() != null ? account.getBaseCurrency() : "VND");
+
+        String description;
+        if ("ITINERARY_EXTENSION".equalsIgnoreCase(type)) {
+            int nights = request.getAdditionalNights() != null && request.getAdditionalNights() > 0 ? request.getAdditionalNights() : 1;
+            description = String.format("Đổi chương trình tour kéo dài thêm %d đêm (chuyển tour 2N1Đ sang 3N2Đ theo yêu cầu trực tiếp trên du thuyền)", nights);
+        } else {
+            String cabinName = request.getNewCabinNumber() != null && !request.getNewCabinNumber().isBlank()
+                    ? request.getNewCabinNumber().trim()
+                    : "Cabin hạng cao cấp hơn";
+            description = String.format("Nâng hạng phòng trực tiếp trên tàu: Chuyển sang %s", cabinName);
+        }
+
+        if (request.getNotes() != null && !request.getNotes().isBlank()) {
+            description += " (" + request.getNotes().trim() + ")";
+        }
+
+        // Tự động nới hạn mức chi tiêu nếu số tiền nâng hạng vượt quá hạn mức hiện tại
+        if (account.getCreditLimit() != null && request.getFareDifference().compareTo(account.getCreditLimit()) > 0) {
+            account.setCreditLimit(account.getCreditLimit().add(request.getFareDifference()));
+            onboardAccountRepository.save(account);
+        }
+
+        // Tạo giao dịch ghi nợ vào sao kê phòng
+        OnboardTransaction tx = new OnboardTransaction();
+        tx.setOnboardAccount(account);
+        tx.setPassenger(account.getPrimaryPassenger());
+        tx.setTransactionType(TransactionType.CHARGE);
+        tx.setAmount(request.getFareDifference());
+        tx.setCurrencyCode(currency);
+        tx.setTransactionTime(Instant.now());
+        tx.setPostedAt(Instant.now());
+        tx.setStatus(TransactionStatus.POSTED);
+        tx.setSourceType(type);
+        tx.setServiceReference("ONBOARD_UPGRADE_" + type);
+        tx.setDescription(description);
+        if (principal != null && principal.getUser() != null) {
+            tx.setCreatedByUser(principal.getUser());
+        }
+
+        OnboardTransaction savedTx = onboardTransactionRepository.save(tx);
+
+        String targetDesc = "ITINERARY_EXTENSION".equalsIgnoreCase(type)
+                ? "kéo dài hải trình" + (request.getAdditionalNights() != null ? " thêm " + request.getAdditionalNights() + " đêm" : "")
+                : "nâng hạng phòng" + (request.getNewCabinNumber() != null ? " sang " + request.getNewCabinNumber() : "");
+
+        return OnboardUpgradeResponse.builder()
+                .transactionId(savedTx.getTransactionId())
+                .onboardAccountId(accId)
+                .upgradeType(type)
+                .newCabinNumber(request.getNewCabinNumber())
+                .additionalNights(request.getAdditionalNights())
+                .fareDifference(request.getFareDifference())
+                .currency(currency)
+                .message("Đội ngũ tàu đã sắp xếp thành công yêu cầu " + targetDesc + ". Chi phí chênh lệch đã được ghi nợ vào sao kê phòng và sẽ được quyết toán vào sáng ngày cuối trước khi trả phòng.")
+                .upgradedAt(savedTx.getTransactionTime())
                 .build();
     }
 

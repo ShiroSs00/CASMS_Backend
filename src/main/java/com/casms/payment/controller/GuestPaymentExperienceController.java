@@ -110,4 +110,15 @@ public class GuestPaymentExperienceController {
             @AuthenticationPrincipal CasmsPrincipal principal) {
         return ApiResponse.success(guestPaymentExperienceService.recordSecurityDepositHold(request, principal));
     }
+
+    @Operation(
+            summary = "Nâng hạng phòng (Cabin Upgrade) hoặc Kéo dài tour (2N1Đ -> 3N2Đ) trực tiếp trên tàu",
+            description = "Đội tàu kiểm tra tình trạng phòng trống và ghi nhận khoản phụ thu chênh lệch trực tiếp vào sao kê phòng để quyết toán vào sáng ngày cuối")
+    @PostMapping("/folio/onboard-upgrade")
+    @ResponseStatus(HttpStatus.CREATED)
+    public ApiResponse<OnboardUpgradeResponse> requestOnboardUpgrade(
+            @RequestBody @Valid OnboardUpgradeRequest request,
+            @AuthenticationPrincipal CasmsPrincipal principal) {
+        return ApiResponse.success(guestPaymentExperienceService.processOnboardUpgrade(request, principal));
+    }
 }

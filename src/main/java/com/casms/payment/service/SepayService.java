@@ -83,6 +83,8 @@ public class SepayService {
                 .merchantId(resolveMerchantId())
                 .cardGatewayUrl(resolveCardGatewayUrl())
                 .threeDSecureEnabled(sepayProperties.isThreeDSecureEnabled())
+                .cardSurchargePercent(sepayProperties.getCardSurchargePercent())
+                .cardSurchargeEnabled(sepayProperties.isCardSurchargeEnabled())
                 .build();
     }
 
