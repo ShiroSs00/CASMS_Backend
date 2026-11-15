@@ -79,5 +79,33 @@ public class SepayProperties {
 
     /** Bật / tắt áp dụng phụ phí khi thanh toán bằng thẻ. */
     private boolean cardSurchargeEnabled = true;
+
+    /** Tỷ lệ phụ phí linh hoạt theo từng thương hiệu thẻ (VISA, MASTERCARD, JCB, AMEX, NAPAS). */
+    private java.util.Map<String, BigDecimal> brandSurchargeRates = new java.util.concurrent.ConcurrentHashMap<>(
+            java.util.Map.of(
+                    "VISA", new BigDecimal("2.50"),
+                    "MASTERCARD", new BigDecimal("2.50"),
+                    "JCB", new BigDecimal("2.00"),
+                    "AMEX", new BigDecimal("3.50"),
+                    "NAPAS", new BigDecimal("1.50")
+            )
+    );
+
+    /** Phương thức tra cứu tỷ lệ phụ phí linh hoạt theo thương hiệu thẻ */
+    public BigDecimal resolveCardSurcharge(String cardBrand) {
+        if (!cardSurchargeEnabled) {
+            return BigDecimal.ZERO;
+        }
+        if (cardBrand != null) {
+            String norm = cardBrand.trim().toUpperCase(java.util.Locale.ROOT);
+            if (brandSurchargeRates != null && brandSurchargeRates.containsKey(norm)) {
+                return brandSurchargeRates.get(norm);
+            }
+            if ("ATM".equalsIgnoreCase(norm) || "NAPAS".equalsIgnoreCase(norm)) {
+                return domesticCardSurchargePercent != null ? domesticCardSurchargePercent : new BigDecimal("1.50");
+            }
+        }
+        return cardSurchargePercent != null ? cardSurchargePercent : new BigDecimal("2.50");
+    }
 }
 

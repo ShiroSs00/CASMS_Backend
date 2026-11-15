@@ -2,6 +2,7 @@ package com.casms.payment.controller;
 
 import com.casms.common.response.ApiResponse;
 import com.casms.identity.enums.Permission;
+import com.casms.payment.dto.request.CardSurchargeConfigRequest;
 import com.casms.payment.dto.request.SepayCardCheckoutRequest;
 import com.casms.payment.dto.request.SepayCheckoutRequest;
 import com.casms.payment.dto.request.SepayQuickCheckoutRequest;
@@ -49,6 +50,32 @@ public class SepayController {
     @GetMapping("/config")
     public ApiResponse<SepayConfigResponse> getSepayConfig() {
         return ApiResponse.success(sepayService.getSepayConfig());
+    }
+
+    @Operation(
+            summary = "Xem cấu hình phụ phí quẹt thẻ ngân hàng (Linh hoạt theo thương hiệu thẻ)",
+            description =
+                    "Xem cấu hình tỷ lệ phụ phí thẻ quốc tế (Visa, Mastercard, JCB, Amex) và thẻ ATM"
+                        + " nội địa / Napas.")
+    @GetMapping("/config/surcharge")
+    public ApiResponse<SepayConfigResponse> getSurchargeConfig() {
+        return ApiResponse.success(sepayService.getSepayConfig());
+    }
+
+    @Operation(
+            summary = "Cập nhật linh hoạt tỷ lệ phụ phí thẻ ngân hàng tại runtime (Admin / Manager)",
+            description =
+                    "Cho phép thay đổi động tỷ lệ phụ thu cà thẻ theo từng thương hiệu (VISA, MASTERCARD, JCB,"
+                        + " AMEX, NAPAS) hoặc bật/tắt toàn bộ phụ phí thẻ mà không cần khởi động lại hệ thống.")
+    @PutMapping("/config/surcharge")
+    public ApiResponse<SepayConfigResponse> updateSurchargeConfig(
+            @RequestBody @Valid CardSurchargeConfigRequest request,
+            @AuthenticationPrincipal CasmsPrincipal principal) {
+        UUID userId = principal != null ? principal.getUserId() : null;
+        boolean canManage = hasPermSafe(principal, Permission.PAYMENT_PROCESS);
+        return ApiResponse.success(
+                "Cập nhật cấu hình phụ phí quẹt thẻ thành công",
+                sepayService.updateSurchargeConfig(request, userId, canManage));
     }
 
     @Operation(

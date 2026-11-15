@@ -511,5 +511,132 @@ class GuestPaymentExperienceServiceTest {
         assertThat(response.getFareDifference()).isEqualByComparingTo(new BigDecimal("3000000"));
         assertThat(response.getMessage()).contains("kéo dài hải trình");
     }
+
+    @Test
+    @DisplayName("Thanh toán thẻ quốc tế với chính sách miễn phụ phí (waiveSurcharge = true cho khách VIP)")
+    void testProcessCreditCardPayment_WaiveSurcharge() {
+        when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(mockBooking));
+        when(paymentRepository.save(any(Payment.class))).thenAnswer(inv -> {
+            Payment p = inv.getArgument(0);
+            p.setPaymentId(UUID.randomUUID());
+            return p;
+        });
+
+        CreditCardPaymentRequest request = new CreditCardPaymentRequest();
+        request.setBookingId(bookingId);
+        request.setAmount(new BigDecimal("10000000"));
+        request.setCardNumber("4111 1111 1111 1111");
+        request.setCardHolderName("VIP GUEST");
+        request.setExpiryDate("12/28");
+        request.setCvv("123");
+        request.setCurrency("VND");
+        request.setWaiveSurcharge(true);
+
+        CreditCardPaymentResponse response = guestPaymentExperienceService.processCreditCardPayment(request);
+
+        assertThat(response).isNotNull();
+        assertThat(response.getSurchargePercent()).isEqualByComparingTo(BigDecimal.ZERO);
+        assertThat(response.getSurchargeAmount()).isEqualByComparingTo(BigDecimal.ZERO);
+        assertThat(response.getTotalAmountWithSurcharge()).isEqualByComparingTo(new BigDecimal("10000000"));
+        assertThat(response.getMessage()).doesNotContain("Phụ phí quẹt thẻ");
+    }
+
+    @Test
+    @DisplayName("Thanh toán thẻ quốc tế với tỷ lệ phụ phí linh hoạt tuỳ chỉnh (customSurchargePercent = 1.8%)")
+    void testProcessCreditCardPayment_CustomSurchargePercent() {
+        when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(mockBooking));
+        when(paymentRepository.save(any(Payment.class))).thenAnswer(inv -> {
+            Payment p = inv.getArgument(0);
+            p.setPaymentId(UUID.randomUUID());
+            return p;
+        });
+
+        CreditCardPaymentRequest request = new CreditCardPaymentRequest();
+        request.setBookingId(bookingId);
+        request.setAmount(new BigDecimal("10000000"));
+        request.setCardNumber("4111 1111 1111 1111");
+        request.setCardHolderName("NGUYEN VAN B");
+        request.setExpiryDate("12/28");
+        request.setCvv("123");
+        request.setCurrency("VND");
+        request.setCustomSurchargePercent(new BigDecimal("1.80"));
+
+        CreditCardPaymentResponse response = guestPaymentExperienceService.processCreditCardPayment(request);
+
+        assertThat(response).isNotNull();
+        assertThat(response.getSurchargePercent()).isEqualByComparingTo(new BigDecimal("1.80"));
+        assertThat(response.getSurchargeAmount()).isEqualByComparingTo(new BigDecimal("180000.00"));
+        assertThat(response.getTotalAmountWithSurcharge()).isEqualByComparingTo(new BigDecimal("10180000.00"));
+        assertThat(response.getMessage()).contains("Phụ phí quẹt thẻ 1.8%");
+    }
+
+    @Test
+    @DisplayName("Express Check-out với chính sách miễn phụ phí thẻ cho khách VIP (waiveCardSurcharge = true)")
+    void testProcessExpressFolioCheckout_WaiveCardSurcharge() {
+        UUID accountId = UUID.randomUUID();
+        OnboardAccount account = new OnboardAccount();
+        account.setOnboardAccountId(accountId);
+        account.setStatus(OnboardAccountStatus.ACTIVE);
+        account.setCreditLimit(new BigDecimal("20000000"));
+
+        OnboardTransaction tx = new OnboardTransaction();
+        tx.setTransactionId(UUID.randomUUID());
+        tx.setTransactionType(com.casms.payment.enums.TransactionType.CHARGE);
+        tx.setAmount(new BigDecimal("1000000"));
+        tx.setStatus(com.casms.payment.enums.TransactionStatus.POSTED);
+
+        when(onboardAccountRepository.findById(accountId)).thenReturn(Optional.of(account));
+        when(onboardTransactionRepository.findByOnboardAccount_OnboardAccountIdOrderByTransactionTimeDesc(accountId))
+                .thenReturn(java.util.List.of(tx));
+        when(invoiceRepository.save(any(Invoice.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        ExpressFolioCheckoutRequest request = new ExpressFolioCheckoutRequest();
+        request.setOnboardAccountId(accountId);
+        request.setPaymentMethod(PaymentMethod.CreditCard);
+        request.setConfirmedByGuest(true);
+        request.setWaiveCardSurcharge(true);
+
+        ExpressFolioCheckoutResponse response = guestPaymentExperienceService.processExpressFolioCheckout(request);
+
+        assertThat(response).isNotNull();
+        assertThat(response.getCardSurchargeAmount()).isEqualByComparingTo(BigDecimal.ZERO);
+        assertThat(response.getAdditionalPaidAmount()).isEqualByComparingTo(new BigDecimal("1000000"));
+        assertThat(response.getClearanceNotice()).doesNotContain("phụ phí cà thẻ");
+    }
+
+    @Test
+    @DisplayName("Express Check-out với tỷ lệ phụ phí thẻ linh hoạt tuỳ chỉnh (customSurchargePercent = 1.0%)")
+    void testProcessExpressFolioCheckout_CustomSurchargePercent() {
+        UUID accountId = UUID.randomUUID();
+        OnboardAccount account = new OnboardAccount();
+        account.setOnboardAccountId(accountId);
+        account.setStatus(OnboardAccountStatus.ACTIVE);
+        account.setCreditLimit(new BigDecimal("20000000"));
+
+        OnboardTransaction tx = new OnboardTransaction();
+        tx.setTransactionId(UUID.randomUUID());
+        tx.setTransactionType(com.casms.payment.enums.TransactionType.CHARGE);
+        tx.setAmount(new BigDecimal("1000000"));
+        tx.setStatus(com.casms.payment.enums.TransactionStatus.POSTED);
+
+        when(onboardAccountRepository.findById(accountId)).thenReturn(Optional.of(account));
+        when(onboardTransactionRepository.findByOnboardAccount_OnboardAccountIdOrderByTransactionTimeDesc(accountId))
+                .thenReturn(java.util.List.of(tx));
+        when(invoiceRepository.save(any(Invoice.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        ExpressFolioCheckoutRequest request = new ExpressFolioCheckoutRequest();
+        request.setOnboardAccountId(accountId);
+        request.setPaymentMethod(PaymentMethod.CreditCard);
+        request.setConfirmedByGuest(true);
+        request.setCustomSurchargePercent(new BigDecimal("1.00"));
+
+        ExpressFolioCheckoutResponse response = guestPaymentExperienceService.processExpressFolioCheckout(request);
+
+        assertThat(response).isNotNull();
+        // 1,000,000 * 1.0% = 10,000
+        assertThat(response.getCardSurchargeAmount()).isEqualByComparingTo(new BigDecimal("10000"));
+        assertThat(response.getAdditionalPaidAmount()).isEqualByComparingTo(new BigDecimal("1010000"));
+        assertThat(response.getClearanceNotice()).contains("10,000 VNĐ");
+    }
 }
 

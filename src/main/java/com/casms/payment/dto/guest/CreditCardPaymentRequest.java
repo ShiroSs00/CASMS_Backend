@@ -48,6 +48,12 @@ public class CreditCardPaymentRequest {
     @Schema(description = "Khóa chống trùng lặp (Idempotency Key)")
     private String idempotencyKey;
 
+    @Schema(description = "Miễn phụ phí quẹt thẻ (dành cho khách VIP hoặc chính sách ưu đãi)")
+    private Boolean waiveSurcharge;
+
+    @Schema(description = "Tỷ lệ phụ phí tuỳ chỉnh (%) nếu muốn ghi đè tỷ lệ mặc định", example = "2.00")
+    private BigDecimal customSurchargePercent;
+
     // Tuỳ chọn xuất hoá đơn đỏ VAT doanh nghiệp
     @Schema(description = "Yêu cầu xuất hoá đơn đỏ VAT doanh nghiệp")
     private Boolean requiresVatInvoice;
@@ -79,6 +85,8 @@ public class CreditCardPaymentRequest {
                 ", expiryDate='" + expiryDate + '\'' +
                 ", cvv='***'" +
                 ", idempotencyKey='" + idempotencyKey + '\'' +
+                ", waiveSurcharge=" + waiveSurcharge +
+                ", customSurchargePercent=" + customSurchargePercent +
                 ", requiresVatInvoice=" + requiresVatInvoice +
                 '}';
     }

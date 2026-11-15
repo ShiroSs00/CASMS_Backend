@@ -237,9 +237,18 @@ public class GuestPaymentExperienceService {
         // Nạp lại booking để lấy trạng thái mới nhất sau sync
         Booking refreshedBooking = bookingRepository.findById(booking.getBookingId()).orElse(booking);
 
-        BigDecimal surchargePercent = (sepayProperties != null && sepayProperties.isCardSurchargeEnabled() && sepayProperties.getCardSurchargePercent() != null)
-                ? sepayProperties.getCardSurchargePercent()
-                : BigDecimal.ZERO;
+        BigDecimal surchargePercent;
+        if (Boolean.TRUE.equals(request.getWaiveSurcharge())) {
+            surchargePercent = BigDecimal.ZERO;
+        } else if (request.getCustomSurchargePercent() != null) {
+            surchargePercent = request.getCustomSurchargePercent();
+        } else if (sepayProperties != null && sepayProperties.isCardSurchargeEnabled()) {
+            BigDecimal resolved = sepayProperties.resolveCardSurcharge(cardBrand);
+            surchargePercent = (resolved != null) ? resolved
+                    : (sepayProperties.getCardSurchargePercent() != null ? sepayProperties.getCardSurchargePercent() : BigDecimal.ZERO);
+        } else {
+            surchargePercent = BigDecimal.ZERO;
+        }
         BigDecimal surchargeAmount = request.getAmount().multiply(surchargePercent).divide(new BigDecimal("100"), 2, RoundingMode.HALF_UP);
         BigDecimal totalAmountWithSurcharge = request.getAmount().add(surchargeAmount);
         String surchargeNotice = surchargeAmount.signum() > 0
@@ -773,9 +782,16 @@ public class GuestPaymentExperienceService {
         if ((pMethod == PaymentMethod.CreditCard || pMethod == PaymentMethod.Sepay)
                 && netBeforeSurcharge.signum() > 0
                 && !Boolean.TRUE.equals(request.getWaiveCardSurcharge())) {
-            BigDecimal surchargePercent = (sepayProperties != null && sepayProperties.isCardSurchargeEnabled() && sepayProperties.getCardSurchargePercent() != null)
-                    ? sepayProperties.getCardSurchargePercent()
-                    : new BigDecimal("2.50");
+            BigDecimal surchargePercent;
+            if (request.getCustomSurchargePercent() != null) {
+                surchargePercent = request.getCustomSurchargePercent();
+            } else if (sepayProperties != null && sepayProperties.isCardSurchargeEnabled()) {
+                BigDecimal resolved = sepayProperties.resolveCardSurcharge("VISA");
+                surchargePercent = (resolved != null) ? resolved
+                        : (sepayProperties.getCardSurchargePercent() != null ? sepayProperties.getCardSurchargePercent() : new BigDecimal("2.50"));
+            } else {
+                surchargePercent = new BigDecimal("2.50");
+            }
             cardSurchargeAmount = netBeforeSurcharge.multiply(surchargePercent).divide(new BigDecimal("100"), 0, RoundingMode.HALF_UP);
         }
 

@@ -47,5 +47,8 @@ public class ExpressFolioCheckoutRequest {
 
     @Schema(description = "Miễn phụ phí quẹt thẻ (dành cho khách VIP hoặc chính sách đặc biệt)")
     private Boolean waiveCardSurcharge;
+
+    @Schema(description = "Tỷ lệ phụ phí thẻ tuỳ chỉnh (%) nếu muốn ghi đè cấu hình mặc định", example = "2.00")
+    private java.math.BigDecimal customSurchargePercent;
 }
 
