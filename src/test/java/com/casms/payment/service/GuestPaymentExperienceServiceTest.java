@@ -248,9 +248,15 @@ class GuestPaymentExperienceServiceTest {
         account.setStatus(OnboardAccountStatus.ACTIVE);
         account.setCreditLimit(new BigDecimal("20000000"));
 
+        OnboardTransaction tx = new OnboardTransaction();
+        tx.setTransactionId(UUID.randomUUID());
+        tx.setTransactionType(com.casms.payment.enums.TransactionType.CHARGE);
+        tx.setAmount(new BigDecimal("650000"));
+        tx.setStatus(com.casms.payment.enums.TransactionStatus.POSTED);
+
         when(onboardAccountRepository.findById(accountId)).thenReturn(Optional.of(account));
         when(onboardTransactionRepository.findByOnboardAccount_OnboardAccountIdOrderByTransactionTimeDesc(accountId))
-                .thenReturn(Collections.emptyList());
+                .thenReturn(java.util.List.of(tx));
 
         LiveFolioStatementResponse statement = guestPaymentExperienceService.getLiveFolioStatement(accountId, null);
 
@@ -291,6 +297,12 @@ class GuestPaymentExperienceServiceTest {
     @DisplayName("Ghi nhận phong tỏa tiền cọc phòng thành công")
     void testRecordSecurityDepositHold() {
         UUID accountId = UUID.randomUUID();
+        OnboardAccount account = new OnboardAccount();
+        account.setOnboardAccountId(accountId);
+        account.setStatus(OnboardAccountStatus.ACTIVE);
+
+        when(onboardAccountRepository.findById(accountId)).thenReturn(Optional.of(account));
+
         SecurityDepositHoldRequest request = new SecurityDepositHoldRequest();
         request.setOnboardAccountId(accountId);
         request.setDepositAmount(new BigDecimal("2000000"));
@@ -303,6 +315,61 @@ class GuestPaymentExperienceServiceTest {
         assertThat(response.getDepositAmount()).isEqualByComparingTo(new BigDecimal("2000000"));
         assertThat(response.getPreAuthCode()).startsWith("PREAUTH-");
         assertThat(response.getStatus()).isEqualTo("HELD_ACTIVE");
+    }
+
+    @Test
+    @DisplayName("Từ chối thanh toán thẻ tín dụng đã hết hạn sử dụng")
+    void testProcessCreditCardPayment_ExpiredCard_ThrowsException() {
+        when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(mockBooking));
+
+        CreditCardPaymentRequest request = new CreditCardPaymentRequest();
+        request.setBookingId(bookingId);
+        request.setAmount(new BigDecimal("5000000"));
+        request.setCardNumber("4111 1111 1111 1111");
+        request.setCardHolderName("NGUYEN VAN A");
+        request.setExpiryDate("01/20"); // Đã hết hạn năm 2020
+        request.setCvv("123");
+        request.setCurrency("VND");
+
+        org.junit.jupiter.api.Assertions.assertThrows(
+                com.casms.common.exception.BusinessException.class,
+                () -> guestPaymentExperienceService.processCreditCardPayment(request));
+    }
+
+    @Test
+    @DisplayName("Từ chối xuất hoá đơn VAT khi mã số thuế không đúng định dạng 10 hoặc 13 số")
+    void testIssueCorporateVatInvoice_InvalidTaxCode_ThrowsException() {
+        when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(mockBooking));
+
+        CorporateVatInvoiceRequest request = new CorporateVatInvoiceRequest();
+        request.setBookingId(bookingId);
+        request.setCompanyName("CONG TY ABC");
+        request.setTaxCode("12345"); // Quá ngắn
+        request.setCompanyAddress("Ha Noi");
+        request.setVatEmail("abc@test.vn");
+
+        org.junit.jupiter.api.Assertions.assertThrows(
+                com.casms.common.exception.BusinessException.class,
+                () -> guestPaymentExperienceService.issueCorporateVatInvoice(request));
+    }
+
+    @Test
+    @DisplayName("Từ chối Express Check-out khi tài khoản phòng đã được đóng trước đó")
+    void testProcessExpressFolioCheckout_AlreadyClosed_ThrowsException() {
+        UUID accountId = UUID.randomUUID();
+        OnboardAccount account = new OnboardAccount();
+        account.setOnboardAccountId(accountId);
+        account.setStatus(OnboardAccountStatus.CLOSED);
+
+        when(onboardAccountRepository.findById(accountId)).thenReturn(Optional.of(account));
+
+        ExpressFolioCheckoutRequest request = new ExpressFolioCheckoutRequest();
+        request.setOnboardAccountId(accountId);
+        request.setConfirmedByGuest(true);
+
+        org.junit.jupiter.api.Assertions.assertThrows(
+                com.casms.common.exception.BusinessException.class,
+                () -> guestPaymentExperienceService.processExpressFolioCheckout(request));
     }
 }
 

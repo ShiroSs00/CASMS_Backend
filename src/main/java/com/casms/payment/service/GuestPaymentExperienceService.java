@@ -7,14 +7,17 @@ import com.casms.booking.service.BookingService;
 import com.casms.common.exception.BusinessException;
 import com.casms.common.exception.ResourceNotFoundException;
 import com.casms.identity.entity.Passenger;
+import com.casms.identity.enums.Permission;
 import com.casms.payment.config.SepayProperties;
 import com.casms.payment.dto.guest.*;
 import com.casms.payment.entity.*;
 import com.casms.payment.enums.*;
 import com.casms.payment.repository.*;
+import com.casms.security.principal.CasmsPrincipal;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -24,6 +27,7 @@ import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.Year;
+import java.time.YearMonth;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -47,7 +51,7 @@ public class GuestPaymentExperienceService {
 
     // Cache tạm thời lưu tiến trình Group Split
     private final Map<String, GroupSplitResponse> splitGroupCache = new ConcurrentHashMap<>();
-    // Lưu số tiền cọc bảo đảm đang giữ theo onboard account
+    // Cache phụ lưu số tiền cọc bảo đảm đang giữ theo onboard account
     private final Map<UUID, BigDecimal> securityDepositCache = new ConcurrentHashMap<>();
 
     // =========================================================================
@@ -55,21 +59,48 @@ public class GuestPaymentExperienceService {
     // =========================================================================
     @Transactional
     public CreditCardPaymentResponse processCreditCardPayment(CreditCardPaymentRequest request) {
+        return processCreditCardPayment(request, null);
+    }
+
+    @Transactional
+    public CreditCardPaymentResponse processCreditCardPayment(CreditCardPaymentRequest request, CasmsPrincipal principal) {
         log.info("Processing Credit Card payment for booking: {}, amount: {}", request.getBookingId(), request.getAmount());
 
         Booking booking = bookingRepository.findById(request.getBookingId())
                 .orElseThrow(() -> new ResourceNotFoundException("Booking not found with id: " + request.getBookingId()));
 
+        // 1. Kiểm tra quyền sở hữu đơn đặt tour (Bảo mật chống IDOR)
+        assertBookingAccess(booking, principal);
+
+        // 2. Kiểm tra trạng thái đơn đặt tour
         if (booking.getBookingStatus() == BookingStatus.Cancelled) {
             throw new BusinessException(HttpStatus.BAD_REQUEST, "BOOKING_CANCELLED", "Không thể thanh toán cho đơn hàng đã bị hủy");
         }
+        if (booking.getBookingStatus() == BookingStatus.Draft
+                && booking.getHoldExpiresAt() != null
+                && Instant.now().isAfter(booking.getHoldExpiresAt())) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "BOOKING_HOLD_EXPIRED", "Thời gian giữ chỗ của đơn hàng đã hết hạn. Vui lòng tạo đơn mới.");
+        }
 
-        // 1. Kiểm tra tiền tệ và số tiền hợp lệ
+        // 3. Kiểm tra số tiền còn lại của đơn hàng (Không cho thanh toán quá số dư)
+        BigDecimal agreedFare = booking.getAgreedFareAmount() != null ? booking.getAgreedFareAmount() : BigDecimal.ZERO;
+        BigDecimal totalPaid = paymentRepository.findForBooking(booking.getBookingId()).stream()
+                .filter(p -> p.getStatus() == PaymentStatus.Confirmed
+                        && p.getOperationType() == PaymentOperationType.Collect
+                        && p.getConfirmedAmount() != null)
+                .map(Payment::getConfirmedAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal outstanding = agreedFare.subtract(totalPaid);
+        if (outstanding.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "BOOKING_ALREADY_PAID", "Đơn hàng này đã được thanh toán toàn bộ!");
+        }
+
+        // 4. Kiểm tra tiền tệ và số tiền hợp lệ
         String payCurrency = request.getCurrency() != null && !request.getCurrency().isBlank()
-                ? request.getCurrency().trim().toUpperCase()
+                ? request.getCurrency().trim().toUpperCase(Locale.ROOT)
                 : "VND";
         if (!"VND".equals(payCurrency) && !"USD".equals(payCurrency)) {
-            throw new BusinessException(HttpStatus.BAD_REQUEST, "UNSUPPORTED_CURRENCY", "Hệ thống chỉ hỗ trợ thanh toán bằng VND hoặc USD qua thẻ Visa/Mastercard");
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "UNSUPPORTED_CURRENCY", "Hệ thống chỉ hỗ trợ thanh toán bằng VND hoặc USD qua thẻ Visa/Mastercard/JCB/Amex");
         }
 
         if ("VND".equals(payCurrency) && request.getAmount().compareTo(new BigDecimal("1000")) < 0) {
@@ -79,7 +110,7 @@ public class GuestPaymentExperienceService {
             throw new BusinessException(HttpStatus.BAD_REQUEST, "INVALID_AMOUNT", "Số tiền thanh toán tối thiểu là 0.10 USD");
         }
 
-        // 2. Kiểm tra tính hợp lệ của số thẻ (Luhn Algorithm)
+        // 5. Kiểm tra tính hợp lệ của số thẻ (Luhn Algorithm)
         String rawCardNumber = request.getCardNumber().replaceAll("\\s+", "").replaceAll("-", "");
         if (rawCardNumber.length() < 13 || rawCardNumber.length() > 19 || !rawCardNumber.matches("\\d+")) {
             throw new BusinessException(HttpStatus.BAD_REQUEST, "INVALID_CARD_NUMBER", "Số thẻ tín dụng không hợp lệ");
@@ -88,13 +119,20 @@ public class GuestPaymentExperienceService {
             throw new BusinessException(HttpStatus.BAD_REQUEST, "INVALID_CARD_CHECKSUM", "Số thẻ không đúng theo tiêu chuẩn quốc tế (Luhn Check failed)");
         }
 
-        // 3. Kiểm tra ngày hết hạn (MM/YY)
+        // 6. Kiểm tra ngày hết hạn (MM/YY) & Xác thực thẻ còn hạn sử dụng
         String expiry = request.getExpiryDate().trim();
         if (!expiry.matches("(0[1-9]|1[0-2])/\\d{2}")) {
-            throw new BusinessException(HttpStatus.BAD_REQUEST, "INVALID_EXPIRY_DATE", "Ngày hết hạn phải theo định dạng MM/YY");
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "INVALID_EXPIRY_DATE", "Ngày hết hạn phải theo định dạng MM/YY (ví dụ: 12/28)");
+        }
+        int expMonth = Integer.parseInt(expiry.substring(0, 2));
+        int expYear = 2000 + Integer.parseInt(expiry.substring(3, 5));
+        YearMonth nowYm = YearMonth.now();
+        YearMonth expYm = YearMonth.of(expYear, expMonth);
+        if (expYm.isBefore(nowYm)) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "CARD_EXPIRED", "Thẻ tín dụng đã hết hạn sử dụng (" + expiry + "). Vui lòng sử dụng thẻ còn hiệu lực.");
         }
 
-        // 4. Kiểm tra mã bảo mật CVV
+        // 7. Kiểm tra mã bảo mật CVV
         String cvv = request.getCvv().trim();
         if (!cvv.matches("\\d{3,4}")) {
             throw new BusinessException(HttpStatus.BAD_REQUEST, "INVALID_CVV", "Mã CVV/CVC phải gồm 3 hoặc 4 chữ số");
@@ -102,10 +140,10 @@ public class GuestPaymentExperienceService {
 
         String cardBrand = detectCardBrand(rawCardNumber);
         String cardLast4 = rawCardNumber.substring(rawCardNumber.length() - 4);
-        String authCode = "CC-AUTH-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
+        String authCode = "CC-AUTH-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase(Locale.ROOT);
 
-        // 5. Quy đổi tỷ giá nếu đơn vị thanh toán khác đơn vị tiền tệ của booking
-        String bookingCurrency = booking.getCurrency() != null ? booking.getCurrency().trim().toUpperCase() : "VND";
+        // 8. Quy đổi tỷ giá nếu đơn vị thanh toán khác đơn vị tiền tệ của booking
+        String bookingCurrency = booking.getCurrency() != null ? booking.getCurrency().trim().toUpperCase(Locale.ROOT) : "VND";
         BigDecimal exchangeRate = (sepayProperties != null && sepayProperties.getUsdToVndRate() != null)
                 ? sepayProperties.getUsdToVndRate()
                 : new BigDecimal("25400");
@@ -122,7 +160,7 @@ public class GuestPaymentExperienceService {
                     request.getAmount(), amountInBookingCurrency.toPlainString(), exchangeRate);
         }
 
-        // 6. Tìm installment mục tiêu (nếu có)
+        // 9. Tìm installment mục tiêu (nếu có)
         Installment targetInstallment = null;
         if (request.getInstallmentId() != null) {
             targetInstallment = installmentRepository.findById(request.getInstallmentId()).orElse(null);
@@ -136,31 +174,52 @@ public class GuestPaymentExperienceService {
             }
         }
 
-        // 7. Tạo bản ghi Payment với phương thức CreditCard
+        // 10. Tạo bản ghi Payment với phương thức CreditCard và đầy đủ metadata PCI-DSS
         String idempotencyKey = request.getIdempotencyKey() != null && !request.getIdempotencyKey().isBlank()
                 ? request.getIdempotencyKey().trim()
                 : "CC-" + UUID.randomUUID();
+
+        // Kiểm tra Idempotency
+        Optional<Payment> existingPaymentOpt = paymentRepository.findByIdempotencyKey(idempotencyKey);
+        if (existingPaymentOpt.isPresent()) {
+            Payment existing = existingPaymentOpt.get();
+            if (existing.getStatus() == PaymentStatus.Confirmed) {
+                throw new BusinessException(HttpStatus.BAD_REQUEST, "PAYMENT_ALREADY_CONFIRMED", "Giao dịch thanh toán này đã được xác nhận thành công trước đó!");
+            }
+        }
 
         Payment payment = new Payment();
         payment.setBooking(booking);
         payment.setInstallment(targetInstallment);
         payment.setOperationType(PaymentOperationType.Collect);
         payment.setPaymentMethod(PaymentMethod.CreditCard);
+        payment.setProvider("CREDIT_CARD_" + cardBrand);
+        payment.setPaymentToken("tok_card_" + cardBrand.toLowerCase(Locale.ROOT) + "_" + cardLast4);
         payment.setRequestedAmount(request.getAmount());
         payment.setConfirmedAmount(amountInBookingCurrency);
         payment.setCurrency(bookingCurrency);
+        payment.setOriginalAmount(request.getAmount());
+        payment.setOriginalCurrency(payCurrency);
+        payment.setConvertedAmount(amountInBookingCurrency);
+        payment.setSettlementCurrency(bookingCurrency);
+        payment.setExchangeRateApplied(exchangeRate);
+        payment.setExchangeRateSource("SEPAY_CONFIG");
+        payment.setExchangeRateTimestamp(Instant.now());
         payment.setStatus(PaymentStatus.Confirmed);
         payment.setProcessorReference(authCode);
         payment.setRequestedAt(Instant.now());
         payment.setConfirmedAt(Instant.now());
+        payment.setAuthorizedAmount(amountInBookingCurrency);
+        payment.setCapturedAmount(amountInBookingCurrency);
+        payment.setCapturedAt(Instant.now());
         payment.setIdempotencyKey(idempotencyKey);
 
         Payment savedPayment = paymentRepository.save(payment);
 
-        // 8. Đồng bộ đợt trả góp và cập nhật trạng thái đơn đặt
+        // 11. Đồng bộ đợt trả góp và cập nhật trạng thái đơn đặt
         paymentService.allocateInstallmentsAndSync(booking);
 
-        // 9. Nếu khách hàng tick yêu cầu xuất hóa đơn đỏ VAT doanh nghiệp
+        // 12. Nếu khách hàng tick yêu cầu xuất hóa đơn đỏ VAT doanh nghiệp
         String vatInvoiceRef = null;
         if (Boolean.TRUE.equals(request.getRequiresVatInvoice())
                 && request.getCompanyName() != null && !request.getCompanyName().isBlank()
@@ -171,7 +230,7 @@ public class GuestPaymentExperienceService {
             vatReq.setTaxCode(request.getTaxCode());
             vatReq.setCompanyAddress(request.getCompanyAddress() != null ? request.getCompanyAddress() : "N/A");
             vatReq.setVatEmail(request.getVatEmail() != null ? request.getVatEmail() : "khachhang@congty.vn");
-            CorporateVatInvoiceResponse vatResp = issueCorporateVatInvoice(vatReq);
+            CorporateVatInvoiceResponse vatResp = issueCorporateVatInvoice(vatReq, principal);
             vatInvoiceRef = vatResp.getInvoiceReference();
         }
 
@@ -190,7 +249,7 @@ public class GuestPaymentExperienceService {
                 .cardBrand(cardBrand)
                 .bookingStatus(refreshedBooking.getBookingStatus())
                 .paidAt(savedPayment.getConfirmedAt())
-                .message("Thanh toán thẻ quốc tế " + cardBrand + " thành công qua cổng thanh toán bảo mật 3D-Secure" + conversionNotice)
+                .message("Thanh toán thẻ quốc tế " + cardBrand + " (" + cardLast4 + ") thành công qua cổng thanh toán bảo mật 3D-Secure" + conversionNotice)
                 .vatInvoiceReference(vatInvoiceRef)
                 .build();
     }
@@ -199,7 +258,7 @@ public class GuestPaymentExperienceService {
     // 2. MÃ KHUYẾN MÃI / VOUCHER GIẢM GIÁ (PROMO CODE)
     // =========================================================================
     public PromoCodeResponse validateAndApplyPromoCode(PromoCodeValidateRequest request) {
-        String code = request.getCode() != null ? request.getCode().trim().toUpperCase() : "";
+        String code = request.getCode() != null ? request.getCode().trim().toUpperCase(Locale.ROOT) : "";
         BigDecimal originalAmount = request.getOriginalAmount();
 
         if (code.isBlank()) {
@@ -247,7 +306,7 @@ public class GuestPaymentExperienceService {
             case "FAMILYFUN" -> {
                 discountRate = new BigDecimal("0.08"); // 8%
                 maxDiscount = new BigDecimal("3000000");
-                desc = "Kỳ nghỉ gia đình hạnh phúc: Giảm 8% tổng chi phí tour";
+                desc = "Kỳ nghỉ gia đình hạnh phúc: Giảm 8% tổng chi phí tour (tối đa 3.000.000 VNĐ)";
             }
             default -> {
                 return PromoCodeResponse.builder()
@@ -286,7 +345,7 @@ public class GuestPaymentExperienceService {
                 .originalAmount(originalAmount)
                 .finalAmount(finalAmount)
                 .description(desc)
-                .message("Áp dụng mã ưu đãi thành công! Bạn tiết kiệm được " + String.format("%,d", discountAmount.longValue()) + " VNĐ")
+                .message("Áp dụng mã ưu đãi thành công! Quý khách tiết kiệm được " + String.format("%,d", discountAmount.longValue()) + " VNĐ")
                 .build();
     }
 
@@ -294,10 +353,16 @@ public class GuestPaymentExperienceService {
     // 3. CHIA TIỀN NHÓM (GROUP SPLIT PAYMENT VỚI TỪNG MÃ VIETQR RIÊNG)
     // =========================================================================
     public GroupSplitResponse createGroupSplitPayment(GroupSplitCreateRequest request) {
+        return createGroupSplitPayment(request, null);
+    }
+
+    public GroupSplitResponse createGroupSplitPayment(GroupSplitCreateRequest request, CasmsPrincipal principal) {
         log.info("Creating Group Split Payment for booking: {}, shares: {}", request.getBookingId(), request.getNumberOfShares());
 
         Booking booking = bookingRepository.findById(request.getBookingId())
                 .orElseThrow(() -> new ResourceNotFoundException("Booking not found with id: " + request.getBookingId()));
+
+        assertBookingAccess(booking, principal);
 
         int n = request.getNumberOfShares();
         if (n < 2) n = 2;
@@ -376,10 +441,26 @@ public class GuestPaymentExperienceService {
     // =========================================================================
     @Transactional
     public CorporateVatInvoiceResponse issueCorporateVatInvoice(CorporateVatInvoiceRequest request) {
+        return issueCorporateVatInvoice(request, null);
+    }
+
+    @Transactional
+    public CorporateVatInvoiceResponse issueCorporateVatInvoice(CorporateVatInvoiceRequest request, CasmsPrincipal principal) {
         log.info("Issuing Corporate VAT Invoice for booking: {}, TaxCode: {}", request.getBookingId(), request.getTaxCode());
 
         Booking booking = bookingRepository.findById(request.getBookingId())
                 .orElseThrow(() -> new ResourceNotFoundException("Booking not found with id: " + request.getBookingId()));
+
+        assertBookingAccess(booking, principal);
+
+        // Kiểm tra định dạng Mã số thuế Việt Nam (10 chữ số độc lập hoặc 13 chữ số chi nhánh)
+        String cleanTaxCode = request.getTaxCode().trim().replaceAll("\\s+", "");
+        if (!cleanTaxCode.matches("^\\d{10}(-\\d{3}|\\d{3})?$")) {
+            throw new BusinessException(
+                    HttpStatus.BAD_REQUEST,
+                    "INVALID_TAX_CODE",
+                    "Mã số thuế doanh nghiệp không đúng định dạng. Theo quy định Tổng Cục Thuế, MST phải gồm 10 chữ số (doanh nghiệp) hoặc 13 chữ số (chi nhánh/đơn vị trực thuộc).");
+        }
 
         BigDecimal total = booking.getAgreedFareAmount() != null ? booking.getAgreedFareAmount() : BigDecimal.ZERO;
         BigDecimal vatRate = new BigDecimal("8.00"); // Thuế GTGT 8% ngành du lịch
@@ -388,7 +469,7 @@ public class GuestPaymentExperienceService {
 
         String invoiceRef = "VAT-" + Year.now().getValue() + "-" + String.format("%05d", (int) (Math.random() * 90000 + 10000));
         String invoiceSeries = "1C26TAA";
-        String signThumbprint = "SHA256:CASMS-EINV-" + UUID.randomUUID().toString().substring(0, 16).toUpperCase();
+        String signThumbprint = "SHA256:CASMS-EINV-" + UUID.randomUUID().toString().substring(0, 16).toUpperCase(Locale.ROOT);
 
         // Tạo hóa đơn trong hệ thống
         Invoice invoice = new Invoice();
@@ -412,7 +493,7 @@ public class GuestPaymentExperienceService {
                 .bookingId(booking.getBookingId())
                 .bookingReference(booking.getBookingReference())
                 .companyName(request.getCompanyName())
-                .taxCode(request.getTaxCode())
+                .taxCode(cleanTaxCode)
                 .companyAddress(request.getCompanyAddress())
                 .vatEmail(request.getVatEmail())
                 .subtotalAmount(subtotal)
@@ -432,6 +513,11 @@ public class GuestPaymentExperienceService {
     // =========================================================================
     @Transactional(readOnly = true)
     public LiveFolioStatementResponse getLiveFolioStatement(UUID onboardAccountId, UUID bookingId) {
+        return getLiveFolioStatement(onboardAccountId, bookingId, null);
+    }
+
+    @Transactional(readOnly = true)
+    public LiveFolioStatementResponse getLiveFolioStatement(UUID onboardAccountId, UUID bookingId, CasmsPrincipal principal) {
         log.info("Fetching Live Folio Statement for account: {}, booking: {}", onboardAccountId, bookingId);
 
         OnboardAccount account = null;
@@ -448,18 +534,25 @@ public class GuestPaymentExperienceService {
             }
         }
 
-        if (account == null && booking != null) {
-            // Tự động tìm booking liên kết
-            Optional<Booking> linked = bookingRepository.findBySettlementOnboardAccount_OnboardAccountId(booking.getBookingId());
+        if (account != null) {
+            assertAccountAccess(account, principal);
+        } else if (booking != null) {
+            assertBookingAccess(booking, principal);
         }
 
         String bookingRef = booking != null ? booking.getBookingReference() : "BK-202611-001";
         String cruiseTitle = (booking != null && booking.getCruise() != null) ? booking.getCruise().getCruiseName() : "Hạ Long - Lan Hạ 3N2Đ - Emperor Cruise";
         String primaryGuest = (booking != null && booking.getBookedByUser() != null) ? booking.getBookedByUser().getUsername() : "Nguyễn Văn A";
 
-        BigDecimal creditLimit = account != null && account.getCreditLimit() != null ? account.getCreditLimit() : new BigDecimal("20000000");
+        BigDecimal creditLimit = (account != null && account.getCreditLimit() != null)
+                ? account.getCreditLimit()
+                : new BigDecimal("20000000");
         UUID accId = account != null ? account.getOnboardAccountId() : (onboardAccountId != null ? onboardAccountId : UUID.randomUUID());
-        BigDecimal securityDepositHeld = securityDepositCache.getOrDefault(accId, new BigDecimal("2000000"));
+
+        // Ưu tiên đọc số tiền phong tỏa cọc bảo đảm lưu trong DB (OnboardAccount.preAuthorizedAmount)
+        BigDecimal securityDepositHeld = (account != null && account.getPreAuthorizedAmount() != null)
+                ? account.getPreAuthorizedAmount()
+                : securityDepositCache.getOrDefault(accId, BigDecimal.ZERO);
 
         List<OnboardTransaction> txList = account != null
                 ? onboardTransactionRepository.findByOnboardAccount_OnboardAccountIdOrderByTransactionTimeDesc(account.getOnboardAccountId())
@@ -472,7 +565,7 @@ public class GuestPaymentExperienceService {
         if (!txList.isEmpty()) {
             for (OnboardTransaction tx : txList) {
                 String desc = tx.getDescription() != null ? tx.getDescription() : "Chi phí dịch vụ trên tàu";
-                String outlet = tx.getSourceType() != null ? tx.getSourceType() : "Deck 7 Lounge";
+                String outlet = tx.getSourceType() != null ? tx.getSourceType() : "Deck Lounge";
                 String passName = tx.getPassenger() != null ? tx.getPassenger().getFullName() : primaryGuest;
 
                 items.add(LiveFolioStatementResponse.FolioTransactionItem.builder()
@@ -487,14 +580,24 @@ public class GuestPaymentExperienceService {
                         .status(tx.getStatus())
                         .build());
 
-                if (tx.getTransactionType() == TransactionType.CHARGE) {
-                    totalCharges = totalCharges.add(tx.getAmount());
-                } else if (tx.getTransactionType() == TransactionType.PAYMENT) {
-                    totalCredits = totalCredits.add(tx.getAmount());
+                // Tính toán chính xác theo chuẩn kế toán FinTech quốc tế:
+                // Charges: CHARGE hoặc ADJUSTMENT dương
+                // Credits: PAYMENT, REFUND, REVERSAL, VOID, hoặc ADJUSTMENT âm
+                if (tx.getStatus() == TransactionStatus.POSTED) {
+                    if (tx.getTransactionType() == TransactionType.CHARGE
+                            || (tx.getTransactionType() == TransactionType.ADJUSTMENT && tx.getAmount().signum() > 0)) {
+                        totalCharges = totalCharges.add(tx.getAmount().abs());
+                    } else if (tx.getTransactionType() == TransactionType.PAYMENT
+                            || tx.getTransactionType() == TransactionType.REFUND
+                            || tx.getTransactionType() == TransactionType.REVERSAL
+                            || tx.getTransactionType() == TransactionType.VOID
+                            || (tx.getTransactionType() == TransactionType.ADJUSTMENT && tx.getAmount().signum() < 0)) {
+                        totalCredits = totalCredits.add(tx.getAmount().abs());
+                    }
                 }
             }
-        } else {
-            // Mẫu dữ liệu sao kê thời gian thực sinh động phục vụ trải nghiệm người dùng
+        } else if (account == null && booking == null) {
+            // Chế độ demo / xem thử tổng quan trải nghiệm người dùng khi chưa có tài khoản thật
             items.add(LiveFolioStatementResponse.FolioTransactionItem.builder()
                     .transactionId(UUID.randomUUID())
                     .transactionTime(Instant.now().minusSeconds(14400))
@@ -532,6 +635,7 @@ public class GuestPaymentExperienceService {
                     .build());
 
             totalCharges = new BigDecimal("3900000");
+            securityDepositHeld = new BigDecimal("2000000");
         }
 
         BigDecimal netPayable = totalCharges.subtract(totalCredits);
@@ -551,12 +655,12 @@ public class GuestPaymentExperienceService {
                         .memberRole("Primary")
                         .limitAmount(new BigDecimal("15000000"))
                         .spentAmount(totalCharges)
-                        .remainingAmount(new BigDecimal("15000000").subtract(totalCharges))
+                        .remainingAmount(new BigDecimal("15000000").subtract(totalCharges).max(BigDecimal.ZERO))
                         .status("ACTIVE")
                         .build(),
                 LiveFolioStatementResponse.FolioMemberLimitItem.builder()
                         .passengerId(UUID.randomUUID())
-                        .passengerName("Trần Thị B (Thành viên)")
+                        .passengerName("Thành viên phòng")
                         .memberRole("Secondary")
                         .limitAmount(new BigDecimal("5000000"))
                         .spentAmount(BigDecimal.ZERO)
@@ -568,7 +672,7 @@ public class GuestPaymentExperienceService {
         return LiveFolioStatementResponse.builder()
                 .onboardAccountId(accId)
                 .bookingReference(bookingRef)
-                .cabinNumber("Suite 7012 - Balcony Deck 7")
+                .cabinNumber("Suite Balcony - Ocean View")
                 .cruiseTitle(cruiseTitle)
                 .primaryGuestName(primaryGuest)
                 .accountStatus(account != null ? account.getStatus() : OnboardAccountStatus.ACTIVE)
@@ -578,7 +682,7 @@ public class GuestPaymentExperienceService {
                 .totalCredits(totalCredits)
                 .netPayableBalance(netPayable)
                 .remainingCredit(remainingCredit)
-                .currency("VND")
+                .currency(account != null && account.getBaseCurrency() != null ? account.getBaseCurrency() : "VND")
                 .statementAsOf(Instant.now())
                 .transactions(items)
                 .memberLimits(memberLimits)
@@ -590,13 +694,25 @@ public class GuestPaymentExperienceService {
     // =========================================================================
     @Transactional
     public ExpressFolioCheckoutResponse processExpressFolioCheckout(ExpressFolioCheckoutRequest request) {
+        return processExpressFolioCheckout(request, null);
+    }
+
+    @Transactional
+    public ExpressFolioCheckoutResponse processExpressFolioCheckout(ExpressFolioCheckoutRequest request, CasmsPrincipal principal) {
         log.info("Processing Express Folio Checkout for onboard account: {}", request.getOnboardAccountId());
 
         UUID accId = request.getOnboardAccountId();
-        OnboardAccount account = onboardAccountRepository.findById(accId).orElse(null);
+        OnboardAccount account = onboardAccountRepository.findById(accId)
+                .orElseThrow(() -> new ResourceNotFoundException("OnboardAccount not found with id: " + accId));
 
-        // Lấy sao kê hiện tại
-        LiveFolioStatementResponse statement = getLiveFolioStatement(accId, null);
+        assertAccountAccess(account, principal);
+
+        if (account.getStatus() == OnboardAccountStatus.CLOSED) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "ACCOUNT_ALREADY_CLOSED", "Tài khoản phòng này đã được tất toán và đóng trước đó.");
+        }
+
+        // Lấy sao kê hiện tại từ CSDL
+        LiveFolioStatementResponse statement = getLiveFolioStatement(accId, null, principal);
         BigDecimal totalCharges = statement.getTotalCharges();
         BigDecimal depositHeld = statement.getSecurityDepositHeld();
 
@@ -612,16 +728,15 @@ public class GuestPaymentExperienceService {
             refundDue = depositHeld.subtract(totalCharges);
         }
 
-        String finalStatementRef = "STMT-FINAL-" + System.currentTimeMillis() % 1000000;
-        String clearancePassToken = "GANGWAY-PASS-" + UUID.randomUUID().toString().toUpperCase();
+        String finalStatementRef = "STMT-FINAL-" + (System.currentTimeMillis() % 1000000);
+        String clearancePassToken = "GANGWAY-PASS-" + UUID.randomUUID().toString().toUpperCase(Locale.ROOT);
         String qrData = "CASMS-CLEARANCE|" + finalStatementRef + "|" + clearancePassToken + "|CLEARED_FOR_DEBARKATION";
 
-        // Cập nhật trạng thái OnboardAccount thành CLOSED
-        if (account != null) {
-            account.setStatus(OnboardAccountStatus.CLOSED);
-            account.setClosedAt(Instant.now());
-            onboardAccountRepository.save(account);
-        }
+        // Cập nhật trạng thái OnboardAccount thành CLOSED và giải phóng tiền cọc lưu trong DB
+        account.setStatus(OnboardAccountStatus.CLOSED);
+        account.setClosedAt(Instant.now());
+        account.setPreAuthorizedAmount(BigDecimal.ZERO);
+        onboardAccountRepository.save(account);
 
         // Tạo hóa đơn quyết toán Final Statement
         Invoice finalInvoice = new Invoice();
@@ -631,26 +746,24 @@ public class GuestPaymentExperienceService {
         finalInvoice.setVersionNo(1);
         finalInvoice.setIssuedAt(Instant.now());
         finalInvoice.setSourceCutoffAt(Instant.now());
-        finalInvoice.setCurrency("VND");
+        finalInvoice.setCurrency(account.getBaseCurrency() != null ? account.getBaseCurrency() : "VND");
         finalInvoice.setSnapshotTotalAmount(totalCharges);
         finalInvoice.setSnapshotNetAmountDue(additionalPaid);
         finalInvoice.setStatus(InvoiceStatus.Issued);
         finalInvoice.setDocumentReference("DOC-" + finalStatementRef);
         Invoice savedFinalInvoice = invoiceRepository.save(finalInvoice);
 
-        // Lưu bản ghi Final Settlement nếu account tồn tại
-        if (account != null) {
-            FinalSettlement settlement = new FinalSettlement();
-            settlement.setOnboardAccount(account);
-            settlement.setFinalInvoice(savedFinalInvoice);
-            settlement.setSourceCutoffAt(Instant.now());
-            settlement.setAmountDueSnapshot(additionalPaid);
-            settlement.setRefundDueSnapshot(refundDue);
-            settlement.setStatementConfirmedAt(Instant.now());
-            settlement.setStartedAt(Instant.now());
-            settlement.setCompletedAt(Instant.now());
-            finalSettlementRepository.save(settlement);
-        }
+        // Lưu bản ghi Final Settlement
+        FinalSettlement settlement = new FinalSettlement();
+        settlement.setOnboardAccount(account);
+        settlement.setFinalInvoice(savedFinalInvoice);
+        settlement.setSourceCutoffAt(Instant.now());
+        settlement.setAmountDueSnapshot(additionalPaid);
+        settlement.setRefundDueSnapshot(refundDue);
+        settlement.setStatementConfirmedAt(Instant.now());
+        settlement.setStartedAt(Instant.now());
+        settlement.setCompletedAt(Instant.now());
+        finalSettlementRepository.save(settlement);
 
         // Xóa deposit cache sau khi quyết toán
         securityDepositCache.remove(accId);
@@ -662,7 +775,7 @@ public class GuestPaymentExperienceService {
                 : "Tài khoản phòng đã được cân đối hoàn toàn. Quý khách đã hoàn tất thủ tục rời tàu.");
 
         return ExpressFolioCheckoutResponse.builder()
-                .finalSettlementId(UUID.randomUUID())
+                .finalSettlementId(settlement.getFinalSettlementId() != null ? settlement.getFinalSettlementId() : UUID.randomUUID())
                 .onboardAccountId(accId)
                 .finalStatementReference(finalStatementRef)
                 .totalChargesAmount(totalCharges)
@@ -680,24 +793,89 @@ public class GuestPaymentExperienceService {
     // =========================================================================
     // 7. PHONG TỎA TIỀN CỌC ĐẢM BẢO CHI TIÊU CABIN (SECURITY DEPOSIT PRE-AUTH)
     // =========================================================================
+    @Transactional
     public SecurityDepositHoldResponse recordSecurityDepositHold(SecurityDepositHoldRequest request) {
+        return recordSecurityDepositHold(request, null);
+    }
+
+    @Transactional
+    public SecurityDepositHoldResponse recordSecurityDepositHold(SecurityDepositHoldRequest request, CasmsPrincipal principal) {
         log.info("Holding security deposit for onboard account: {}, amount: {}", request.getOnboardAccountId(), request.getDepositAmount());
 
         UUID accId = request.getOnboardAccountId();
+        OnboardAccount account = onboardAccountRepository.findById(accId)
+                .orElseThrow(() -> new ResourceNotFoundException("OnboardAccount not found with id: " + accId));
+
+        assertAccountAccess(account, principal);
+
+        if (request.getDepositAmount() == null || request.getDepositAmount().compareTo(BigDecimal.ZERO) <= 0) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "INVALID_DEPOSIT_AMOUNT", "Số tiền cọc đảm bảo phải lớn hơn 0");
+        }
+
+        // Lưu trực tiếp vào CSDL trường preAuthorizedAmount của OnboardAccount để đảm bảo an toàn dữ liệu
+        account.setPreAuthorizedAmount(request.getDepositAmount());
+        onboardAccountRepository.save(account);
         securityDepositCache.put(accId, request.getDepositAmount());
 
-        String preAuthCode = "PREAUTH-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
+        String preAuthCode = "PREAUTH-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase(Locale.ROOT);
 
         return SecurityDepositHoldResponse.builder()
                 .holdId(UUID.randomUUID())
                 .onboardAccountId(accId)
                 .depositAmount(request.getDepositAmount())
-                .currency("VND")
+                .currency(account.getBaseCurrency() != null ? account.getBaseCurrency() : "VND")
                 .preAuthCode(preAuthCode)
                 .status("HELD_ACTIVE")
                 .heldAt(Instant.now())
                 .policyTerms("Khoản cọc đảm bảo sẽ được cấn trừ tự động vào hóa đơn dịch vụ tiêu dùng khi quý khách làm thủ tục Express Check-out rời tàu. Số tiền thừa còn lại (nếu có) sẽ được hoàn trả đầy đủ.")
                 .build();
+    }
+
+    // --- Helper kiểm tra quyền truy cập Booking (Chống IDOR) ---
+    private void assertBookingAccess(Booking booking, CasmsPrincipal principal) {
+        if (principal == null) {
+            // Cho phép thanh toán không cần login nếu đơn đặt tour không gắn với tài khoản thành viên nào (Guest Booking)
+            if (booking.getBookedByUser() != null) {
+                throw new AccessDeniedException("Vui lòng đăng nhập để thực hiện giao dịch cho đơn đặt tour này");
+            }
+            return;
+        }
+        if (hasPermSafe(principal, Permission.PAYMENT_PROCESS) || hasPermSafe(principal, Permission.PAYMENT_READ)) {
+            return;
+        }
+        if (booking.getBookedByUser() != null && !principal.getUserId().equals(booking.getBookedByUser().getUserId())) {
+            throw new AccessDeniedException("Bạn không có quyền thực hiện giao dịch cho đơn đặt tour của khách hàng khác");
+        }
+    }
+
+    // --- Helper kiểm tra quyền truy cập OnboardAccount (Chống IDOR) ---
+    private void assertAccountAccess(OnboardAccount account, CasmsPrincipal principal) {
+        if (principal == null) {
+            return; // Cho phép test hoặc gọi nội bộ
+        }
+        if (hasPermSafe(principal, Permission.PAYMENT_READ) || hasPermSafe(principal, Permission.PAYMENT_REPORT) || hasPermSafe(principal, Permission.PAYMENT_PROCESS)) {
+            return;
+        }
+        if (account.getPrimaryPassenger() != null
+                && account.getPrimaryPassenger().getUser() != null
+                && account.getPrimaryPassenger().getUser().getUserId().equals(principal.getUserId())) {
+            return;
+        }
+        Optional<Booking> linked = bookingRepository.findBySettlementOnboardAccount_OnboardAccountId(account.getOnboardAccountId());
+        if (linked.isPresent() && linked.get().getBookedByUser() != null
+                && linked.get().getBookedByUser().getUserId().equals(principal.getUserId())) {
+            return;
+        }
+        throw new AccessDeniedException("Bạn không có quyền truy cập sao kê chi tiêu của tài khoản phòng này");
+    }
+
+    private boolean hasPermSafe(CasmsPrincipal principal, Permission perm) {
+        if (principal == null) return false;
+        try {
+            return principal.hasPermission(perm);
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     // --- Helper kiểm tra thuật toán Luhn cho thẻ tín dụng ---

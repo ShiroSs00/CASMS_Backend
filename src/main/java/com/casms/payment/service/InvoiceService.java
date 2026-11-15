@@ -202,6 +202,20 @@ public class InvoiceService {
                         .orElseThrow(
                                 () -> new ResourceNotFoundException("Invoice", originalInvoiceId));
 
+        if (adjustmentAmount == null || adjustmentAmount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new BusinessException(
+                    HttpStatus.BAD_REQUEST,
+                    "INVALID_ADJUSTMENT_AMOUNT",
+                    "Số tiền điều chỉnh hóa đơn phải lớn hơn 0");
+        }
+
+        if (original.getStatus() == InvoiceStatus.Superseded || original.getStatus() == InvoiceStatus.Voided) {
+            throw new BusinessException(
+                    HttpStatus.BAD_REQUEST,
+                    "INVOICE_NOT_ADJUSTABLE",
+                    "Không thể tạo hóa đơn điều chỉnh cho hóa đơn đã ở trạng thái " + original.getStatus());
+        }
+
         original.setStatus(InvoiceStatus.Superseded);
         invoiceRepository.save(original);
 

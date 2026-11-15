@@ -172,4 +172,27 @@ class ChargeDisputeServiceTest {
                         () -> disputeService.resolveDispute(disputeId, resolveReq, null));
         assertEquals("APPROVED_AMOUNT_EXCEEDED", ex.getCode());
     }
+
+    @Test
+    @DisplayName("createDispute throws exception when active dispute already exists for charge")
+    void testCreateDisputeDuplicateActiveDisputeThrowsException() {
+        ChargeDisputeCreateRequest req = new ChargeDisputeCreateRequest();
+        req.setChargeId(chargeId);
+        req.setPassengerId(passengerId);
+        req.setDisputedAmount(new BigDecimal("50.00"));
+        req.setReasonCode(ChargeDisputeReasonCode.DUPLICATE_CHARGE);
+        req.setDescription("Lặp giao dịch");
+
+        when(chargeRepository.findById(chargeId)).thenReturn(Optional.of(charge));
+        when(passengerRepository.findById(passengerId)).thenReturn(Optional.of(passenger));
+
+        ChargeDispute existing = new ChargeDispute();
+        existing.setStatus(ChargeDisputeStatus.OPEN);
+        when(disputeRepository.findByCharge_ChargeIdOrderByReportedAtDesc(chargeId))
+                .thenReturn(java.util.List.of(existing));
+
+        BusinessException ex =
+                assertThrows(BusinessException.class, () -> disputeService.createDispute(req));
+        assertEquals("DISPUTE_ALREADY_EXISTS", ex.getCode());
+    }
 }

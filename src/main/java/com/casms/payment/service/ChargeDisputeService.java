@@ -69,6 +69,26 @@ public class ChargeDisputeService {
                     "Disputed amount cannot exceed charge amount of " + charge.getNetAmount());
         }
 
+        if (charge.getTransaction() != null
+                && charge.getTransaction().getStatus() == com.casms.payment.enums.TransactionStatus.VOIDED) {
+            throw new BusinessException(
+                    HttpStatus.BAD_REQUEST,
+                    "CHARGE_ALREADY_VOIDED",
+                    "Không thể tạo khiếu nại cho giao dịch đã bị hủy");
+        }
+
+        List<ChargeDispute> existingDisputes =
+                disputeRepository.findByCharge_ChargeIdOrderByReportedAtDesc(charge.getChargeId());
+        boolean hasActiveDispute = existingDisputes.stream()
+                .anyMatch(d -> d.getStatus() == ChargeDisputeStatus.OPEN
+                        || d.getStatus() == ChargeDisputeStatus.UNDER_REVIEW);
+        if (hasActiveDispute) {
+            throw new BusinessException(
+                    HttpStatus.CONFLICT,
+                    "DISPUTE_ALREADY_EXISTS",
+                    "Giao dịch này đang có một khiếu nại đang chờ xử lý. Không thể tạo thêm khiếu nại trùng lặp.");
+        }
+
         ChargeDispute dispute = new ChargeDispute();
         dispute.setCharge(charge);
         dispute.setPassenger(passenger);
