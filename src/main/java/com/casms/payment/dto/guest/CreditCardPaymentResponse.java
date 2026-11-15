@@ -54,5 +54,17 @@ public class CreditCardPaymentResponse {
 
     @Schema(description = "Mã hoá đơn điện tử VAT phát hành kèm theo (nếu có)")
     private String vatInvoiceReference;
+
+    @Schema(description = "Số tiền gốc trước phụ phí thẻ")
+    private BigDecimal baseAmount;
+
+    @Schema(description = "Số tiền phụ phí quẹt thẻ thanh toán (Card Surcharge)")
+    private BigDecimal surchargeAmount;
+
+    @Schema(description = "Tỷ lệ phụ phí quẹt thẻ (%)")
+    private BigDecimal surchargePercent;
+
+    @Schema(description = "Tổng số tiền thực trừ qua cổng thẻ quốc tế (Base + Surcharge)")
+    private BigDecimal totalAmountWithSurcharge;
 }
 

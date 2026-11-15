@@ -28,5 +28,24 @@ public class ExpressFolioCheckoutRequest {
 
     @Schema(description = "Email nhận hoá đơn quyết toán cuối cùng (Final Statement)")
     private String receiptEmail;
+
+    // --- Văn hóa tiền thưởng / Tip trên du thuyền 5 sao (Tự nguyện / Không bắt buộc) ---
+    @Schema(description = "Số tiền tip tự nguyện (VND hoặc USD)", example = "200000")
+    private java.math.BigDecimal gratuityAmount;
+
+    @Schema(description = "Hình thức tip: GENERAL_CREW_POOL (Hòm tip chung tại lễ tân) hoặc INDIVIDUAL_STAFF (Tip riêng)", example = "GENERAL_CREW_POOL")
+    private String gratuityType;
+
+    @Schema(description = "Mã nhân viên được tip (nếu tip riêng)")
+    private UUID targetStaffUserId;
+
+    @Schema(description = "Tên nhân viên được tip (nếu tip riêng)")
+    private String targetStaffName;
+
+    @Schema(description = "Lời nhắn cảm ơn gửi đến thủy thủ đoàn / nhân viên")
+    private String gratuityNote;
+
+    @Schema(description = "Miễn phụ phí quẹt thẻ (dành cho khách VIP hoặc chính sách đặc biệt)")
+    private Boolean waiveCardSurcharge;
 }
 

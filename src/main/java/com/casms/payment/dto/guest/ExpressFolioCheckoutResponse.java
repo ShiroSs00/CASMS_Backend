@@ -47,6 +47,21 @@ public class ExpressFolioCheckoutResponse {
     @Schema(description = "Thời điểm hoàn tất quyết toán")
     private Instant settledAt;
 
+    @Schema(description = "Số tiền tip tự nguyện tặng thủy thủ đoàn / nhân viên")
+    private BigDecimal gratuityAmount;
+
+    @Schema(description = "Hình thức tip (GENERAL_CREW_POOL hoặc INDIVIDUAL_STAFF)")
+    private String gratuityType;
+
+    @Schema(description = "Tên nhân viên nhận tip riêng (nếu có)")
+    private String targetStaffName;
+
+    @Schema(description = "Số tiền phụ phí quẹt thẻ ngân hàng (0 VNĐ nếu thanh toán tiền mặt Cash)")
+    private BigDecimal cardSurchargeAmount;
+
+    @Schema(description = "Phương thức thanh toán đã sử dụng")
+    private String paymentMethodUsed;
+
     @Schema(description = "Thông báo hướng dẫn khách hàng rời tàu")
     private String clearanceNotice;
 }

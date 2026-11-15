@@ -56,5 +56,11 @@ public class SepayConfigResponse {
 
     @Schema(description = "Trạng thái bật bảo mật 3D-Secure (3DS2)")
     private boolean threeDSecureEnabled;
+
+    @Schema(description = "Phụ phí quẹt thẻ quốc tế Visa / Mastercard (%)", example = "2.50")
+    private BigDecimal cardSurchargePercent;
+
+    @Schema(description = "Trạng thái áp dụng phụ phí quẹt thẻ")
+    private boolean cardSurchargeEnabled;
 }
 
