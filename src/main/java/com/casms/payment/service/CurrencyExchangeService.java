@@ -144,8 +144,8 @@ public class CurrencyExchangeService {
             String fromCurrency,
             String toCurrency,
             boolean explicitCustomerDccConsent) {
-        String from = fromCurrency.trim().toUpperCase(Locale.ROOT);
-        String to = toCurrency.trim().toUpperCase(Locale.ROOT);
+        String from = fromCurrency != null ? fromCurrency.trim().toUpperCase(Locale.ROOT) : "";
+        String to = toCurrency != null ? toCurrency.trim().toUpperCase(Locale.ROOT) : "";
         if (!from.equals(to) && !explicitCustomerDccConsent) {
             throw new BusinessException(
                     HttpStatus.BAD_REQUEST,

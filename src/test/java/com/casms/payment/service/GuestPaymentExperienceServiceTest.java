@@ -4,6 +4,7 @@ import com.casms.booking.entity.Booking;
 import com.casms.booking.enums.BookingStatus;
 import com.casms.booking.repository.BookingRepository;
 import com.casms.booking.service.BookingService;
+import com.casms.identity.entity.Passenger;
 import com.casms.payment.config.SepayProperties;
 import com.casms.payment.dto.guest.*;
 import com.casms.payment.entity.*;
@@ -637,6 +638,69 @@ class GuestPaymentExperienceServiceTest {
         assertThat(response.getCardSurchargeAmount()).isEqualByComparingTo(new BigDecimal("10000"));
         assertThat(response.getAdditionalPaidAmount()).isEqualByComparingTo(new BigDecimal("1010000"));
         assertThat(response.getClearanceNotice()).contains("10,000 VNĐ");
+    }
+
+    @Test
+    @DisplayName("Express Check-out khấu trừ chính xác các khoản thanh toán tạm ứng/hoàn tiền (Interim Credits) trong chuyến đi")
+    void testProcessExpressFolioCheckout_WithInterimCredits() {
+        UUID accountId = UUID.randomUUID();
+        OnboardAccount account = new OnboardAccount();
+        account.setOnboardAccountId(accountId);
+        account.setStatus(OnboardAccountStatus.ACTIVE);
+        account.setCreditLimit(new BigDecimal("20000000"));
+
+        // 1 giao dịch tiêu dùng 2,000,000 VNĐ
+        OnboardTransaction chargeTx = new OnboardTransaction();
+        chargeTx.setTransactionId(UUID.randomUUID());
+        chargeTx.setTransactionType(com.casms.payment.enums.TransactionType.CHARGE);
+        chargeTx.setAmount(new BigDecimal("2000000"));
+        chargeTx.setStatus(com.casms.payment.enums.TransactionStatus.POSTED);
+
+        // 1 giao dịch đã trả trước giữa chuyến đi (Interim Payment) 1,000,000 VNĐ
+        OnboardTransaction paymentTx = new OnboardTransaction();
+        paymentTx.setTransactionId(UUID.randomUUID());
+        paymentTx.setTransactionType(com.casms.payment.enums.TransactionType.PAYMENT);
+        paymentTx.setAmount(new BigDecimal("1000000"));
+        paymentTx.setStatus(com.casms.payment.enums.TransactionStatus.POSTED);
+
+        when(onboardAccountRepository.findById(accountId)).thenReturn(Optional.of(account));
+        when(onboardTransactionRepository.findByOnboardAccount_OnboardAccountIdOrderByTransactionTimeDesc(accountId))
+                .thenReturn(java.util.List.of(chargeTx, paymentTx));
+        when(invoiceRepository.save(any(Invoice.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        ExpressFolioCheckoutRequest request = new ExpressFolioCheckoutRequest();
+        request.setOnboardAccountId(accountId);
+        request.setPaymentMethod(PaymentMethod.CreditCard);
+        request.setConfirmedByGuest(true);
+        request.setWaiveCardSurcharge(true); // Miễn phụ phí để kiểm tra số dư gốc
+
+        ExpressFolioCheckoutResponse response = guestPaymentExperienceService.processExpressFolioCheckout(request);
+
+        assertThat(response).isNotNull();
+        // Net charges = 2,000,000 - 1,000,000 = 1,000,000. Không bị tính lặp 2,000,000!
+        assertThat(response.getTotalChargesAmount()).isEqualByComparingTo(new BigDecimal("1000000"));
+        assertThat(response.getAdditionalPaidAmount()).isEqualByComparingTo(new BigDecimal("1000000"));
+    }
+
+    @Test
+    @DisplayName("Bảo mật chống IDOR: Người dùng ẩn danh không thể xem sao kê của tài khoản đã gắn với hành khách có User")
+    void testAssertAccountAccess_AnonymousBlockedWhenOwnerRegistered() {
+        UUID accountId = UUID.randomUUID();
+        OnboardAccount account = new OnboardAccount();
+        account.setOnboardAccountId(accountId);
+        account.setStatus(OnboardAccountStatus.ACTIVE);
+
+        com.casms.identity.entity.User user = new com.casms.identity.entity.User();
+        user.setUserId(UUID.randomUUID());
+        Passenger passenger = new Passenger();
+        passenger.setUser(user);
+        account.setPrimaryPassenger(passenger);
+
+        when(onboardAccountRepository.findById(accountId)).thenReturn(Optional.of(account));
+
+        org.junit.jupiter.api.Assertions.assertThrows(
+                org.springframework.security.access.AccessDeniedException.class,
+                () -> guestPaymentExperienceService.getLiveFolioStatement(accountId, null, null));
     }
 }
 
