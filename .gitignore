@@ -29,6 +29,7 @@ Thumbs.db
 
 # Local documentation is ignored by default.
 /docs/*
+!/docs/ship-redesign/
 !/docs/sequence-diagrams/
 /docs/sequence-diagrams/*
 !/docs/sequence-diagrams/identity/
@@ -52,3 +53,5 @@ Thumbs.db
 !/docs/sequence-diagrams/ship/post-ships-shipid-models.md
 !/docs/sequence-diagrams/ship/post-ships-shipid-models-imports.md
 !/docs/sequence-diagrams/ship/post-ships-shipid-status.md
+!/docs/sequence-diagrams/ship/patch-ships-shipid-name.md
+!/docs/sequence-diagrams/ship/get-ship-model-assets-modelkey-versions-assetversion-assets-assetpath.md

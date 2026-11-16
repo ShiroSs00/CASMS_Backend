@@ -3,6 +3,8 @@ package com.casms.ship.service;
 import com.casms.common.exception.BusinessException;
 import com.casms.common.exception.ResourceNotFoundException;
 import com.casms.common.service.BusinessCodeGenerator;
+import com.casms.identity.enums.Role;
+import com.casms.security.principal.CasmsPrincipal;
 import com.casms.ship.ShipDeckCount;
 import com.casms.ship.dto.request.ShipFromTypeRequest;
 import com.casms.ship.dto.request.ShipOperationalProfile;
@@ -13,18 +15,31 @@ import com.casms.ship.entity.ShipType;
 import com.casms.ship.enums.ShipStatus;
 import com.casms.ship.repository.ShipRepository;
 import com.casms.ship.repository.ShipTypeRepository;
+import com.casms.trip.repository.IdempotencyRecordRepository;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.io.IOException;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.HexFormat;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -36,40 +51,97 @@ public class ShipTypeService {
     private final ShipModelImportService importer;
     private final BusinessCodeGenerator codes;
     private final ShipService shipService;
+    private final IdempotencyRecordRepository idempotencyRecords;
+    private final ObjectMapper mapper;
 
     @Transactional
     public ShipTypeResponse create(String modelKey, MultipartFile bundle) {
-        ShipType type = new ShipType();
-        readBundle(type, modelKey, bundle);
-        type.setCode(type.getModelKey());
-        return ShipTypeResponse.from(types.saveAndFlush(type));
+        return createFromStored(modelKey, storeBundle(modelKey, bundle));
+    }
+
+    @Transactional
+    public ShipTypeResponse createFromStored(String modelKey, String version) {
+        ShipType candidate = new ShipType();
+        readBundle(candidate, modelKey, version);
+        candidate.setCode(modelKey);
+        assets.lockShipTypeDesign(modelKey);
+        var existing = types.findByCodeOrModelKey(modelKey, modelKey);
+        if (!existing.isEmpty()) {
+            var type = existing.getFirst();
+            if (existing.size() == 1 && modelKey.equals(type.getModelKey())
+                    && version.equals(type.getAssetVersion())) {
+                return describe(type, true);
+            }
+            throw new BusinessException(HttpStatus.CONFLICT, "SHIP_TYPE_CODE_CONFLICT",
+                    "This design code already exists. Use model replacement to apply another version.");
+        }
+        return ShipTypeResponse.from(types.saveAndFlush(candidate), 0);
     }
 
     @Transactional
     public ShipTypeResponse replaceModel(UUID id, String modelKey, MultipartFile bundle) {
+        return replaceStoredModel(id, modelKey, storeBundle(modelKey, bundle));
+    }
+
+    @Transactional
+    public ShipTypeResponse replaceStoredModel(UUID id, String modelKey, String version) {
         ShipType type = lockType(id);
-        readBundle(type, modelKey, bundle);
-        return ShipTypeResponse.from(type);
+        if (!Objects.equals(type.getModelKey(), modelKey)) {
+            throw new BusinessException(HttpStatus.CONFLICT, "SHIP_TYPE_DESIGN_MISMATCH",
+                    "The replacement must belong to the same model design");
+        }
+        readBundle(type, modelKey, version);
+        return describe(type, true);
     }
 
     @Transactional(readOnly = true)
-    public Page<ShipTypeResponse> list(Pageable pageable, boolean includeInactive) {
-        return (includeInactive ? types.findAll(pageable) : types.findByActiveTrue(pageable))
-                .map(ShipTypeResponse::from);
+    public Page<ShipTypeResponse> list(Pageable pageable, boolean admin, Boolean active, String search) {
+        if (!admin && Boolean.FALSE.equals(active)) return Page.empty(pageable);
+        String term = search == null ? "" : search.strip().toLowerCase(Locale.ROOT)
+                .replace("!", "!!").replace("%", "!%").replace("_", "!_");
+        Boolean activeFilter = admin ? active : Boolean.TRUE;
+        Page<ShipType> page = types.findCatalog(activeFilter, "%" + term + "%", pageable);
+
+        Map<UUID, Long> counts = counts(page.map(ShipType::getShipTypeId).getContent(), admin);
+        return page.map(type -> ShipTypeResponse.from(type, counts.getOrDefault(type.getShipTypeId(), 0L)));
     }
 
     @Transactional(readOnly = true)
-    public ShipTypeResponse detail(UUID id, boolean includeInactive) {
-        return types.findById(id).filter(type -> includeInactive || type.isActive())
-                .map(ShipTypeResponse::from)
+    public ShipTypeResponse detail(UUID id, boolean admin) {
+        return describe(visibleType(id, admin), admin);
+    }
+
+    @Transactional(readOnly = true)
+    public Page<ShipResponse> listShips(UUID id, Pageable pageable, boolean admin) {
+        visibleType(id, admin);
+        return (admin ? ships.findByShipTypeShipTypeId(id, pageable)
+                : ships.findManagedShipsByType(id, CruisePlanOperationsAccess.currentShipManager(), pageable))
+                .map(shipService::mapToResponse);
+    }
+
+    private ShipType visibleType(UUID id, boolean admin) {
+        return types.findById(id).filter(type -> admin || type.isActive())
                 .orElseThrow(() -> new ResourceNotFoundException("ShipType", id));
+    }
+
+    private ShipTypeResponse describe(ShipType type, boolean admin) {
+        UUID id = type.getShipTypeId();
+        return ShipTypeResponse.from(type, counts(List.of(id), admin).getOrDefault(id, 0L));
+    }
+
+    private Map<UUID, Long> counts(List<UUID> ids, boolean admin) {
+        if (ids.isEmpty()) return Map.of();
+        var counts = admin ? ships.countByTypeIds(ids)
+                : ships.countManagedByTypeIds(ids, CruisePlanOperationsAccess.currentShipManager());
+        return counts.stream().collect(Collectors.toMap(
+                ShipRepository.TypeShipCount::getTypeId, ShipRepository.TypeShipCount::getShipCount));
     }
 
     @Transactional
     public ShipTypeResponse setActive(UUID id, boolean active) {
         ShipType type = lockType(id);
         type.setActive(active);
-        return ShipTypeResponse.from(type);
+        return describe(type, true);
     }
 
     @Transactional
@@ -83,7 +155,68 @@ public class ShipTypeService {
     }
 
     @Transactional
-    public ShipResponse createShip(UUID id, ShipFromTypeRequest request, String actor) {
+    public ShipResponse createShip(UUID id, ShipFromTypeRequest request, String actor, UUID requestKey) {
+        UUID managerId = requireManagerIdentity();
+        String shipName = request.shipName().strip();
+        String key = requestKey.toString();
+        String hash = requestHash(new ProvisionRequest(id, shipName, request.profile()));
+        int inserted = idempotencyRecords.reserveShipProvisioning(UUID.randomUUID(), managerId, key, hash);
+        var record = idempotencyRecords.findByActorIdAndOperationAndIdempotencyKey(managerId, "PROVISION_SHIP", key)
+                .orElseThrow(() -> new IllegalStateException("Ship provisioning request reservation is missing"));
+        if (!hash.equals(record.getRequestHash())) {
+            throw new BusinessException(HttpStatus.CONFLICT, "IDEMPOTENCY_CONFLICT",
+                    "The Idempotency-Key was already used for another ship provisioning request");
+        }
+        if (inserted == 0) {
+            UUID shipId = record.getResultingId();
+            if (shipId == null) {
+                throw new BusinessException(HttpStatus.CONFLICT, "IDEMPOTENCY_CONFLICT",
+                        "The provisioning request does not have a completed result");
+            }
+            return shipService.detail(shipId);
+        }
+
+        ShipResponse ship = provision(id, shipName, request.profile(), actor, managerId);
+        record.setResultingId(ship.getShipId());
+        return ship;
+    }
+
+    @Transactional(readOnly = true)
+    public ShipResponse provisioningResult(UUID typeId, UUID requestKey) {
+        UUID managerId = requireManagerIdentity();
+        var shipId = idempotencyRecords.findByActorIdAndOperationAndIdempotencyKey(
+                        managerId, "PROVISION_SHIP", requestKey.toString())
+                .map(record -> record.getResultingId())
+                .orElseThrow(() -> new ResourceNotFoundException("Ship provisioning result", requestKey));
+        ShipResponse ship = shipService.detail(shipId);
+        if (!typeId.equals(ship.getShipTypeId())) {
+            throw new ResourceNotFoundException("Ship provisioning result", requestKey);
+        }
+        return ship;
+    }
+
+    private static UUID requireManagerIdentity() {
+        var authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication != null && authentication.getPrincipal() instanceof CasmsPrincipal actor
+                && actor.hasRole(Role.SHIP_MANAGER) && actor.getUserId() != null) {
+            return actor.getUserId();
+        }
+        throw new AccessDeniedException("Ship Manager identity is required");
+    }
+
+    private record ProvisionRequest(UUID typeId, String shipName, ShipOperationalProfile profile) {}
+
+    private String requestHash(ProvisionRequest request) {
+        try {
+            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
+                    .digest(mapper.writeValueAsBytes(request)));
+        } catch (NoSuchAlgorithmException | JsonProcessingException exception) {
+            throw new IllegalStateException("Cannot fingerprint the ship provisioning request", exception);
+        }
+    }
+
+    private ShipResponse provision(UUID id, String shipName, ShipOperationalProfile profile,
+            String actor, UUID managerId) {
         ShipType type = lockType(id);
         if (!type.isActive()) {
             throw new BusinessException(HttpStatus.CONFLICT, "SHIP_TYPE_INACTIVE",
@@ -92,8 +225,8 @@ public class ShipTypeService {
         JsonNode manifest = assets.manifest(type.getModelKey(), type.getAssetVersion());
         Ship ship = new Ship();
         ship.setShipType(type);
-        ship.setCreatedByShipManagerId(CruisePlanOperationsAccess.currentShipManager());
-        ship.setShipName(request.shipName().strip());
+        ship.setCreatedByShipManagerId(managerId);
+        ship.setShipName(shipName);
         ship.setShipCode(codes.next("SH"));
         ship.setStatus(ShipStatus.DRAFT);
         ship.setTotalCapacity(type.getTotalCapacity());
@@ -108,7 +241,7 @@ public class ShipTypeService {
             deckLimit = Math.max(deckLimit, deck.path("number").asInt());
         }
         ship.setDeckNumberLimit(deckLimit);
-        applyProfile(ship, request.profile());
+        applyProfile(ship, profile);
         UUID shipId = ships.saveAndFlush(ship).getShipId();
         UUID modelId = modelAssets.register(shipId, type.getModelKey(), type.getAssetVersion());
         importer.importForProvisioning(shipId, modelId, actor);
@@ -153,19 +286,21 @@ public class ShipTypeService {
                 .orElseThrow(() -> new ResourceNotFoundException("ShipType", id));
     }
 
-    private void readBundle(ShipType type, String modelKey, MultipartFile bundle) {
+    private String storeBundle(String modelKey, MultipartFile bundle) {
         if (modelKey == null || modelKey.length() > 80 || !modelKey.matches("[a-z0-9-]+")) {
             throw invalid("modelKey");
         }
         if (bundle == null || bundle.isEmpty() || bundle.getSize() > 2L * 1024 * 1024 * 1024) {
             throw invalid("bundle");
         }
-        String version;
         try {
-            version = assets.storeImportZip(modelKey, bundle);
+            return assets.storeImportZip(modelKey, bundle);
         } catch (IOException ex) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Cannot read model ZIP", ex);
         }
+    }
+
+    private void readBundle(ShipType type, String modelKey, String version) {
         JsonNode manifest = assets.manifest(modelKey, version);
         requiredText(manifest, "modelId", 80);
         type.setModelKey(modelKey);
@@ -181,6 +316,8 @@ public class ShipTypeService {
         type.setTotalDecks(decks);
         type.setLengthMeters(requiredDimension(manifest, "length"));
         type.setBeamMeters(requiredDimension(manifest, "beam"));
+        ShipModelImportService.validateProvisioningDesign(manifest,
+                assets.validateStoredGlbs(modelKey, version, manifest));
     }
 
     private static String requiredText(JsonNode manifest, String field, int max) {

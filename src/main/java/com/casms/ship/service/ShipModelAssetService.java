@@ -63,6 +63,16 @@ public class ShipModelAssetService {
         return manifestForClient(assets.manifest(modelKey, assets.latestVersion(modelKey)));
     }
 
+    @Transactional(readOnly = true)
+    public JsonNode previewStoredBundle(String modelKey, String assetVersion) {
+        return manifestForClient(assets.manifest(modelKey, assetVersion));
+    }
+
+    @Transactional(readOnly = true)
+    public AssetDownload storedAsset(String modelKey, String version, String name) {
+        return new AssetDownload(modelKey, version, name, assets.asset(modelKey, version, name));
+    }
+
     private static JsonNode manifestForClient(JsonNode manifest) {
         var preview = (com.fasterxml.jackson.databind.node.ObjectNode) manifest.deepCopy();
         preview.remove("revision");
@@ -82,8 +92,9 @@ public class ShipModelAssetService {
         }
         try {
             String version = assets.storeImportZip(modelKey, bundle);
+            assets.validateStoredGlbs(modelKey, version, assets.manifest(modelKey, version));
             var result = assets.bundleStats(modelKey, version);
-            return new ShipModelAssetUploadResponse(modelKey, result.files(), result.bytes());
+            return new ShipModelAssetUploadResponse(modelKey, result.files(), result.bytes(), version);
         } catch (DataIntegrityViolationException ex) {
             throw new ResponseStatusException(
                     HttpStatus.CONFLICT, "Model asset bundle could not be stored", ex);
@@ -205,10 +216,11 @@ public class ShipModelAssetService {
                     HttpStatus.CONFLICT, "Ship is already linked to a different manifest identity");
         }
 
-        if (manifest.hasNonNull("name") && !manifest.path("name").isTextual())
-            throw bad("Manifest name must be text");
-        String name = manifest.path("name").asText("").trim();
-        if (!name.isEmpty()) ship.setShipName(name);
+        if (requireCompleteMetadata && (ship.getShipName() == null || ship.getShipName().isBlank())) {
+            if (manifest.hasNonNull("name") && !manifest.path("name").isTextual())
+                throw bad("Manifest name must be text");
+            ship.setShipName(manifest.path("name").asText("").trim());
+        }
         int listedPassengerDecks = manifest.path("decks").size();
         Integer deckCount = manifestInt(manifest, "deckCount");
         if (manifest.hasNonNull("deckCount") && (deckCount == null || deckCount < 1))
@@ -250,7 +262,7 @@ public class ShipModelAssetService {
                 || ship.getShipName().isBlank()
                 || ship.getShipName().trim().length() > 100)
             throw bad("Supply shipName when the model has no ship name (maximum 100 characters)");
-        ship.setShipName(ship.getShipName().trim());
+        if (requireCompleteMetadata) ship.setShipName(ship.getShipName().trim());
         if (ship.getTotalCapacity() == null || ship.getTotalCapacity() < 1)
             throw bad("Supply a positive totalCapacity when the model has no passengerCapacity");
         if (ship.getLengthMeters() != null

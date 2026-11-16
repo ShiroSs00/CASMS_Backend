@@ -6,6 +6,9 @@ import com.casms.ship.dto.response.ShipResponse;
 import com.casms.ship.dto.response.ShipTypeResponse;
 import com.casms.ship.service.ShipTypeService;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
+import org.springframework.data.web.PageableDefault;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -32,10 +35,38 @@ public class ShipTypeController {
         return ApiResponse.success(service.create(modelKey, bundle));
     }
 
+    public record StoredDesign(
+            @NotBlank @Pattern(regexp = "[a-z0-9-]{1,80}") String modelKey,
+            @NotBlank @Pattern(regexp = "[a-zA-Z0-9._-]{1,80}") String assetVersion) {}
+
+    @PostMapping("/from-stored")
+    @PreAuthorize("hasRole('ADMIN')")
+    @ResponseStatus(HttpStatus.CREATED)
+    public ApiResponse<ShipTypeResponse> createStored(@Valid @RequestBody StoredDesign design) {
+        return ApiResponse.success(service.createFromStored(design.modelKey(), design.assetVersion()));
+    }
+
+    @PutMapping("/{typeId}/model")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ApiResponse<ShipTypeResponse> updateStored(@PathVariable UUID typeId,
+            @Valid @RequestBody StoredDesign design) {
+        return ApiResponse.success(service.replaceStoredModel(typeId, design.modelKey(), design.assetVersion()));
+    }
+
+    @GetMapping("/{typeId}/ships")
+    @PreAuthorize("hasAnyRole('ADMIN','SHIP_MANAGER') and hasAuthority('SHIP_READ')")
+    public ApiResponse<Page<ShipResponse>> ships(@PathVariable UUID typeId,
+            @PageableDefault(size = 20, sort = "shipCode") Pageable pageable, Authentication actor) {
+        return ApiResponse.success(service.listShips(typeId, pageable, isAdmin(actor)));
+    }
+
     @GetMapping
     @PreAuthorize("hasAnyRole('ADMIN','SHIP_MANAGER')")
-    public ApiResponse<Page<ShipTypeResponse>> list(Pageable pageable, Authentication actor) {
-        return ApiResponse.success(service.list(pageable, isAdmin(actor)));
+    public ApiResponse<Page<ShipTypeResponse>> list(@PageableDefault(size = 20, sort = "code") Pageable pageable,
+            @RequestParam(required = false) TypeStatus status,
+            @RequestParam(name = "q", required = false) String search, Authentication actor) {
+        return ApiResponse.success(service.list(pageable, isAdmin(actor),
+                status == null ? null : status == TypeStatus.ACTIVE, search));
     }
 
     @GetMapping("/{typeId}")
@@ -69,8 +100,16 @@ public class ShipTypeController {
     @PreAuthorize("hasRole('SHIP_MANAGER')")
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<ShipResponse> createShip(@PathVariable UUID typeId,
+            @RequestHeader("Idempotency-Key") UUID requestKey,
             @Valid @RequestBody ShipFromTypeRequest request, Authentication actor) {
-        return ApiResponse.success(service.createShip(typeId, request, actor.getName()));
+        return ApiResponse.success(service.createShip(typeId, request, actor.getName(), requestKey));
+    }
+
+    @GetMapping("/{typeId}/ships/provisioning/{requestKey}")
+    @PreAuthorize("hasRole('SHIP_MANAGER')")
+    public ApiResponse<ShipResponse> provisioningResult(
+            @PathVariable UUID typeId, @PathVariable UUID requestKey) {
+        return ApiResponse.success(service.provisioningResult(typeId, requestKey));
     }
 
     private static boolean isAdmin(Authentication actor) {
