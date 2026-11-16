@@ -302,12 +302,6 @@ public class RolePermissionInitializer implements CommandLineRunner {
                         Permission.REPORT_GENERATE,
                         Permission.REPORT_EXPORT,
 
-                        // Trip Planning permissions
-                        Permission.TRIP_READ,
-                        Permission.TRIP_PUBLISH,
-                        Permission.TRIP_PLAN_VALIDATE,
-                        Permission.TRIP_PLAN_REVIEW,
-
                         // Cross-module
                         Permission.SUPPLIER_CREATE,
                         Permission.SUPPLIER_READ,
@@ -559,9 +553,6 @@ public class RolePermissionInitializer implements CommandLineRunner {
                 permissions.isEmpty()
                         ? EnumSet.noneOf(Permission.class)
                         : EnumSet.copyOf(permissions);
-        // Port directory grants remain additive for OPS, preserving unrelated manual grants.
-        // Other roles retain main's explicit POS and resource-scoped staff grant sets.
-        if (role == Role.OPERATIONS_MANAGER) effective.addAll(rolePermission.getPermissions());
         rolePermission.setPermissions(effective);
 
         rolePermissionRepository.save(rolePermission);

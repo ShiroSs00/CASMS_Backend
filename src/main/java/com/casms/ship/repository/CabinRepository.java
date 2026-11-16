@@ -30,6 +30,13 @@ public interface CabinRepository extends JpaRepository<Cabin, UUID> {
 
     Page<Cabin> findByDeckDeckId(UUID deckId, Pageable pageable);
 
+    @Query("""
+            SELECT b FROM Cabin b WHERE EXISTS (SELECT crew.cruiseStaffId FROM CruiseStaff crew
+                WHERE crew.cruise.ship=b.ship AND crew.user.userId=:user AND crew.status='ACTIVE'
+                AND crew.roleInCruise='SHIP_MANAGER' AND crew.cruise.status NOT IN ('CANCELLED','COMPLETED'))
+            """)
+    Page<Cabin> findManagedCabins(@Param("user") UUID user, Pageable pageable);
+
     long countByShipShipId(UUID shipId);
 
     long countByShipShipIdAndStatus(UUID shipId, CabinStatus status);

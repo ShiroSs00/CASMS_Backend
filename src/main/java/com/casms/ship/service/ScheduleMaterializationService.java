@@ -489,6 +489,9 @@ public class ScheduleMaterializationService {
                                                 .cruiseStopId(s.getCruiseStopId())
                                                 .isDisembarkation(disembarkationStopId != null
                                                         && disembarkationStopId.equals(s.getCruiseStopId()))
+                                                .disembarkationStartsAt(s.validDisembarkationStart())
+                                                .disembarkationEndsAt(s.validDisembarkationStart() == null ? null
+                                                        : s.validDisembarkationStart().plusSeconds(s.getDisembarkationMinutes() * 60L))
                                                 .sourceStopId(sourceStopId)
                                                 .stopOrder(s.getStopOrder())
                                                 .portId(p != null ? p.getPortId() : null)

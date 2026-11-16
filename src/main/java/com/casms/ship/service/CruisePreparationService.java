@@ -32,6 +32,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.math.BigDecimal;
 import java.util.*;
 
 @Slf4j
@@ -86,7 +87,8 @@ public class CruisePreparationService {
                     && checks.stream()
                             .noneMatch(i -> Boolean.TRUE.equals(i.getRequired()) && !i.isReady()))
                 actions.add("CONFIRM");
-            if (Set.of("SUBMITTED", "CONFIRMED").contains(section.getStatus()))
+            if (Set.of("SUBMITTED", "CONFIRMED").contains(section.getStatus())
+                    && !actor.getUserId().equals(section.getSubmittedByUserId()))
                 actions.add("RETURN");
         }
         return actions;
@@ -96,6 +98,46 @@ public class CruisePreparationService {
         return cruiseRepository
                 .findByIdForUpdate(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Cruise", id));
+    }
+
+    private boolean canEditOperatingBudget(Cruise cruise, CasmsPrincipal actor) {
+        return submissionScope(cruise, actor) && "DRAFT".equals(cruise.getStatus().name());
+    }
+
+    public record OperatingBudget(Long revision, String amountVnd, boolean canEdit) {}
+
+    private OperatingBudget budgetView(Cruise cruise, CasmsPrincipal actor) {
+        var amount = cruise.getOperatingBudgetVnd();
+        return new OperatingBudget(cruise.getRevision(), amount == null ? null : amount.toPlainString(),
+                canEditOperatingBudget(cruise, actor));
+    }
+
+    @Transactional(readOnly = true)
+    public OperatingBudget operatingBudget(UUID cruiseId, CasmsPrincipal actor) {
+        Cruise cruise = cruiseRepository.findById(cruiseId)
+                .orElseThrow(() -> new ResourceNotFoundException("Cruise", cruiseId));
+        if (!submissionScope(cruise, actor)) {
+            throw new BusinessException(HttpStatus.FORBIDDEN, "PREPARATION_SCOPE_FORBIDDEN",
+                    "Ngân sách chỉ hiển thị cho người phụ trách tour.");
+        }
+        return budgetView(cruise, actor);
+    }
+
+    @Transactional
+    public OperatingBudget saveOperatingBudget(
+            UUID cruiseId, Long expectedRevision, BigDecimal amount, CasmsPrincipal actor) {
+        Cruise cruise = lockedCruise(cruiseId);
+        if (!canEditOperatingBudget(cruise, actor)) {
+            throw new BusinessException(HttpStatus.FORBIDDEN, "PREPARATION_BUDGET_EDIT_FORBIDDEN",
+                    "Người phụ trách chỉ có thể cập nhật ngân sách khi đang chuẩn bị tour.");
+        }
+        if (!Objects.equals(cruise.getRevision(), expectedRevision)) {
+            throw new BusinessException(HttpStatus.CONFLICT, "STALE_REVISION",
+                    "Tour đã được cập nhật. Tải lại thông tin trước khi lưu ngân sách.");
+        }
+        cruise.setOperatingBudgetVnd(amount);
+        cruiseRepository.saveAndFlush(cruise);
+        return budgetView(cruise, actor);
     }
 
     @Transactional(readOnly = true)
@@ -249,6 +291,63 @@ public class CruisePreparationService {
 
     private record SectionTemplate(String code, String name, String ownerRole) {}
 
+    private static final Set<String> REVIEW_STATES = Set.of("SUBMITTED", "CONFIRMED", "RETURNED");
+
+    public record GroupReviewSummary(UUID cruiseId, String cruiseCode, String cruiseName,
+            String sectionCode, String sectionName, String status, Instant submittedAt) {}
+
+    public record SubmittedCheck(String name, boolean ready, boolean required) {}
+
+    public record GroupReview(GroupReviewSummary summary, long revision, String evidence,
+            String returnReason, List<SubmittedCheck> checks, List<String> allowedActions) {}
+
+    @Transactional(readOnly = true)
+    public List<GroupReviewSummary> submittedGroupReviews(UUID actorId) {
+        requireActor(actorId, false);
+        return preparationSectionRepository.findSubmittedReviews(
+                TEMPLATES.stream().map(SectionTemplate::code).toList(), REVIEW_STATES)
+                .stream().map(this::reviewSummary).toList();
+    }
+
+    @Transactional(readOnly = true)
+    public GroupReview submittedGroupReview(UUID cruiseId, String sectionCode, UUID actorId) {
+        requireActor(actorId, false);
+        var section = preparationSectionRepository.findByCruiseCruiseIdAndSectionCode(cruiseId, sectionCode)
+                .filter(s -> s.getSubmittedAt() != null && REVIEW_STATES.contains(s.getStatus()))
+                .filter(s -> TEMPLATES.stream().anyMatch(template -> template.code().equals(sectionCode)))
+                .orElseThrow(() -> new ResourceNotFoundException("Hồ sơ nhóm đã gửi", sectionCode));
+        var checks = jdbc.query("""
+                SELECT snapshot FROM "CruisePreparationEvent"
+                WHERE cruise_id = ? AND section_code = ? AND action = 'SUBMIT'
+                ORDER BY occurred_at DESC, revision DESC LIMIT 1
+                """, (rs, index) -> submittedChecks(rs.getString(1)), cruiseId, sectionCode)
+                .stream().findFirst().orElse(List.of());
+        return new GroupReview(reviewSummary(section), section.getRevision(), section.getEvidence(),
+                section.getReturnReason(), checks, allowedActions(section,
+                        computeCheckItems(section.getCruise(), sectionCode)).stream()
+                        .filter(action -> !action.equals("SUBMIT")).toList());
+    }
+
+    private List<SubmittedCheck> submittedChecks(String snapshot) {
+        if (snapshot == null) return List.of();
+        try {
+            var checks = new ArrayList<SubmittedCheck>();
+            for (var item : mapper.readTree(snapshot).path("checkItems")) {
+                checks.add(new SubmittedCheck(item.path("itemName").asText(),
+                        item.path("ready").asBoolean(), item.path("required").asBoolean()));
+            }
+            return checks;
+        } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+            throw new IllegalStateException("Không đọc được hồ sơ nhóm đã gửi", e);
+        }
+    }
+
+    private GroupReviewSummary reviewSummary(CruisePreparationSection section) {
+        var cruise = section.getCruise();
+        return new GroupReviewSummary(cruise.getCruiseId(), cruise.getCruiseCode(), cruise.getCruiseName(),
+                section.getSectionCode(), section.getSectionName(), section.getStatus(), section.getSubmittedAt());
+    }
+
     @Transactional(readOnly = true)
     public CruisePreparationResponse getPreparationDashboard(UUID cruiseId) {
         return getPreparationDashboard(cruiseId, null);
@@ -350,6 +449,8 @@ public class CruisePreparationService {
                                 ? null
                                 : cruise.getPreparationCoordinator().getUsername())
                 .cruiseRevision(cruise.getRevision())
+                .operatingBudgetVnd(cruise.getOperatingBudgetVnd() == null
+                        ? null : cruise.getOperatingBudgetVnd().toPlainString())
                 .canAssignCoordinator(
                         principal != null
                                 && principal.hasRole(
@@ -480,6 +581,10 @@ public class CruisePreparationService {
                     "Phân hệ này đã được phê duyệt xác nhận (CONFIRMED)");
         }
 
+        if (cruise.getOperatingBudgetVnd() == null) {
+            throw new BusinessException(HttpStatus.UNPROCESSABLE_ENTITY, "PREPARATION_BUDGET_REQUIRED",
+                    "Lưu ngân sách vận hành dự kiến trước khi gửi hồ sơ nhóm.");
+        }
         section.setStatus("SUBMITTED");
         section.setEvidence(request.getEvidence());
         if (request.getNotes() != null) {
@@ -638,6 +743,11 @@ public class CruisePreparationService {
                     HttpStatus.UNPROCESSABLE_ENTITY,
                     "PREPARATION_RETURN_REASON_REQUIRED",
                     "Return reason required");
+
+        if (actorId.equals(section.getSubmittedByUserId())) {
+            throw new BusinessException(HttpStatus.FORBIDDEN, "SELF_APPROVAL_FORBIDDEN",
+                    "Người nộp hồ sơ không thể tự trả lại nhóm mình đã gửi.");
+        }
 
         if (!"SUBMITTED".equalsIgnoreCase(section.getStatus())
                 && !"CONFIRMED".equalsIgnoreCase(section.getStatus())) {

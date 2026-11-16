@@ -34,6 +34,10 @@ public class CruiseStaffWorkService {
         }
     }
 
+    public enum AssignmentKind { SERVICE, ONBOARD, SHORE }
+    public enum CandidateStatus { AVAILABLE, ALREADY_ASSIGNED, MISSING_QUALIFICATION, SCHEDULE_CONFLICT }
+    public record Candidate(UUID userId, String username, CandidateStatus status) {}
+
     public record Qualification(ActivityKind kind, UUID activityId) {}
 
     public record WorkWindow(
@@ -76,6 +80,49 @@ public class CruiseStaffWorkService {
                 """, (rs, row) -> new ServiceDuty(rs.getObject("user_id", UUID.class),
                 rs.getObject("service_id", UUID.class), rs.getString("service_name")), cruiseId);
         return new WorkPlan(windows, services);
+    }
+
+    @Transactional(readOnly = true)
+    public List<Candidate> candidates(UUID cruiseId, AssignmentKind kind, UUID resourceId) {
+        if (kind == AssignmentKind.SERVICE) {
+            shipServices.requireServiceForRequest(cruiseId, resourceId);
+        } else if (!exists("""
+                SELECT EXISTS (SELECT 1 FROM "CruiseStaffWorkWindow"
+                    WHERE cruise_id=? AND kind=? AND resource_id=?)
+                """, cruiseId, kind.name(), resourceId)) {
+            throw new ResourceNotFoundException("Scheduled activity on cruise", resourceId);
+        }
+        return jdbc.query("""
+                WITH target AS (
+                    SELECT * FROM "CruiseStaffWorkWindow" WHERE cruise_id=? AND kind=? AND resource_id=?
+                )
+                SELECT u.user_id, u.username, CASE
+                    WHEN EXISTS (
+                        SELECT 1 FROM "CruiseStaffDuty" d WHERE d.cruise_staff_id=crew.cruise_staff_id
+                        AND d.ended_at IS NULL AND (? AND d.service_id IS NOT NULL
+                            OR NOT ? AND ? IN (d.onboard_activity_id, d.shore_excursion_id))
+                    ) THEN 'ALREADY_ASSIGNED'
+                    WHEN NOT ? AND NOT EXISTS (
+                        SELECT 1 FROM target t JOIN "StaffActivityQualification" q
+                          ON (t.kind='ONBOARD' AND q.onboard_activity_id=t.definition_id
+                            OR t.kind='SHORE' AND q.shore_excursion_id=t.definition_id)
+                        WHERE q.user_id=u.user_id AND q.ended_at IS NULL
+                    ) THEN 'MISSING_QUALIFICATION'
+                    WHEN EXISTS (
+                        SELECT 1 FROM target t JOIN "CruiseStaffDutyWindow" d ON d.user_id=u.user_id
+                          AND t.starts_at < d.ends_at AND d.starts_at < t.ends_at
+                    ) THEN 'SCHEDULE_CONFLICT'
+                    ELSE 'AVAILABLE' END AS availability
+                FROM "CruiseStaff" crew JOIN "User" u USING (user_id)
+                WHERE crew.cruise_id=? AND crew.status='ACTIVE' AND crew.role_in_cruise='ONBOARD_STAFF'
+                    AND u.status='ACTIVE'
+                    AND EXISTS (SELECT 1 FROM "UserRole" r WHERE r.user_id=u.user_id AND r.role='ONBOARD_STAFF')
+                    AND NOT EXISTS (SELECT 1 FROM "UserRole" r WHERE r.user_id=u.user_id AND r.role='ADMIN')
+                ORDER BY u.username, u.user_id
+                """, (rs, row) -> new Candidate(rs.getObject(1, UUID.class), rs.getString(2),
+                CandidateStatus.valueOf(rs.getString(3))), cruiseId, kind.name(), resourceId,
+                kind == AssignmentKind.SERVICE, kind == AssignmentKind.SERVICE, resourceId,
+                kind == AssignmentKind.SERVICE, cruiseId);
     }
 
     @Transactional(readOnly = true)

@@ -12,6 +12,7 @@ import lombok.Getter;
 import lombok.Setter;
 
 import java.time.Instant;
+import java.math.BigDecimal;
 import java.util.UUID;
 
 @Getter
@@ -21,6 +22,14 @@ import java.util.UUID;
         name = "\"Cruise\"",
         uniqueConstraints = @UniqueConstraint(columnNames = {"cruise_id", "ship_id"}))
 public class Cruise {
+    @Column(name = "expected_passenger_count")
+    private Integer expectedPassengerCount;
+
+    @Column(name = "operating_budget_vnd", precision = 18, scale = 0)
+    private BigDecimal operatingBudgetVnd;
+
+    @Column(name = "sale_currency", nullable = false, length = 3)
+    private String saleCurrency = "USD";
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)

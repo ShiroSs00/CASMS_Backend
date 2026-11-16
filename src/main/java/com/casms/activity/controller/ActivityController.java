@@ -36,6 +36,7 @@ import java.util.UUID;
         description = "Quản lý hoạt động trên tàu, đăng ký tham gia và điểm danh hành khách")
 public class ActivityController {
     private final ActivityService service;
+    private final com.casms.ship.service.CruisePlanOperationsAccess cruiseAccess;
     private final CruisePackageEntitlementService fareEntitlements;
 
     @GetMapping("/registrations/{id}/fare-entitlement")
@@ -234,7 +235,10 @@ public class ActivityController {
     @PreAuthorize("hasAuthority('ACTIVITY_READ')")
     @GetMapping
     public ApiResponse<List<ActivityView>> list() {
-        return ApiResponse.success(service.listActivities().stream().filter(a->a.getCruise()!=null).map(ActivityView::of).toList());
+        var scope = cruiseAccess.visibleCruises();
+        return ApiResponse.success(service.listActivities().stream()
+                .filter(a -> a.getCruise() != null && (scope == null || scope.contains(a.getCruise().getCruiseId())))
+                .map(ActivityView::of).toList());
     }
 
     @Operation(summary = "Chi tiết hoạt động", description = "Lấy thông tin một hoạt động theo ID")

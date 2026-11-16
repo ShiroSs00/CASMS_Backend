@@ -82,7 +82,8 @@ public class SepayService {
                 booking.getAgreedFareAmount() != null
                         ? booking.getAgreedFareAmount()
                         : BigDecimal.ZERO;
-        BigDecimal exchangeRate = sepayProperties.getUsdToVndRate();
+        BigDecimal exchangeRate = "VND".equals(booking.getCurrency())
+                ? BigDecimal.ONE : sepayProperties.getUsdToVndRate();
         if (exchangeRate == null || exchangeRate.compareTo(BigDecimal.ZERO) <= 0) {
             exchangeRate = BigDecimal.valueOf(25400);
         }
@@ -301,11 +302,9 @@ public class SepayService {
                     "Thời gian giữ chỗ của đơn đã hết hạn. Vui lòng tạo đơn mới.");
         }
 
-        BigDecimal exchangeRate =
-                request.getCustomExchangeRate() != null
-                                && request.getCustomExchangeRate().compareTo(BigDecimal.ZERO) > 0
-                        ? request.getCustomExchangeRate()
-                        : sepayProperties.getUsdToVndRate();
+        BigDecimal exchangeRate = "VND".equals(booking.getCurrency()) ? BigDecimal.ONE
+                : request.getCustomExchangeRate() != null && request.getCustomExchangeRate().signum() > 0
+                        ? request.getCustomExchangeRate() : sepayProperties.getUsdToVndRate();
 
         // Tính số dư còn lại
         BigDecimal agreedFare =

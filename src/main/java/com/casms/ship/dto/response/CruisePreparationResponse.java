@@ -39,6 +39,7 @@ public class CruisePreparationResponse {
     private String coordinatorUsername;
     private Long cruiseRevision;
     private boolean canAssignCoordinator;
+    private String operatingBudgetVnd;
 
     @Schema(
             description = "Trạng thái chuẩn bị tổng thể (INCOMPLETE, READY_FOR_SIGNOFF, CONFIRMED)",

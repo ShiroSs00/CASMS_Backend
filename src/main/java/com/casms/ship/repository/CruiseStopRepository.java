@@ -36,6 +36,8 @@ public interface CruiseStopRepository extends JpaRepository<CruiseStop, UUID> {
 
     List<CruiseStop> findByItineraryItineraryIdOrderByStopOrderAsc(UUID itineraryId);
 
+    Optional<CruiseStop> findFirstByItineraryCruiseCruiseIdOrderByStopOrderDesc(UUID cruiseId);
+
     boolean existsByItineraryItineraryIdAndStopOrder(UUID itineraryId, Integer stopOrder);
 
     Optional<CruiseStop> findByItineraryItineraryIdAndStopOrder(

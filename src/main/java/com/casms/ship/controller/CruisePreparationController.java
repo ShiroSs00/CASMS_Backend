@@ -44,6 +44,27 @@ public class CruisePreparationController {
             @jakarta.validation.constraints.NotNull UUID coordinatorUserId,
             @jakarta.validation.constraints.NotNull Long expectedRevision) {}
 
+    public record OperatingBudgetRequest(
+            @jakarta.validation.constraints.NotNull Long expectedRevision,
+            @jakarta.validation.constraints.NotBlank
+            @jakarta.validation.constraints.Pattern(regexp = "[1-9][0-9]{0,17}") String amountVnd) {}
+
+    @GetMapping("/operating-budget")
+    @PreAuthorize("hasAuthority('CRUISE_PREPARATION_SUBMIT')")
+    public ApiResponse<CruisePreparationService.OperatingBudget> operatingBudget(
+            @PathVariable UUID cruiseId, @AuthenticationPrincipal CasmsPrincipal principal) {
+        return ApiResponse.success(preparationService.operatingBudget(cruiseId, principal));
+    }
+
+    @PutMapping("/operating-budget")
+    @PreAuthorize("hasRole('CRUISE_MANAGER') and hasAuthority('CRUISE_PREPARATION_SUBMIT')")
+    public ApiResponse<CruisePreparationService.OperatingBudget> saveOperatingBudget(
+            @PathVariable UUID cruiseId, @Valid @RequestBody OperatingBudgetRequest request,
+            @AuthenticationPrincipal CasmsPrincipal principal) {
+        return ApiResponse.success(preparationService.saveOperatingBudget(
+                cruiseId, request.expectedRevision(), new java.math.BigDecimal(request.amountVnd()), principal));
+    }
+
     @PutMapping("/coordinator")
     @PreAuthorize("hasRole('OPERATIONS_MANAGER') and hasAuthority('CRUISE_STAFF_ASSIGN')")
     public ApiResponse<CruisePreparationResponse> assignCoordinator(

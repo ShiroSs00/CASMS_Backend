@@ -23,6 +23,7 @@ import org.springframework.validation.FieldError;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
+import org.springframework.web.bind.MissingRequestHeaderException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
@@ -97,6 +98,12 @@ public class GlobalExceptionHandler {
                 "MISSING_REQUIRED_PARAMETER",
                 Map.of("parameter", ex.getParameterName()),
                 null));
+    }
+
+    @ExceptionHandler(MissingRequestHeaderException.class)
+    public ResponseEntity<ApiResponse<Void>> handleMissingHeader(MissingRequestHeaderException ex) {
+        return ResponseEntity.badRequest().body(
+                ApiResponse.error("Thiếu thông tin yêu cầu: " + ex.getHeaderName(), "VALIDATION_FAILED"));
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)

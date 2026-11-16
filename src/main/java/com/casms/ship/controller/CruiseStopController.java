@@ -34,6 +34,7 @@ import java.util.UUID;
 public class CruiseStopController {
 
     private final CruiseStopService service;
+    private final com.casms.ship.service.CruisePlanOperationsAccess cruiseAccess;
 
     @Operation(
             summary = "Thêm điểm dừng mới",
@@ -45,6 +46,7 @@ public class CruiseStopController {
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<CruiseStopResponse> add(
             @RequestBody @Valid CruiseStopCreateRequest request) {
+        cruiseAccess.requireItineraryCoordinator(request.getItineraryId());
         return ApiResponse.success(service.add(request));
     }
 

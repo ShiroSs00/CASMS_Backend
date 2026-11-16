@@ -9,6 +9,7 @@ import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 @Repository
@@ -24,6 +25,14 @@ public interface ItineraryChangeHistoryRepository
         return findAll(
                 ItineraryChangeHistorySpecification.filter(
                         itineraryId, cruiseStopId, changeType, changedByUserId),
+                Sort.by(Sort.Direction.DESC, "changedAt"));
+    }
+
+    default List<ItineraryChangeHistory> searchScoped(UUID itineraryId, UUID cruiseStopId,
+            ItineraryChangeType changeType, UUID changedByUserId, Set<UUID> visibleCruises) {
+        if (visibleCruises.isEmpty()) return List.of();
+        return findAll(ItineraryChangeHistorySpecification.filter(itineraryId, cruiseStopId, changeType, changedByUserId)
+                        .and((root, query, cb) -> root.get("itinerary").get("cruise").get("cruiseId").in(visibleCruises)),
                 Sort.by(Sort.Direction.DESC, "changedAt"));
     }
 

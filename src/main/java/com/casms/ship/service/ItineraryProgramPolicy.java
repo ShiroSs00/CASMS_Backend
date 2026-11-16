@@ -139,8 +139,6 @@ public class ItineraryProgramPolicy {
                     validateExcursionTimes(stop, instant(e.get("start_time")), instant(e.get("planned_return_time")), cruise);
                     requireServedDestination(stopId, (UUID) e.get("destination_id"));
                     requireDetails(e.get("maximum_capacity"), e.get("price"), e.get("currency_code"), e.get("meeting_point"));
-                    if (e.get("location_text") == null || e.get("location_text").toString().isBlank())
-                        throw new BusinessException("PROGRAM_DETAILS_REQUIRED", "Excursion location is required");
                     if (!Boolean.TRUE.equals(jdbc.queryForObject("SELECT EXISTS(SELECT 1 FROM \"Supplier\" WHERE supplier_id=? AND status='ACTIVE' AND verification_status='VERIFIED')", Boolean.class, e.get("supplier_id"))))
                         throw new BusinessException("EXCURSION_SUPPLIER_INVALID", "Excursion supplier must remain active and verified");
                 } catch (BusinessException ex) { issues.add(issue(ex, "EXCURSION", id)); }
@@ -154,6 +152,14 @@ public class ItineraryProgramPolicy {
         Instant deadline = instant(stop.get("all_aboard_time"));
         if (deadline == null || departure != null && deadline.isAfter(departure)) deadline = departure;
         Instant arrival = instant(stop.get("planned_arrival"));
+        Instant disembarkation = instant(stop.get("disembarkation_starts_at"));
+        if (disembarkation != null && Objects.equals(arrival, instant(stop.get("disembarkation_planned_arrival")))
+                && stop.get("disembarkation_minutes") instanceof Number minutes
+                && departure != null && !disembarkation.plusSeconds(minutes.longValue() * 60).isAfter(departure)
+                && end != null && end.isAfter(disembarkation)) {
+            throw new BusinessException("EXCURSION_DISEMBARKATION_OVERLAP",
+                    "Tour bờ phải kết thúc trước hoặc đúng giờ bắt đầu trả khách.");
+        }
         if (arrival != null && stop.get("tender_transfer_minutes") instanceof Number minutes)
             arrival = arrival.plusSeconds(Math.max(0, minutes.longValue()) * 60);
         requireWindow(start, end, arrival, deadline, "EXCURSION_OUTSIDE_PORT_CALL");

@@ -548,6 +548,12 @@ public class CruiseMainflowService {
 
     private List<String> planBlockers(UUID id, Map<String, Object> c, List<ProgramIssue> issues) {
         List<String> b = new ArrayList<>();
+        b.addAll(jdbc.queryForList("""
+                SELECT CASE work_group WHEN 'ASM' THEN 'ASM_HANDOFF_PENDING' ELSE 'SHIP_HANDOFF_PENDING' END
+                FROM "CruiseWorkHandoff"
+                WHERE cruise_id=? AND status<>'COMPLETED'
+                ORDER BY work_group
+                """, String.class, id));
         programPolicy.issues(id).stream()
                 .map(ItineraryProgramPolicy.Issue::code).distinct().forEach(b::add);
         var windowChecks = portWindowEvaluator.cruise(id);
@@ -612,7 +618,7 @@ public class CruiseMainflowService {
                                 """
 SELECT EXISTS(SELECT 1 FROM "CruisePricingPolicy" p JOIN "Cruise" c USING(cruise_id)
   WHERE p.cruise_id=? AND p.policy_number=(SELECT max(policy_number) FROM "CruisePricingPolicy" WHERE cruise_id=p.cruise_id)
-    AND p.currency='USD' AND p.deposit_percentage BETWEEN 0 AND 1
+    AND p.currency=c.sale_currency AND p.deposit_percentage BETWEEN 0 AND 1
     AND NOT EXISTS(SELECT 1 FROM "Cabin" room WHERE room.ship_id=c.ship_id
       AND CASE room.cabin_type::text WHEN 'INTERIOR' THEN p.interior_base_fare
         WHEN 'OCEAN_VIEW' THEN p.ocean_view_base_fare WHEN 'BALCONY' THEN p.balcony_base_fare
@@ -694,9 +700,33 @@ SELECT EXISTS(SELECT 1 FROM "CruisePricingPolicy" p JOIN "Cruise" c USING(cruise
                             (String) row.get("zone")));
     }
 
+    private boolean matchesSubmittedPlan(Map<String, Object> review, String currentSnapshot) {
+        if (Objects.equals(review.get("fingerprint"), hash(currentSnapshot))) return true;
+        var submitted = json(review.get("snapshot"));
+        return submitted != null
+                && crmPlanContent(submitted).equals(crmPlanContent(json(currentSnapshot)));
+    }
+
+    private JsonNode crmPlanContent(JsonNode snapshot) {
+        if (!(snapshot instanceof com.fasterxml.jackson.databind.node.ObjectNode input)) return snapshot;
+        var copy = input.deepCopy();
+        var stops = new ArrayList<com.fasterxml.jackson.databind.node.ObjectNode>();
+        for (var stop : copy.path("stops")) {
+            if (!(stop instanceof com.fasterxml.jackson.databind.node.ObjectNode portCall)) return snapshot;
+            portCall.remove(List.of("disembarkation_starts_at", "disembarkation_minutes",
+                    "disembarkation_planned_arrival", "disembarkation_revision"));
+            stops.add(portCall);
+        }
+        if (copy.path("stops").isArray()) {
+            var ordered = copy.putArray("stops");
+            stops.stream().sorted(Comparator.comparing(stop -> stop.path("cruise_stop_id").asText()))
+                    .forEach(ordered::add);
+        }
+        return copy;
+    }
+
     private boolean approved(UUID id, Map<String, Object> r) {
-        return "APPROVED".equals(status(r))
-                && Objects.equals(r.get("fingerprint"), hash(planSnapshot(id)));
+        return "APPROVED".equals(status(r)) && matchesSubmittedPlan(r, planSnapshot(id));
     }
 
     public boolean isPlanApproved(UUID id) {
@@ -747,7 +777,7 @@ SELECT EXISTS(SELECT 1 FROM "CruisePricingPolicy" p JOIN "Cruise" c USING(cruise
         if ("SUBMITTED".equals(status(r)))
             actions.addAll(List.of("WITHDRAW", "APPROVE", "REJECT", "REQUEST_REVISION"));
         if (Set.of("SUBMITTED", "APPROVED").contains(status(r))
-                && Objects.equals(r.get("fingerprint"), hash(planSnapshot(id)))
+                && matchesSubmittedPlan(r, planSnapshot(id))
                 && preparationSubmissionPending(id)) actions.add("SUBMIT");
         if (!planIssues.isEmpty()) actions.remove("APPROVE");
         if ("APPROVED".equals(status(r)) && (usesUnifiedPackages(id) || !b.isEmpty() || pricingReturned(id)))
@@ -900,7 +930,7 @@ SELECT EXISTS(SELECT 1 FROM "CruisePricingPolicy" p JOIN "Cruise" c USING(cruise
         switch (action) {
             case "SUBMIT" -> {
                 if (Set.of("SUBMITTED", "APPROVED").contains(before)) {
-                    if (!Objects.equals(r.get("fingerprint"), hash(snapshot))
+                    if (!matchesSubmittedPlan(r, snapshot)
                             || !preparationSubmissionPending(id)) throw conflict();
                     preparationServices
                             .getObject()
@@ -980,7 +1010,7 @@ SELECT EXISTS(SELECT 1 FROM "CruisePricingPolicy" p JOIN "Cruise" c USING(cruise
                             "SELF_APPROVAL_FORBIDDEN",
                             "Submitter cannot review its own plan");
                 if (!reopening && (!unified || "APPROVE".equals(action))
-                        && !Objects.equals(r.get("fingerprint"), hash(snapshot)))
+                        && !matchesSubmittedPlan(r, snapshot))
                     throw new BusinessException(
                             HttpStatus.CONFLICT, "PLAN_SNAPSHOT_STALE", "Submitted source changed");
                 if (!"APPROVE".equals(action)
@@ -1160,7 +1190,7 @@ SELECT EXISTS(SELECT 1 FROM "CruisePricingPolicy" p JOIN "Cruise" c USING(cruise
                         "SELECT EXISTS(SELECT 1 FROM \"CruisePricingPolicy\" p WHERE cruise_id=?"
                             + " AND policy_number=(SELECT max(policy_number) FROM"
                             + " \"CruisePricingPolicy\" WHERE cruise_id=p.cruise_id) AND"
-                            + " status='APPROVED' AND currency='USD' AND submitted_snapshot IS NOT"
+                            + " status='APPROVED' AND currency=(SELECT sale_currency FROM \"Cruise\" WHERE cruise_id=p.cruise_id) AND submitted_snapshot IS NOT"
                             + " NULL AND snapshot_hash IS NOT NULL AND reviewed_by IS NOT NULL AND"
                             + " approved_by=reviewed_by)",
                         Boolean.class,

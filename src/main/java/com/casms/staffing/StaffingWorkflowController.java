@@ -21,6 +21,12 @@ import java.util.UUID;
 public class StaffingWorkflowController {
     private final StaffingWorkflowService workflow;
 
+    @GetMapping("/{cruiseId}/staffing-requests")
+    public ApiResponse<StaffingWorkflowService.Preparation> preparation(
+            @PathVariable UUID cruiseId, @AuthenticationPrincipal CasmsPrincipal actor) {
+        return ApiResponse.success(workflow.preparation(cruiseId, actor));
+    }
+
     @PostMapping("/{cruiseId}/staffing-requests")
     public ApiResponse<StaffingWorkflowService.Snapshot> submit(
             @PathVariable UUID cruiseId, @RequestBody StaffingWorkflowService.CreateRequest input,

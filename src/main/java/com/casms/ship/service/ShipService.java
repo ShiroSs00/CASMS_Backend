@@ -86,6 +86,9 @@ public class ShipService {
 
     @Transactional(readOnly = true)
     public Page<ShipResponse> list(Pageable pageable) {
+        UUID manager = CruisePlanOperationsAccess.currentShipManager();
+        if (manager != null)
+            return shipRepository.findManagedShips(manager, pageable).map(this::mapToResponse);
         return shipRepository.findAll(pageable).map(this::mapToResponse);
     }
 

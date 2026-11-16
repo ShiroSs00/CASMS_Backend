@@ -30,9 +30,12 @@ import java.util.UUID;
 public class ItineraryChangeHistoryController {
 
     private final ItineraryChangeHistoryService service;
+    private final com.casms.ship.service.CruisePlanOperationsAccess cruiseAccess;
 
-    public ItineraryChangeHistoryController(ItineraryChangeHistoryService service) {
+    public ItineraryChangeHistoryController(ItineraryChangeHistoryService service,
+            com.casms.ship.service.CruisePlanOperationsAccess cruiseAccess) {
         this.service = service;
+        this.cruiseAccess = cruiseAccess;
     }
 
     @Operation(
@@ -47,6 +50,7 @@ public class ItineraryChangeHistoryController {
             throw new BusinessException(
                     HttpStatus.UNAUTHORIZED, "AUTH_REQUIRED", "Authentication required");
         }
+        cruiseAccess.requireItineraryCoordinator(request.itineraryId());
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(service.recordItineraryChange(request, principal.getUserId()));
     }
@@ -69,7 +73,7 @@ public class ItineraryChangeHistoryController {
             @Parameter(description = "ID người thực hiện thay đổi") @RequestParam(required = false)
                     UUID changedByUserId) {
         return ResponseEntity.ok(
-                service.list(itineraryId, cruiseStopId, changeType, changedByUserId));
+                service.list(itineraryId, cruiseStopId, changeType, changedByUserId, cruiseAccess.visibleCruises()));
     }
 
     // DETAIL

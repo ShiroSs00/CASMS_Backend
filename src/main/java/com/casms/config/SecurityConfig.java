@@ -89,6 +89,7 @@ public class SecurityConfig {
                                         .requestMatchers(
                                                 HttpMethod.GET,
                                                 "/booking/quotes/**",
+                                                "/usd-display-rate",
                                                 "/cruise",
                                                 "/cruise/**",
                                                 "/destinations",

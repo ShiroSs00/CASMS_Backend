@@ -1,11 +1,14 @@
 package com.casms.ship.dto.request;
 
 import com.casms.ship.enums.CruiseCruiseType;
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
 
 import lombok.Data;
 
@@ -15,6 +18,13 @@ import java.util.UUID;
 @Data
 @Schema(description = "Yêu cầu tạo mới chuyến khởi hành du thuyền (Cruise)")
 public class CruiseCreateRequest {
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    @JsonDeserialize(using = PassengerCountDeserializer.class)
+    @Positive
+    private Integer expectedPassengerCount;
+
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private Integer creationPayloadVersion;
 
     @Schema(
             description = "Tên chuyến khởi hành",

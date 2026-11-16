@@ -10,6 +10,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -22,6 +23,14 @@ public interface CruisePreparationSectionRepository
 
     Optional<CruisePreparationSection> findByCruiseCruiseIdAndSectionCode(
             UUID cruiseId, String sectionCode);
+
+    @Query("""
+            SELECT s FROM CruisePreparationSection s JOIN FETCH s.cruise
+            WHERE s.sectionCode IN :codes AND s.submittedAt IS NOT NULL AND s.status IN :statuses
+            ORDER BY s.submittedAt DESC, s.preparationId
+            """)
+    List<CruisePreparationSection> findSubmittedReviews(
+            @Param("codes") Collection<String> codes, @Param("statuses") Collection<String> statuses);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query(

@@ -46,7 +46,7 @@ public final class CruisePackageContracts {
     public record VersionView(CruisePackageTemplateVersion version, List<CruisePackageBenefit> benefits, Map<UUID,String> resourceNames,
             List<com.casms.cruisepackage.service.CruisePackageCabinMappingService.Category> logicalCategoryReferences) {}
     public record CruisePackageContext(UUID cruiseId, UUID shipId, String planStatus, boolean canConfigure, boolean canCreatePrice, boolean canReviewPrice, boolean unifiedPackageReview,
-            Instant departureDatetime, Instant returnDatetime, Instant bookingOpensAt, Instant bookingClosesAt) {}
+            Instant departureDatetime, Instant returnDatetime, Instant bookingOpensAt, Instant bookingClosesAt, String currency) {}
     public record OfferView(DepartureCruisePackage offer, VersionView template, List<DepartureCruisePackageBenefit> bindings, Map<UUID,String> bindingNames, List<DepartureCruisePackagePrice> prices,
             UUID currentApprovedPriceRevisionId, Eligibility eligibility,
             com.casms.cruisepackage.service.CruisePackageCabinMappingService.Assessment cabinMapping) {}

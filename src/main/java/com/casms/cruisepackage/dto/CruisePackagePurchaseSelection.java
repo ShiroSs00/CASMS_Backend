@@ -12,12 +12,22 @@ public record CruisePackagePurchaseSelection(UUID offerId, UUID templateVersionI
         String logicalCategory, CabinType cabinType,
         @JsonFormat(shape=JsonFormat.Shape.STRING) BigDecimal amount,
         String templateName, String templateDescription, int templateVersionNumber, int priceRevisionNumber,
-        long commercialRevision, List<Benefit> benefits, UUID logicalCategoryId, UUID cabinMappingId, List<UUID> physicalCabinIds) {
+        long commercialRevision, List<Benefit> benefits, UUID logicalCategoryId, UUID cabinMappingId,
+        List<UUID> physicalCabinIds, String currencyCode) {
     public CruisePackagePurchaseSelection {
         Objects.requireNonNull(offerId);Objects.requireNonNull(templateVersionId);Objects.requireNonNull(priceRevisionId);
         Objects.requireNonNull(shipId);Objects.requireNonNull(logicalCategory);Objects.requireNonNull(cabinType);
         Objects.requireNonNull(amount);Objects.requireNonNull(templateName);benefits=List.copyOf(benefits);
         physicalCabinIds=physicalCabinIds==null?List.of():List.copyOf(physicalCabinIds);
+        currencyCode = currencyCode == null ? "USD" : currencyCode;
+    }
+    public CruisePackagePurchaseSelection(UUID offerId, UUID templateVersionId, UUID priceRevisionId, UUID shipId,
+            String logicalCategory, CabinType cabinType, BigDecimal amount, String templateName,
+            String templateDescription, int templateVersionNumber, int priceRevisionNumber, long commercialRevision,
+            List<Benefit> benefits, UUID logicalCategoryId, UUID cabinMappingId, List<UUID> physicalCabinIds) {
+        this(offerId, templateVersionId, priceRevisionId, shipId, logicalCategory, cabinType, amount, templateName,
+                templateDescription, templateVersionNumber, priceRevisionNumber, commercialRevision,
+                benefits, logicalCategoryId, cabinMappingId, physicalCabinIds, "USD");
     }
     public record Occurrence(String resourceType,UUID resourceId,String name) {
         public Occurrence {Objects.requireNonNull(resourceType);Objects.requireNonNull(resourceId);Objects.requireNonNull(name);}

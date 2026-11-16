@@ -30,6 +30,13 @@ public interface DeckRepository extends JpaRepository<Deck, UUID> {
 
     Page<Deck> findByShipShipId(UUID shipId, Pageable pageable);
 
+    @Query("""
+            SELECT d FROM Deck d WHERE EXISTS (SELECT crew.cruiseStaffId FROM CruiseStaff crew
+                WHERE crew.cruise.ship=d.ship AND crew.user.userId=:user AND crew.status='ACTIVE'
+                AND crew.roleInCruise='SHIP_MANAGER' AND crew.cruise.status NOT IN ('CANCELLED','COMPLETED'))
+            """)
+    Page<Deck> findManagedDecks(@Param("user") UUID user, Pageable pageable);
+
     boolean existsByShipShipIdAndDeckNumber(UUID shipId, Integer deckNumber);
 
     Optional<Deck> findByShipShipIdAndDeckNumber(UUID shipId, Integer deckNumber);
