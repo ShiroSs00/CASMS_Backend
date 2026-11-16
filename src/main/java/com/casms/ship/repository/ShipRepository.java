@@ -4,6 +4,7 @@ import com.casms.ship.entity.Ship;
 
 import jakarta.persistence.LockModeType;
 
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
@@ -19,13 +20,44 @@ import java.util.UUID;
 
 @Repository
 public interface ShipRepository extends JpaRepository<Ship, UUID> {
-    @Query("""
-            SELECT s FROM Ship s WHERE s.createdByShipManagerId = :user
+    @Override
+    @EntityGraph(attributePaths = "shipType")
+    Page<Ship> findAll(Pageable pageable);
+
+    @EntityGraph(attributePaths = "shipType")
+    @Query("SELECT s FROM Ship s WHERE " + MANAGED_SHIP)
+    Page<Ship> findManagedShips(@Param("user") UUID user, Pageable pageable);
+
+    String MANAGED_SHIP = """
+            (s.createdByShipManagerId = :user
                 OR EXISTS (SELECT crew.cruiseStaffId FROM CruiseStaff crew
                 WHERE crew.cruise.ship=s AND crew.user.userId=:user AND crew.status='ACTIVE'
-                AND crew.roleInCruise='SHIP_MANAGER' AND crew.cruise.status NOT IN ('CANCELLED','COMPLETED'))
-            """)
-    Page<Ship> findManagedShips(@Param("user") UUID user, Pageable pageable);
+                AND crew.roleInCruise='SHIP_MANAGER' AND crew.cruise.status NOT IN ('CANCELLED','COMPLETED')))
+            """;
+
+    @EntityGraph(attributePaths = "shipType")
+    Page<Ship> findByShipTypeShipTypeId(UUID shipTypeId, Pageable pageable);
+
+    @EntityGraph(attributePaths = "shipType")
+    @Query("SELECT s FROM Ship s WHERE s.shipType.shipTypeId = :typeId AND " + MANAGED_SHIP)
+    Page<Ship> findManagedShipsByType(@Param("typeId") UUID typeId, @Param("user") UUID user,
+            Pageable pageable);
+
+    interface TypeShipCount {
+        UUID getTypeId();
+        long getShipCount();
+    }
+
+    String TYPE_COUNTS = """
+            SELECT s.shipType.shipTypeId AS typeId, count(s) AS shipCount FROM Ship s
+            WHERE s.shipType.shipTypeId IN :ids
+            """;
+
+    @Query(TYPE_COUNTS + " GROUP BY s.shipType.shipTypeId")
+    List<TypeShipCount> countByTypeIds(@Param("ids") List<UUID> ids);
+
+    @Query(TYPE_COUNTS + " AND " + MANAGED_SHIP + " GROUP BY s.shipType.shipTypeId")
+    List<TypeShipCount> countManagedByTypeIds(@Param("ids") List<UUID> ids, @Param("user") UUID user);
 
     boolean existsByShipTypeShipTypeId(UUID shipTypeId);
     boolean existsByShipCode(String shipCode);

@@ -14,22 +14,26 @@ sequenceDiagram
     participant Importer as ShipModelImportService
     participant DB as PostgreSQL
 
-    Admin->>Security: POST /ship-types (modelKey, ZIP)
+    Admin->>Security: POST /ship-model-assets (modelKey, ZIP)
+    Security->>Store: ADMIN and SHIP_MODEL_CREATE
+    Store-->>Admin: 201 with content-based assetVersion
+    Admin->>Security: GET preview and GLB for exact assetVersion
+    Admin->>Security: POST /ship-types/from-stored (modelKey, assetVersion)
     Security->>Controller: ADMIN
     Controller->>Service: Create type (write transaction)
-    Service->>Store: Store by bundle digest and read manifest
-    Store->>DB: Model key advisory lock and asset blob writes
+    Service->>Store: Read and validate exact stored manifest and GLB
+    Store->>DB: Acquire advisory lock for this type design
     alt Missing or invalid required model fields
         Service-->>Admin: 400 with invalid field, transaction rolls back
     else Complete model
-        Service->>Repositories: Insert type and pin asset revision
+        Service->>Repositories: Insert type or replay exact existing design
         Repositories->>DB: Unique type code and manifest foreign key
         Service-->>Admin: 201 type, no physical ship created
     end
 
-    Manager->>Security: POST /ship-types/{typeId}/ships
+    Manager->>Security: POST /ship-types/{typeId}/ships with Idempotency-Key
     Security->>Controller: SHIP_MANAGER
-    Controller->>Service: Create physical ship (write transaction)
+    Controller->>Service: Reserve key and provision or replay (write transaction)
     Service->>Repositories: Lock type and check ACTIVE
     alt No such type or inactive
         Service-->>Manager: 404 or 409
@@ -43,12 +47,12 @@ sequenceDiagram
             Service-->>Manager: Import error and rollback of ship, model and structure
         else Import succeeds
             Service->>Repositories: Validate mappings and activate model
-            Service-->>Manager: 201 physical ship
+            Service->>DB: Record ship ID on the idempotency result\n            Service-->>Manager: 201 physical ship
         end
     end
 ```
 
-- Type manifest fields include `modelId`, `name`, `shipManufacturerName`, `engineType`, `passengerCapacity`, `deckCount`, `length` and `beam`. The supplied model key identifies the uploaded bundle and becomes the initial type code.
+- See the [WebAdmin contract](../ship-redesign/CASMS_SHIP_BE_HANDOFF_FOR_FE.md) for the read-only provisioning result route, response fields, and scope. Multipart create and replacement remain available. The staged flow confirms the uploaded version without a second ZIP upload.\n- Type manifest fields include `modelId`, `name`, `shipManufacturerName`, `engineType`, `passengerCapacity`, `deckCount`, `length` and `beam`. The supplied model key identifies the uploaded bundle and becomes the initial type code.
 - Admin list and detail include inactive types. Ship Manager list and detail resolve active types only. Admin model replacement and status or delete run in write transactions and take the type lock. Replacing the type model updates the selection for subsequently created ships. Existing ship model rows retain their registered asset version. Deleting a referenced type returns 409.
 - Per-ship `ShipModel` and object rows hold the mappings and model lifecycle. Physical ships reuse the binary assets through the existing model-key and asset-version reference. Ship-specific operations retain manager-entered vessel names when they register or re-import a model from the same manifest identity.
 - The operational profile accepts references to certification, warranty, maintenance and repair records. The profile payload includes the manufacturer's vessel code, IMO, shipyard, build and registration fields. The ship's existing `shipCode` remains the distinct server-generated business code and `shipId` remains its database primary key.

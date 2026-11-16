@@ -115,8 +115,19 @@ public class ShipModelController {
     @PreAuthorize("hasAuthority('SHIP_MODEL_CREATE') and hasAuthority('SHIP_CREATE')")
     @GetMapping("/ship-model-assets/{modelKey}/preview")
     public ApiResponse<JsonNode> previewStoredAsset(
-            @PathVariable String modelKey) {
-        return ApiResponse.success(assetService.previewStoredBundle(modelKey));
+            @PathVariable String modelKey,
+            @RequestParam(required = false) String assetVersion) {
+        return ApiResponse.success(assetVersion == null ? assetService.previewStoredBundle(modelKey)
+                : assetService.previewStoredBundle(modelKey, assetVersion));
+    }
+
+    @PreAuthorize("hasRole('ADMIN') and hasAuthority('SHIP_MODEL_READ')")
+    @GetMapping("/ship-model-assets/{modelKey}/versions/{assetVersion}/assets/{*assetPath}")
+    public ResponseEntity<StreamingResponseBody> storedAsset(
+            @PathVariable String modelKey, @PathVariable String assetVersion,
+            @PathVariable String assetPath) {
+        String name = assetPath.startsWith("/") ? assetPath.substring(1) : assetPath;
+        return streamAsset(assetService.storedAsset(modelKey, assetVersion, name), name);
     }
 
     @Operation(
@@ -126,7 +137,7 @@ public class ShipModelController {
                         + " across stored bundles. Existing uploads count toward"
                         + " this limit; invalid or rolled-back uploads do not. Creating ships from"
                         + " stored models does not upload another copy.")
-    @PreAuthorize("hasAuthority('SHIP_MODEL_CREATE')")
+    @PreAuthorize("hasRole('ADMIN') and hasAuthority('SHIP_MODEL_CREATE')")
     @PostMapping(value = "/ship-model-assets", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<ShipModelAssetUploadResponse> uploadAssets(
@@ -223,7 +234,11 @@ public class ShipModelController {
     public ResponseEntity<StreamingResponseBody> asset(
             @PathVariable UUID shipId, @PathVariable UUID modelId, @PathVariable String assetPath) {
         String name = assetPath.startsWith("/") ? assetPath.substring(1) : assetPath;
-        var download = assetService.asset(shipId, modelId, name);
+        return streamAsset(assetService.asset(shipId, modelId, name), name);
+    }
+
+    private ResponseEntity<StreamingResponseBody> streamAsset(
+            ShipModelAssetService.AssetDownload download, String name) {
         MediaType mediaType =
                 name.endsWith(".glb")
                         ? MediaType.parseMediaType("model/gltf-binary")

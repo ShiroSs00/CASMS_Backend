@@ -165,6 +165,18 @@ public class ShipService {
     }
 
     @Transactional
+    public ShipResponse renameTypedShip(UUID shipId, String name) {
+        Ship ship = shipRepository.findByIdForUpdate(shipId)
+                .orElseThrow(() -> new ResourceNotFoundException("Ship", shipId));
+        if (ship.getShipType() == null) {
+            throw new BusinessException(org.springframework.http.HttpStatus.CONFLICT, "SHIP_TYPE_REQUIRED",
+                    "This operation is available to managers of ships created from a ship type");
+        }
+        ship.setShipName(name.strip());
+        return mapToResponse(ship);
+    }
+
+    @Transactional
     public void deleteUnused(UUID shipId) {
         Ship ship = getShipById(shipId);
 
@@ -395,10 +407,13 @@ public class ShipService {
         }
     }
 
-    private ShipResponse mapToResponse(Ship ship) {
+    ShipResponse mapToResponse(Ship ship) {
         ShipResponse res = new ShipResponse();
-        if (ship.getShipType() != null) {
-            res.setShipTypeId(ship.getShipType().getShipTypeId());
+        var shipType = ship.getShipType();
+        if (shipType != null) {
+            res.setShipTypeId(shipType.getShipTypeId());
+            res.setShipTypeName(shipType.getName());
+            res.setShipTypeCode(shipType.getCode());
         }
         res.setShipId(ship.getShipId());
         res.setShipCode(ship.getShipCode());

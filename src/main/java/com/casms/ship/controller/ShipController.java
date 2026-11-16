@@ -86,6 +86,17 @@ public class ShipController {
         return ApiResponse.success(service.update(shipId, request));
     }
 
+    public record ShipNameRequest(
+            @jakarta.validation.constraints.NotBlank
+            @jakarta.validation.constraints.Size(max = 100) String shipName) {}
+
+    @PreAuthorize("hasRole('SHIP_MANAGER') and hasAuthority('SHIP_READ')")
+    @PatchMapping("/{shipId}/name")
+    public ApiResponse<ShipResponse> rename(@PathVariable UUID shipId,
+            @RequestBody @Valid ShipNameRequest request) {
+        return ApiResponse.success(service.renameTypedShip(shipId, request.shipName()));
+    }
+
     @Operation(
             summary = "Xóa tàu chưa sử dụng",
             description = "Xóa tàu nếu tàu chưa được gán cho bất kỳ chuyến khởi hành (Cruise) nào")

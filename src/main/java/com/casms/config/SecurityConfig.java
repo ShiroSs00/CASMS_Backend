@@ -4,6 +4,7 @@ import com.casms.identity.repository.RolePermissionRepository;
 import com.casms.security.authorization.CasmsPermissionEvaluator;
 import com.casms.security.jwt.JwtAuthenticationFilter;
 
+import jakarta.servlet.DispatcherType;
 import lombok.RequiredArgsConstructor;
 
 import org.springframework.context.annotation.Bean;
@@ -43,6 +44,8 @@ public class SecurityConfig {
                     String authHeader = request.getHeader("Authorization");
                     return authHeader != null && authHeader.startsWith("Bearer ");
                 };
+        RequestMatcher storedAssetPath = new AntPathRequestMatcher(
+                "/ship-model-assets/*/versions/*/assets/**", HttpMethod.GET.name());
         http.cors(Customizer.withDefaults())
                 .csrf(
                         csrf ->
@@ -72,7 +75,10 @@ public class SecurityConfig {
                         })
                 .authorizeHttpRequests(
                         auth ->
-                                auth.requestMatchers(
+                                auth.requestMatchers(request -> request.getDispatcherType() == DispatcherType.ASYNC
+                                                && storedAssetPath.matches(request))
+                                        .permitAll()
+                                        .requestMatchers(
                                                 "/v3/api-docs/**",
                                                 "/v3/api-docs.yaml",
                                                 "/swagger-ui/**",

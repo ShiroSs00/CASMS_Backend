@@ -75,6 +75,35 @@ public class ShipModelAssetStore {
                         "Model code is not uploaded to the database"));
     }
 
+    void lockShipTypeDesign(String modelKey) {
+        jdbc.queryForList("SELECT pg_advisory_xact_lock(hashtextextended(?, 0))",
+                "ship-type-design:" + modelKey);
+    }
+
+    JsonNode validateStoredGlbs(String modelKey, String version, JsonNode manifest) {
+        JsonNode fullModel = null;
+        String fullPath = manifest.path("assets").path("full").asText();
+        requireGlbPath(fullPath);
+        requireGlbPath(manifest.path("assets").path("exterior").asText());
+        for (JsonNode deck : decks(manifest)) requireGlbPath(deck.path("asset").asText());
+        for (String path : allowedAssets(manifest)) {
+            if (path.endsWith(".glb")) {
+                JsonNode document = glbDocument(modelKey, version, path);
+                if (document == null || !"2.0".equals(document.path("asset").path("version").asText())) {
+                    throw bad("Invalid GLB asset version: " + path);
+                }
+                if (path.equals(fullPath)) fullModel = document;
+            } else if (!path.equals("manifest.json")) {
+                metadata(modelKey, version, path);
+            }
+        }
+        return fullModel;
+    }
+
+    private static void requireGlbPath(String path) {
+        if (!path.endsWith(".glb")) throw bad("Manifest model and deck assets must reference GLB files");
+    }
+
     UploadResult bundleStats(String modelKey, String version) {
         return jdbc.queryForObject("SELECT count(*) AS files, COALESCE(sum(byte_size),0) AS bytes FROM "
                         + TABLE + " WHERE model_key=? AND asset_version=?",
@@ -287,6 +316,7 @@ public class ShipModelAssetStore {
     }
 
     public JsonNode manifest(String modelKey, String assetVersion) {
+        validateBundleKey(modelKey, assetVersion);
         JsonNode manifest = readJson(modelKey, assetVersion, "manifest.json", MAX_MANIFEST_BYTES);
         validateManifest(modelKey, manifest, assetVersion.matches("zip-[0-9a-f]{64}"));
         return manifest;

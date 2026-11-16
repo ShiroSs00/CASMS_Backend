@@ -579,6 +579,11 @@ class ShipModelImportPostgresIntegrationTest {
         Ship ship = createShip(2);
         String shipManager = token(Role.SHIP_MANAGER);
         String staffWithoutShipRead = token(Role.FINANCE_OFFICER);
+        mockMvc.perform(get("/ships/{shipId}", ship.getShipId())
+                        .header("Authorization", "Bearer " + shipManager))
+                .andExpect(status().isForbidden());
+        ship.setCreatedByShipManagerId(jwt.extractUserId(shipManager));
+        ships.saveAndFlush(ship);
 
         mockMvc.perform(
                         get("/ships/{shipId}", ship.getShipId())
@@ -626,6 +631,8 @@ class ShipModelImportPostgresIntegrationTest {
         String admin = token(Role.ADMIN),
                 manager = token(Role.SHIP_MANAGER),
                 key = uniqueKey("rbac-model");
+        ship.setCreatedByShipManagerId(jwt.extractUserId(manager));
+        ships.saveAndFlush(ship);
         Path zip = smallBundle(key, "v1", "OCEAN_VIEW", "M-RBAC", true);
         assertEquals(403, uploadStatus(key, "v1", zip, manager));
         upload(key, "v1", zip, admin);
@@ -677,7 +684,7 @@ class ShipModelImportPostgresIntegrationTest {
 
             Ship synchronizedShip = ships.findById(ship.getShipId()).orElseThrow();
             assertEquals("zaandam", synchronizedShip.getManifestModelId());
-            assertEquals("MS Zaandam", synchronizedShip.getShipName());
+            assertEquals(ship.getShipName(), synchronizedShip.getShipName());
             assertEquals(582, synchronizedShip.getTotalCapacity());
             assertEquals(10, synchronizedShip.getTotalDecks());
             assertEquals(237.7, synchronizedShip.getLengthMeters());
@@ -1226,7 +1233,7 @@ class ShipModelImportPostgresIntegrationTest {
                 createUsingModel(key,
                         Map.of(
                                 "shipName",
-                                "Ignored override",
+                                "Explicit vessel name",
                                 "totalCapacity",
                                 999,
                                 "totalDecks",
@@ -1246,7 +1253,7 @@ class ShipModelImportPostgresIntegrationTest {
                         201);
         assertNotEquals(first.path("shipId").asText(), second.path("shipId").asText());
         assertNotEquals(first.path("shipCode").asText(), second.path("shipCode").asText());
-        assertEquals("Mini Ship", first.path("shipName").asText());
+        assertEquals("Explicit vessel name", first.path("shipName").asText());
         assertEquals(2, first.path("totalCapacity").asInt());
         assertEquals(8, first.path("totalDecks").asInt());
         assertFalse(first.path("createdAt").asText().isBlank());
@@ -1448,6 +1455,95 @@ class ShipModelImportPostgresIntegrationTest {
     }
 
     @Test
+    void storedDesignUsesThePreviewedVersionAndIsSafeToRetry() throws Exception {
+        String admin = token(Role.ADMIN);
+        String manager = token(Role.SHIP_MANAGER);
+        String key = uniqueKey("stored-type");
+        Path first = smallBundle(key, "v1", "OCEAN_VIEW", "STORED-01", true);
+        Path next = smallBundle(key, "v2", "SUITE", "STORED-01", true);
+        String version = "zip-" + sha256(Files.readAllBytes(first));
+        String nextVersion = "zip-" + sha256(Files.readAllBytes(next));
+        uploadedBundles.add(key + "|" + version);
+        uploadedBundles.add(key + "|" + nextVersion);
+        long shipCount = ships.count();
+        for (Path archive : List.of(first, next, first)) {
+            mockMvc.perform(multipart("/ship-model-assets")
+                            .file(new FileBackedMultipartFile("bundle", archive))
+                            .param("modelKey", key).header("Authorization", "Bearer " + admin))
+                    .andExpect(status().isCreated())
+                    .andExpect(jsonPath("$.data.assetVersion").value(archive.equals(first) ? version : nextVersion));
+        }
+        var preview = mockMvc.perform(get("/ship-model-assets/{key}/preview", key)
+                        .param("assetVersion", nextVersion).header("Authorization", "Bearer " + admin))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.name").value("Mini Ship"))
+                .andExpect(jsonPath("$.data.cabins[0].cabinType").value("SUITE")).andReturn();
+        String fullPath = mapper.readTree(preview.getResponse().getContentAsByteArray())
+                .path("data").path("assets").path("full").asText();
+        String assetUrl = "/ship-model-assets/" + key + "/versions/" + nextVersion + "/assets/" + fullPath;
+        var stream = mockMvc.perform(get(assetUrl).header("Authorization", "Bearer " + admin))
+                .andExpect(request().asyncStarted()).andReturn();
+        mockMvc.perform(asyncDispatch(stream)).andExpect(status().isOk())
+                .andExpect(content().contentType("model/gltf-binary"));
+        mockMvc.perform(get(assetUrl).header("Authorization", "Bearer " + manager))
+                .andExpect(status().isForbidden());
+
+        byte[] design = mapper.writeValueAsBytes(Map.of("modelKey", key, "assetVersion", nextVersion));
+        mockMvc.perform(post("/ship-types/from-stored").header("Authorization", "Bearer " + manager)
+                        .contentType(MediaType.APPLICATION_JSON).content(design))
+                .andExpect(status().isForbidden());
+        UUID typeId;
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            java.util.concurrent.Callable<UUID> createType = () -> {
+                var result = mockMvc.perform(post("/ship-types/from-stored")
+                                .header("Authorization", "Bearer " + admin)
+                                .contentType(MediaType.APPLICATION_JSON).content(design))
+                        .andExpect(status().isCreated())
+                        .andExpect(jsonPath("$.data.name").value("Mini Ship"))
+                        .andExpect(jsonPath("$.data.assetVersion").value(nextVersion))
+                        .andExpect(jsonPath("$.data.shipCount").value(0)).andReturn();
+                return UUID.fromString(mapper.readTree(result.getResponse().getContentAsByteArray())
+                        .path("data").path("shipTypeId").asText());
+            };
+            var firstRequest = executor.submit(createType);
+            var secondRequest = executor.submit(createType);
+            typeId = firstRequest.get();
+            testTypeIds.add(typeId);
+            assertEquals(typeId, secondRequest.get());
+        }
+        mockMvc.perform(post("/ship-types/from-stored").header("Authorization", "Bearer " + admin)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsBytes(Map.of("modelKey", key, "assetVersion", version))))
+                .andExpect(status().isConflict());
+        mockMvc.perform(get("/ship-types/{typeId}/ships", typeId).header("Authorization", "Bearer " + admin))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.totalElements").value(0));
+        mockMvc.perform(get("/ship-types").param("q", key.toUpperCase(Locale.ROOT))
+                        .header("Authorization", "Bearer " + manager))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.totalElements").value(1));
+        mockMvc.perform(patch("/ship-types/{typeId}/status", typeId).param("status", "INACTIVE")
+                        .header("Authorization", "Bearer " + admin))
+                .andExpect(status().isOk());
+        mockMvc.perform(get("/ship-types").param("q", key).header("Authorization", "Bearer " + manager))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.totalElements").value(0));
+        mockMvc.perform(get("/ship-types").param("q", key).param("status", "INACTIVE")
+                        .header("Authorization", "Bearer " + admin))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.totalElements").value(1));
+        assertEquals(shipCount, ships.count());
+    }
+
+    @Test
+    void stagedUploadRejectsReferencedGlbWithInvalidHeaderAndKeepsNoAssets() throws Exception {
+        String key = uniqueKey("broken-glb");
+        Path source = smallBundle(key, "v1", "SUITE", "BROKEN-01", true);
+        Map<String, byte[]> entries = readBundle(source, key, "v1");
+        entries.put("ship.glb", new byte[24]);
+        Path invalid = writeBundle(entries, key, "v1", true);
+
+        assertEquals(400, uploadStatus(key, "v1", invalid, token(Role.ADMIN)));
+        assertEquals(0L, jdbc.queryForObject(
+                "SELECT count(*) FROM \"ShipModelAssetBlob\" WHERE model_key=?", Long.class, key));
+    }
+
+    @Test
     void shipTypeProvisioningSharesAssetsAndGatesStatusOnScopedProfile() throws Exception {
         String admin = token(Role.ADMIN);
         String manager = token(Role.SHIP_MANAGER);
@@ -1474,9 +1570,69 @@ class ShipModelImportPostgresIntegrationTest {
                 "certificateReferences", List.of("certificate-1"),
                 "warrantyReferences", List.of("warranty-1"),
                 "maintenanceReferences", List.of("maintenance-1"));
-        UUID first = createTypedShip(typeId, "First physical vessel", manager,
-                Map.of("imoNumber", "1234567"));
-        UUID second = createTypedShip(typeId, "Second physical vessel", manager, profile);
+        UUID firstKey = UUID.randomUUID();
+        byte[] firstPayload = mapper.writeValueAsBytes(Map.of("shipName", "Aurora 01",
+                "profile", Map.of("imoNumber", "1234567")));
+        var executor = Executors.newFixedThreadPool(2);
+        UUID first;
+        try {
+            var requests = new ArrayList<CompletableFuture<UUID>>();
+            for (int i = 0; i < 2; i++) {
+                requests.add(CompletableFuture.supplyAsync(() -> {
+                    try {
+                        return provisionedShipId(typeId, manager, firstKey, firstPayload, "Aurora 01");
+                    } catch (Exception exception) {
+                        throw new java.util.concurrent.CompletionException(exception);
+                    }
+                }, executor));
+            }
+            first = requests.get(0).get();
+            testShipIds.add(first);
+            assertEquals(first, requests.get(1).get());
+        } finally {
+            executor.shutdownNow();
+        }
+        mockMvc.perform(get("/ship-types/{typeId}/ships/provisioning/{key}", typeId, firstKey)
+                        .header("Authorization", "Bearer " + manager))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.shipId").value(first.toString()))
+                .andExpect(jsonPath("$.data.shipTypeName").value("Mini Ship"));
+        mockMvc.perform(get("/ship-types/{typeId}/ships/provisioning/{key}", typeId, firstKey)
+                        .header("Authorization", "Bearer " + otherManager))
+                .andExpect(status().isNotFound());
+        UUID second = createTypedShip(typeId, "Aurora 02", manager, profile);
+        assertEquals(shipCount + 2, ships.count());
+        mockMvc.perform(post("/ship-types/{typeId}/ships", typeId)
+                        .header("Authorization", "Bearer " + manager)
+                        .header("Idempotency-Key", firstKey)
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"shipName\":\"Changed request\"}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("IDEMPOTENCY_CONFLICT"));
+        mockMvc.perform(post("/ship-types/{typeId}/ships", typeId)
+                        .header("Authorization", "Bearer " + manager)
+                        .contentType(MediaType.APPLICATION_JSON).content(firstPayload))
+                .andExpect(status().isBadRequest());
+        mockMvc.perform(post("/ship-types/{typeId}/ships", typeId)
+                        .header("Authorization", "Bearer " + admin)
+                        .header("Idempotency-Key", UUID.randomUUID())
+                        .contentType(MediaType.APPLICATION_JSON).content(firstPayload))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(get("/ship-types/{typeId}/ships", typeId).param("size", "1")
+                        .header("Authorization", "Bearer " + manager))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.totalElements").value(2))
+                .andExpect(jsonPath("$.data.content", hasSize(1)));
+        mockMvc.perform(get("/ship-types/{typeId}/ships", typeId)
+                        .header("Authorization", "Bearer " + otherManager))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.totalElements").value(0));
+        mockMvc.perform(patch("/ships/{shipId}/name", first).header("Authorization", "Bearer " + manager)
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"shipName\":\"Aurora Renewed\"}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.shipName").value("Aurora Renewed"));
+        mockMvc.perform(patch("/ships/{shipId}/name", first).header("Authorization", "Bearer " + otherManager)
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"shipName\":\"Unauthorized name\"}"))
+                .andExpect(status().isForbidden());
+        assertEquals("Aurora 02", ships.findById(second).orElseThrow().getShipName());
+        mockMvc.perform(get("/ship-types/{typeId}", typeId).header("Authorization", "Bearer " + admin))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.name").value("Mini Ship"))
+                .andExpect(jsonPath("$.data.shipCount").value(2));
         assertNotEquals(first, second);
         assertNotEquals(ships.findById(first).orElseThrow().getShipCode(),
                 ships.findById(second).orElseThrow().getShipCode());
@@ -1484,6 +1640,33 @@ class ShipModelImportPostgresIntegrationTest {
                 "SELECT count(*) FROM \"ShipModelAssetBlob\" WHERE model_key = ?", Long.class, key));
         assertNotEquals(decks.findByShipShipIdAndDeckNumber(first, 1).orElseThrow().getDeckId(),
                 decks.findByShipShipIdAndDeckNumber(second, 1).orElseThrow().getDeckId());
+
+        UUID firstModel = models.findByShipShipIdOrderByCreatedAtDesc(first).getFirst().getShipModelId();
+        UUID secondModel = models.findByShipShipIdOrderByCreatedAtDesc(second).getFirst().getShipModelId();
+        assertNotEquals(firstModel, secondModel);
+        for (UUID id : List.of(firstModel, secondModel)) {
+            assertEquals(identity, models.findById(id).orElseThrow().getAssetVersion());
+        }
+        assertNotEquals(objects.findByShipModelShipModelIdAndNodeKey(firstModel, "mini-c1").orElseThrow().getCabin().getCabinId(),
+                objects.findByShipModelShipModelIdAndNodeKey(secondModel, "mini-c1").orElseThrow().getCabin().getCabinId());
+
+        Path v2 = smallBundle(key, "v2", "SUITE", "TYPE-02", true);
+        upload(key, "v2", v2, admin);
+        String latest = storedVersions.get(key + "|v2");
+        mockMvc.perform(put("/ship-types/{typeId}/model", typeId).header("Authorization", "Bearer " + admin)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsBytes(Map.of("modelKey", key, "assetVersion", latest))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.assetVersion").value(latest));
+        for (UUID shipId : List.of(first, second)) {
+            mockMvc.perform(get("/ships/{shipId}/model", shipId).header("Authorization", "Bearer " + manager))
+                    .andExpect(status().isOk());
+            assertEquals(identity, models.findByShipShipIdOrderByCreatedAtDesc(shipId).getFirst().getAssetVersion());
+        }
+        mockMvc.perform(post("/ship-types/{typeId}/ships", typeId).header("Authorization", "Bearer " + manager)
+                        .header("Idempotency-Key", firstKey)
+                        .contentType(MediaType.APPLICATION_JSON).content(firstPayload))
+                .andExpect(status().isCreated()).andExpect(jsonPath("$.data.shipId").value(first.toString()));
+        assertEquals(shipCount + 2, ships.count());
 
         mockMvc.perform(post("/ships/{shipId}/status", first)
                         .param("status", "READY").header("Authorization", "Bearer " + manager))
@@ -1504,19 +1687,74 @@ class ShipModelImportPostgresIntegrationTest {
         }
     }
 
+    @Test
+    void failedProvisioningRollsBackShipStructureAndLeavesTheRequestRetryable() throws Exception {
+        String admin = token(Role.ADMIN);
+        String manager = token(Role.SHIP_MANAGER);
+        String key = uniqueKey("type-rollback");
+        Path invalid = smallBundle(key, "bad", "INVALID_TYPE", "ROLLBK-01", true);
+        Path valid = smallBundle(key, "good", "SUITE", "ROLLBK-01", true);
+        String badVersion = "zip-" + sha256(Files.readAllBytes(invalid));
+        uploadedBundles.add(key + "|" + badVersion);
+        var type = mockMvc.perform(multipart("/ship-types")
+                        .file(new FileBackedMultipartFile("bundle", invalid))
+                        .param("modelKey", key).header("Authorization", "Bearer " + admin))
+                .andExpect(status().isCreated()).andReturn();
+        UUID typeId = UUID.fromString(mapper.readTree(type.getResponse().getContentAsByteArray())
+                .path("data").path("shipTypeId").asText());
+        testTypeIds.add(typeId);
+        UUID legacyId = UUID.fromString("b3400000-0000-4000-8000-000000000201");
+        Ship legacy = ships.findById(legacyId).orElseThrow();
+        assertEquals("SH-PARADISE-01", legacy.getShipCode());
+        assertTrue(jdbc.queryForObject("SELECT ship_type_id IS NULL FROM \"Ship\" WHERE ship_id=?",
+                Boolean.class, legacyId));
+
+        UUID requestKey = UUID.randomUUID();
+        byte[] payload = mapper.writeValueAsBytes(Map.of("shipName", "Retry after repair"));
+        var initialCounts = List.of(ships.count(), models.count(), decks.count(), cabins.count(), objects.count(),
+                jobs.count());
+        mockMvc.perform(post("/ship-types/{typeId}/ships", typeId)
+                        .header("Authorization", "Bearer " + manager).header("Idempotency-Key", requestKey)
+                        .contentType(MediaType.APPLICATION_JSON).content(payload))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.code").value("SHIP_MODEL_IMPORT_REJECTED"));
+        assertEquals(initialCounts, List.of(ships.count(), models.count(), decks.count(), cabins.count(),
+                objects.count(), jobs.count()));
+        assertEquals(0L, jdbc.queryForObject("""
+                SELECT count(*) FROM "IdempotencyRecord"
+                WHERE operation='PROVISION_SHIP' AND idempotency_key=?
+                """, Long.class, requestKey.toString()));
+
+        upload(key, "good", valid, admin);
+        String newVersion = storedVersions.get(key + "|good");
+        mockMvc.perform(put("/ship-types/{typeId}/model", typeId).header("Authorization", "Bearer " + admin)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsBytes(Map.of("modelKey", key, "assetVersion", newVersion))))
+                .andExpect(status().isOk());
+        UUID shipId = provisionedShipId(typeId, manager, requestKey, payload, "Retry after repair");
+        testShipIds.add(shipId);
+        assertEquals(newVersion, models.findByShipShipIdOrderByCreatedAtDesc(shipId).getFirst().getAssetVersion());
+    }
+
     private UUID createTypedShip(UUID typeId, String name, String manager, Map<String, Object> profile)
+            throws Exception {
+        UUID shipId = provisionedShipId(typeId, manager, UUID.randomUUID(),
+                mapper.writeValueAsBytes(Map.of("shipName", name, "profile", profile)), name);
+        testShipIds.add(shipId);
+        return shipId;
+    }
+
+    private UUID provisionedShipId(UUID typeId, String manager, UUID requestKey, byte[] payload, String name)
             throws Exception {
         var result = mockMvc.perform(post("/ship-types/{typeId}/ships", typeId)
                         .header("Authorization", "Bearer " + manager)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(mapper.writeValueAsBytes(Map.of("shipName", name, "profile", profile))))
+                        .header("Idempotency-Key", requestKey)
+                        .contentType(MediaType.APPLICATION_JSON).content(payload))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.data.shipName").value(name))
                 .andExpect(jsonPath("$.data.status").value("DRAFT")).andReturn();
-        UUID shipId = UUID.fromString(mapper.readTree(result.getResponse().getContentAsByteArray())
+        return UUID.fromString(mapper.readTree(result.getResponse().getContentAsByteArray())
                 .path("data").path("shipId").asText());
-        testShipIds.add(shipId);
-        return shipId;
     }
 
     @Test
@@ -1657,6 +1895,9 @@ class ShipModelImportPostgresIntegrationTest {
                     identity[1]);
         }
         for (UUID userId : testUserIds) {
+            jdbc.update("""
+                    DELETE FROM "IdempotencyRecord" WHERE actor_id=? AND operation='PROVISION_SHIP'
+                    """, userId);
             jdbc.update("DELETE FROM \"UserRole\" WHERE user_id = ?", userId);
             jdbc.update("DELETE FROM \"User\" WHERE user_id = ?", userId);
         }

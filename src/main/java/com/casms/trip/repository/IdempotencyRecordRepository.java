@@ -27,6 +27,16 @@ public interface IdempotencyRecordRepository extends JpaRepository<IdempotencyRe
             @Param("key") String key,
             @Param("hash") String hash);
 
+    @Modifying
+    @Query(value = """
+            INSERT INTO "IdempotencyRecord"
+                (idempotency_id, actor_id, operation, idempotency_key, request_hash, created_at)
+            VALUES (:id, :actor, 'PROVISION_SHIP', :key, :hash, now())
+            ON CONFLICT (actor_id, operation, idempotency_key) DO NOTHING
+            """, nativeQuery = true)
+    int reserveShipProvisioning(@Param("id") UUID id, @Param("actor") UUID actor,
+            @Param("key") String key, @Param("hash") String hash);
+
     Optional<IdempotencyRecord> findByActorIdAndOperationAndIdempotencyKey(
             UUID actorId, String operation, String idempotencyKey);
 

@@ -15,6 +15,8 @@ import java.util.UUID;
 public class ShipResponse {
 
     private UUID shipTypeId;
+    private String shipTypeName;
+    private String shipTypeCode;
 
     @Schema(
             description = "ID duy nhất của tàu (UUID)",

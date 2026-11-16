@@ -616,6 +616,11 @@ public class ShipModelImportService {
                 .orElseThrow(() -> new ResourceNotFoundException("Ship model", modelId));
     }
 
+    static void validateProvisioningDesign(JsonNode manifest, JsonNode fullModel) {
+        indexAndValidateNodes(manifest, fullModel);
+        validateManifestBusinessIdentities(manifest);
+    }
+
     private static Map<String, JsonNode> indexAndValidateNodes(JsonNode manifest, JsonNode glb) {
         if (!glb.path("nodes").isArray())
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "GLB has no node hierarchy");
