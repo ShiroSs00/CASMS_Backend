@@ -35,6 +35,7 @@ class ActivityRegistrationWorkflowTest {
     @Mock BookingPassengerRepository bookingPassengers;
     @Mock CruiseRepository cruises;
     @Mock ShoreExcursionRepository excursions;
+    @Mock com.casms.ship.service.PortCallBookingPolicy portCallBooking;
     @InjectMocks ActivityService service;
 
     @Test

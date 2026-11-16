@@ -1,6 +1,7 @@
 package com.casms.ship.dto.request;
 
 import com.casms.ship.enums.CruiseCruiseType;
+import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 
@@ -19,7 +20,9 @@ import java.util.UUID;
 @Schema(description = "Yêu cầu tạo mới chuyến khởi hành du thuyền (Cruise)")
 public class CruiseCreateRequest {
     @JsonInclude(JsonInclude.Include.NON_NULL)
+    @JsonAlias("expectedPassengers")
     @JsonDeserialize(using = PassengerCountDeserializer.class)
+    @NotNull
     @Positive
     private Integer expectedPassengerCount;
 

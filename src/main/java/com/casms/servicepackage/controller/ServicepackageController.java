@@ -17,6 +17,7 @@ import com.casms.servicepackage.service.ServicepackageService;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.*;
+import com.casms.servicepackage.enums.ServiceOperatingPeriod;
 
 import lombok.RequiredArgsConstructor;
 
@@ -70,16 +71,17 @@ public class ServicepackageController {
             @Size(max=30) String unitCode,
             ServiceUsagePolicy preCruiseUsagePolicy,
             @Positive Integer preCruiseUsageLimit,
-            @Size(max=100) String usageTimeZone) {
+            @Size(max=100) String usageTimeZone,
+            Set<@NotNull ServiceOperatingPeriod> operatingPeriods) {
         public ServiceCatalogDto(String name, String description, String type, BigDecimal price,
                 String currency, Integer capacity, Boolean scheduled, UUID categoryId, String unitCode) {
             this(name, description, type, price, currency, capacity, scheduled, categoryId,
-                    null, null, null, unitCode, null, null, null);
+                    null, null, null, unitCode, null, null, null, null);
         }
         public ServiceCatalogDto(String name, String description, String type, BigDecimal price,
                 String currency, Integer capacity, Boolean scheduled, UUID categoryId) {
             this(name, description, type, price, currency, capacity, scheduled, categoryId,
-                    null, null, null, null, null, null, null);
+                    null, null, null, null, null, null, null, null);
         }
     }
 
@@ -228,7 +230,8 @@ public class ServicepackageController {
             String unitCode,
             String applicabilityScope,
             boolean canBuyPreCruise, boolean canBuyOnboard, boolean canSellIndependently,
-            ServiceUsagePolicy preCruiseUsagePolicy, Integer preCruiseUsageLimit, String usageTimeZone) {
+            ServiceUsagePolicy preCruiseUsagePolicy, Integer preCruiseUsageLimit, String usageTimeZone,
+            Set<ServiceOperatingPeriod> operatingPeriods) {
         static ServiceView of(Service s) {
             return new ServiceView(
                     s.getServiceId(),
@@ -245,7 +248,8 @@ public class ServicepackageController {
                     s.getCategory() == null ? null : s.getCategory().getCategoryName(),
                     s.getUnitCode(),
                     s.getApplicabilityScope(), s.isCanBuyPreCruise(), s.isCanBuyOnboard(),
-                    s.isCanSellIndependently(), s.getPreCruiseUsagePolicy(), s.getPreCruiseUsageLimit(), s.getUsageTimeZone());
+                    s.isCanSellIndependently(), s.getPreCruiseUsagePolicy(), s.getPreCruiseUsageLimit(),
+                    s.getUsageTimeZone(), s.getOperatingPeriods());
         }
     }
 
@@ -913,6 +917,7 @@ public class ServicepackageController {
     // ==========================================
 
     private void apply(Service s, ServiceCatalogDto r) {
+        if (r.operatingPeriods() != null) s.setOperatingPeriods(Set.copyOf(r.operatingPeriods()));
         if (r.canBuyPreCruise() != null) s.setCanBuyPreCruise(r.canBuyPreCruise());
         if (r.canBuyOnboard() != null) s.setCanBuyOnboard(r.canBuyOnboard());
         if (r.canSellIndependently() != null) s.setCanSellIndependently(r.canSellIndependently());

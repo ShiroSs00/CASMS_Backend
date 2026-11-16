@@ -169,6 +169,7 @@ public class CruiseOperationalReadinessPostgresIntegrationTest {
     private CruiseCreateRequest buildCreateRequest(
             String name, Instant dep, Instant ret, UUID shipId) {
         CruiseCreateRequest req = new CruiseCreateRequest();
+        req.setExpectedPassengerCount(1);
         req.setCruiseName(name);
         req.setDepartureDatetime(dep);
         req.setReturnDatetime(ret);

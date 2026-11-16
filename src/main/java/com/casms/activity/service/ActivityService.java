@@ -34,6 +34,7 @@ import java.util.UUID;
 @RequiredArgsConstructor
 @Transactional
 public class ActivityService {
+    private final com.casms.ship.service.PortCallBookingPolicy portCallBooking;
 
     private static final String ENTITY_ACTIVITY = "Activity";
     private static final String ENTITY_REGISTRATION = "Registration";
@@ -174,6 +175,7 @@ public class ActivityService {
             a.setMeetingPoint(a.getMeetingPoint().isBlank() ? null : a.getMeetingPoint().trim());
         }
         validateActivity(a, null);
+        requireActivitySlot(a);
         a.setStatus(OnboardActivityStatus.PLANNED);
         return activities.save(a);
     }
@@ -214,6 +216,8 @@ public class ActivityService {
         resolveDeckAndCabin(venue, deckId, cabinId);
         a.setActivityName(input.getActivityName());
         a.setDescription(input.getDescription());
+        boolean timeChanged = !java.util.Objects.equals(a.getStartTime(), input.getStartTime())
+                || !java.util.Objects.equals(a.getEndTime(), input.getEndTime());
         a.setStartTime(input.getStartTime());
         a.setEndTime(input.getEndTime());
         a.setLocation(input.getLocation());
@@ -226,7 +230,14 @@ public class ActivityService {
         a.setDeck(venue.getDeck());
         a.setCabin(venue.getCabin());
         validateActivity(a, id);
+        if (timeChanged) requireActivitySlot(a);
         return a;
+    }
+
+    private static void requireActivitySlot(OnboardActivity activity) {
+        com.casms.ship.service.ActivityTimingPolicy.requireNewSlot(
+                activity.getStartTime(), activity.getEndTime(),
+                activity.getCruise().getReturnDatetime(), Instant.now());
     }
 
     private void resolveDeckAndCabin(OnboardActivity a, UUID deckId, UUID cabinId) {
@@ -517,7 +528,9 @@ public class ActivityService {
                 || !bp.getBooking().getCruise().getCruiseId().equals(a.getCruise().getCruiseId())) {
             throw new IllegalStateException("Activity does not belong to the passenger's booking cruise");
         }
-        if (a.getStatus() != OnboardActivityStatus.OPEN || !a.getEndTime().isAfter(Instant.now())) {
+        var now = Instant.now();
+        portCallBooking.requireOnboardBooking(a.getCruise(), now);
+        if (a.getStatus() != OnboardActivityStatus.OPEN || !a.getEndTime().isAfter(now)) {
             throw new IllegalStateException("Activity is not open for registration");
         }
         if (registrations.existsByBookingPassenger_BookingPassengerIdAndOnboardActivity_OnboardActivityIdAndStatusIn(

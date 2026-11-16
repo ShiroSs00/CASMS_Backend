@@ -78,25 +78,18 @@ public class CruiseImpactAssessmentService {
         List<String> warnings = new ArrayList<>();
         List<CruiseImpactTaskResponse> tasks = new ArrayList<>();
 
-        boolean scheduleImpacted = false;
-        long dateShiftDays = 0;
-
-        Instant newDep = request.getNewDepartureDatetime();
-        Instant newRet = request.getNewReturnDatetime();
-
-        if (newDep != null) {
-            if (cruise.getDepartureDatetime() != null) {
-                Duration diff = Duration.between(cruise.getDepartureDatetime(), newDep);
-                if (Math.abs(diff.toMillis()) > 1000) {
-                    scheduleImpacted = true;
-                    dateShiftDays = Math.round((double) diff.toMillis() / 86400000.0);
-                }
-            } else {
-                scheduleImpacted = true;
-            }
-            if (newRet != null && !newRet.isAfter(newDep)) {
-                blockers.add("Thời điểm trở về mới phải sau thời điểm khởi hành mới");
-            }
+        var window = CruiseChangeWindow.resolve(cruise, request);
+        boolean scheduleImpacted = window.differsFrom(cruise);
+        long dateShiftDays = cruise.getDepartureDatetime() == null || window.departure() == null
+                ? 0
+                : Math.round(Duration.between(cruise.getDepartureDatetime(), window.departure()).toSeconds()
+                        / 86400.0);
+        if (scheduleImpacted && !window.valid()) {
+            blockers.add("Thời điểm trở về mới phải sau thời điểm khởi hành mới");
+        }
+        if (!Objects.equals(window.departure(), cruise.getDepartureDatetime())
+                && !com.casms.trip.service.TripDepartureWindow.includes(cruise.getSourceTrip(), window.departure())) {
+            blockers.add("Giờ khởi hành mới nằm ngoài khung giờ được phép của lịch trình");
         }
 
         long bookedPassengers =
@@ -107,6 +100,7 @@ public class CruiseImpactAssessmentService {
 
         boolean shipImpacted = false;
         UUID newShipId = request.getNewShipId();
+        Ship effectiveShip = cruise.getShip();
 
         String eventIdentity =
                 (request.getEventIdentity() != null && !request.getEventIdentity().isBlank())
@@ -116,8 +110,8 @@ public class CruiseImpactAssessmentService {
                                 + "-"
                                 + (request.getNewShipId() != null ? "SHIP" : "DATE")
                                 + "-"
-                                + (newDep != null
-                                        ? newDep.getEpochSecond()
+                                + (window.departure() != null
+                                        ? window.departure().getEpochSecond()
                                         : (cruise.getDepartureDatetime() != null
                                                 ? cruise.getDepartureDatetime().getEpochSecond()
                                                 : 0));
@@ -129,6 +123,7 @@ public class CruiseImpactAssessmentService {
                     shipRepository
                             .findById(newShipId)
                             .orElseThrow(() -> new ResourceNotFoundException("Ship", newShipId));
+            effectiveShip = newShip;
 
             if (newShip.getStatus() == ShipStatus.MAINTENANCE) {
                 blockers.add("Tàu mới đang trong trạng thái bảo trì (MAINTENANCE)");
@@ -139,17 +134,6 @@ public class CruiseImpactAssessmentService {
                         "Tàu mới không ở trạng thái ACTIVE (hiện tại: "
                                 + newShip.getStatus()
                                 + ")");
-            }
-
-            Instant effectiveDep = (newDep != null ? newDep : cruise.getDepartureDatetime());
-            Instant effectiveRet = (newRet != null ? newRet : cruise.getReturnDatetime());
-            if (effectiveDep != null
-                    && effectiveRet != null
-                    && cruiseRepository.existsOverlappingCruisesExcluding(
-                            newShipId, cruiseId, effectiveDep, effectiveRet)) {
-                blockers.add(
-                        "Tàu mới bị trùng lịch vận hành với chuyến khởi hành khác trong khoảng thời"
-                            + " gian này");
             }
 
             if (newShip.getTotalCapacity() < bookedPassengers) {
@@ -239,6 +223,29 @@ public class CruiseImpactAssessmentService {
             }
         }
 
+        UUID effectiveShipId = effectiveShip == null ? null : effectiveShip.getShipId();
+        if (effectiveShipId != null && (scheduleImpacted || shipImpacted) && window.valid()
+                && cruiseRepository.existsOverlappingCruisesExcluding(
+                        effectiveShipId, cruiseId, window.departure(), window.arrival())) {
+            blockers.add("Tàu bị trùng lịch vận hành với chuyến khởi hành khác trong khoảng thời gian này");
+        }
+        if (scheduleImpacted && !shipImpacted && effectiveShip != null) {
+            if (!ShipStatus.isOperational(effectiveShip.getStatus())) {
+                blockers.add("Tàu được gán không ở trạng thái vận hành");
+            }
+            if (deckRepository.countByShipShipId(effectiveShipId) == 0
+                    || cabinRepository.countByShipShipId(effectiveShipId) == 0) {
+                blockers.add("Tàu được gán chưa được cấu hình đầy đủ boong hoặc phòng");
+            }
+        }
+        if ((scheduleImpacted || shipImpacted) && effectiveShip != null
+                && cruise.getExpectedPassengerCount() != null) {
+            if (effectiveShip.getTotalCapacity() == null
+                    || effectiveShip.getTotalCapacity() < cruise.getExpectedPassengerCount()) {
+                blockers.add("Tàu không đủ chỗ cho số khách dự kiến");
+            }
+        }
+
         if (scheduleImpacted && bookedPassengers > 0) {
             warnings.add(
                     "Lịch khởi hành thay đổi "
@@ -264,7 +271,7 @@ public class CruiseImpactAssessmentService {
                                     "Chuyến khởi hành thay đổi ngày khởi hành từ "
                                             + cruise.getDepartureDatetime()
                                             + " sang "
-                                            + newDep
+                                            + window.departure()
                                             + ". Cần liên hệ thông báo hành khách.")
                             .status("PENDING")
                             .severity("WARNING")

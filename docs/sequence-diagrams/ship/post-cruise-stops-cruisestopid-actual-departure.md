@@ -37,3 +37,7 @@ sequenceDiagram
 ```
 
 Actual departure recording locks the stop row before writing, sharing the row lock with delay confirmation. See [departure and delay flows](../CRUISE-DEPARTURE-DELAY.md).
+
+## Port-call and booking
+
+See the [reviewed flow](../PORT-CALL-BOOKING-FLOWS.md) for authorization, validation, transaction boundaries and responses. This note covers the BE-09 to BE-20 change.

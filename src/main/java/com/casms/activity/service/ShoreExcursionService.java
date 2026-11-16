@@ -78,6 +78,7 @@ public class ShoreExcursionService {
         excursion.setCancellationReason(null);
 
         validateExcursion(excursion, null);
+        requireActivitySlot(excursion);
 
         ShoreExcursion saved = excursionRepository.save(excursion);
         return toResponse(saved);
@@ -135,8 +136,16 @@ public class ShoreExcursionService {
                     "Excursion capacity cannot be below reserved participants",
                     java.util.Map.of(
                             "fieldPath", "maximumCapacity", "allocatedParticipants", allocated));
+        Instant previousStart = excursion.getStartTime();
+        Instant previousReturn = excursion.getPlannedReturnTime();
+        CruiseStop previousStop = excursion.getCruiseStop();
         applyRequest(excursion, request);
         validateExcursion(excursion, id);
+        if (!java.util.Objects.equals(previousStart, excursion.getStartTime())
+                || !java.util.Objects.equals(previousReturn, excursion.getPlannedReturnTime())
+                || !java.util.Objects.equals(previousStop, excursion.getCruiseStop())) {
+            requireActivitySlot(excursion);
+        }
 
         // Chỉ tự cập nhật sức chứa; không tự mở lại excursion đã CLOSED.
         refreshCapacityStatus(excursion);
@@ -308,6 +317,17 @@ public class ShoreExcursionService {
         }
     }
 
+    private static void requireActivitySlot(ShoreExcursion excursion) {
+        CruiseStop call = excursion.getCruiseStop();
+        Instant cutoff = call.getAllAboardTime() != null ? call.getAllAboardTime() : call.getPlannedDeparture();
+        var cruise = call.getItinerary() == null ? null : call.getItinerary().getCruise();
+        if (call.validDisembarkationStart() != null && cruise != null && cruise.getReturnDatetime() != null) {
+            cutoff = cruise.getReturnDatetime();
+        }
+        com.casms.ship.service.ActivityTimingPolicy.requireNewSlot(
+                excursion.getStartTime(), excursion.getPlannedReturnTime(), cutoff, Instant.now());
+    }
+
     private void validateSchedule(ShoreExcursion excursion, UUID excludeId) {
         CruiseStop stop =
                 cruiseStopRepository
@@ -332,7 +352,7 @@ public class ShoreExcursionService {
                     "Tour bờ phải kết thúc trước hoặc đúng giờ bắt đầu trả khách.");
         }
 
-        if (!excursion.getPlannedReturnTime().isBefore(latestReturn)) {
+        if (excursion.getPlannedReturnTime().isAfter(latestReturn)) {
             throw new IllegalArgumentException(
                     "Excursion must return before all-aboard/departure time.");
         }

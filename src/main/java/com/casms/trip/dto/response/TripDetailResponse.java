@@ -25,6 +25,8 @@ public class TripDetailResponse {
     private TripDurationGroup durationGroup;
     private Integer durationDays;
     private Integer durationNights;
+    private Instant earliestDeparture;
+    private Instant latestDeparture;
     private ItineraryType tripType;
     private String plannedScope;
     private List<String> domesticRegions;

@@ -148,6 +148,7 @@ class ItnDurationPostgresTest {
         Instant departure = Instant.parse("2032-01-10T02:00:00Z");
         Instant forgedReturn = departure.plusSeconds(20 * 86400L);
         var input = new CruiseCreateRequest();
+        input.setExpectedPassengerCount(1);
         input.setCruiseName("ITN inherited duration");
         input.setSourceVersionId(version.getVersionId());
         input.setExpectedSourceVersionRevision(version.getRevision());

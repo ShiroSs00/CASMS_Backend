@@ -67,3 +67,7 @@ sequenceDiagram
 ## Staff scheduling constraint
 
 A schedule edit checks active staff duties in the database transaction. An overlapping shift is rejected with 409 STAFF_WORK_TIME_CONFLICT. See [work scheduling](../ITINERARY-PROGRAM-FLOWS.md#dịch-vụ-và-ca-hoạt-động).
+
+## Port-call and booking
+
+See the [reviewed flow](../PORT-CALL-BOOKING-FLOWS.md) for authorization, validation, transaction boundaries and responses. This note covers the BE-09 to BE-20 change.

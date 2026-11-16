@@ -50,6 +50,7 @@ class ProgramCapacityGuardTest {
     @Mock CruiseStopRepository cruiseStopRepository;
     @Mock DeckRepository deckRepository;
     @Mock CabinRepository cabinRepository;
+    @Mock com.casms.ship.service.PortCallBookingPolicy portCallBooking;
     @InjectMocks ActivityService onboard;
     @InjectMocks ShoreExcursionService shore;
 

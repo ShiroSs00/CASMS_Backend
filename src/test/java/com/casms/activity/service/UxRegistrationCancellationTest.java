@@ -31,6 +31,7 @@ class UxRegistrationCancellationTest {
     @Mock BookingPassengerRepository bookingPassengers;
     @Mock CruiseRepository cruises;
     @Mock ShoreExcursionRepository excursions;
+    @Mock com.casms.ship.service.PortCallBookingPolicy portCallBooking;
     @InjectMocks ActivityService service;
 
     Registration registration(boolean started) {

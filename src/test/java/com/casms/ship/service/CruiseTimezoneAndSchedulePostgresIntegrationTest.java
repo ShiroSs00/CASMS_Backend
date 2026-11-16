@@ -46,6 +46,7 @@ public class CruiseTimezoneAndSchedulePostgresIntegrationTest {
     @Autowired private CruiseRepository cruiseRepository;
     @Autowired private ShipRepository shipRepository;
     @Autowired private DeckRepository deckRepository;
+    @Autowired private CabinRepository cabinRepository;
     @Autowired private PortRepository portRepository;
     @Autowired private com.casms.ship.repository.DestinationRepository destinationRepository;
     @Autowired private org.springframework.transaction.support.TransactionTemplate transactions;
@@ -125,6 +126,15 @@ public class CruiseTimezoneAndSchedulePostgresIntegrationTest {
         testDeck.setDeckNumber(3);
         testDeck.setDeckName("Lido Deck");
         testDeck = deckRepository.save(testDeck);
+
+        Cabin cabin = new Cabin();
+        cabin.setShip(testShip);
+        cabin.setDeck(testDeck);
+        cabin.setCabinNumber("301");
+        cabin.setCapacity(2);
+        cabin.setCabinType(CabinType.INTERIOR);
+        cabin.setStatus(CabinStatus.AVAILABLE);
+        cabinRepository.save(cabin);
 
         testSupplier = new Supplier();
         testSupplier.setSupplierName("Global Shore Excursions Ltd");
@@ -274,6 +284,7 @@ public class CruiseTimezoneAndSchedulePostgresIntegrationTest {
 
         // 2. Create Cruise & Materialize
         CruiseCreateRequest req = new CruiseCreateRequest();
+        req.setExpectedPassengerCount(1);
         req.setCruiseName("Hành Trình Múi Giờ Test 01");
         req.setDepartureDatetime(departure);
         req.setReturnDatetime(departure.plusSeconds(86400 * 3));
@@ -384,6 +395,7 @@ public class CruiseTimezoneAndSchedulePostgresIntegrationTest {
 
         // Materialize and check DB
         CruiseCreateRequest req = new CruiseCreateRequest();
+        req.setExpectedPassengerCount(1);
         req.setCruiseName("Hành Trình Qua Đêm Test 02");
         req.setDepartureDatetime(departure);
         req.setReturnDatetime(departure.plusSeconds(86400 * 3));
@@ -474,6 +486,7 @@ public class CruiseTimezoneAndSchedulePostgresIntegrationTest {
         assertNotNull(preview);
 
         CruiseCreateRequest req = new CruiseCreateRequest();
+        req.setExpectedPassengerCount(1);
         req.setCruiseName("Chuyến đi lặp cảng HPH");
         req.setDepartureDatetime(departure);
         req.setReturnDatetime(departure.plusSeconds(86400 * 3));
@@ -689,6 +702,7 @@ public class CruiseTimezoneAndSchedulePostgresIntegrationTest {
 
         // Bây giờ materialize qua cruiseService.create
         CruiseCreateRequest req = new CruiseCreateRequest();
+        req.setExpectedPassengerCount(1);
         req.setCruiseName("Đã có lịch trình");
         req.setDepartureDatetime(departure);
         req.setReturnDatetime(departure.plusSeconds(86400 * 3));
@@ -730,6 +744,7 @@ public class CruiseTimezoneAndSchedulePostgresIntegrationTest {
 
         // Client gửi create với preview revision cũ (initialRevision)
         CruiseCreateRequest req = new CruiseCreateRequest();
+        req.setExpectedPassengerCount(1);
         req.setCruiseName("Tạo với preview cũ");
         req.setDepartureDatetime(departure);
         req.setReturnDatetime(departure.plusSeconds(86400 * 3));
@@ -756,6 +771,7 @@ public class CruiseTimezoneAndSchedulePostgresIntegrationTest {
         Instant departure = Instant.parse("2026-12-05T01:00:00Z");
 
         CruiseCreateRequest req = new CruiseCreateRequest();
+        req.setExpectedPassengerCount(1);
         req.setCruiseName("Kiểm tra planned vs actual");
         req.setDepartureDatetime(departure);
         req.setReturnDatetime(departure.plusSeconds(86400 * 3));

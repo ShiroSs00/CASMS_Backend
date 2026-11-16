@@ -49,11 +49,38 @@ public class CruisePreparationController {
             @jakarta.validation.constraints.NotBlank
             @jakarta.validation.constraints.Pattern(regexp = "[1-9][0-9]{0,17}") String amountVnd) {}
 
+    public record BudgetSubmission(
+            @jakarta.validation.constraints.NotNull Long expectedRevision,
+            @jakarta.validation.constraints.NotNull Long expectedReviewRevision) {}
+
+    public record BudgetReview(
+            @jakarta.validation.constraints.NotNull Long expectedReviewRevision,
+            @jakarta.validation.constraints.NotNull CruisePreparationService.BudgetDecision decision,
+            @jakarta.validation.constraints.Size(max = 2000) String reason) {}
+
     @GetMapping("/operating-budget")
-    @PreAuthorize("hasAuthority('CRUISE_PREPARATION_SUBMIT')")
+    @PreAuthorize("hasAnyAuthority('CRUISE_PREPARATION_SUBMIT','CRUISE_PREPARATION_CONFIRM')")
     public ApiResponse<CruisePreparationService.OperatingBudget> operatingBudget(
             @PathVariable UUID cruiseId, @AuthenticationPrincipal CasmsPrincipal principal) {
         return ApiResponse.success(preparationService.operatingBudget(cruiseId, principal));
+    }
+
+    @PreAuthorize("hasRole('CRUISE_MANAGER') and hasAuthority('CRUISE_PREPARATION_SUBMIT')")
+    @PostMapping("/operating-budget/submit")
+    public ApiResponse<CruisePreparationService.OperatingBudget> submitBudget(
+            @PathVariable UUID cruiseId, @Valid @RequestBody BudgetSubmission request,
+            @AuthenticationPrincipal CasmsPrincipal principal) {
+        return ApiResponse.success(preparationService.submitOperatingBudget(cruiseId,
+                request.expectedRevision(), request.expectedReviewRevision(), principal.getUserId()));
+    }
+
+    @PreAuthorize("hasRole('OPERATIONS_MANAGER') and hasAuthority('CRUISE_PREPARATION_CONFIRM')")
+    @PostMapping("/operating-budget/review")
+    public ApiResponse<CruisePreparationService.OperatingBudget> reviewBudget(
+            @PathVariable UUID cruiseId, @Valid @RequestBody BudgetReview request,
+            @AuthenticationPrincipal CasmsPrincipal principal) {
+        return ApiResponse.success(preparationService.reviewOperatingBudget(cruiseId,
+                request.expectedReviewRevision(), request.decision(), request.reason(), principal.getUserId()));
     }
 
     @PutMapping("/operating-budget")
@@ -108,9 +135,8 @@ public class CruisePreparationController {
 
     @Operation(
             summary = "Gửi hồ sơ chuẩn bị",
-            description =
-                    "CRM tổng hợp và gửi cả năm nhóm; ownerRole giữ trách nhiệm dữ liệu chuyên môn")
-    @PreAuthorize("hasRole('CRUISE_MANAGER') and hasAuthority('CRUISE_PREPARATION_SUBMIT')")
+            description = "Người phụ trách nộp riêng hồ sơ của phần việc được giao")
+    @PreAuthorize("hasAuthority('CRUISE_PREPARATION_SUBMIT')")
     @PostMapping("/{sectionCode}/submit")
     public ApiResponse<CruisePreparationSectionResponse> submitSection(
             @Parameter(description = "ID chuyến khởi hành", required = true) @PathVariable
@@ -170,5 +196,15 @@ public class CruisePreparationController {
         return ApiResponse.success(
                 "Đã trả lại phân hệ yêu cầu bổ sung",
                 preparationService.returnSection(cruiseId, sectionCode, request, actorId));
+    }
+
+    @PreAuthorize("hasRole('OPERATIONS_MANAGER') and hasAuthority('CRUISE_PREPARATION_CONFIRM')")
+    @PostMapping("/{sectionCode}/reject")
+    public ApiResponse<CruisePreparationSectionResponse> rejectSection(
+            @PathVariable UUID cruiseId, @PathVariable String sectionCode,
+            @RequestBody @Valid CruisePreparationReturnRequest request,
+            @AuthenticationPrincipal CasmsPrincipal principal) {
+        return ApiResponse.success(preparationService.rejectSection(
+                cruiseId, sectionCode, request, principal.getUserId()));
     }
 }

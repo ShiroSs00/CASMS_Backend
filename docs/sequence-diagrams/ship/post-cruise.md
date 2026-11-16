@@ -51,3 +51,7 @@ sequenceDiagram
 Changed branches for adjacent port identity, terminal role and time checks are reviewed in [Port call sequence](../PORT-CALL-SEQUENCE.md). This addendum does not certify the static trace for unrelated behavior.
 
 Materialization applies the offset from template departure LocalTime to chosen Cruise departure to port calls and operational programs in the create transaction. See [departure and delay flows](../CRUISE-DEPARTURE-DELAY.md).
+
+## Ship schedule and fleet
+
+See the [reviewed flow](../TRIP-DEPARTURE-WINDOW.md) for authorization, validation, transaction boundaries and responses. This note covers the BE-09 to BE-20 change.

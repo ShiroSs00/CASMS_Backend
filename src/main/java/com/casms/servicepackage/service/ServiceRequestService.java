@@ -19,6 +19,9 @@ import com.casms.servicepackage.repository.ServiceRepository;
 import com.casms.servicepackage.repository.ServiceRequestRepository;
 import com.casms.servicepackage.repository.ServiceScheduleRepository;
 import com.casms.servicepackage.repository.ServiceUsageRepository;
+import com.casms.ship.service.PortCallBookingPolicy;
+import com.casms.ship.repository.ItineraryDayRepository;
+import com.casms.ship.util.PortTimeZoneHelper;
 
 import jakarta.persistence.EntityNotFoundException;
 
@@ -49,6 +52,9 @@ public class ServiceRequestService {
     private final ServiceUsageRepository usages;
     private final CruisePackageEntitlementService fareEntitlements;
     private final ShipServiceAvailability shipServices;
+    private final PortCallBookingPolicy portCallBooking;
+    private final ServiceOperatingHours operatingHours;
+    private final ItineraryDayRepository itineraryDays;
 
     public List<ServiceRequest> list(UUID passengerId, boolean staff) {
         if (!staff) return requests.findByPassenger_User_UserId(passengerId);
@@ -259,6 +265,7 @@ public class ServiceRequestService {
                 || cruise.getStatus() == com.casms.ship.enums.CruiseStatus.COMPLETED)
             throw new IllegalStateException("Service booking cruise is no longer active");
         shipServices.requireServiceForRequest(cruise.getCruiseId(), serviceId);
+        portCallBooking.requireOnboardBooking(cruise, now);
         if (onboardSale) {
             if (!s.isCanBuyOnboard() || !s.isCanSellIndependently()
                     || cruise.getStatus() != com.casms.ship.enums.CruiseStatus.IN_PROGRESS)
@@ -273,6 +280,14 @@ public class ServiceRequestService {
         }
         if (!onboardSale && s.getPreCruiseUsagePolicy() == com.casms.servicepackage.enums.ServiceUsagePolicy.PER_DAY && schedule == null)
             throw new IllegalArgumentException("PER_DAY prepaid services require a schedule to identify the usage day");
+        if (!onboardSale && schedule == null
+                && (cruise.getDepartureDatetime() == null || now.isBefore(cruise.getDepartureDatetime()))
+                && s.getOperatingPeriods() != null && !s.getOperatingPeriods().isEmpty()
+                && s.getOperatingPeriods().size() < com.casms.servicepackage.enums.ServiceOperatingPeriod.values().length) {
+            throw new BusinessException("SERVICE_USAGE_TIME_REQUIRED",
+                    "Select a service schedule so its operating hours can be checked");
+        }
+        requireOperatingHours(s, cruise.getCruiseId(), schedule, now);
         ServiceRequest r = new ServiceRequest();
         r.setUsageMode(onboardSale ? "ONBOARD" : "PRE_CRUISE");
         r.setUsagePolicySnapshot(onboardSale ? com.casms.servicepackage.enums.ServiceUsagePolicy.UNLIMITED : s.getPreCruiseUsagePolicy());
@@ -305,6 +320,23 @@ public class ServiceRequestService {
                 createHash(serviceId, bookingPassengerId, scheduleId, quantity, note),
                 saved.getServiceRequestId());
         return saved;
+    }
+
+    private void requireOperatingHours(Service service, UUID cruiseId, ServiceSchedule schedule, Instant now) {
+        if (service.getOperatingPeriods() == null || service.getOperatingPeriods().isEmpty()) return;
+        var facts = schedule == null || schedule.getCruiseStop() == null
+                ? null : schedule.getCruiseStop().getPortFacts();
+        Instant start = schedule == null ? now : schedule.getStartsAt();
+        var zone = facts == null
+                ? itineraryDays.findByItineraryCruiseCruiseIdOrderByDayNumberAsc(cruiseId).stream()
+                        .filter(day -> day.getDate() != null && day.getShipTimeZoneId() != null)
+                        .filter(day -> day.getDate().equals(start.atZone(
+                                PortTimeZoneHelper.resolveZone(day.getShipTimeZoneId())).toLocalDate()))
+                        .map(day -> PortTimeZoneHelper.resolveZone(day.getShipTimeZoneId()))
+                        .findFirst().orElse(PortTimeZoneHelper.SHIP_TIME_ZONE)
+                : PortTimeZoneHelper.resolveZone(facts.timeZoneId());
+        operatingHours.requireOpen(service.getOperatingPeriods(), start,
+                schedule == null ? null : schedule.getEndsAt(), zone);
     }
 
     public ServiceRequest updatePending(

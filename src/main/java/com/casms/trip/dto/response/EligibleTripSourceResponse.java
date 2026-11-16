@@ -50,6 +50,9 @@ public class EligibleTripSourceResponse {
     @Schema(description = "Thời lượng số đêm", example = "2")
     private Integer durationNights;
 
+    private Instant earliestDeparture;
+    private Instant latestDeparture;
+
     @Schema(description = "Phạm vi địa lý đã định (DOMESTIC, INTERNATIONAL)", example = "DOMESTIC")
     private String plannedScope;
 

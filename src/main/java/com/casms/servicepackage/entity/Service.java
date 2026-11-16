@@ -20,6 +20,9 @@ import java.util.UUID;
 @Entity
 @Table(name = "\"Service\"")
 public class Service {
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.JSON)
+    @Column(name = "operating_periods", columnDefinition = "jsonb")
+    private java.util.Set<com.casms.servicepackage.enums.ServiceOperatingPeriod> operatingPeriods;
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)

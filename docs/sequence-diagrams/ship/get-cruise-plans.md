@@ -57,3 +57,7 @@ sequenceDiagram
         Controller-->>Client: HTTP success
     end
 ```
+
+## Department submission
+
+The CRM workspace offers dossier submission for pending CRM-owned sections. SHIP and OPS submit their assigned sections separately. See [preparation review](../CRUISE-PREPARATION-REVIEW-FLOWS.md).

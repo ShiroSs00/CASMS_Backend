@@ -1103,11 +1103,11 @@ SELECT EXISTS(SELECT 1 FROM "CruisePricingPolicy" p JOIN "Cruise" c USING(cruise
                 jdbc.queryForObject(
                         "SELECT count(*) FROM \"CruisePreparationSection\" WHERE cruise_id=? AND"
                             + " section_code IN"
-                            + " ('TECHNICAL_NAUTICAL','HOTEL_CABIN','ENTERTAINMENT_SHORE','SAFETY_CREW')"
+                            + " ('HOTEL_CABIN','ENTERTAINMENT_SHORE')"
                             + " AND status IN ('SUBMITTED','CONFIRMED')",
                         Integer.class,
                         id);
-        return sent == null || sent != 4;
+        return sent == null || sent != 2;
     }
 
     @Transactional

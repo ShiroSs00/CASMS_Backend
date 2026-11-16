@@ -10,6 +10,7 @@ import jakarta.validation.constraints.Size;
 
 import lombok.Data;
 
+import java.time.Instant;
 import java.util.List;
 
 @Data
@@ -36,6 +37,12 @@ public class TripDraftPatchRequest {
     @Min(value = 0, message = "Duration nights must be at least 0")
     @Schema(description = "Số đêm (chỉ sửa được khi chưa có phiên bản nào PUBLISHED)")
     private Integer durationNights;
+
+    @Schema(description = "Earliest allowed planned departure, inclusive (ISO-8601)")
+    private Instant earliestDeparture;
+
+    @Schema(description = "Latest allowed planned departure, inclusive (ISO-8601)")
+    private Instant latestDeparture;
 
     @Schema(description = "Loại chuyến (ROUND_TRIP hoặc ONE_WAY)")
     private ItineraryType tripType;

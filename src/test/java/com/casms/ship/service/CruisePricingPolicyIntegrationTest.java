@@ -158,6 +158,7 @@ public class CruisePricingPolicyIntegrationTest {
     private CruiseResponse createCruiseWithItineraryAndCaptain(
             String name, Instant dep, Instant ret) {
         CruiseCreateRequest req = new CruiseCreateRequest();
+        req.setExpectedPassengerCount(1);
         req.setCruiseName(name);
         req.setDepartureDatetime(dep);
         req.setReturnDatetime(ret);

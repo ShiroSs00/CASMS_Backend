@@ -12,6 +12,7 @@ import com.casms.security.principal.CasmsPrincipal;
 import com.casms.servicepackage.repository.ServiceScheduleRepository;
 import com.casms.ship.dto.request.*;
 import com.casms.ship.entity.*;
+import com.casms.ship.enums.CruiseStatus;
 import com.casms.ship.repository.*;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -20,10 +21,13 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.*;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.RowMapper;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 
 import java.util.*;
+import java.math.BigDecimal;
+import java.sql.ResultSet;
 
 @ExtendWith(MockitoExtension.class)
 class PreparationServiceAuthorizationTest {
@@ -64,7 +68,7 @@ class PreparationServiceAuthorizationTest {
     @Test
     void callerSuppliedRolesAndActorCannotBypassActualPrincipal() {
         UUID id = UUID.randomUUID();
-        actor(id, false, true, true);
+        actor(id, false, true, false);
         var r = new CruisePreparationSubmitRequest();
         r.setExpectedRevision(0L);
         r.setEvidence("Caller evidence");
@@ -98,9 +102,12 @@ class PreparationServiceAuthorizationTest {
     @Test
     void departmentalSubmissionDoesNotRequireCompletePrograms() {
         UUID id = UUID.randomUUID(), cruiseId = UUID.randomUUID();
-        actor(id, true, false, true);
-        var coordinator = new com.casms.identity.entity.User(); coordinator.setUserId(id);
-        var cruise = new Cruise(); cruise.setCruiseId(cruiseId); cruise.setPreparationCoordinator(coordinator);
+        var assignee = actor(id, false, false, true);
+        when(assignee.hasRole(Role.SHIP_MANAGER)).thenReturn(true);
+        var cruise = new Cruise(); cruise.setCruiseId(cruiseId);
+        var assignment = new CruiseStaff(); assignment.setRoleInCruise("SHIP_MANAGER");
+        when(staff.findFirstByCruise_CruiseIdAndUser_UserIdAndStatusOrderByAssignedAtDesc(
+                cruiseId, id, "ACTIVE")).thenReturn(Optional.of(assignment));
         var section = new CruisePreparationSection(); section.setCruise(cruise);
         section.setSectionCode("TECHNICAL_NAUTICAL"); section.setStatus("NOT_STARTED"); section.setRevision(1L);
         when(cruises.findByIdForUpdate(cruiseId)).thenReturn(Optional.of(cruise));
@@ -112,6 +119,85 @@ class PreparationServiceAuthorizationTest {
         service.submitSection(cruiseId,"TECHNICAL_NAUTICAL",input,id,Set.of());
         assertEquals("SUBMITTED",section.getStatus());
         verifyNoInteractions(programPolicy);
+    }
+
+    @Test
+    void unassignedShipManagerCannotSubmitTechnicalSection() {
+        UUID id = UUID.randomUUID(), cruiseId = UUID.randomUUID();
+        var assignee = actor(id, false, false, true);
+        when(assignee.hasRole(Role.SHIP_MANAGER)).thenReturn(true);
+        var cruise = new Cruise(); cruise.setCruiseId(cruiseId);
+        when(cruises.findByIdForUpdate(cruiseId)).thenReturn(Optional.of(cruise));
+
+        assertEquals("PREPARATION_CRUISE_SCOPE_FORBIDDEN", assertThrows(BusinessException.class, () ->
+                service.submitSection(cruiseId, "TECHNICAL_NAUTICAL",
+                        new CruisePreparationSubmitRequest(), id, Set.of())).getCode());
+        verifyNoInteractions(sections);
+    }
+
+    @Test
+    void rejectionStoresReviewedRevisionAndLeavesOtherSectionsAlone() {
+        UUID ops = UUID.randomUUID(), cruiseId = UUID.randomUUID();
+        actor(ops, false, true, true);
+        var cruise = new Cruise(); cruise.setCruiseId(cruiseId);
+        var section = new CruisePreparationSection(); section.setCruise(cruise);
+        section.setSectionCode("HOTEL_CABIN"); section.setStatus("SUBMITTED"); section.setRevision(3L);
+        section.setSubmittedByUserId(UUID.randomUUID());
+        when(cruises.findByIdForUpdate(cruiseId)).thenReturn(Optional.of(cruise));
+        when(sections.findByCruiseCruiseIdAndSectionCodeForUpdate(cruiseId, "HOTEL_CABIN"))
+                .thenReturn(Optional.of(section));
+        when(sections.saveAndFlush(section)).thenAnswer(call -> {
+            section.setRevision(4L);
+            return section;
+        });
+        var rejection = new CruisePreparationReturnRequest();
+        rejection.setExpectedRevision(3L);
+        rejection.setReason("Thiếu số liệu");
+
+        service.rejectSection(cruiseId, "HOTEL_CABIN", rejection, ops);
+
+        assertEquals("REJECTED", section.getStatus());
+        verify(sections).saveAndFlush(section);
+        verify(jdbc).update(anyString(), any(), eq(cruiseId), eq("HOTEL_CABIN"),
+                eq(4L), eq("REJECT"), eq(ops), eq("Thiếu số liệu"), anyString(), eq("SUBMITTED"), eq(3L));
+        assertEquals("STALE_REVISION", assertThrows(BusinessException.class, () ->
+                service.rejectSection(cruiseId, "HOTEL_CABIN", rejection, ops)).getCode());
+        verifyNoMoreInteractions(jdbc);
+    }
+
+    @Test
+    void rejectedBudgetCanBeEditedAndSubmittedAgain() throws Exception {
+        UUID coordinatorId = UUID.randomUUID(), cruiseId = UUID.randomUUID();
+        var principal = actor(coordinatorId, true, false, true);
+        var coordinator = new com.casms.identity.entity.User(); coordinator.setUserId(coordinatorId);
+        var cruise = new Cruise(); cruise.setCruiseId(cruiseId); cruise.setPreparationCoordinator(coordinator);
+        cruise.setStatus(CruiseStatus.DRAFT); cruise.setRevision(5L);
+        cruise.setOperatingBudgetVnd(new BigDecimal("100000"));
+        when(cruises.findByIdForUpdate(cruiseId)).thenReturn(Optional.of(cruise));
+        when(jdbc.query(contains("CruiseOperatingBudgetReview"), ArgumentMatchers.<RowMapper<Object>>any(),
+                eq(cruiseId))).thenAnswer(call -> {
+            var row = mock(ResultSet.class);
+            when(row.getLong(1)).thenReturn(2L);
+            when(row.getString(2)).thenReturn("REJECTED");
+            when(row.getObject(3, UUID.class)).thenReturn(coordinatorId);
+            when(row.getString(4)).thenReturn("Điều chỉnh số tiền");
+            return List.of(call.<RowMapper<Object>>getArgument(1).mapRow(row, 0));
+        });
+        when(cruises.saveAndFlush(cruise)).thenAnswer(call -> {
+            cruise.setRevision(6L);
+            return cruise;
+        });
+
+        var edited = service.saveOperatingBudget(cruiseId, 5L, new BigDecimal("125000"), principal);
+        var submitted = service.submitOperatingBudget(cruiseId, 6L, 2L, coordinatorId);
+
+        assertTrue(edited.canEdit());
+        assertEquals("125000", submitted.amountVnd());
+        assertEquals("SUBMITTED", submitted.status());
+        assertEquals(3L, submitted.reviewRevision());
+        assertFalse(submitted.canEdit());
+        verify(jdbc).update(contains("ON CONFLICT"), eq(cruiseId), eq(3L), eq("SUBMITTED"),
+                eq(coordinatorId), isNull());
     }
 
     @Test
@@ -226,7 +312,7 @@ class PreparationServiceAuthorizationTest {
                             return section;
                         });
         service.invalidateSignoffs(cruiseId, "Crew assignment removed");
-        assertEquals("RETURNED", section.getStatus());
+        assertEquals("STALE", section.getStatus());
         assertEquals(actorId, section.getReturnedByUserId());
         assertNotNull(section.getReturnedAt());
         assertEquals(4L, section.getRevision());
@@ -241,6 +327,8 @@ class PreparationServiceAuthorizationTest {
                         eq("INVALIDATE"),
                         eq(actorId),
                         eq("Crew assignment removed"),
-                        anyString());
+                        anyString(),
+                        eq("CONFIRMED"),
+                        eq(3L));
     }
 }

@@ -117,6 +117,8 @@ public class ItineraryProgramService {
         ItineraryProgramPolicy.requireWindow(input.startsAt(), input.endsAt(),
                 ItineraryProgramPolicy.instant(cruise.get("departure_datetime")),
                 ItineraryProgramPolicy.instant(cruise.get("return_datetime")), "ACTIVITY_OUTSIDE_CRUISE");
+        ActivityTimingPolicy.requireNewSlot(input.startsAt(), input.endsAt(),
+                ItineraryProgramPolicy.instant(cruise.get("return_datetime")), Instant.now());
         policy.requireActivityArea(input.areaId(), (UUID) cruise.get("ship_id"), true);
         ItineraryProgramPolicy.requireDetails(input.capacity(), input.price(), "USD", input.location());
         requireAllocatedCapacity("onboard_activity_id", activityId, input.capacity());
@@ -141,6 +143,12 @@ public class ItineraryProgramService {
         var cruise = jdbc.queryForMap("SELECT * FROM \"Cruise\" WHERE cruise_id=?", cruiseId);
         policy.requireServedDestination((UUID) stop.get("cruise_stop_id"), (UUID) excursion.get("destination_id"));
         policy.validateExcursionTimes(stop, input.startsAt(), input.returnsAt(), cruise);
+        var departure = ItineraryProgramPolicy.instant(stop.get("planned_departure"));
+        var allAboard = ItineraryProgramPolicy.instant(stop.get("all_aboard_time"));
+        var returnTime = ItineraryProgramPolicy.instant(cruise.get("return_datetime"));
+        var cutoff = java.util.Objects.equals(departure, returnTime) || allAboard == null
+                ? departure : allAboard;
+        ActivityTimingPolicy.requireNewSlot(input.startsAt(), input.returnsAt(), cutoff, Instant.now());
         ItineraryProgramPolicy.requireDetails(input.capacity(), input.price(), "USD", input.meetingPoint());
         if (input.location() == null || input.location().isBlank()) throw new BusinessException("PROGRAM_DETAILS_REQUIRED", "Excursion location is required");
         if (excursion.get("minimum_participants") instanceof Number min && min.intValue() > input.capacity())

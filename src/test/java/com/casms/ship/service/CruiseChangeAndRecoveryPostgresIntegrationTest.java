@@ -259,6 +259,7 @@ public class CruiseChangeAndRecoveryPostgresIntegrationTest {
         planStopRepository.save(stop2);
 
         CruiseCreateRequest req = new CruiseCreateRequest();
+        req.setExpectedPassengerCount(1);
         req.setCruiseName("Chuyến đi R05B " + suffix);
         req.setDepartureDatetime(departure);
         req.setReturnDatetime(departure.plusSeconds(86400 * 3));

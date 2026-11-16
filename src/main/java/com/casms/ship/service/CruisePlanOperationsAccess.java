@@ -163,6 +163,10 @@ public class CruisePlanOperationsAccess implements WebMvcConfigurer, HandlerInte
             return true;
         boolean ops = operationsOnly || auth.getPrincipal() instanceof CasmsPrincipal actor
                 && actor.hasRole(Role.OPERATIONS_MANAGER);
+        if (ops && (pattern.endsWith("/preparation/operating-budget") && "GET".equals(request.getMethod())
+                || pattern.endsWith("/preparation/operating-budget/review"))) {
+            return true; // Budget review scope is based on its independent submission.
+        }
         boolean saleTerms = pattern.equals("/cruise-plans/{cruiseId}/commercial-terms/sale")
                 || pattern.equals("/cruise-plans/{cruiseId}/commercial-terms/sale/history");
         boolean saleHistory = pattern.equals("/cruise-plans/{cruiseId}/commercial-terms/sale/history");
@@ -189,7 +193,6 @@ public class CruisePlanOperationsAccess implements WebMvcConfigurer, HandlerInte
                     (pattern.startsWith("/cruise-plans/") && Set.of("submit","withdraw","windows","cruise-packages").contains(operation)
                         || Set.of("draft","assign-ship","change-assigned-ship","unassign-ship",
                             "sync-operational-programs","sale-terms-request").contains(operation)
-                        || pattern.contains("/preparation/") && "submit".equals(operation)
                         || pattern.contains("/pricing-policy") && Set.of("pricing-policy","submit").contains(operation)
                         || pattern.startsWith("/itinerary-days/") && !operation.startsWith("validate")
                         || pattern.startsWith("/itineraries/") && Set.of("submit","apply-change","return-to-draft","publish","cancel").contains(operation)

@@ -15,6 +15,7 @@ import com.casms.common.service.BusinessCodeGenerator;
 import com.casms.identity.repository.UserRepository;
 import com.casms.servicepackage.repository.TourPackageRepository;
 import com.casms.ship.dto.request.CruiseCreateRequest;
+import com.casms.ship.dto.request.CruiseChangeImpactRequest;
 import com.casms.ship.dto.response.CruiseReadinessResponse;
 import com.casms.ship.dto.response.CruiseResponse;
 import com.casms.ship.entity.*;
@@ -140,9 +141,43 @@ class CruiseServiceTest {
     }
 
     @Test
+    void createCruise_requiresPositiveExpectedPassengers() {
+        CruiseCreateRequest request = new CruiseCreateRequest();
+        BusinessException error =
+                assertThrows(BusinessException.class, () -> cruiseService.create(request));
+        assertEquals("EXPECTED_PASSENGERS_REQUIRED", error.getCode());
+        request.setExpectedPassengerCount(0);
+        error = assertThrows(BusinessException.class, () -> cruiseService.create(request));
+        assertEquals("EXPECTED_PASSENGERS_REQUIRED", error.getCode());
+        verify(cruiseRepository, never()).save(any());
+    }
+
+    @Test
+    void applyChange_retainingAssignedShipChecksOverlapAgainstProjectedReturn() {
+        testCruise.setShip(testShip);
+        Instant newDeparture = testCruise.getDepartureDatetime().plus(1, ChronoUnit.DAYS);
+        Instant newReturn = testCruise.getReturnDatetime().plus(1, ChronoUnit.DAYS);
+        var request = new CruiseChangeImpactRequest();
+        request.setNewDepartureDatetime(newDeparture);
+        when(cruiseRepository.findByIdForUpdate(cruiseId)).thenReturn(Optional.of(testCruise));
+        when(shipRepository.findByIdForUpdate(shipId)).thenReturn(Optional.of(testShip));
+        when(deckRepository.countByShipShipId(shipId)).thenReturn(1L);
+        when(cabinRepository.countByShipShipId(shipId)).thenReturn(1L);
+        when(cruiseRepository.existsOverlappingCruisesExcluding(
+                shipId, cruiseId, newDeparture, newReturn)).thenReturn(true);
+
+        BusinessException error = assertThrows(BusinessException.class,
+                () -> cruiseService.applyChange(cruiseId, request, null));
+
+        assertEquals("SHIP_SCHEDULE_CONFLICT", error.getCode());
+        verify(cruiseRepository, never()).save(any());
+    }
+
+    @Test
     @DisplayName("Tạo cruise bản nháp thành công")
     void createCruise_success() {
         CruiseCreateRequest request = new CruiseCreateRequest();
+        request.setExpectedPassengerCount(25);
         request.setCruiseName("Halong 3D2N Tour");
         request.setCruiseType(CruiseCruiseType.MULTI_DAYS);
         request.setDepartureDatetime(Instant.now().plus(5, ChronoUnit.DAYS));
@@ -165,6 +200,7 @@ class CruiseServiceTest {
 
         assertNotNull(response);
         assertEquals("CR-0001", response.getCruiseCode());
+        assertEquals(25, response.getExpectedPassengers());
         assertEquals(CruiseStatus.DRAFT, response.getStatus());
         verify(cruiseRepository).save(any(Cruise.class));
     }
@@ -173,6 +209,7 @@ class CruiseServiceTest {
     @DisplayName("Tạo cruise thất bại khi thời gian kết thúc trước thời gian khởi hành")
     void createCruise_invalidSchedule_throwsException() {
         CruiseCreateRequest request = new CruiseCreateRequest();
+        request.setExpectedPassengerCount(25);
         request.setDepartureDatetime(Instant.now().plus(10, ChronoUnit.DAYS));
         request.setReturnDatetime(
                 Instant.now().plus(5, ChronoUnit.DAYS)); // Return before departure

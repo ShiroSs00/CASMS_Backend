@@ -17,7 +17,9 @@ import com.casms.ship.entity.Itinerary;
 import com.casms.ship.enums.CruiseStatus;
 import com.casms.ship.enums.OperationalIssueStatus;
 import com.casms.ship.repository.*;
+import com.casms.ship.util.CruiseDuration;
 import com.casms.ship.util.PortTimeZoneHelper;
+import com.casms.trip.service.TripDepartureWindow;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.persistence.EntityManager;
@@ -207,6 +209,9 @@ public class CruiseDelayService {
             Duration delta = Duration.ofMinutes(request.delayMinutes());
             Instant newDeparture = departure.plus(delta);
             Instant newReturn = arrival.plus(delta);
+            if (!TripDepartureWindow.includes(cruise.getSourceTrip(), newDeparture)) {
+                blockers.add("DEPARTURE_OUTSIDE_TRIP_WINDOW");
+            }
             if (cruise.getShip() != null && cruises.existsOverlappingCruisesExcluding(
                     cruise.getShip().getShipId(), id, newDeparture, newReturn)) blockers.add("SHIP_SCHEDULE_CONFLICT");
             if (staff.findByCruise_CruiseId(id).stream().filter(member -> "ACTIVE".equals(member.getStatus()))
@@ -215,6 +220,12 @@ public class CruiseDelayService {
                 blockers.add("STAFF_SCHEDULE_CONFLICT");
             }
             project(projected, itinerary, delta, checks, blockers);
+            var source = cruise.getSourceTrip();
+            if (source != null && source.getEarliestDeparture() != null
+                    && (!Objects.equals(source.getDurationDays(), projected.getDurationDays())
+                            || !Objects.equals(source.getDurationNights(), projected.getDurationNights()))) {
+                blockers.add("SOURCE_DURATION_INVALID");
+            }
         }
         return new Preview(cruise.getRevision(), now,
                 departure == null ? 0 : Math.max(0, Duration.between(now, departure).toSeconds()),
@@ -233,6 +244,13 @@ public class CruiseDelayService {
                 .equals(newReturn.atZone(zone).toLocalDate())) blockers.add("SCHEDULE_DAY_BOUNDARY_CHANGED");
         schedule.setDepartureDatetime(newDeparture);
         schedule.setReturnDatetime(newReturn);
+        var durationZone = PortTimeZoneHelper.isValidTimeZoneId(schedule.getDurationTimeZoneId())
+                ? PortTimeZoneHelper.resolveZone(schedule.getDurationTimeZoneId()) : zone;
+        var duration = CruiseDuration.from(newDeparture, newReturn, durationZone);
+        schedule.setDurationDays(duration.days());
+        schedule.setDurationNights(duration.nights());
+        schedule.setElapsedDurationSeconds(duration.seconds());
+        schedule.setDurationTimeZoneId(durationZone.getId());
         boolean departureCovered = false;
         for (var day : schedule.getDays()) {
             day.setCalendarDate(day.getCalendarDate().plusDays(dayShift));

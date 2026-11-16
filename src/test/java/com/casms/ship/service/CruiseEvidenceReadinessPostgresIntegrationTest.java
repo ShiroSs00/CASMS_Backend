@@ -148,6 +148,7 @@ public class CruiseEvidenceReadinessPostgresIntegrationTest {
 
     private CruiseResponse createBasicReadyCruise(String name, Instant dep, Instant ret) {
         CruiseCreateRequest req = new CruiseCreateRequest();
+        req.setExpectedPassengerCount(1);
         req.setCruiseName(name);
         req.setDepartureDatetime(dep);
         req.setReturnDatetime(ret);
@@ -578,6 +579,7 @@ public class CruiseEvidenceReadinessPostgresIntegrationTest {
 
         // 2. Cố tình tạo Cruise B trùng lịch với testShip qua API -> Bị chặn ngay từ tầng khởi tạo
         CruiseCreateRequest reqB = new CruiseCreateRequest();
+        reqB.setExpectedPassengerCount(1);
         reqB.setCruiseName("Cruise Exclusive B (Trùng Tàu)");
         reqB.setDepartureDatetime(dep.plus(1, ChronoUnit.DAYS)); // Trùng khoảng [dep, ret]
         reqB.setReturnDatetime(ret.plus(1, ChronoUnit.DAYS));

@@ -1,6 +1,7 @@
 package com.casms.ship.dto.request;
 
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
+import com.fasterxml.jackson.annotation.JsonAlias;
 
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
@@ -12,4 +13,5 @@ public record EligibleCruiseShipsRequest(
         @NotNull UUID sourceVersionId,
         @NotNull @Positive Long expectedSourceVersionRevision,
         @NotNull Instant departureDatetime,
-        @NotNull @Positive @JsonDeserialize(using = PassengerCountDeserializer.class) Integer expectedPassengerCount) {}
+        @NotNull @Positive @JsonAlias("expectedPassengers")
+        @JsonDeserialize(using = PassengerCountDeserializer.class) Integer expectedPassengerCount) {}

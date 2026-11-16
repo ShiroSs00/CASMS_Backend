@@ -521,7 +521,9 @@ public class CruiseStopService {
 
     @Transactional
     public CruiseStopResponse recordActualArrival(UUID cruiseStopId, Instant actualArrival) {
-        CruiseStop stop = getStopById(cruiseStopId);
+        CruiseStop stop = cruiseStopRepository.findByIdForUpdate(cruiseStopId)
+                .orElseThrow(() -> new ResourceNotFoundException("CruiseStop", cruiseStopId));
+        validateActualTimes(actualArrival, stop.getActualDeparture());
         stop.setActualArrival(actualArrival);
         stop = cruiseStopRepository.save(stop);
         return mapToResponse(stop);
@@ -531,9 +533,20 @@ public class CruiseStopService {
     public CruiseStopResponse recordActualDeparture(UUID cruiseStopId, Instant actualDeparture) {
         CruiseStop stop = cruiseStopRepository.findByIdForUpdate(cruiseStopId)
                 .orElseThrow(() -> new ResourceNotFoundException("CruiseStop", cruiseStopId));
+        validateActualTimes(stop.getActualArrival(), actualDeparture);
         stop.setActualDeparture(actualDeparture);
         stop = cruiseStopRepository.save(stop);
         return mapToResponse(stop);
+    }
+
+    private static void validateActualTimes(Instant arrival, Instant departure) {
+        Instant now = Instant.now();
+        if ((arrival != null && arrival.isAfter(now))
+                || (departure != null && departure.isAfter(now))
+                || (arrival != null && departure != null && departure.isBefore(arrival))) {
+            throw new BusinessException("INVALID_ACTUAL_PORT_TIME",
+                    "Actual port times must be at or before now and departure must not precede arrival");
+        }
     }
 
     @Transactional
@@ -781,6 +794,7 @@ public class CruiseStopService {
         res.setPlannedDeparture(stop.getPlannedDeparture());
         res.setActualArrival(stop.getActualArrival());
         res.setActualDeparture(stop.getActualDeparture());
+        res.setPortCallState(PortCallBookingPolicy.stateAt(stop, Instant.now()).name());
         res.setCallType(stop.getCallType());
         res.setArrivalMethod(stop.getArrivalMethod());
         res.setAllAboardTime(stop.getAllAboardTime());

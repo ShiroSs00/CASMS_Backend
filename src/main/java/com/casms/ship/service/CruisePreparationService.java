@@ -7,6 +7,7 @@ import com.casms.activity.repository.ShoreExcursionRepository;
 import com.casms.common.exception.BusinessException;
 import com.casms.common.exception.ResourceNotFoundException;
 import com.casms.identity.repository.UserRepository;
+import com.casms.identity.enums.Role;
 import com.casms.security.principal.CasmsPrincipal;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -74,12 +75,32 @@ public class CruisePreparationService {
                 && actor.getUserId().equals(cruise.getPreparationCoordinator().getUserId());
     }
 
+    private boolean sectionSubmissionScope(Cruise cruise, String sectionCode, CasmsPrincipal actor) {
+        if (actor == null || !actor.hasAuthority("CRUISE_PREPARATION_SUBMIT")) return false;
+        return switch (sectionCode) {
+            case "HOTEL_CABIN", "ENTERTAINMENT_SHORE" -> submissionScope(cruise, actor);
+            case "TECHNICAL_NAUTICAL" -> actor.hasRole(Role.SHIP_MANAGER)
+                    && cruiseStaffRepository
+                            .findFirstByCruise_CruiseIdAndUser_UserIdAndStatusOrderByAssignedAtDesc(
+                                    cruise.getCruiseId(), actor.getUserId(), "ACTIVE")
+                            .filter(member -> "SHIP_MANAGER".equals(member.getRoleInCruise()))
+                            .isPresent();
+            case "SAFETY_CREW" -> actor.hasRole(Role.OPERATIONS_MANAGER)
+                    && Boolean.TRUE.equals(jdbc.queryForObject(
+                            "SELECT EXISTS(" + CruisePlanOperationsAccess.RECEIVED_PLANS + " AND cruise_id=?)",
+                            Boolean.class, cruise.getCruiseId()));
+            default -> false;
+        };
+    }
+
+    private static final Set<String> SUBMITTABLE = Set.of("NOT_STARTED", "IN_PROGRESS", "RETURNED", "REJECTED", "STALE");
+
     private List<String> allowedActions(
             CruisePreparationSection section, List<PreparationCheckItemDto> checks) {
         var actor = currentActor();
         var actions = new ArrayList<String>();
-        if (submissionScope(section.getCruise(), actor)
-                && Set.of("NOT_STARTED", "IN_PROGRESS", "RETURNED").contains(section.getStatus()))
+        if (sectionSubmissionScope(section.getCruise(), section.getSectionCode(), actor)
+                && SUBMITTABLE.contains(section.getStatus()))
             actions.add("SUBMIT");
         if (permitted(actor, false)) {
             if ("SUBMITTED".equals(section.getStatus())
@@ -90,6 +111,9 @@ public class CruisePreparationService {
             if (Set.of("SUBMITTED", "CONFIRMED").contains(section.getStatus())
                     && !actor.getUserId().equals(section.getSubmittedByUserId()))
                 actions.add("RETURN");
+            if ("SUBMITTED".equals(section.getStatus())
+                    && !actor.getUserId().equals(section.getSubmittedByUserId()))
+                actions.add("REJECT");
         }
         return actions;
     }
@@ -100,34 +124,52 @@ public class CruisePreparationService {
                 .orElseThrow(() -> new ResourceNotFoundException("Cruise", id));
     }
 
-    private boolean canEditOperatingBudget(Cruise cruise, CasmsPrincipal actor) {
-        return submissionScope(cruise, actor) && "DRAFT".equals(cruise.getStatus().name());
+    private static final String BUDGET_SECTION = "OPERATING_BUDGET";
+    private record BudgetReview(long revision, String status, UUID submittedBy, String reason) {}
+
+    public enum BudgetDecision { APPROVE, REJECT }
+
+    public record OperatingBudget(Long revision, String amountVnd, boolean canEdit,
+            long reviewRevision, String status, String rejectionReason) {}
+
+    private BudgetReview budgetReview(UUID cruiseId) {
+        return jdbc.query("""
+                SELECT revision,status,submitted_by,reason FROM "CruiseOperatingBudgetReview"
+                WHERE cruise_id=?
+                """, (rs, i) -> new BudgetReview(rs.getLong(1), rs.getString(2),
+                        rs.getObject(3, UUID.class), rs.getString(4)), cruiseId)
+                .stream().findFirst().orElse(new BudgetReview(0L, "DRAFT", null, null));
     }
 
-    public record OperatingBudget(Long revision, String amountVnd, boolean canEdit) {}
+    private boolean canEditOperatingBudget(Cruise cruise, CasmsPrincipal actor, BudgetReview review) {
+        return submissionScope(cruise, actor) && "DRAFT".equals(cruise.getStatus().name())
+                && Set.of("DRAFT", "REJECTED").contains(review.status());
+    }
 
-    private OperatingBudget budgetView(Cruise cruise, CasmsPrincipal actor) {
+    private OperatingBudget budgetView(Cruise cruise, CasmsPrincipal actor, BudgetReview review) {
         var amount = cruise.getOperatingBudgetVnd();
         return new OperatingBudget(cruise.getRevision(), amount == null ? null : amount.toPlainString(),
-                canEditOperatingBudget(cruise, actor));
+                canEditOperatingBudget(cruise, actor, review), review.revision(), review.status(), review.reason());
     }
 
     @Transactional(readOnly = true)
     public OperatingBudget operatingBudget(UUID cruiseId, CasmsPrincipal actor) {
         Cruise cruise = cruiseRepository.findById(cruiseId)
                 .orElseThrow(() -> new ResourceNotFoundException("Cruise", cruiseId));
-        if (!submissionScope(cruise, actor)) {
+        var review = budgetReview(cruiseId);
+        if (!submissionScope(cruise, actor) && !(permitted(actor, false) && review.revision() > 0)) {
             throw new BusinessException(HttpStatus.FORBIDDEN, "PREPARATION_SCOPE_FORBIDDEN",
                     "Ngân sách chỉ hiển thị cho người phụ trách tour.");
         }
-        return budgetView(cruise, actor);
+        return budgetView(cruise, actor, review);
     }
 
     @Transactional
     public OperatingBudget saveOperatingBudget(
             UUID cruiseId, Long expectedRevision, BigDecimal amount, CasmsPrincipal actor) {
         Cruise cruise = lockedCruise(cruiseId);
-        if (!canEditOperatingBudget(cruise, actor)) {
+        var review = budgetReview(cruiseId);
+        if (!canEditOperatingBudget(cruise, actor, review)) {
             throw new BusinessException(HttpStatus.FORBIDDEN, "PREPARATION_BUDGET_EDIT_FORBIDDEN",
                     "Người phụ trách chỉ có thể cập nhật ngân sách khi đang chuẩn bị tour.");
         }
@@ -135,9 +177,75 @@ public class CruisePreparationService {
             throw new BusinessException(HttpStatus.CONFLICT, "STALE_REVISION",
                     "Tour đã được cập nhật. Tải lại thông tin trước khi lưu ngân sách.");
         }
+        if (amount == null || amount.signum() <= 0 || amount.precision() > 18 || amount.scale() != 0) {
+            throw new BusinessException(HttpStatus.UNPROCESSABLE_ENTITY, "PREPARATION_BUDGET_INVALID",
+                    "Ngân sách phải là số VND nguyên dương, tối đa 18 chữ số.");
+        }
+        Long beforeRevision = cruise.getRevision();
+        var beforeAmount = cruise.getOperatingBudgetVnd();
         cruise.setOperatingBudgetVnd(amount);
         cruiseRepository.saveAndFlush(cruise);
-        return budgetView(cruise, actor);
+        var view = budgetView(cruise, actor, review);
+        var snapshot = new LinkedHashMap<String, Object>();
+        snapshot.put("previousAmountVnd", beforeAmount);
+        snapshot.put("amountVnd", amount);
+        snapshot.put("status", view.status());
+        event(cruise, BUDGET_SECTION, cruise.getRevision(), "BUDGET_SAVE", actor.getUserId(), null,
+                snapshot, review.status(), beforeRevision);
+        return view;
+    }
+
+    @Transactional
+    public OperatingBudget submitOperatingBudget(
+            UUID cruiseId, long expectedRevision, long expectedReviewRevision, UUID actorId) {
+        var actor = requireActor(actorId, true);
+        var cruise = lockedCruise(cruiseId);
+        var before = budgetReview(cruiseId);
+        if (!canEditOperatingBudget(cruise, actor, before))
+            throw new BusinessException(HttpStatus.FORBIDDEN, "PREPARATION_BUDGET_EDIT_FORBIDDEN",
+                    "Chỉ người phụ trách có thể nộp ngân sách đang soạn hoặc bị từ chối.");
+        if (!Objects.equals(cruise.getRevision(), expectedRevision) || before.revision() != expectedReviewRevision)
+            throw new BusinessException(HttpStatus.CONFLICT, "STALE_REVISION", "Ngân sách đã thay đổi.");
+        if (cruise.getOperatingBudgetVnd() == null)
+            throw new BusinessException(HttpStatus.UNPROCESSABLE_ENTITY, "PREPARATION_BUDGET_REQUIRED",
+                    "Lưu ngân sách trước khi nộp.");
+        var after = new BudgetReview(before.revision() + 1, "SUBMITTED", actorId, null);
+        saveBudgetReview(cruise, before, after, "BUDGET_SUBMIT", actorId);
+        return budgetView(cruise, actor, after);
+    }
+
+    @Transactional
+    public OperatingBudget reviewOperatingBudget(UUID cruiseId, long expectedReviewRevision,
+            BudgetDecision decision, String reason, UUID actorId) {
+        var actor = requireActor(actorId, false);
+        var cruise = lockedCruise(cruiseId);
+        var before = budgetReview(cruiseId);
+        if (before.revision() != expectedReviewRevision)
+            throw new BusinessException(HttpStatus.CONFLICT, "STALE_REVISION", "Ngân sách đã thay đổi.");
+        if (!"SUBMITTED".equals(before.status()) || !"DRAFT".equals(cruise.getStatus().name()))
+            throw new BusinessException(HttpStatus.CONFLICT, "PREPARATION_BUDGET_NOT_SUBMITTED",
+                    "Chỉ duyệt ngân sách đang chờ xem xét.");
+        if (actorId.equals(before.submittedBy()))
+            throw new BusinessException(HttpStatus.FORBIDDEN, "SELF_APPROVAL_FORBIDDEN",
+                    "Người nộp không được tự duyệt ngân sách.");
+        if (decision == null || decision == BudgetDecision.REJECT && (reason == null || reason.isBlank()))
+            throw new BusinessException(HttpStatus.UNPROCESSABLE_ENTITY, "PREPARATION_BUDGET_REASON_REQUIRED",
+                    "Chọn quyết định và nhập lý do khi từ chối ngân sách.");
+        var after = new BudgetReview(before.revision() + 1,
+                decision == BudgetDecision.APPROVE ? "APPROVED" : "REJECTED", before.submittedBy(), reason);
+        saveBudgetReview(cruise, before, after, "BUDGET_" + decision.name(), actorId);
+        return budgetView(cruise, actor, after);
+    }
+
+    private void saveBudgetReview(Cruise cruise, BudgetReview before, BudgetReview after, String action, UUID actorId) {
+        jdbc.update("""
+                INSERT INTO "CruiseOperatingBudgetReview"(cruise_id,revision,status,submitted_by,reason)
+                VALUES(?,?,?,?,?) ON CONFLICT (cruise_id) DO UPDATE SET revision=excluded.revision,
+                    status=excluded.status,submitted_by=excluded.submitted_by,reason=excluded.reason
+                """, cruise.getCruiseId(), after.revision(), after.status(), after.submittedBy(), after.reason());
+        event(cruise, BUDGET_SECTION, after.revision(), action, actorId, after.reason(),
+                Map.of("amountVnd", cruise.getOperatingBudgetVnd(), "status", after.status()),
+                before.status(), before.revision());
     }
 
     @Transactional(readOnly = true)
@@ -173,15 +281,28 @@ public class CruisePreparationService {
                     HttpStatus.FORBIDDEN,
                     "PREPARATION_ACTION_FORBIDDEN",
                     "Preparation read permission required");
-        cruiseRepository
+        var cruise = cruiseRepository
                 .findById(cruiseId)
                 .orElseThrow(() -> new ResourceNotFoundException("Cruise", cruiseId));
-        return jdbc.queryForList(
-                "SELECT event_id AS \"eventId\",section_code AS"
-                    + " \"sectionCode\",revision,action,actor_id AS \"actorId\",occurred_at AS"
-                    + " \"occurredAt\",reason FROM \"CruisePreparationEvent\" WHERE cruise_id=?"
-                    + " ORDER BY occurred_at,event_id",
-                cruiseId);
+        boolean budgetVisible = submissionScope(cruise, actor)
+                || permitted(actor, false) && budgetReview(cruiseId).revision() > 0;
+        return jdbc.queryForList("""
+                SELECT event_id AS "eventId", section_code AS "sectionCode", revision,
+                    previous_revision AS "previousRevision", previous_status AS "previousStatus",
+                    action, actor_id AS "actorId", occurred_at AS "occurredAt", reason,
+                    snapshot::text AS snapshot
+                FROM "CruisePreparationEvent"
+                WHERE cruise_id=? AND (? OR section_code IS DISTINCT FROM ?)
+                ORDER BY occurred_at,event_id
+                """, cruiseId, budgetVisible, BUDGET_SECTION).stream().map(row -> {
+            var result = new LinkedHashMap<>(row);
+            try {
+                result.put("snapshot", mapper.readTree((String) row.get("snapshot")));
+            } catch (com.fasterxml.jackson.core.JsonProcessingException ex) {
+                throw new IllegalStateException("Không đọc được lịch sử hồ sơ chuẩn bị", ex);
+            }
+            return (Map<String, Object>) result;
+        }).toList();
     }
 
     private void event(
@@ -192,11 +313,19 @@ public class CruisePreparationService {
             UUID actor,
             String reason,
             Object snapshot) {
+        event(cruise, section, revision, action, actor, reason, snapshot, null, null);
+    }
+
+    private void event(Cruise cruise, String section, Long revision, String action, UUID actor,
+            String reason, Object snapshot, String previousStatus, Long previousRevision) {
         try {
             jdbc.update(
-                    "INSERT INTO"
-                        + " \"CruisePreparationEvent\"(event_id,cruise_id,section_code,revision,action,actor_id,reason,snapshot)"
-                        + " VALUES(?,?,?,?,?,?,?,?::jsonb)",
+                    """
+                    INSERT INTO "CruisePreparationEvent"
+                    (event_id,cruise_id,section_code,revision,action,actor_id,reason,snapshot,
+                        previous_status,previous_revision)
+                    VALUES(?,?,?,?,?,?,?,?::jsonb,?,?)
+                    """,
                     UUID.randomUUID(),
                     cruise.getCruiseId(),
                     section,
@@ -204,7 +333,9 @@ public class CruisePreparationService {
                     action,
                     actor,
                     reason,
-                    mapper.writeValueAsString(snapshot));
+                    mapper.writeValueAsString(snapshot),
+                    previousStatus,
+                    previousRevision);
         } catch (com.fasterxml.jackson.core.JsonProcessingException ex) {
             throw new IllegalStateException(ex);
         }
@@ -265,11 +396,8 @@ public class CruisePreparationService {
                     "AUTH_REQUIRED",
                     "Authenticated preparation actor required");
         String permission = submission ? "CRUISE_PREPARATION_SUBMIT" : "CRUISE_PREPARATION_CONFIRM";
-        var role =
-                submission
-                        ? com.casms.identity.enums.Role.CRUISE_MANAGER
-                        : com.casms.identity.enums.Role.OPERATIONS_MANAGER;
-        if (!principal.hasRole(role) || !principal.hasAuthority(permission))
+        if ((!submission && !principal.hasRole(Role.OPERATIONS_MANAGER))
+                || !principal.hasAuthority(permission))
             throw new BusinessException(
                     HttpStatus.FORBIDDEN,
                     "PREPARATION_ACTION_FORBIDDEN",
@@ -291,7 +419,7 @@ public class CruisePreparationService {
 
     private record SectionTemplate(String code, String name, String ownerRole) {}
 
-    private static final Set<String> REVIEW_STATES = Set.of("SUBMITTED", "CONFIRMED", "RETURNED");
+    private static final Set<String> REVIEW_STATES = Set.of("SUBMITTED", "CONFIRMED", "RETURNED", "REJECTED", "STALE");
 
     public record GroupReviewSummary(UUID cruiseId, String cruiseCode, String cruiseName,
             String sectionCode, String sectionName, String status, Instant submittedAt) {}
@@ -478,17 +606,18 @@ public class CruisePreparationService {
                     HttpStatus.FORBIDDEN,
                     "PREPARATION_CRUISE_SCOPE_FORBIDDEN",
                     "Only the assigned preparation coordinator may submit the dossier");
+        var coordinatorSections = TEMPLATES.stream()
+                .filter(t -> Role.CRUISE_MANAGER.name().equals(t.ownerRole())).toList();
         if (expectedRevisions == null
-                || expectedRevisions.size() != TEMPLATES.size()
-                || TEMPLATES.stream().anyMatch(t -> !expectedRevisions.containsKey(t.code())))
+                || coordinatorSections.stream().anyMatch(t -> !expectedRevisions.containsKey(t.code())))
             throw new BusinessException(
                     HttpStatus.UNPROCESSABLE_ENTITY,
                     "PREPARATION_REVISIONS_REQUIRED",
-                    "Read all active preparation sections before submitting");
+                    "Read the coordinator's preparation sections before submitting");
         programPolicy.requireComplete(cruiseId);
         ensureSectionsInitialized(cruise);
         List<CruisePreparationSection> pending = new ArrayList<>();
-        for (var template : TEMPLATES) {
+        for (var template : coordinatorSections) {
             var section =
                     preparationSectionRepository
                             .findByCruiseCruiseIdAndSectionCodeForUpdate(cruiseId, template.code())
@@ -502,7 +631,7 @@ public class CruisePreparationService {
                         "STALE_REVISION",
                         "Preparation evidence changed before submission");
             if (!Set.of("SUBMITTED", "CONFIRMED").contains(section.getStatus())) {
-                if (!Set.of("NOT_STARTED", "IN_PROGRESS", "RETURNED").contains(section.getStatus()))
+                if (!SUBMITTABLE.contains(section.getStatus()))
                     throw new BusinessException(
                             HttpStatus.CONFLICT,
                             "INVALID_SECTION_STATUS",
@@ -537,11 +666,11 @@ public class CruisePreparationService {
             throw new ResourceNotFoundException("Active CruisePreparationSection", sectionCode);
         var actor = requireActor(actorId, true);
         Cruise cruise = lockedCruise(cruiseId);
-        if (!submissionScope(cruise, actor))
+        if (!sectionSubmissionScope(cruise, sectionCode, actor))
             throw new BusinessException(
                     HttpStatus.FORBIDDEN,
                     "PREPARATION_CRUISE_SCOPE_FORBIDDEN",
-                    "CRM is not assigned preparation coordinator for this Cruise");
+                    "Only the assigned preparation section owner can submit");
         ensureSectionsInitialized(cruise);
         CruisePreparationSection section =
                 preparationSectionRepository
@@ -563,7 +692,6 @@ public class CruisePreparationService {
                             request != null ? request.getExpectedRevision() : null));
         }
 
-        // ownerRole supplies professional data; CRM alone submits every section.
         if (request.getEvidence() == null || request.getEvidence().isBlank())
             throw new BusinessException(
                     HttpStatus.UNPROCESSABLE_ENTITY,
@@ -581,10 +709,11 @@ public class CruisePreparationService {
                     "Phân hệ này đã được phê duyệt xác nhận (CONFIRMED)");
         }
 
-        if (cruise.getOperatingBudgetVnd() == null) {
-            throw new BusinessException(HttpStatus.UNPROCESSABLE_ENTITY, "PREPARATION_BUDGET_REQUIRED",
-                    "Lưu ngân sách vận hành dự kiến trước khi gửi hồ sơ nhóm.");
-        }
+        if (!SUBMITTABLE.contains(section.getStatus()))
+            throw new BusinessException(HttpStatus.CONFLICT, "INVALID_SECTION_STATUS",
+                    "Preparation section cannot be submitted");
+        String previousStatus = section.getStatus();
+        Long previousRevision = section.getRevision();
         section.setStatus("SUBMITTED");
         section.setEvidence(request.getEvidence());
         if (request.getNotes() != null) {
@@ -607,7 +736,8 @@ public class CruisePreparationService {
                 "SUBMIT",
                 actorId,
                 null,
-                mapToResponse(section, computeCheckItems(cruise, sectionCode)));
+                mapToResponse(section, computeCheckItems(cruise, sectionCode)),
+                previousStatus, previousRevision);
         log.info(
                 "Submitted preparation section {} for cruise {} by user {}",
                 sectionCode,
@@ -682,6 +812,8 @@ public class CruisePreparationService {
                             + String.join(", ", failedRequired));
         }
 
+        String previousStatus = section.getStatus();
+        Long previousRevision = section.getRevision();
         section.setStatus("CONFIRMED");
         section.setConfirmedByUserId(actorId);
         section.setConfirmedByUsername(actor.getUsername());
@@ -699,7 +831,8 @@ public class CruisePreparationService {
                 "CONFIRM",
                 actorId,
                 request.getNotes(),
-                mapToResponse(section, checkItems));
+                mapToResponse(section, checkItems),
+                previousStatus, previousRevision);
         log.info(
                 "Confirmed preparation section {} for cruise {} by user {}",
                 sectionCode,
@@ -714,6 +847,18 @@ public class CruisePreparationService {
             String sectionCode,
             CruisePreparationReturnRequest request,
             UUID actorId) {
+        return decideSection(cruiseId, sectionCode, request, actorId, false);
+    }
+
+    @Transactional
+    public CruisePreparationSectionResponse rejectSection(
+            UUID cruiseId, String sectionCode, CruisePreparationReturnRequest request, UUID actorId) {
+        return decideSection(cruiseId, sectionCode, request, actorId, true);
+    }
+
+    private CruisePreparationSectionResponse decideSection(
+            UUID cruiseId, String sectionCode, CruisePreparationReturnRequest request,
+            UUID actorId, boolean reject) {
         if (TEMPLATES.stream().noneMatch(template -> template.code().equals(sectionCode)))
             throw new ResourceNotFoundException("Active CruisePreparationSection", sectionCode);
         requireActor(actorId, false);
@@ -746,19 +891,19 @@ public class CruisePreparationService {
 
         if (actorId.equals(section.getSubmittedByUserId())) {
             throw new BusinessException(HttpStatus.FORBIDDEN, "SELF_APPROVAL_FORBIDDEN",
-                    "Người nộp hồ sơ không thể tự trả lại nhóm mình đã gửi.");
+                    "Người nộp hồ sơ không thể tự quyết định nhóm mình đã gửi.");
         }
 
-        if (!"SUBMITTED".equalsIgnoreCase(section.getStatus())
-                && !"CONFIRMED".equalsIgnoreCase(section.getStatus())) {
+        if (!"SUBMITTED".equals(section.getStatus())
+                && (reject || !"CONFIRMED".equals(section.getStatus()))) {
             throw new BusinessException(
-                    "INVALID_SECTION_STATUS",
-                    "Chỉ có thể trả lại phân hệ ở trạng thái SUBMITTED hoặc CONFIRMED (hiện tại: "
-                            + section.getStatus()
-                            + ")");
+                    HttpStatus.CONFLICT, "INVALID_SECTION_STATUS",
+                    "Không thể quyết định hồ sơ ở trạng thái " + section.getStatus());
         }
 
-        section.setStatus("RETURNED");
+        String previousStatus = section.getStatus();
+        Long previousRevision = section.getRevision();
+        section.setStatus(reject ? "REJECTED" : "RETURNED");
         section.setReturnedByUserId(actorId);
         section.setReturnReason(request.getReason());
         section.setReturnedAt(Instant.now());
@@ -771,16 +916,16 @@ public class CruisePreparationService {
                 section.getCruise(),
                 sectionCode,
                 section.getRevision(),
-                "RETURN",
+                reject ? "REJECT" : "RETURN",
                 actorId,
                 request.getReason(),
-                mapToResponse(section, computeCheckItems(section.getCruise(), sectionCode)));
+                mapToResponse(section, computeCheckItems(section.getCruise(), sectionCode)),
+                previousStatus, previousRevision);
         log.info(
-                "Returned preparation section {} for cruise {} by user {} with reason: {}",
+                "Reviewed preparation section {} for cruise {} by user {}",
                 sectionCode,
                 cruiseId,
-                actorId,
-                request.getReason());
+                actorId);
         return mapToResponse(section, computeCheckItems(section.getCruise(), sectionCode));
     }
 
@@ -798,26 +943,25 @@ public class CruisePreparationService {
                     && !targetSectionCode.equalsIgnoreCase(section.getSectionCode())) {
                 continue;
             }
-            if ("CONFIRMED".equalsIgnoreCase(section.getStatus())) {
-                section.setStatus("RETURNED");
+            if (Set.of("SUBMITTED", "CONFIRMED").contains(section.getStatus())) {
+                String previousStatus = section.getStatus();
+                Long previousRevision = section.getRevision();
+                section.setStatus("STALE");
                 section.setReturnReason(
                         "Hủy xác nhận tự động do thay đổi thông tin chuyến khởi hành: " + reason);
                 section.setReturnedAt(Instant.now());
                 var actor = currentActor();
                 section.setReturnedByUserId(actor == null ? null : actor.getUserId());
                 preparationSectionRepository.saveAndFlush(section);
-                if (actor != null)
-                    event(
-                            section.getCruise(),
-                            section.getSectionCode(),
-                            section.getRevision(),
-                            "INVALIDATE",
-                            actor.getUserId(),
-                            reason,
-                            mapToResponse(
-                                    section,
-                                    computeCheckItems(
-                                            section.getCruise(), section.getSectionCode())));
+                event(
+                        section.getCruise(),
+                        section.getSectionCode(),
+                        section.getRevision(),
+                        "INVALIDATE",
+                        actor == null ? null : actor.getUserId(),
+                        reason,
+                        mapToResponse(section, computeCheckItems(section.getCruise(), section.getSectionCode())),
+                        previousStatus, previousRevision);
                 log.info(
                         "Invalidated confirmation for preparation section {} on cruise {}",
                         section.getSectionCode(),
@@ -1002,7 +1146,7 @@ public class CruisePreparationService {
                 .sectionCode(section.getSectionCode())
                 .sectionName(section.getSectionName())
                 .ownerRole(section.getOwnerRole())
-                .submitterRole("CRUISE_MANAGER")
+                .submitterRole(section.getOwnerRole())
                 .allowedActions(allowedActions(section, checkItems))
                 .status(section.getStatus())
                 .evidence(section.getEvidence())

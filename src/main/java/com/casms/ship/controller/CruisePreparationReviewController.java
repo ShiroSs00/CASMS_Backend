@@ -52,4 +52,13 @@ public class CruisePreparationReviewController {
         preparation.returnSection(cruiseId, sectionCode, request, principal.getUserId());
         return ApiResponse.success(null);
     }
+
+    @PostMapping("/{cruiseId}/{sectionCode}/reject")
+    public ApiResponse<Void> reject(@PathVariable UUID cruiseId, @PathVariable String sectionCode,
+            @Valid @RequestBody CruisePreparationReturnRequest request,
+            @AuthenticationPrincipal CasmsPrincipal principal) {
+        preparation.submittedGroupReview(cruiseId, sectionCode, principal.getUserId());
+        preparation.rejectSection(cruiseId, sectionCode, request, principal.getUserId());
+        return ApiResponse.success(null);
+    }
 }

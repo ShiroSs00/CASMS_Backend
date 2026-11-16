@@ -182,6 +182,11 @@ class ScheduleMaterializationServiceTest {
         assertEquals(testTrip.getTripId(), res.getSourceTripId());
         assertEquals(testVersion.getVersionId(), res.getSourceVersionId());
         assertEquals(3, res.getDays().size());
+        assertEquals(3, res.getDurationDays());
+        assertEquals(2, res.getDurationNights());
+        assertEquals("Asia/Ho_Chi_Minh", res.getDurationTimeZoneId());
+        assertEquals(java.time.Duration.between(departureTime, res.getReturnDatetime()).toSeconds(),
+                res.getElapsedDurationSeconds());
 
         // Ngày 1 có stop 1
         CruiseSchedulePreviewResponse.ProjectedDayDto day1 = res.getDays().get(0);
@@ -208,6 +213,19 @@ class ScheduleMaterializationServiceTest {
         // DB không bị ghi
         verify(itineraryRepository, never()).save(any());
         verify(cruiseStopRepository, never()).save(any());
+    }
+
+    @Test
+    void previewRejectsDepartureOutsideConfiguredWindowBeforeBuildingSchedule() {
+        testTrip.setEarliestDeparture(departureTime.plusSeconds(60));
+        testTrip.setLatestDeparture(departureTime.plusSeconds(120));
+        when(tripScheduleVersionRepository.findById(testVersion.getVersionId()))
+                .thenReturn(Optional.of(testVersion));
+
+        BusinessException error = assertThrows(BusinessException.class,
+                () -> materializationService.previewSchedule(testVersion.getVersionId(), departureTime));
+        assertEquals("DEPARTURE_OUTSIDE_TRIP_WINDOW", error.getCode());
+        verify(itineraryRepository, never()).save(any());
     }
 
     @Test

@@ -56,6 +56,12 @@ public class CruiseSchedulePreviewResponse {
     @Schema(description = "Thời điểm kết thúc / trở về dự kiến (ISO-8601)")
     private Instant returnDatetime;
 
+    @Schema(description = "Elapsed duration between planned departure and return in seconds")
+    private Long elapsedDurationSeconds;
+
+    @Schema(description = "IANA timezone used to count voyage calendar days and nights")
+    private String durationTimeZoneId;
+
     @Schema(description = "Số ngày hải trình", example = "3")
     private Integer durationDays;
 

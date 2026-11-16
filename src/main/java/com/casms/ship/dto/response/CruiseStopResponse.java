@@ -75,6 +75,8 @@ public class CruiseStopResponse {
     @Schema(description = "Thời gian thực tế đi", example = "2026-01-15T18:30:00Z")
     private Instant actualDeparture;
 
+    private String portCallState;
+
     @Schema(description = "Loại cuộc gọi cảng", example = "NORMAL")
     private CruiseStopCallType callType;
 

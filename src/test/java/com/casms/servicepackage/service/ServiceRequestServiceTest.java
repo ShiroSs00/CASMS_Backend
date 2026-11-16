@@ -42,6 +42,8 @@ class ServiceRequestServiceTest {
     @Mock ServiceUsageRepository usages;
     @Mock CruisePackageEntitlementService fareEntitlements;
     @Mock ShipServiceAvailability shipServices;
+    @Mock com.casms.ship.service.PortCallBookingPolicy portCallBooking;
+    @Mock com.casms.servicepackage.service.ServiceOperatingHours operatingHours;
     @InjectMocks ServiceRequestService service;
 
     @Test

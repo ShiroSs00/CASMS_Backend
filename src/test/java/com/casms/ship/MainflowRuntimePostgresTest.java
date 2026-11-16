@@ -238,7 +238,7 @@ class MainflowRuntimePostgresTest {
                                 .content(revision))
                 .andExpect(status().isGone());
         String cruiseBody =
-                "{\"cruiseName\":\"V4 departure\",\"sourceVersionId\":\""
+                "{\"expectedPassengers\":1,\"cruiseName\":\"V4 departure\",\"sourceVersionId\":\""
                         + v.getVersionId()
                         + "\",\"expectedSourceVersionRevision\":"
                         + finalized.path("revision").asLong()
@@ -1294,7 +1294,7 @@ class MainflowRuntimePostgresTest {
         var source = finalizedSource(crm);
         Long sourceRevision = source.getRevision();
         String body =
-                "{\"cruiseName\":\"Isolated copy scope\",\"sourceVersionId\":\""
+                "{\"expectedPassengers\":1,\"cruiseName\":\"Isolated copy scope\",\"sourceVersionId\":\""
                         + source.getVersionId()
                         + "\",\"expectedSourceVersionRevision\":"
                         + sourceRevision
@@ -1795,7 +1795,7 @@ class MainflowRuntimePostgresTest {
         String reviewer = token(com.casms.identity.enums.Role.OPERATIONS_MANAGER);
         var source = finalizedSource(maker);
         String body =
-                "{\"cruiseName\":\"Review audit fixture\",\"sourceVersionId\":\""
+                "{\"expectedPassengers\":1,\"cruiseName\":\"Review audit fixture\",\"sourceVersionId\":\""
                         + source.getVersionId()
                         + "\",\"expectedSourceVersionRevision\":"
                         + source.getRevision()
@@ -2018,7 +2018,7 @@ class MainflowRuntimePostgresTest {
                 ops = token(com.casms.identity.enums.Role.OPERATIONS_MANAGER);
         var source = finalizedSource(crm);
         String body =
-                "{\"cruiseName\":\"Commercial tour fixture\",\"sourceVersionId\":\""
+                "{\"expectedPassengers\":1,\"cruiseName\":\"Commercial tour fixture\",\"sourceVersionId\":\""
                         + source.getVersionId()
                         + "\",\"expectedSourceVersionRevision\":"
                         + source.getRevision()
@@ -2157,7 +2157,7 @@ class MainflowRuntimePostgresTest {
                 ops = token(com.casms.identity.enums.Role.OPERATIONS_MANAGER);
         var source = finalizedSource(crm);
         String body =
-                "{\"cruiseName\":\"Scoped CRUD signoff\",\"sourceVersionId\":\""
+                "{\"expectedPassengers\":1,\"cruiseName\":\"Scoped CRUD signoff\",\"sourceVersionId\":\""
                         + source.getVersionId()
                         + "\",\"expectedSourceVersionRevision\":"
                         + source.getRevision()
@@ -2321,7 +2321,7 @@ class MainflowRuntimePostgresTest {
                 crm = token(com.casms.identity.enums.Role.CRUISE_MANAGER);
         var source = finalizedSource(maker);
         String body =
-                "{\"cruiseName\":\"Pricing review fixture\",\"sourceVersionId\":\""
+                "{\"expectedPassengers\":1,\"cruiseName\":\"Pricing review fixture\",\"sourceVersionId\":\""
                         + source.getVersionId()
                         + "\",\"expectedSourceVersionRevision\":"
                         + source.getRevision()
@@ -2554,7 +2554,7 @@ class MainflowRuntimePostgresTest {
         var source = finalizedSource(crm, true);
         String sourceHash = source.getContentHash();
         String body =
-                "{\"cruiseName\":\"Unknown input fixture\",\"sourceVersionId\":\""
+                "{\"expectedPassengers\":1,\"cruiseName\":\"Unknown input fixture\",\"sourceVersionId\":\""
                         + source.getVersionId()
                         + "\",\"expectedSourceVersionRevision\":"
                         + source.getRevision()
@@ -2657,7 +2657,7 @@ class MainflowRuntimePostgresTest {
         var source = finalizedSource(crm, true, true);
         String sourceHash = source.getContentHash();
         String body =
-                "{\"cruiseName\":\"Repeated occurrence proof\",\"sourceVersionId\":\""
+                "{\"expectedPassengers\":1,\"cruiseName\":\"Repeated occurrence proof\",\"sourceVersionId\":\""
                         + source.getVersionId()
                         + "\",\"expectedSourceVersionRevision\":"
                         + source.getRevision()
@@ -2722,7 +2722,7 @@ class MainflowRuntimePostgresTest {
                 ship = token(com.casms.identity.enums.Role.SHIP_MANAGER);
         var source = finalizedSource(crm);
         String body =
-                "{\"cruiseName\":\"Coordinator scope proof\",\"sourceVersionId\":\""
+                "{\"expectedPassengers\":1,\"cruiseName\":\"Coordinator scope proof\",\"sourceVersionId\":\""
                         + source.getVersionId()
                         + "\",\"expectedSourceVersionRevision\":"
                         + source.getRevision()

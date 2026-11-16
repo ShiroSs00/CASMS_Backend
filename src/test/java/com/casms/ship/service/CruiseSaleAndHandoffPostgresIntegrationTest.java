@@ -268,6 +268,7 @@ public class CruiseSaleAndHandoffPostgresIntegrationTest {
 
     private CruiseResponse createReadyCruise(String name, Instant dep, Instant ret) {
         CruiseCreateRequest req = new CruiseCreateRequest();
+        req.setExpectedPassengerCount(1);
         req.setCruiseName(name);
         req.setDepartureDatetime(dep);
         req.setReturnDatetime(ret);
@@ -1253,6 +1254,7 @@ public class CruiseSaleAndHandoffPostgresIntegrationTest {
         Instant ret = dep.plus(3, ChronoUnit.DAYS);
 
         CruiseCreateRequest createReq = new CruiseCreateRequest();
+        createReq.setExpectedPassengerCount(1);
         createReq.setCruiseName("Downstream Handoff Cruise");
         createReq.setDepartureDatetime(dep);
         createReq.setReturnDatetime(ret);

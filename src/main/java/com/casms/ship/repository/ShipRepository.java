@@ -73,6 +73,8 @@ public interface ShipRepository extends JpaRepository<Ship, UUID> {
     @Query("""
             SELECT s FROM Ship s
             WHERE s.status IN ('READY', 'IN_SERVICE') AND s.totalCapacity >= :passengers
+              AND EXISTS (SELECT d.deckId FROM Deck d WHERE d.ship = s)
+              AND EXISTS (SELECT c.cabinId FROM Cabin c WHERE c.ship = s)
               AND NOT EXISTS (SELECT c.cruiseId FROM Cruise c WHERE c.ship = s
                   AND c.status NOT IN ('CANCELLED', 'COMPLETED')
                   AND c.departureDatetime < :end AND c.returnDatetime > :start)

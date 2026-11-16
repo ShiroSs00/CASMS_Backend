@@ -2,6 +2,7 @@ package com.casms.ship.dto.response;
 
 import com.casms.ship.enums.CruiseCruiseType;
 import com.casms.ship.enums.CruiseStatus;
+import com.fasterxml.jackson.annotation.JsonProperty;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 
@@ -15,6 +16,9 @@ import java.util.UUID;
 public class CruiseResponse {
     private String saleCurrency;
     private Integer expectedPassengerCount;
+
+    @JsonProperty("expectedPassengers")
+    public Integer getExpectedPassengers() { return expectedPassengerCount; }
 
     @Schema(
             description = "ID chuyến khởi hành (UUID)",

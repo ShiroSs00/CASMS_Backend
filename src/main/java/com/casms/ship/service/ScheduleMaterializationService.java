@@ -24,6 +24,7 @@ import com.casms.ship.repository.CruiseStopRepository;
 import com.casms.ship.repository.ItineraryDayRepository;
 import com.casms.ship.repository.ItineraryRepository;
 import com.casms.ship.repository.PortRepository;
+import com.casms.ship.util.CruiseDuration;
 import com.casms.ship.util.PortTimeZoneHelper;
 import com.casms.trip.entity.Trip;
 import com.casms.trip.entity.TripPlanDay;
@@ -35,6 +36,7 @@ import com.casms.trip.enums.TripScheduleVersionStatus;
 import com.casms.trip.enums.TripStatus;
 import com.casms.trip.repository.TripScheduleVersionRepository;
 import com.casms.trip.service.CountryScopeValidator;
+import com.casms.trip.service.TripDepartureWindow;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -626,6 +628,8 @@ public class ScheduleMaterializationService {
 
         Trip sourceTrip = cruise.getSourceTrip();
         TripScheduleVersion sourceVersion = cruise.getSourceVersion();
+        ZoneId durationZone = durationZone(cruise.getDeparturePort(), itinerary.getDeparturePortFacts());
+        CruiseDuration duration = durationFor(cruise, durationZone);
 
         return CruiseSchedulePreviewResponse.builder()
                 .itineraryId(itinerary.getItineraryId())
@@ -642,8 +646,10 @@ public class ScheduleMaterializationService {
                 .sourceVersionRevision(cruise.getSourceVersionRevision())
                 .departureDatetime(cruise.getDepartureDatetime())
                 .returnDatetime(cruise.getReturnDatetime())
-                .durationDays(days.size())
-                .durationNights(itinerary.getSourceDurationNights())
+                .durationDays(duration != null ? duration.days() : days.size())
+                .durationNights(duration != null ? Integer.valueOf(duration.nights()) : itinerary.getSourceDurationNights())
+                .elapsedDurationSeconds(duration != null ? duration.seconds() : null)
+                .durationTimeZoneId(duration != null ? durationZone.getId() : null)
                 .departurePortId(
                         cruise.getDeparturePort() != null
                                 ? cruise.getDeparturePort().getPortId()
@@ -673,6 +679,20 @@ public class ScheduleMaterializationService {
     /**
      * Thuật toán tính toán chuẩn xác ngày, giờ, múi giờ giữa relative version và actual schedule.
      */
+    private static ZoneId durationZone(Port port, com.casms.ship.dto.PortFacts facts) {
+        String zoneId = facts != null ? facts.timeZoneId() : port != null ? port.getTimeZoneId() : null;
+        return PortTimeZoneHelper.isValidTimeZoneId(zoneId)
+                ? PortTimeZoneHelper.resolveZone(zoneId)
+                : PortTimeZoneHelper.SHIP_TIME_ZONE;
+    }
+
+    private static CruiseDuration durationFor(Cruise cruise, ZoneId zone) {
+        Instant departure = cruise.getDepartureDatetime();
+        Instant arrival = cruise.getReturnDatetime();
+        return departure != null && arrival != null && arrival.isAfter(departure)
+                ? CruiseDuration.from(departure, arrival, zone) : null;
+    }
+
     private int sourceDurationDays(TripScheduleVersion version) {
         Trip trip = version.getTrip();
         Integer days = trip == null ? null : trip.getDurationDays();
@@ -728,6 +748,7 @@ public class ScheduleMaterializationService {
         }
         int totalDays = sourceDurationDays(version);
         Trip trip = version.getTrip();
+        TripDepartureWindow.requireWithin(trip, departureDatetime);
         List<TripPlanDay> planDays =
                 version.getDays() != null ? new ArrayList<>(version.getDays()) : new ArrayList<>();
         planDays.sort(
@@ -776,6 +797,11 @@ public class ScheduleMaterializationService {
                         : startsAtSea ? null : firstStop.getPort();
         if (departurePort != null)
             CountryScopeValidator.validatePort(departurePort, trip, "Cảng khởi hành");
+
+        var departurePortFacts = departureDay != null && departureDay.getDeparturePort() != null
+                ? departureDay.getDeparturePortFacts()
+                : firstStop == null ? null : firstStop.getPortFacts();
+        ZoneId durationZone = durationZone(departurePort, departurePortFacts);
 
         // BE-04 / G06: Giờ cơ sở tàu (Ship Base Timezone) luôn là Asia/Ho_Chi_Minh
         ZoneId shipZone = PortTimeZoneHelper.SHIP_TIME_ZONE;
@@ -1013,6 +1039,8 @@ public class ScheduleMaterializationService {
         }
 
         Instant projectedReturn = projectedStops.getLast().getPlannedDeparture();
+        boolean enforceNewTiming = trip.getEarliestDeparture() != null;
+        Instant evaluatedAt = Instant.now();
         if (!projectedReturn.isAfter(departureDatetime))
             throw new BusinessException("INVALID_SCHEDULE", "Return must be after departure");
         Map<Integer, List<CruiseSchedulePreviewResponse.ProjectedEntryDto>> dayEntriesMap =
@@ -1108,6 +1136,7 @@ public class ScheduleMaterializationService {
                                     Objects.toString(entry.getTitle(), ""),
                                     "entryId",
                                     entry.getEntryId()));
+                Instant activityCutoff = projectedReturn;
                 if (entry.getKind() == TripPlanEntryKind.SHORE_EXCURSION) {
                     var sourceStop = entry.getStop();
                     var projectedStop =
@@ -1146,6 +1175,12 @@ public class ScheduleMaterializationService {
                                         Objects.toString(entry.getTitle(), ""),
                                         "entryId",
                                         entry.getEntryId()));
+                    if (!Boolean.TRUE.equals(projectedStop.getIsDisembarkation())) {
+                        activityCutoff = limit;
+                    }
+                }
+                if (enforceNewTiming) {
+                    ActivityTimingPolicy.requireNewSlot(startInst, endInst, activityCutoff, evaluatedAt);
                 }
             }
 
@@ -1178,17 +1213,18 @@ public class ScheduleMaterializationService {
             dayEntriesMap.computeIfAbsent(startDay, k -> new ArrayList<>()).add(entryDto);
         }
 
-        int projectedDayCount =
-                Math.toIntExact(
-                        java.time.temporal.ChronoUnit.DAYS.between(
-                                        day1Date, projectedReturn.atZone(shipZone).toLocalDate())
-                                + 1);
-        if (projectedDayCount != totalDays) {
+        CruiseDuration duration = CruiseDuration.from(departureDatetime, projectedReturn, durationZone);
+        int sourceCalendarDays = enforceNewTiming ? duration.days()
+                : CruiseDuration.from(departureDatetime, projectedReturn, shipZone).days();
+        if (sourceCalendarDays != totalDays
+                || (enforceNewTiming && duration.nights() != trip.getDurationNights())) {
             throw new BusinessException(
                     org.springframework.http.HttpStatus.UNPROCESSABLE_ENTITY,
                     "SOURCE_DURATION_INVALID",
-                    "Ngày kết thúc theo giờ tàu không khớp số ngày của nguồn; cần đối soát lịch"
-                        + " trước khi tạo chuyến.");
+                    "Số ngày và số đêm theo múi giờ cảng khởi hành không khớp mẫu lịch trình.",
+                    Map.of("durationDays", duration.days(), "durationNights", duration.nights(),
+                            "sourceDurationDays", totalDays, "sourceDurationNights", trip.getDurationNights(),
+                            "durationTimeZoneId", durationZone.getId()));
         }
         List<CruiseSchedulePreviewResponse.ProjectedDayDto> projectedDays = new ArrayList<>();
         for (int d = 1; d <= totalDays; d++) {
@@ -1289,8 +1325,10 @@ public class ScheduleMaterializationService {
                 .sourceVersionRevision(version.getRevision())
                 .departureDatetime(departureDatetime)
                 .returnDatetime(returnDatetime)
-                .durationDays(trip.getDurationDays())
-                .durationNights(trip.getDurationNights())
+                .durationDays(duration.days())
+                .durationNights(duration.nights())
+                .elapsedDurationSeconds(duration.seconds())
+                .durationTimeZoneId(durationZone.getId())
                 .departurePortId(departurePort == null ? null : departurePort.getPortId())
                 .departurePortName(
                         departurePort == null

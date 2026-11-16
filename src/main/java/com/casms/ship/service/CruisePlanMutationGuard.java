@@ -112,6 +112,7 @@ public class CruisePlanMutationGuard {
                                                 "submitSection",
                                                 "confirmSection",
                                                 "returnSection",
+                                                "rejectSection",
                                                 "invalidateSignoffs")
                                         .contains(method);
         if (!operational && !WRITERS.getOrDefault(type, Set.of()).contains(method))

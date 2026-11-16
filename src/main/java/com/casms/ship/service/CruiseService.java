@@ -181,15 +181,43 @@ public class CruiseService {
         }
     }
 
+    private record ShipConfiguration(long decks, long cabins) {}
+
+    private ShipConfiguration requireShipSchedule(
+            Ship ship, Integer passengers, UUID cruiseId, Instant departure, Instant arrival) {
+        if (departure == null || arrival == null || !arrival.isAfter(departure)) {
+            throw new BusinessException("INVALID_SCHEDULE",
+                    "Departure and return datetimes are required; return must be after departure");
+        }
+        requirePassengerCapacity(ship, passengers);
+        UUID shipId = ship.getShipId();
+        long decks = deckRepository.countByShipShipId(shipId);
+        long cabins = cabinRepository.countByShipShipId(shipId);
+        if (decks == 0 || cabins == 0) {
+            throw new BusinessException("SHIP_CONFIGURATION_INVALID",
+                    "Ship is not fully configured with decks and cabins");
+        }
+        boolean overlaps = cruiseId == null
+                ? cruiseRepository.existsOverlappingCruises(shipId, departure, arrival)
+                : cruiseRepository.existsOverlappingCruisesExcluding(shipId, cruiseId, departure, arrival);
+        if (overlaps) {
+            throw new BusinessException("SHIP_SCHEDULE_CONFLICT",
+                    "Ship has an overlapping active cruise during this period");
+        }
+        return new ShipConfiguration(decks, cabins);
+    }
+
+    private void requireOperationalShip(Ship ship, String errorCode) {
+        if (!ShipStatus.isOperational(ship.getStatus())) {
+            throw new BusinessException(errorCode, "Selected ship is not in an operational status");
+        }
+    }
+
     @Transactional
     public CruiseResponse create(CruiseCreateRequest request) {
         Integer passengers = request.getExpectedPassengerCount();
-        if ((Integer.valueOf(3).equals(request.getCreationPayloadVersion()) && passengers == null)
-                || (passengers != null && passengers < 1)) {
+        if (passengers == null || passengers < 1) {
             throw new BusinessException("EXPECTED_PASSENGERS_REQUIRED", "Nhập số khách dự kiến là số nguyên dương.");
-        }
-        if (passengers != null && (request.getSourceVersionId() == null || request.getShipId() == null)) {
-            throw new BusinessException("SHIP_REQUIRED_FOR_PASSENGERS", "Chọn mẫu lịch trình và tàu phân công cho số khách dự kiến.");
         }
         if (request.getDepartureDatetime() == null) {
             throw new BusinessException("INVALID_SCHEDULE", "Departure datetime is required");
@@ -311,21 +339,9 @@ public class CruiseService {
                                             new ResourceNotFoundException(
                                                     "Ship", request.getShipId()));
 
-            if (!ShipStatus.isOperational(ship.getStatus())) {
-                throw new BusinessException(
-                        "SHIP_NOT_ACTIVE", "Assigned ship must be READY or IN_SERVICE");
-            }
-
-            requirePassengerCapacity(ship, passengers);
-
-            if (cruiseRepository.existsOverlappingCruises(
-                    ship.getShipId(),
-                    request.getDepartureDatetime(),
-                    request.getReturnDatetime())) {
-                throw new BusinessException(
-                        "SHIP_SCHEDULE_CONFLICT",
-                        "Ship already has an overlapping active cruise in this schedule window");
-            }
+            requireOperationalShip(ship, "SHIP_NOT_ACTIVE");
+            requireShipSchedule(ship, passengers, null,
+                    request.getDepartureDatetime(), request.getReturnDatetime());
         }
 
         // BE-11: Validate departure + return port country scope when sourceVersion is present
@@ -633,6 +649,10 @@ public class CruiseService {
                     "Departure and return datetimes are required; return must be after departure");
         }
 
+        if (!Objects.equals(oldDep, effectiveDeparture)) {
+            com.casms.trip.service.TripDepartureWindow.requireWithin(cruise.getSourceTrip(), effectiveDeparture);
+        }
+
         if (request.getShipId() != null) {
             Ship targetShip =
                     shipRepository
@@ -641,21 +661,9 @@ public class CruiseService {
                                     () ->
                                             new ResourceNotFoundException(
                                                     "Ship", request.getShipId()));
-            if (targetShip.getStatus() != ShipStatus.READY
-                    && targetShip.getStatus() != ShipStatus.IN_SERVICE) {
-                throw new BusinessException(
-                        "SHIP_NOT_OPERATIONAL", "Selected ship is not in an operational status");
-            }
-            requirePassengerCapacity(targetShip, cruise.getExpectedPassengerCount());
-            if (cruiseRepository.existsOverlappingCruisesExcluding(
-                    targetShip.getShipId(),
-                    cruise.getCruiseId(),
-                    effectiveDeparture,
-                    effectiveReturn)) {
-                throw new BusinessException(
-                        "SHIP_SCHEDULE_CONFLICT",
-                        "Selected ship already has an overlapping active cruise");
-            }
+            requireOperationalShip(targetShip, "SHIP_NOT_OPERATIONAL");
+            requireShipSchedule(targetShip, cruise.getExpectedPassengerCount(), cruise.getCruiseId(),
+                    effectiveDeparture, effectiveReturn);
             cruise.setShip(targetShip);
         } else if (cruise.getShip() != null
                 && (request.getDepartureDatetime() != null
@@ -663,16 +671,9 @@ public class CruiseService {
             UUID assignedShipId = cruise.getShip().getShipId();
             Ship assignedShip = shipRepository.findByIdForUpdate(assignedShipId)
                     .orElseThrow(() -> new ResourceNotFoundException("Ship", assignedShipId));
-            requirePassengerCapacity(assignedShip, cruise.getExpectedPassengerCount());
-            if (cruiseRepository.existsOverlappingCruisesExcluding(
-                    cruise.getShip().getShipId(),
-                    cruise.getCruiseId(),
-                    effectiveDeparture,
-                    effectiveReturn)) {
-                throw new BusinessException(
-                        "SHIP_SCHEDULE_CONFLICT",
-                        "Assigned ship has an overlapping active cruise in the updated schedule");
-            }
+            requireOperationalShip(assignedShip, "SHIP_NOT_OPERATIONAL");
+            requireShipSchedule(assignedShip, cruise.getExpectedPassengerCount(), cruise.getCruiseId(),
+                    effectiveDeparture, effectiveReturn);
         }
 
         if ((cruise.getSourceVersion() != null || cruise.getSourceTrip() != null)
@@ -866,25 +867,8 @@ public class CruiseService {
                     "Chuyến khởi hành chưa có đầy đủ thời gian khởi hành và kết thúc");
         }
 
-        requirePassengerCapacity(ship, cruise.getExpectedPassengerCount());
-        long decks = deckRepository.countByShipShipId(shipId);
-        long cabins = cabinRepository.countByShipShipId(shipId);
-        if (decks == 0 || cabins == 0) {
-            throw new BusinessException(
-                    "SHIP_CONFIGURATION_INVALID",
-                    "Ship is not fully configured with decks (found: "
-                            + decks
-                            + ") and cabins (found: "
-                            + cabins
-                            + ")");
-        }
-
-        if (cruiseRepository.existsOverlappingCruisesExcluding(
-                shipId, cruiseId, cruise.getDepartureDatetime(), cruise.getReturnDatetime())) {
-            throw new BusinessException(
-                    "SHIP_SCHEDULE_CONFLICT",
-                    "Ship has an overlapping active cruise during this period");
-        }
+        var configuration = requireShipSchedule(ship, cruise.getExpectedPassengerCount(), cruiseId,
+                cruise.getDepartureDatetime(), cruise.getReturnDatetime());
 
         cruise.setShip(ship);
         cruise = cruiseRepository.save(cruise);
@@ -901,7 +885,7 @@ public class CruiseService {
                 "Ship=UNASSIGNED",
                 "Ship=" + ship.getShipName() + " (" + shipId + ")",
                 "Gán tàu phục vụ chuyến khởi hành",
-                "Decks=" + decks + ", Cabins=" + cabins);
+                "Decks=" + configuration.decks() + ", Cabins=" + configuration.cabins());
 
         return mapToResponse(cruise);
     }
@@ -958,25 +942,8 @@ public class CruiseService {
             throw new BusinessException("SHIP_NOT_ACTIVE", "New ship must be READY or IN_SERVICE");
         }
 
-        requirePassengerCapacity(newShip, cruise.getExpectedPassengerCount());
-        long decks = deckRepository.countByShipShipId(newShipId);
-        long cabins = cabinRepository.countByShipShipId(newShipId);
-        if (decks == 0 || cabins == 0) {
-            throw new BusinessException(
-                    "SHIP_CONFIGURATION_INVALID",
-                    "New ship is not fully configured with decks (found: "
-                            + decks
-                            + ") and cabins (found: "
-                            + cabins
-                            + ")");
-        }
-
-        if (cruiseRepository.existsOverlappingCruisesExcluding(
-                newShipId, cruiseId, cruise.getDepartureDatetime(), cruise.getReturnDatetime())) {
-            throw new BusinessException(
-                    "SHIP_SCHEDULE_CONFLICT",
-                    "New ship has an overlapping active cruise during this period");
-        }
+        var configuration = requireShipSchedule(newShip, cruise.getExpectedPassengerCount(), cruiseId,
+                cruise.getDepartureDatetime(), cruise.getReturnDatetime());
 
         long bookedPassengers =
                 bookingPassengerRepository.countActivePassengersByCruiseId(cruiseId);
@@ -1014,9 +981,9 @@ public class CruiseService {
                 "Ship=" + newShip.getShipName() + " (" + newShipId + ")",
                 "Thay đổi tàu phục vụ chuyến khởi hành",
                 "Decks="
-                        + decks
+                        + configuration.decks()
                         + ", Cabins="
-                        + cabins
+                        + configuration.cabins()
                         + ", Capacity="
                         + newShip.getTotalCapacity());
 
@@ -4143,10 +4110,17 @@ public class CruiseService {
 
         UUID effectiveShipId = request.getNewShipId() != null ? request.getNewShipId()
                 : cruise.getShip() == null ? null : cruise.getShip().getShipId();
+        var window = CruiseChangeWindow.resolve(cruise, request);
+        boolean scheduleChanged = window.differsFrom(cruise);
+        if (!Objects.equals(cruise.getDepartureDatetime(), window.departure())) {
+            com.casms.trip.service.TripDepartureWindow.requireWithin(cruise.getSourceTrip(), window.departure());
+        }
         Ship lockedShip = effectiveShipId == null ? null : shipRepository.findByIdForUpdate(effectiveShipId)
                 .orElseThrow(() -> new ResourceNotFoundException("Ship", effectiveShipId));
-        if (lockedShip != null) {
-            requirePassengerCapacity(lockedShip, cruise.getExpectedPassengerCount());
+        if (lockedShip != null && (scheduleChanged || request.getNewShipId() != null)) {
+            requireOperationalShip(lockedShip, "SHIP_NOT_OPERATIONAL");
+            requireShipSchedule(lockedShip, cruise.getExpectedPassengerCount(), cruiseId,
+                    window.departure(), window.arrival());
         }
 
         // 1. Kiểm tra lại dữ liệu mới nhất (không tin preview cũ)
@@ -4253,20 +4227,11 @@ public class CruiseService {
         }
 
         // 4. Thay đổi thời gian và dời lịch
-        if (request.getNewDepartureDatetime() != null) {
+        if (scheduleChanged) {
             Instant oldDep = cruise.getDepartureDatetime();
-            Instant newDep = request.getNewDepartureDatetime();
-            Instant newRet =
-                    request.getNewReturnDatetime() != null
-                            ? request.getNewReturnDatetime()
-                            : (oldDep != null && cruise.getReturnDatetime() != null
-                                    ? newDep.plus(
-                                            Duration.between(oldDep, cruise.getReturnDatetime()))
-                                    : newDep.plusSeconds(86400 * 3));
-
-            cruise.setDepartureDatetime(newDep);
-            cruise.setReturnDatetime(newRet);
-            shiftScheduleAndPrograms(cruise, oldDep, newDep);
+            cruise.setDepartureDatetime(window.departure());
+            cruise.setReturnDatetime(window.arrival());
+            shiftScheduleAndPrograms(cruise, oldDep, window.departure());
         }
 
         cruise = cruiseRepository.save(cruise);

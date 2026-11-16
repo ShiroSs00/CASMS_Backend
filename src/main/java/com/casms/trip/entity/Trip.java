@@ -44,6 +44,12 @@ public class Trip {
     @Column(name = "duration_nights", nullable = false)
     private Integer durationNights;
 
+    @Column(name = "earliest_departure")
+    private Instant earliestDeparture;
+
+    @Column(name = "latest_departure")
+    private Instant latestDeparture;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "duration_group", length = 20)
     private TripDurationGroup durationGroup;

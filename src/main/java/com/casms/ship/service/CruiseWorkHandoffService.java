@@ -34,6 +34,26 @@ public class CruiseWorkHandoffService {
             FROM "CruiseWorkHandoff" w JOIN "Cruise" c USING(cruise_id) LEFT JOIN "User" u ON u.user_id=w.assignee_id
             """;
 
+    private record HandoffRevision(String status, long revision) {}
+
+    private HandoffRevision currentRevision(UUID cruiseId, Group group) {
+        return jdbc.query("""
+                SELECT status,revision FROM "CruiseWorkHandoff" WHERE cruise_id=? AND work_group=?
+                """, (rs, index) -> new HandoffRevision(rs.getString(1), rs.getLong(2)), cruiseId, group.name())
+                .stream().findFirst().orElse(new HandoffRevision(null, 0));
+    }
+
+    private void recordEvent(UUID cruiseId, Group group, CasmsPrincipal actor, String action,
+            HandoffRevision previous) {
+        jdbc.update("""
+                INSERT INTO "CruisePreparationEvent"
+                    (event_id,cruise_id,section_code,revision,action,actor_id,snapshot,previous_status,previous_revision)
+                SELECT ?,cruise_id,?,revision,?,?,to_jsonb(w),?,?
+                FROM "CruiseWorkHandoff" w WHERE cruise_id=? AND work_group=?
+                """, UUID.randomUUID(), "HANDOFF_" + group.name(), "HANDOFF_" + action,
+                actor.getUserId(), previous.status(), previous.revision(), cruiseId, group.name());
+    }
+
     @Transactional(readOnly = true)
     public Panel forCoordinator(UUID cruiseId, CasmsPrincipal actor) {
         requireCoordinator(cruiseId, actor);
@@ -66,6 +86,7 @@ public class CruiseWorkHandoffService {
         }
         if (group == Group.SHIP && !hasShipReviewer(cruiseId))
             throw conflict("SHIP_MANAGER_REQUIRED", "Phân công Quản lý tàu cho tour trước khi gửi.");
+        var previous = currentRevision(cruiseId, group);
         int changed = jdbc.update("""
                 INSERT INTO "CruiseWorkHandoff" AS w (cruise_id,work_group,requested_by,request_text,status)
                 VALUES (?,?,?,?,'PENDING')
@@ -75,6 +96,7 @@ public class CruiseWorkHandoffService {
                 WHERE w.status='RETURNED'
                 """, cruiseId, group.name(), actor.getUserId(), request);
         if (changed != 1) throw conflict("HANDOFF_ALREADY_SENT", "Yêu cầu đã được gửi. Xem tiến độ trên tour.");
+        recordEvent(cruiseId, group, actor, "SEND", previous);
         return forCoordinator(cruiseId, actor);
     }
 
@@ -97,6 +119,7 @@ public class CruiseWorkHandoffService {
         boolean accepting = action == Action.ACCEPT;
         String expectedStatus = group == Group.SHIP || accepting ? "PENDING" : "IN_PROGRESS";
         String assignment = group == Group.SHIP || accepting ? "assignee_id IS NULL" : "assignee_id=request_actor.actor";
+        var previous = currentRevision(cruiseId, group);
         int changed = jdbc.update("""
                 UPDATE "CruiseWorkHandoff" w SET status=?,assignee_id=request_actor.actor,response_text=?,
                     revision=w.revision+1,updated_at=now()
@@ -105,6 +128,7 @@ public class CruiseWorkHandoffService {
                   AND w.requested_by<>request_actor.actor AND %s
                 """.formatted(assignment), status, text, actor.getUserId(), cruiseId, group.name(), expectedStatus, revision);
         if (changed != 1) throw conflict("HANDOFF_CHANGED", "Yêu cầu đã thay đổi hoặc do chính bạn gửi. Tải lại để kiểm tra.");
+        recordEvent(cruiseId, group, actor, action.name(), previous);
         return select(SELECT_TASKS + " WHERE c.cruise_id=? AND w.work_group=?", actor, true, cruiseId, group.name()).getFirst();
     }
 

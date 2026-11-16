@@ -67,6 +67,8 @@ class TripServiceTest {
         request.setDurationDays(4);
         request.setTripType(ItineraryType.ROUND_TRIP);
         request.setShipRequirements("Tàu dưới 50k GT");
+        request.setEarliestDeparture(Instant.parse("2026-11-10T01:00:00Z"));
+        request.setLatestDeparture(Instant.parse("2026-11-12T01:00:00Z"));
 
         when(businessCodeGenerator.next("TR")).thenReturn("TR-1001");
         when(userRepository.findById(actorId)).thenReturn(Optional.of(actor));
@@ -91,6 +93,8 @@ class TripServiceTest {
         assertEquals("TR-1001", res.getTripCode());
         assertEquals(4, res.getDurationDays());
         assertEquals(3, res.getDurationNights()); // Default N-1
+        assertEquals(request.getEarliestDeparture(), res.getEarliestDeparture());
+        assertEquals(request.getLatestDeparture(), res.getLatestDeparture());
         assertEquals(TripStatus.DRAFT, res.getStatus());
         assertEquals(1, res.getVersions().size());
         assertEquals(1, res.getVersions().get(0).getVersionNumber());

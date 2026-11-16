@@ -139,6 +139,8 @@ public class TripService {
                         ? request.getDurationNights()
                         : Math.max(0, durationDays - 1);
 
+        TripDepartureWindow.validate(request.getEarliestDeparture(), request.getLatestDeparture());
+
         String tripCode = businessCodeGenerator.next("TR");
 
         User creator = null;
@@ -153,6 +155,8 @@ public class TripService {
         trip.setDurationGroup(durationGroup);
         trip.setDurationDays(durationDays);
         trip.setDurationNights(durationNights);
+        trip.setEarliestDeparture(request.getEarliestDeparture());
+        trip.setLatestDeparture(request.getLatestDeparture());
         trip.setTripType(request.getTripType());
         trip.setPlannedScope(
                 request.getPlannedScope() != null ? request.getPlannedScope() : "DOMESTIC");
@@ -258,6 +262,22 @@ public class TripService {
                         "TRIP_DURATION_LOCKED",
                         "Không thể thay đổi nhóm thời lượng, số ngày hoặc số đêm khi Trip đã có"
                             + " phiên bản được phê duyệt xuất bản.");
+            }
+        }
+
+        if (request.getEarliestDeparture() != null || request.getLatestDeparture() != null) {
+            TripDepartureWindow.validate(request.getEarliestDeparture(), request.getLatestDeparture());
+            if (!Objects.equals(trip.getEarliestDeparture(), request.getEarliestDeparture())
+                    || !Objects.equals(trip.getLatestDeparture(), request.getLatestDeparture())) {
+                if (isLocked || versionRepository.existsByTrip_TripIdAndStatus(
+                        tripId, TripScheduleVersionStatus.IN_REVIEW)) {
+                    throw new BusinessException(
+                            HttpStatus.CONFLICT,
+                            "TRIP_DEPARTURE_WINDOW_LOCKED",
+                            "Không thể đổi khung khởi hành khi mẫu đang được duyệt hoặc đã công bố.");
+                }
+                trip.setEarliestDeparture(request.getEarliestDeparture());
+                trip.setLatestDeparture(request.getLatestDeparture());
             }
         }
 
@@ -530,6 +550,8 @@ public class TripService {
         patch.setDurationGroup(request.getDurationGroup());
         patch.setDurationDays(request.getDurationDays());
         patch.setDurationNights(request.getDurationNights());
+        patch.setEarliestDeparture(request.getEarliestDeparture());
+        patch.setLatestDeparture(request.getLatestDeparture());
         patch.setTripType(request.getTripType());
         patch.setPlannedScope(request.getPlannedScope());
         patch.setDomesticRegions(request.getDomesticRegions());
@@ -954,6 +976,8 @@ public class TripService {
         newTrip.setDurationGroup(sourceTrip.getDurationGroup());
         newTrip.setDurationDays(sourceTrip.getDurationDays());
         newTrip.setDurationNights(sourceTrip.getDurationNights());
+        newTrip.setEarliestDeparture(sourceTrip.getEarliestDeparture());
+        newTrip.setLatestDeparture(sourceTrip.getLatestDeparture());
         newTrip.setTripType(sourceTrip.getTripType());
         newTrip.setPlannedScope(sourceTrip.getPlannedScope());
         newTrip.setDomesticRegions(sourceTrip.getDomesticRegions());
@@ -1390,6 +1414,8 @@ public class TripService {
         res.setDurationGroup(trip.getDurationGroup());
         res.setDurationDays(trip.getDurationDays());
         res.setDurationNights(trip.getDurationNights());
+        res.setEarliestDeparture(trip.getEarliestDeparture());
+        res.setLatestDeparture(trip.getLatestDeparture());
         res.setTripType(trip.getTripType());
         res.setPlannedScope(trip.getPlannedScope());
         res.setDomesticRegions(trip.getDomesticRegions());
@@ -1430,6 +1456,8 @@ public class TripService {
         res.setDurationGroup(trip.getDurationGroup());
         res.setDurationDays(trip.getDurationDays());
         res.setDurationNights(trip.getDurationNights());
+        res.setEarliestDeparture(trip.getEarliestDeparture());
+        res.setLatestDeparture(trip.getLatestDeparture());
         res.setTripType(trip.getTripType());
         res.setPlannedScope(trip.getPlannedScope());
         res.setDomesticRegions(trip.getDomesticRegions());

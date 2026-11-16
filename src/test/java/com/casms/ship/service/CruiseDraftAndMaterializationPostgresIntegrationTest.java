@@ -51,6 +51,8 @@ public class CruiseDraftAndMaterializationPostgresIntegrationTest {
     @Autowired private CruiseStopRepository cruiseStopRepository;
     @Autowired private PortRepository portRepository;
     @Autowired private ShipRepository shipRepository;
+    @Autowired private DeckRepository deckRepository;
+    @Autowired private CabinRepository cabinRepository;
     @Autowired private TripRepository tripRepository;
     @Autowired private TripScheduleVersionRepository versionRepository;
     @Autowired private TripPlanDayRepository planDayRepository;
@@ -96,6 +98,20 @@ public class CruiseDraftAndMaterializationPostgresIntegrationTest {
         testShip.setTotalCapacity(500);
         testShip.setTotalDecks(5);
         testShip = shipRepository.save(testShip);
+
+        Deck deck = new Deck();
+        deck.setShip(testShip);
+        deck.setDeckNumber(1);
+        deck.setDeckName("Draft Cruise Deck");
+        deck = deckRepository.save(deck);
+        Cabin cabin = new Cabin();
+        cabin.setShip(testShip);
+        cabin.setDeck(deck);
+        cabin.setCabinNumber("101");
+        cabin.setCapacity(2);
+        cabin.setCabinType(CabinType.INTERIOR);
+        cabin.setStatus(CabinStatus.AVAILABLE);
+        cabinRepository.save(cabin);
     }
 
     private TripScheduleVersion createPublishedTripVersion(String tripCode, String plannedScope) {
@@ -244,6 +260,7 @@ public class CruiseDraftAndMaterializationPostgresIntegrationTest {
         Instant returned = Instant.parse("2026-12-07T10:00:00Z");
 
         CruiseCreateRequest req = new CruiseCreateRequest();
+        req.setExpectedPassengerCount(1);
         req.setCruiseName("Hành Trình E03");
         req.setDepartureDatetime(departure);
         req.setReturnDatetime(returned);
@@ -301,6 +318,7 @@ public class CruiseDraftAndMaterializationPostgresIntegrationTest {
         String idemKey = "IDEM-" + UUID.randomUUID();
 
         CruiseCreateRequest req1 = new CruiseCreateRequest();
+        req1.setExpectedPassengerCount(1);
         req1.setCruiseName("Idempotent Cruise Original");
         req1.setDepartureDatetime(Instant.parse("2026-12-10T01:00:00Z"));
         req1.setReturnDatetime(Instant.parse("2026-12-12T10:00:00Z"));
@@ -335,6 +353,7 @@ public class CruiseDraftAndMaterializationPostgresIntegrationTest {
 
         // Gọi cùng key nhưng payload khác -> ném IDEMPOTENCY_CONFLICT
         CruiseCreateRequest req2 = new CruiseCreateRequest();
+        req2.setExpectedPassengerCount(1);
         req2.setCruiseName("Idempotent Cruise Changed Payload");
         req2.setDepartureDatetime(req1.getDepartureDatetime());
         req2.setReturnDatetime(req1.getReturnDatetime());
@@ -365,6 +384,7 @@ public class CruiseDraftAndMaterializationPostgresIntegrationTest {
                         "TR-E08-" + UUID.randomUUID().toString().substring(0, 4), "DOMESTIC");
 
         CruiseCreateRequest req = new CruiseCreateRequest();
+        req.setExpectedPassengerCount(1);
         req.setCruiseName("Cruise Revision Test");
         req.setDepartureDatetime(Instant.parse("2026-12-15T01:00:00Z"));
         req.setReturnDatetime(Instant.parse("2026-12-17T10:00:00Z"));
@@ -405,6 +425,7 @@ public class CruiseDraftAndMaterializationPostgresIntegrationTest {
         Instant ret = Instant.parse("2026-12-22T10:00:00Z");
 
         CruiseCreateRequest req1 = new CruiseCreateRequest();
+        req1.setExpectedPassengerCount(1);
         req1.setCruiseName("Cruise Ship Conflict 1");
         req1.setDepartureDatetime(dep);
         req1.setReturnDatetime(ret);
@@ -417,6 +438,7 @@ public class CruiseDraftAndMaterializationPostgresIntegrationTest {
 
         // Tạo cruise thứ 2 trùng khoảng thời gian với cùng tàu
         CruiseCreateRequest req2 = new CruiseCreateRequest();
+        req2.setExpectedPassengerCount(1);
         req2.setCruiseName("Cruise Ship Conflict 2");
         req2.setDepartureDatetime(dep.plusSeconds(3600)); // trùng giữa chừng
         req2.setReturnDatetime(ret.plusSeconds(3600));
@@ -440,6 +462,7 @@ public class CruiseDraftAndMaterializationPostgresIntegrationTest {
                         "TR-E15B-" + UUID.randomUUID().toString().substring(0, 4), "DOMESTIC");
 
         CruiseCreateRequest reqA = new CruiseCreateRequest();
+        reqA.setExpectedPassengerCount(1);
         reqA.setCruiseName("Cruise A from verA");
         reqA.setDepartureDatetime(Instant.parse("2026-12-25T01:00:00Z"));
         reqA.setReturnDatetime(Instant.parse("2026-12-27T10:00:00Z"));
@@ -450,6 +473,7 @@ public class CruiseDraftAndMaterializationPostgresIntegrationTest {
         cruiseService.create(reqA);
 
         CruiseCreateRequest reqB = new CruiseCreateRequest();
+        reqB.setExpectedPassengerCount(1);
         reqB.setCruiseName("Cruise B from verB");
         reqB.setDepartureDatetime(Instant.parse("2026-12-28T01:00:00Z"));
         reqB.setReturnDatetime(Instant.parse("2026-12-30T10:00:00Z"));
@@ -492,6 +516,7 @@ public class CruiseDraftAndMaterializationPostgresIntegrationTest {
                         "TR-E17-" + UUID.randomUUID().toString().substring(0, 4), "DOMESTIC");
 
         CruiseCreateRequest req = new CruiseCreateRequest();
+        req.setExpectedPassengerCount(1);
         req.setCruiseName("Cruise Readiness Probe Test");
         req.setDepartureDatetime(Instant.parse("2027-01-01T01:00:00Z"));
         req.setReturnDatetime(Instant.parse("2027-01-03T10:00:00Z"));
@@ -537,6 +562,7 @@ public class CruiseDraftAndMaterializationPostgresIntegrationTest {
         Instant departure = Instant.parse("2026-12-15T01:00:00Z");
 
         CruiseCreateRequest req = new CruiseCreateRequest();
+        req.setExpectedPassengerCount(1);
         req.setCruiseName("Hành Trình Khóa Thời Lượng Tự Động");
         req.setDepartureDatetime(departure);
         // Không truyền returnDatetime, departurePortId, returnPortId (G04)
@@ -591,6 +617,7 @@ public class CruiseDraftAndMaterializationPostgresIntegrationTest {
         unpubVersion = versionRepository.save(unpubVersion);
 
         CruiseCreateRequest req = new CruiseCreateRequest();
+        req.setExpectedPassengerCount(1);
         req.setCruiseName("Cruise Invalid Source");
         req.setDepartureDatetime(Instant.parse("2026-12-20T01:00:00Z"));
         req.setSourceVersionId(unpubVersion.getVersionId());
@@ -614,6 +641,7 @@ public class CruiseDraftAndMaterializationPostgresIntegrationTest {
                         10, ChronoUnit.DAYS); // Client cố tình gửi 10 ngày thay vì 3 ngày nguồn
 
         CruiseCreateRequest req = new CruiseCreateRequest();
+        req.setExpectedPassengerCount(1);
         req.setCruiseName("Cruise Tampered Return Test");
         req.setDepartureDatetime(departure);
         req.setReturnDatetime(tamperedReturn);
@@ -646,6 +674,7 @@ public class CruiseDraftAndMaterializationPostgresIntegrationTest {
         Instant departure = Instant.parse("2026-12-01T01:00:00Z");
 
         CruiseCreateRequest req = new CruiseCreateRequest();
+        req.setExpectedPassengerCount(1);
         req.setCruiseName("Cruise Shifting Test");
         req.setDepartureDatetime(departure);
         req.setSourceVersionId(version.getVersionId());

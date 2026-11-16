@@ -3008,6 +3008,13 @@ public class TripScheduleVersionService {
                     .append("|")
                     .append(version.getVersionNumber())
                     .append("|");
+            if (version.getTrip().getEarliestDeparture() != null) {
+                sb.append("departureWindow(")
+                        .append(version.getTrip().getEarliestDeparture())
+                        .append(",")
+                        .append(version.getTrip().getLatestDeparture())
+                        .append(");");
+            }
             for (TripPlanDay day : version.getDays()) {
                 sb.append("D(")
                         .append(day.getDayNumber())
@@ -3152,6 +3159,8 @@ public class TripScheduleVersionService {
                 .tripName(trip != null ? trip.getName() : null)
                 .durationDays(trip != null ? trip.getDurationDays() : null)
                 .durationNights(trip != null ? trip.getDurationNights() : null)
+                .earliestDeparture(trip != null ? trip.getEarliestDeparture() : null)
+                .latestDeparture(trip != null ? trip.getLatestDeparture() : null)
                 .plannedScope(trip != null ? trip.getPlannedScope() : null)
                 .countryCodes(CountryScopeValidator.resolveAllowedCountries(trip))
                 .domesticRegions(trip != null ? trip.getDomesticRegions() : Collections.emptyList())
