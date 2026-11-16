@@ -24,6 +24,13 @@ classDiagram
         +registerActivity(passengerId, request) ApiResponse
     }
 
+    class GuestPaymentExperienceController {
+        -GuestPaymentExperienceService guestPaymentService
+        +getLiveFolio(onboardAccountId, bookingId) ApiResponse~LiveFolioStatementResponse~
+        +expressCheckout(request) ApiResponse~ExpressFolioCheckoutResponse~
+        +holdSecurityDeposit(request) ApiResponse~SecurityDepositHoldResponse~
+    }
+
     %% 2. Service Layer
     class PosService {
         -OnboardAccountRepository accountRepo
@@ -32,6 +39,15 @@ classDiagram
         +processCharge(terminalId, memberId, amount, itemDesc) OnboardTransaction
         +verifySpendingLimit(memberId, amount) boolean
         +closeAccount(accountId) FinalSettlement
+    }
+
+    class GuestPaymentExperienceService {
+        -OnboardAccountRepository accountRepo
+        -OnboardTransactionRepository transactionRepo
+        -FinalSettlementRepository settlementRepo
+        +getLiveFolioStatement(accountId, bookingId) LiveFolioStatementResponse
+        +processExpressFolioCheckout(request) ExpressFolioCheckoutResponse
+        +recordSecurityDepositHold(request) SecurityDepositHoldResponse
     }
 
     class OnboardOperationService {
@@ -113,11 +129,14 @@ classDiagram
     %% Inter-Layer and Domain Relationships
     PosController --> PosService : delegatesTo
     OnboardOperationController --> OnboardOperationService : delegatesTo
+    GuestPaymentExperienceController --> GuestPaymentExperienceService : delegatesTo
     OnboardOperationService <|.. OnboardOperationServiceImpl : implements
 
     PosService --> OnboardAccountRepository : accesses
     PosService --> OnboardTransactionRepository : accesses
     PosService --> PosTerminalRepository : accesses
+    GuestPaymentExperienceService --> OnboardAccountRepository : accesses
+    GuestPaymentExperienceService --> OnboardTransactionRepository : accesses
     OnboardOperationServiceImpl --> OnboardTransactionRepository : accesses
 
     OnboardAccountRepository ..> OnboardAccount : manages

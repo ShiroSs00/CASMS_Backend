@@ -1,0 +1,94 @@
+package com.casms.payment.dto.guest;
+
+import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import lombok.Getter;
+import lombok.Setter;
+
+import java.math.BigDecimal;
+import java.util.UUID;
+
+@Getter
+@Setter
+public class CreditCardPaymentRequest {
+
+    @Schema(description = "ID đơn đặt tour", requiredMode = Schema.RequiredMode.REQUIRED)
+    @NotNull(message = "Booking ID is required")
+    private UUID bookingId;
+
+    @Schema(description = "ID đợt thanh toán (tuỳ chọn)")
+    private UUID installmentId;
+
+    @Schema(description = "Số tiền thanh toán", requiredMode = Schema.RequiredMode.REQUIRED)
+    @NotNull(message = "Payment amount is required")
+    @DecimalMin(value = "0.01", message = "Amount must be at least 0.01")
+    private BigDecimal amount;
+
+    @Schema(description = "Đơn vị tiền tệ", example = "VND")
+    private String currency = "VND";
+
+    @Schema(description = "Số thẻ quốc tế (16 chữ số)", example = "4111222233334444", requiredMode = Schema.RequiredMode.REQUIRED)
+    @NotBlank(message = "Card number is required")
+    private String cardNumber;
+
+    @Schema(description = "Tên chủ thẻ", example = "NGUYEN VAN A", requiredMode = Schema.RequiredMode.REQUIRED)
+    @NotBlank(message = "Cardholder name is required")
+    private String cardHolderName;
+
+    @Schema(description = "Tháng/Năm hết hạn (MM/YY)", example = "12/28", requiredMode = Schema.RequiredMode.REQUIRED)
+    @NotBlank(message = "Expiry date is required")
+    private String expiryDate;
+
+    @Schema(description = "Mã bảo mật CVV/CVC (3-4 số)", example = "123", requiredMode = Schema.RequiredMode.REQUIRED)
+    @NotBlank(message = "CVV is required")
+    private String cvv;
+
+    @Schema(description = "Khóa chống trùng lặp (Idempotency Key)")
+    private String idempotencyKey;
+
+    @Schema(description = "Miễn phụ phí quẹt thẻ (dành cho khách VIP hoặc chính sách ưu đãi)")
+    private Boolean waiveSurcharge;
+
+    @Schema(description = "Tỷ lệ phụ phí tuỳ chỉnh (%) nếu muốn ghi đè tỷ lệ mặc định", example = "2.00")
+    private BigDecimal customSurchargePercent;
+
+    // Tuỳ chọn xuất hoá đơn đỏ VAT doanh nghiệp
+    @Schema(description = "Yêu cầu xuất hoá đơn đỏ VAT doanh nghiệp")
+    private Boolean requiresVatInvoice;
+
+    @Schema(description = "Tên công ty nhận hoá đơn")
+    private String companyName;
+
+    @Schema(description = "Mã số thuế doanh nghiệp")
+    private String taxCode;
+
+    @Schema(description = "Địa chỉ doanh nghiệp")
+    private String companyAddress;
+
+    @Schema(description = "Email nhận hoá đơn điện tử")
+    private String vatEmail;
+
+    @Override
+    public String toString() {
+        String maskedCard = (cardNumber != null && cardNumber.replaceAll("\\s+", "").length() >= 4)
+                ? "**** **** **** " + cardNumber.replaceAll("\\s+", "").substring(cardNumber.replaceAll("\\s+", "").length() - 4)
+                : "****";
+        return "CreditCardPaymentRequest{" +
+                "bookingId=" + bookingId +
+                ", installmentId=" + installmentId +
+                ", amount=" + amount +
+                ", currency='" + currency + '\'' +
+                ", cardLast4='" + maskedCard + '\'' +
+                ", cardHolderName='" + cardHolderName + '\'' +
+                ", expiryDate='" + expiryDate + '\'' +
+                ", cvv='***'" +
+                ", idempotencyKey='" + idempotencyKey + '\'' +
+                ", waiveSurcharge=" + waiveSurcharge +
+                ", customSurchargePercent=" + customSurchargePercent +
+                ", requiresVatInvoice=" + requiresVatInvoice +
+                '}';
+    }
+}
+

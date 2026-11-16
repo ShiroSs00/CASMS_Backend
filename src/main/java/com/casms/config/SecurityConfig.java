@@ -50,6 +50,8 @@ public class SecurityConfig {
                                         new AntPathRequestMatcher("/auth/**"),
                                         new AntPathRequestMatcher("/booking/**"),
                                         new AntPathRequestMatcher("/payment/sepay/**"),
+                                        new AntPathRequestMatcher("/payment/guest/**"),
+                                        new AntPathRequestMatcher("/api/v1/payments/webhooks/**"),
                                         new AntPathRequestMatcher("/h2-console/**"),
                                         new AntPathRequestMatcher("/v3/api-docs/**"),
                                         new AntPathRequestMatcher("/swagger-ui/**"),
@@ -84,10 +86,15 @@ public class SecurityConfig {
                                                 "/booking/lookup",
                                                 "/booking/lookup/**",
                                                 "/booking/recovery",
-                                                "/payment/sepay/**")
+                                                "/payment/sepay/**",
+                                                "/payment/guest/**",
+                                                "/api/v1/payments/webhooks/**")
                                         .permitAll()
                                         .requestMatchers(
                                                 HttpMethod.GET,
+                                                "/api/v1/currencies",
+                                                "/api/v1/exchange-rates",
+                                                "/api/v1/currency-conversion",
                                                 "/booking/quotes/**",
                                                 "/usd-display-rate",
                                                 "/cruise",

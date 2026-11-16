@@ -173,4 +173,8 @@ public class Cruise {
     @jakarta.persistence.Column(name = "sale_approval_fingerprint", length = 64)
     private String saleApprovalFingerprint;
 
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.CHAR)
+    @Column(name = "base_currency", nullable = false, columnDefinition = "char(3)")
+    private String baseCurrency = "USD";
+
 }

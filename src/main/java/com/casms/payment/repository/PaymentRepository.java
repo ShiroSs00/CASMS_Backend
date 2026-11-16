@@ -44,5 +44,7 @@ public interface PaymentRepository extends JpaRepository<Payment, UUID> {
 
     List<Payment> findByBooking_BookingId(UUID bookingId);
 
+    List<Payment> findByOnboardAccount_OnboardAccountIdOrderByRequestedAtDesc(UUID onboardAccountId);
+
     List<Payment> findByStatusAndPaymentMethod(PaymentStatus status, PaymentMethod paymentMethod);
 }

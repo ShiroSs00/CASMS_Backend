@@ -10,7 +10,9 @@ import com.casms.booking.repository.BookingRepository;
 import com.casms.booking.service.BookingService;
 import com.casms.common.exception.BusinessException;
 import com.casms.payment.config.SepayProperties;
+import com.casms.payment.dto.request.CardSurchargeConfigRequest;
 import com.casms.payment.dto.request.PaymentConfirmRequest;
+import com.casms.payment.dto.request.SepayCardCheckoutRequest;
 import com.casms.payment.dto.request.SepayCheckoutRequest;
 import com.casms.payment.dto.request.SepayQuickCheckoutRequest;
 import com.casms.payment.dto.request.SepayWebhookPayload;
@@ -18,6 +20,7 @@ import com.casms.payment.dto.response.BookingPaymentOptionsResponse;
 import com.casms.payment.dto.response.PaymentResponse;
 import com.casms.payment.dto.response.PaymentStatusCheckResponse;
 import com.casms.payment.dto.response.SepayCheckoutResponse;
+import com.casms.payment.dto.response.SepayConfigResponse;
 import com.casms.payment.dto.response.SepayWebhookResponse;
 import com.casms.payment.entity.Installment;
 import com.casms.payment.entity.Payment;
@@ -107,6 +110,9 @@ class SepayServiceTest {
         inst2.setCurrency("USD");
         inst2.setStatus(InstallmentStatus.Scheduled);
         inst2.setDueAt(Instant.now().plusSeconds(86400 * 30));
+
+        lenient().when(sepayProperties.getCardEnabled()).thenReturn(Boolean.TRUE);
+        lenient().when(sepayProperties.isCardEnabled()).thenReturn(true);
     }
 
     @Test
@@ -743,5 +749,323 @@ class SepayServiceTest {
 
         // Kiểm tra đã đồng bộ lại installments
         verify(paymentService, times(1)).allocateInstallmentsAndSync(booking);
+    }
+
+    @Test
+    @DisplayName("Cấu hình SePay trả về đầy đủ tiền tệ (VND, USD) và thương hiệu thẻ (VISA, MASTERCARD)")
+    void getSepayConfig_ReturnsMultiCurrencyAndCardSupport() {
+        when(sepayProperties.isEnabled()).thenReturn(true);
+        when(sepayProperties.getUsdToVndRate()).thenReturn(new BigDecimal("25400"));
+        when(sepayProperties.getBankName()).thenReturn("MBBank");
+        when(sepayProperties.getAccountNumber()).thenReturn("0901452366");
+        when(sepayProperties.getAccountName()).thenReturn("CONG TY DU THUYEN CASMS");
+        when(sepayProperties.isThreeDSecureEnabled()).thenReturn(true);
+
+        SepayConfigResponse config = sepayService.getSepayConfig();
+
+        assertNotNull(config);
+        assertTrue(config.isEnabled());
+        assertTrue(config.isCardEnabled());
+        assertEquals(List.of("VND", "USD"), config.getSupportedCurrencies());
+        assertEquals(List.of("VISA", "MASTERCARD"), config.getSupportedCardBrands());
+        assertEquals(List.of("VIETQR", "VISA", "MASTERCARD"), config.getSupportedPaymentChannels());
+        assertEquals(new BigDecimal("25400"), config.getUsdToVndRate());
+    }
+
+    @Test
+    @DisplayName("Thanh toán SePay bằng thẻ VISA với Tiền Việt (VND) thành công & tự động gạch nợ")
+    void createCardCheckout_Visa_Vnd_Success() {
+        when(sepayProperties.isEnabled()).thenReturn(true);
+        when(sepayProperties.getUsdToVndRate()).thenReturn(new BigDecimal("25400"));
+        when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(booking));
+        when(paymentRepository.findForBooking(bookingId)).thenReturn(List.of());
+        when(installmentRepository.findByBookingBookingIdOrderBySequenceNoAsc(bookingId))
+                .thenReturn(List.of(inst1, inst2));
+        when(paymentRepository.findByIdempotencyKey(any())).thenReturn(Optional.empty());
+        when(paymentRepository.save(any(Payment.class)))
+                .thenAnswer(
+                        inv -> {
+                            Payment p = inv.getArgument(0);
+                            if (p.getPaymentId() == null) {
+                                p.setPaymentId(UUID.randomUUID());
+                            }
+                            return p;
+                        });
+        when(sepayTransactionRepository.save(any(SepayTransaction.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+
+        SepayCardCheckoutRequest req =
+                SepayCardCheckoutRequest.builder()
+                        .bookingId(bookingId)
+                        .paymentType(PaymentType.DEPOSIT)
+                        .currency("VND")
+                        .cardBrand("VISA")
+                        .cardNumber("4111111111114242")
+                        .cardHolderName("NGUYEN VAN A")
+                        .expiryMonth(12)
+                        .expiryYear(2029)
+                        .cvv("123")
+                        .build();
+
+        SepayCheckoutResponse resp = sepayService.createCardCheckout(req, null, true);
+
+        assertNotNull(resp);
+        assertEquals(PaymentStatus.Confirmed, resp.getStatus());
+        assertEquals("VND", resp.getPaymentCurrency());
+        assertEquals("VISA", resp.getCardBrand());
+        assertEquals("VISA", resp.getPaymentChannel());
+        assertEquals("**** **** **** 4242", resp.getMaskedCardNumber());
+        assertEquals(new BigDecimal("300.0000"), resp.getAmountUsd());
+        assertEquals(new BigDecimal("7620000"), resp.getAmountVnd());
+        assertEquals(new BigDecimal("7620000"), resp.getChargedAmount());
+        assertNotNull(resp.getProcessorReference());
+        assertTrue(resp.getProcessorReference().startsWith("SEPAY-VISA-VND-"));
+
+        verify(paymentService).confirmPayment(eq(resp.getPaymentId()), any(PaymentConfirmRequest.class));
+        verify(sepayTransactionRepository)
+                .save(
+                        argThat(
+                                tx ->
+                                        "SEPAY_VISA".equals(tx.getGateway())
+                                                && "**** **** **** 4242"
+                                                        .equals(tx.getAccountNumber())
+                                                && tx.getTransferAmount()
+                                                                .compareTo(
+                                                                        new BigDecimal("7620000"))
+                                                        == 0));
+    }
+
+    @Test
+    @DisplayName("Thanh toán SePay bằng thẻ MASTERCARD với USD thành công & tự động gạch nợ")
+    void createCardCheckout_Mastercard_Usd_Success() {
+        when(sepayProperties.isEnabled()).thenReturn(true);
+        when(sepayProperties.getUsdToVndRate()).thenReturn(new BigDecimal("25400"));
+        when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(booking));
+        when(paymentRepository.findForBooking(bookingId)).thenReturn(List.of());
+        when(installmentRepository.findByBookingBookingIdOrderBySequenceNoAsc(bookingId))
+                .thenReturn(List.of(inst1, inst2));
+        when(paymentRepository.findByIdempotencyKey(any())).thenReturn(Optional.empty());
+        when(paymentRepository.save(any(Payment.class)))
+                .thenAnswer(
+                        inv -> {
+                            Payment p = inv.getArgument(0);
+                            if (p.getPaymentId() == null) {
+                                p.setPaymentId(UUID.randomUUID());
+                            }
+                            return p;
+                        });
+        when(sepayTransactionRepository.save(any(SepayTransaction.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+
+        SepayCardCheckoutRequest req =
+                SepayCardCheckoutRequest.builder()
+                        .bookingId(bookingId)
+                        .paymentType(PaymentType.FULL)
+                        .currency("USD")
+                        .cardBrand("MASTERCARD")
+                        .cardNumber("5412751234567890")
+                        .cardHolderName("TRAN THI B")
+                        .expiryMonth(8)
+                        .expiryYear(2030)
+                        .cvv("999")
+                        .build();
+
+        SepayCheckoutResponse resp = sepayService.createCardCheckout(req, null, true);
+
+        assertNotNull(resp);
+        assertEquals(PaymentStatus.Confirmed, resp.getStatus());
+        assertEquals("USD", resp.getPaymentCurrency());
+        assertEquals("MASTERCARD", resp.getCardBrand());
+        assertEquals("MASTERCARD", resp.getPaymentChannel());
+        assertEquals("**** **** **** 7890", resp.getMaskedCardNumber());
+        assertEquals(new BigDecimal("1000.0000"), resp.getAmountUsd());
+        assertEquals(new BigDecimal("25400000"), resp.getAmountVnd());
+        assertEquals(new BigDecimal("1000.00"), resp.getChargedAmount());
+        assertNotNull(resp.getProcessorReference());
+        assertTrue(resp.getProcessorReference().startsWith("SEPAY-MASTERCARD-USD-"));
+
+        verify(paymentService).confirmPayment(eq(resp.getPaymentId()), any(PaymentConfirmRequest.class));
+        verify(sepayTransactionRepository)
+                .save(
+                        argThat(
+                                tx ->
+                                        "SEPAY_MASTERCARD".equals(tx.getGateway())
+                                                && "**** **** **** 7890"
+                                                        .equals(tx.getAccountNumber())
+                                                && tx.getTransferAmount()
+                                                                .compareTo(
+                                                                        new BigDecimal("1000.00"))
+                                                        == 0));
+    }
+
+    @Test
+    @DisplayName("Quick Checkout SePay hỗ trợ thanh toán trực tiếp bằng USD qua thẻ VISA")
+    void createQuickCheckout_Usd_Visa_Success() {
+        when(sepayProperties.isEnabled()).thenReturn(true);
+        when(sepayProperties.getUsdToVndRate()).thenReturn(new BigDecimal("25400"));
+        when(paymentRepository.findByIdempotencyKey(any())).thenReturn(Optional.empty());
+        when(paymentRepository.save(any(Payment.class)))
+                .thenAnswer(
+                        inv -> {
+                            Payment p = inv.getArgument(0);
+                            if (p.getPaymentId() == null) {
+                                p.setPaymentId(UUID.randomUUID());
+                            }
+                            return p;
+                        });
+        when(sepayTransactionRepository.save(any(SepayTransaction.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+
+        SepayQuickCheckoutRequest req =
+                SepayQuickCheckoutRequest.builder()
+                        .amountUsd(new BigDecimal("150.00"))
+                        .currency("USD")
+                        .paymentChannel("VISA")
+                        .cardNumber("4532015112830366")
+                        .cardHolderName("JOHN DOE")
+                        .description("Thanh toán nhanh dịch vụ onboard bằng USD qua Visa")
+                        .build();
+
+        SepayCheckoutResponse resp = sepayService.createQuickCheckout(req);
+
+        assertNotNull(resp);
+        assertEquals(PaymentStatus.Confirmed, resp.getStatus());
+        assertEquals("USD", resp.getPaymentCurrency());
+        assertEquals("VISA", resp.getCardBrand());
+        assertEquals("**** **** **** 0366", resp.getMaskedCardNumber());
+        assertEquals(new BigDecimal("150.00"), resp.getChargedAmount());
+        assertEquals(new BigDecimal("3810000"), resp.getAmountVnd());
+    }
+
+    @Test
+    @DisplayName("Webhook SePay: Nhận giao dịch bằng USD từ cổng thẻ SEPAY_VISA -> xác nhận thành công")
+    void processWebhook_UsdCurrency_VisaGateway_Success() {
+        when(sepayProperties.isEnabled()).thenReturn(true);
+        when(sepayProperties.getApiKey()).thenReturn(null);
+        when(sepayProperties.getUsdToVndRate()).thenReturn(new BigDecimal("25400"));
+        when(sepayProperties.getTolerancePercent()).thenReturn(1.0);
+        when(sepayTransactionRepository.existsBySepayId(88801L)).thenReturn(false);
+
+        Payment pendingPayment = new Payment();
+        pendingPayment.setPaymentId(UUID.randomUUID());
+        pendingPayment.setBooking(booking);
+        pendingPayment.setInstallment(inst1);
+        pendingPayment.setStatus(PaymentStatus.Pending);
+        pendingPayment.setPaymentMethod(PaymentMethod.Sepay);
+        pendingPayment.setRequestedAmount(new BigDecimal("300.0000"));
+        pendingPayment.setCurrency("USD");
+        pendingPayment.setInternalReceiptReference("CASMS BK20260001S1");
+
+        when(paymentRepository.findByStatusAndPaymentMethod(
+                        PaymentStatus.Pending, PaymentMethod.Sepay))
+                .thenReturn(List.of(pendingPayment));
+        when(sepayTransactionRepository.save(any(SepayTransaction.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+
+        SepayWebhookPayload payload = new SepayWebhookPayload();
+        payload.setId(88801L);
+        payload.setGateway("SEPAY_VISA");
+        payload.setCardBrand("VISA");
+        payload.setMaskedCardNumber("**** **** **** 4242");
+        payload.setCurrency("USD");
+        payload.setTransferType("in");
+        payload.setTransferAmount(new BigDecimal("300.00"));
+        payload.setContent("CASMS BK20260001S1");
+
+        SepayWebhookResponse resp = sepayService.processWebhook(payload, null);
+
+        assertNotNull(resp);
+        assertTrue(resp.isSuccess());
+        assertEquals(pendingPayment.getPaymentId(), resp.getPaymentId());
+        verify(paymentService).confirmPayment(eq(pendingPayment.getPaymentId()), any());
+    }
+
+    @Test
+    @DisplayName("Báo lỗi khi nhập số thẻ Mastercard nhưng chọn thương hiệu VISA (CARD_BRAND_MISMATCH)")
+    void createCardCheckout_BrandMismatch_ThrowsException() {
+        when(sepayProperties.isEnabled()).thenReturn(true);
+
+        SepayCardCheckoutRequest req =
+                SepayCardCheckoutRequest.builder()
+                        .amountVnd(new BigDecimal("500000"))
+                        .currency("VND")
+                        .cardBrand("VISA")
+                        .cardNumber("5412751234567890")
+                        .build();
+
+        BusinessException ex =
+                assertThrows(
+                        BusinessException.class,
+                        () -> sepayService.createCardCheckout(req, null, true));
+        assertEquals("CARD_BRAND_MISMATCH", ex.getCode());
+    }
+
+    @Test
+    @DisplayName("Bảo mật chống IDOR: Người dùng ẩn danh (userId == null) không thể truy cập đơn của hành khách khác")
+    void getPaymentOptions_AnonymousUserBlockedWhenBookingHasOwner_ThrowsAccessDenied() {
+        com.casms.identity.entity.User owner = new com.casms.identity.entity.User();
+        owner.setUserId(UUID.randomUUID());
+        booking.setBookedByUser(owner);
+
+        when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(booking));
+
+        org.junit.jupiter.api.Assertions.assertThrows(
+                org.springframework.security.access.AccessDeniedException.class,
+                () -> sepayService.getPaymentOptions(bookingId, null, false));
+    }
+
+    @Test
+    @DisplayName("Cập nhật tỷ lệ phụ phí thẻ linh hoạt tại runtime (Admin / Manager) thành công")
+    void updateSurchargeConfig_Success() {
+        java.util.Map<String, BigDecimal> brandMap = new java.util.concurrent.ConcurrentHashMap<>();
+        brandMap.put("VISA", new BigDecimal("2.50"));
+        when(sepayProperties.getBrandSurchargeRates()).thenReturn(brandMap);
+        when(sepayProperties.isEnabled()).thenReturn(true);
+
+        CardSurchargeConfigRequest req = new CardSurchargeConfigRequest();
+        req.setCardSurchargeEnabled(true);
+        req.setCardSurchargePercent(new BigDecimal("3.00"));
+        req.setDomesticCardSurchargePercent(new BigDecimal("1.20"));
+        req.setBrandSurchargeRates(java.util.Map.of("AMEX", new BigDecimal("4.00"), "VISA", new BigDecimal("2.20")));
+
+        SepayConfigResponse resp = sepayService.updateSurchargeConfig(req, UUID.randomUUID(), true);
+
+        assertNotNull(resp);
+        verify(sepayProperties).setCardSurchargeEnabled(true);
+        verify(sepayProperties).setCardSurchargePercent(new BigDecimal("3.00"));
+        verify(sepayProperties).setDomesticCardSurchargePercent(new BigDecimal("1.20"));
+        assertEquals(new BigDecimal("4.00"), brandMap.get("AMEX"));
+        assertEquals(new BigDecimal("2.20"), brandMap.get("VISA"));
+    }
+
+    @Test
+    @DisplayName("Cập nhật tỷ lệ phụ phí thẻ bị từ chối nếu không có quyền PAYMENT_PROCESS")
+    void updateSurchargeConfig_Unauthorized_ThrowsForbidden() {
+        CardSurchargeConfigRequest req = new CardSurchargeConfigRequest();
+        req.setCardSurchargePercent(new BigDecimal("3.00"));
+
+        BusinessException ex = assertThrows(
+                BusinessException.class,
+                () -> sepayService.updateSurchargeConfig(req, UUID.randomUUID(), false));
+        assertEquals("FORBIDDEN", ex.getCode());
+    }
+
+    @Test
+    @DisplayName("SepayProperties tính phụ phí động linh hoạt theo từng loại thẻ: VISA, JCB, AMEX, NAPAS")
+    void sepayProperties_ResolveCardSurcharge_BrandSpecific() {
+        SepayProperties props = new SepayProperties();
+        assertEquals(new BigDecimal("2.50"), props.resolveCardSurcharge("VISA"));
+        assertEquals(new BigDecimal("2.50"), props.resolveCardSurcharge("MASTERCARD"));
+        assertEquals(new BigDecimal("2.00"), props.resolveCardSurcharge("JCB"));
+        assertEquals(new BigDecimal("3.50"), props.resolveCardSurcharge("AMEX"));
+        assertEquals(new BigDecimal("1.50"), props.resolveCardSurcharge("NAPAS"));
+        assertEquals(new BigDecimal("1.50"), props.resolveCardSurcharge("ATM"));
+        // fallback to default
+        assertEquals(new BigDecimal("2.50"), props.resolveCardSurcharge("DISCOVER"));
+
+        // When disabled
+        props.setCardSurchargeEnabled(false);
+        assertEquals(BigDecimal.ZERO, props.resolveCardSurcharge("VISA"));
+        assertEquals(BigDecimal.ZERO, props.resolveCardSurcharge("AMEX"));
     }
 }

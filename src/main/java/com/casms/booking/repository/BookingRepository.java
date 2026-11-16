@@ -37,6 +37,8 @@ public interface BookingRepository
 
     Optional<Booking> findByBookingReference(String bookingReference);
 
+    Optional<Booking> findBySettlementOnboardAccount_OnboardAccountId(UUID onboardAccountId);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select b from Booking b where b.bookingId = :bookingId")
     Optional<Booking> findByIdForUpdate(@Param("bookingId") UUID bookingId);

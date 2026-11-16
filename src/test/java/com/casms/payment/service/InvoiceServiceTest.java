@@ -165,5 +165,35 @@ class InvoiceServiceTest {
         assertEquals(1, list.size());
         assertEquals("BK-TEST-01", list.get(0).getBookingReference());
     }
+
+    @Test
+    @DisplayName("generateAdjustmentInvoice throws exception when adjustment amount is zero or negative")
+    void testGenerateAdjustmentInvoice_NonPositiveAmount_ThrowsException() {
+        UUID origId = UUID.randomUUID();
+        Invoice orig = new Invoice();
+        orig.setInvoiceId(origId);
+        orig.setStatus(InvoiceStatus.Issued);
+
+        when(invoiceRepository.findById(origId)).thenReturn(Optional.of(orig));
+
+        assertThrows(
+                com.casms.common.exception.BusinessException.class,
+                () -> invoiceService.generateAdjustmentInvoice(origId, BigDecimal.ZERO, "Invalid amount"));
+    }
+
+    @Test
+    @DisplayName("generateAdjustmentInvoice throws exception when invoice is already superseded")
+    void testGenerateAdjustmentInvoice_AlreadySuperseded_ThrowsException() {
+        UUID origId = UUID.randomUUID();
+        Invoice orig = new Invoice();
+        orig.setInvoiceId(origId);
+        orig.setStatus(InvoiceStatus.Superseded);
+
+        when(invoiceRepository.findById(origId)).thenReturn(Optional.of(orig));
+
+        assertThrows(
+                com.casms.common.exception.BusinessException.class,
+                () -> invoiceService.generateAdjustmentInvoice(origId, new BigDecimal("100.00"), "Superseded"));
+    }
 }
 
