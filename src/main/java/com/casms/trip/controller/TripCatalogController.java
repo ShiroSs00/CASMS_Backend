@@ -31,7 +31,10 @@ import com.casms.trip.dto.response.TripCatalogResponse;
 import com.casms.trip.entity.Trip;
 import com.casms.trip.repository.TripRepository;
 import com.casms.trip.service.CountryScopeValidator;
+import com.casms.trip.service.TripGeographyCatalog;
 import com.casms.trip.service.VietnamGeographyRegistry;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -45,6 +48,9 @@ import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -66,6 +72,10 @@ public class TripCatalogController {
     private final OnboardActivityRepository onboardActivityRepository;
     private final ShoreExcursionRepository shoreExcursionRepository;
     private final ServiceRepository serviceRepository;
+
+    @Autowired
+    @Setter
+    private TripGeographyCatalog geographyCatalog;
 
     @Autowired(required = false)
     @Setter
@@ -98,28 +108,16 @@ public class TripCatalogController {
                         .distinct()
                         .collect(Collectors.toList());
 
-        List<TripCatalogResponse.RegionCatalogItem> domesticRegions =
-                List.of(
-                        new TripCatalogResponse.RegionCatalogItem(
-                                "BAC_BO",
-                                "Miền Bắc (Bắc Bộ)",
-                                "Bao gồm các cảng Vịnh Hạ Long, Hải Phòng và phụ cận"),
-                        new TripCatalogResponse.RegionCatalogItem(
-                                "TRUNG_BO",
-                                "Miền Trung (Trung Bộ)",
-                                "Bao gồm các cảng Đà Nẵng, Nha Trang, Chân Mây Huế và phụ cận"),
-                        new TripCatalogResponse.RegionCatalogItem(
-                                "NAM_BO",
-                                "Miền Nam (Nam Bộ)",
-                                "Bao gồm các cảng Sài Gòn, Cái Mép - Phú Mỹ, Phú Quốc và phụ cận"));
-
-        List<TripCatalogResponse.CountryCatalogItem> countries =
-                List.of(
-                        new TripCatalogResponse.CountryCatalogItem("VN", "Việt Nam"),
-                        new TripCatalogResponse.CountryCatalogItem("SG", "Singapore"),
-                        new TripCatalogResponse.CountryCatalogItem("TH", "Thái Lan"),
-                        new TripCatalogResponse.CountryCatalogItem("MY", "Malaysia"),
-                        new TripCatalogResponse.CountryCatalogItem("JP", "Nhật Bản"));
+        List<TripGeographyCatalog.Item> geography = geographyCatalog.list(true);
+        List<TripCatalogResponse.RegionCatalogItem> domesticRegions = geography.stream()
+                .filter(item -> item.kind() == TripGeographyCatalog.Kind.REGION)
+                .map(item -> new TripCatalogResponse.RegionCatalogItem(
+                        item.code(), item.label(), item.description()))
+                .toList();
+        List<TripCatalogResponse.CountryCatalogItem> countries = geography.stream()
+                .filter(item -> item.kind() == TripGeographyCatalog.Kind.COUNTRY)
+                .map(item -> new TripCatalogResponse.CountryCatalogItem(item.code(), item.label()))
+                .toList();
 
         List<TripCatalogResponse.DurationGroupCatalogItem> durationGroups =
                 List.of(
@@ -737,10 +735,12 @@ public class TripCatalogController {
 
         String kw = keyword != null ? keyword.trim().toLowerCase() : null;
         final List<String> filterCountries = allowedCountryCodes;
+        var geography = geographyCatalog == null ? null : geographyCatalog.selection();
 
         List<PlanningSourcePortResponse> result =
                 ports.stream()
                         .filter(p -> p.getStatus() == PortStatus.ACTIVE)
+                        .filter(p -> geography == null || geography.unavailable(p).isEmpty())
                         .filter(
                                 p ->
                                         filterCountries == null
@@ -793,6 +793,23 @@ public class TripCatalogController {
                         .collect(Collectors.toList());
         return ApiResponse.success(result);
     }
+
+    @PreAuthorize("hasRole('ADMIN')")
+    @GetMapping("/geography")
+    public ApiResponse<List<TripGeographyCatalog.Item>> listGeography() {
+        return ApiResponse.success(geographyCatalog.list(false));
+    }
+
+    @PreAuthorize("hasRole('ADMIN')")
+    @PatchMapping("/geography/{kind}/{code}/status")
+    public ApiResponse<TripGeographyCatalog.Item> changeGeographyStatus(
+            @PathVariable TripGeographyCatalog.Kind kind,
+            @PathVariable String code,
+            @Valid @RequestBody GeographyStatusRequest request) {
+        return ApiResponse.success(geographyCatalog.changeStatus(kind, code, request.status()));
+    }
+
+    public record GeographyStatusRequest(@NotNull TripGeographyCatalog.Status status) {}
 
     public ApiResponse<List<PlanningSourcePortResponse>> getSourcePorts() {
         return getSourcePorts(null, null, null, null, null);

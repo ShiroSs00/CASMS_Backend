@@ -30,8 +30,6 @@ import lombok.RequiredArgsConstructor;
 
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
-import org.springframework.security.access.AccessDeniedException;
-import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -112,7 +110,12 @@ public class ShipModelAssetService {
         Ship ship =
                 ships.findById(shipId)
                         .orElseThrow(() -> new ResourceNotFoundException("Ship", shipId));
-        syncShipFromManifest(ship, manifest, false);
+        if (ship.getShipType() == null) {
+            syncShipFromManifest(ship, manifest, false);
+        } else if (!Objects.equals(ship.getManifestModelId(), manifest.path("modelId").asText("").trim())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Model belongs to a different ship type design");
+        }
         ShipModel model = new ShipModel();
         model.setShip(ship);
         configureBundle(model, modelKey, assetVersion, manifest);
@@ -129,7 +132,12 @@ public class ShipModelAssetService {
 
     void updateImportedBundle(ShipModel model, String modelKey, String assetVersion) {
         JsonNode manifest = assets.manifest(modelKey, assetVersion);
-        syncShipFromManifest(model.getShip(), manifest, false);
+        if (model.getShip().getShipType() == null) {
+            syncShipFromManifest(model.getShip(), manifest, false);
+        } else if (!Objects.equals(model.getShip().getManifestModelId(), manifest.path("modelId").asText("").trim())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Model belongs to a different ship type design");
+        }
         configureBundle(model, modelKey, assetVersion, manifest);
     }
 
@@ -151,16 +159,6 @@ public class ShipModelAssetService {
         model.setCoordinateSystem("GLTF");
         model.setCoordinateUnit("metre");
         model.setModelUnitsPerMeter(1.0);
-    }
-
-    /** Create an independent physical ship; a manifest is a reusable source template. */
-    @Transactional
-    public ShipModelManifestRegistrationResponse registerFromManifest(
-            String modelKey,
-            ShipCreateRequest supplements,
-            Authentication authentication) {
-        requireAuthority(authentication, "SHIP_CREATE");
-        return createShipFromManifest(modelKey, supplements);
     }
 
     @Transactional
@@ -191,14 +189,6 @@ public class ShipModelAssetService {
         UUID shipModelId =
                 register(ship.getShipId(), modelKey, assetVersion);
         return new ShipModelManifestRegistrationResponse(ship.getShipId(), shipModelId, true);
-    }
-
-    private static void requireAuthority(Authentication authentication, String authority) {
-        if (authentication == null
-                || authentication.getAuthorities().stream()
-                        .noneMatch(granted -> authority.equals(granted.getAuthority()))) {
-            throw new AccessDeniedException("Missing required authority: " + authority);
-        }
     }
 
     private void syncShipFromManifest(

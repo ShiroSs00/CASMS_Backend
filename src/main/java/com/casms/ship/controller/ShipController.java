@@ -1,7 +1,7 @@
 package com.casms.ship.controller;
 
 import com.casms.common.response.ApiResponse;
-import com.casms.ship.dto.request.ShipCreateRequest;
+import com.casms.common.exception.BusinessException;
 import com.casms.ship.dto.request.ShipUpdateRequest;
 import com.casms.ship.dto.response.CruiseSummaryResponse;
 import com.casms.ship.dto.response.ShipAreaResponse;
@@ -49,20 +49,12 @@ public class ShipController {
         return ApiResponse.success(shipAreas.list(shipId));
     }
 
-    @Operation(
-            summary = "Tạo tàu mới",
-            description =
-                    "Chọn modelKey đã tải lên để tái sử dụng mô hình. Thông tin mô"
-                        + " hình có sẵn được lấy tự động; chỉ bổ sung trường còn thiếu. Mã tàu và"
-                        + " thời điểm tạo tự sinh. Có thể tạo nhiều tàu từ cùng mô hình mà không"
-                        + " tải lại file.")
-    @PreAuthorize(
-            "hasAuthority('SHIP_CREATE') and (#request.modelKey == null or"
-                + " hasAuthority('SHIP_MODEL_CREATE'))")
+    @Operation(summary = "Đường dẫn tạo tàu cũ", deprecated = true)
+    @PreAuthorize("hasAuthority('SHIP_CREATE')")
     @PostMapping
-    @ResponseStatus(HttpStatus.CREATED)
-    public ApiResponse<ShipResponse> create(@RequestBody @Valid ShipCreateRequest request) {
-        return ApiResponse.success(service.create(request));
+    public ApiResponse<ShipResponse> create() {
+        throw new BusinessException(HttpStatus.GONE, "SHIP_CREATE_FROM_TYPE_REQUIRED",
+                "Create a ship using POST /ship-types/{typeId}/ships");
     }
 
     @Operation(

@@ -39,3 +39,9 @@ sequenceDiagram
     Note over Service,Client: Source throws BusinessException; HTTP mapping requires exception-handler review
     end
 ```
+
+## Ship-type change
+
+The Ship row is locked. A typed ship must complete certification, warranty, and maintenance groups before an actual state change. Missing groups return 422. Existing guard behavior and six states are preserved.
+
+See [ship type flow](../SHIP-TYPE-FLOWS.md).

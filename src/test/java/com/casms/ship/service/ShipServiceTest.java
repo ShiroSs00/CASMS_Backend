@@ -8,8 +8,10 @@ import com.casms.common.exception.BusinessException;
 import com.casms.common.exception.ResourceNotFoundException;
 import com.casms.common.service.BusinessCodeGenerator;
 import com.casms.ship.dto.request.ShipCreateRequest;
+import com.casms.ship.dto.request.ShipOperationalProfile;
 import com.casms.ship.dto.request.ShipUpdateRequest;
 import com.casms.ship.entity.Ship;
+import com.casms.ship.entity.ShipType;
 import com.casms.ship.enums.ShipStatus;
 import com.casms.ship.repository.*;
 
@@ -20,6 +22,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.*;
 
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -87,7 +90,7 @@ class ShipServiceTest {
         Ship ship = new Ship();
         ship.setShipId(id);
         ship.setStatus(ShipStatus.READY);
-        when(shipRepository.findById(id)).thenReturn(Optional.of(ship));
+        when(shipRepository.findByIdForUpdate(id)).thenReturn(Optional.of(ship));
         when(shipRepository.save(any(Ship.class))).thenAnswer(i -> i.getArgument(0));
         assertEquals(
                 ShipStatus.IN_SERVICE, service.changeStatus(id, ShipStatus.IN_SERVICE).getStatus());
@@ -105,6 +108,32 @@ class ShipServiceTest {
                             .getCode());
         }
         assertEquals(ShipStatus.IN_SERVICE, ship.getStatus());
+    }
+
+    @Test
+    void typedShipRequiresAllOperationalProfileGroupsBeforeChangingState() {
+        UUID id = UUID.randomUUID();
+        Ship ship = new Ship();
+        ShipType type = new ShipType();
+        type.setShipTypeId(UUID.randomUUID());
+        ship.setShipType(type);
+        ship.setShipId(id);
+        ship.setStatus(ShipStatus.DRAFT);
+        when(shipRepository.findByIdForUpdate(id)).thenReturn(Optional.of(ship));
+
+        BusinessException missing = assertThrows(BusinessException.class,
+                () -> service.changeStatus(id, ShipStatus.READY));
+        assertEquals("SHIP_OPERATIONAL_PROFILE_INCOMPLETE", missing.getCode());
+        assertEquals(List.of("certification", "warranty", "maintenance"),
+                missing.getDetails().get("missingGroups"));
+        assertEquals(ShipStatus.DRAFT, ship.getStatus());
+        verify(shipRepository, never()).save(any(Ship.class));
+
+        ship.setOperationalProfile(new ShipOperationalProfile(null, null, null, null, null, null,
+                null, null, "Registry", LocalDate.now().plusYears(1),
+                List.of("certificate-1"), List.of("warranty-1"), List.of("maintenance-1")));
+        when(shipRepository.save(ship)).thenReturn(ship);
+        assertEquals(ShipStatus.READY, service.changeStatus(id, ShipStatus.READY).getStatus());
     }
 
     @Test

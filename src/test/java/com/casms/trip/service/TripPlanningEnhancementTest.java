@@ -29,6 +29,7 @@ import com.casms.ship.repository.PortRepository;
 import com.casms.trip.controller.TripCatalogController;
 import com.casms.trip.dto.request.TripCreateRequest;
 import com.casms.trip.dto.request.TripDayManageRequest;
+import com.casms.trip.dto.request.TripDraftPatchRequest;
 import com.casms.trip.dto.response.*;
 import com.casms.trip.entity.*;
 import com.casms.trip.enums.*;
@@ -41,6 +42,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -49,6 +51,27 @@ import java.util.*;
 
 @ExtendWith(MockitoExtension.class)
 public class TripPlanningEnhancementTest {
+
+    @Test
+    void draftWithDisabledRegionCannotSwitchToAnActiveRegion() {
+        UUID tripId = UUID.randomUUID();
+        Trip trip = new Trip();
+        trip.setPlannedScope("DOMESTIC");
+        trip.setDomesticRegions(List.of("BAC_BO"));
+        when(tripRepository.findById(tripId)).thenReturn(Optional.of(trip));
+        TripGeographyCatalog catalog = mock(TripGeographyCatalog.class);
+        when(catalog.selection()).thenReturn(
+                new TripGeographyCatalog.Selection(Set.of("VN"), Set.of("NAM_BO")));
+        ReflectionTestUtils.setField(tripService, "geographyCatalog", catalog);
+        TripDraftPatchRequest change = new TripDraftPatchRequest();
+        change.setDomesticRegions(List.of("NAM_BO"));
+
+        var error = assertThrows(BusinessException.class,
+                () -> tripService.patchTripDraft(tripId, change, UUID.randomUUID()));
+        assertEquals("TRIP_GEOGRAPHY_UNAVAILABLE", error.getCode());
+        assertEquals(List.of("BAC_BO"), trip.getDomesticRegions());
+        verify(tripRepository, never()).save(any(Trip.class));
+    }
 
     @Mock private TripRepository tripRepository;
 

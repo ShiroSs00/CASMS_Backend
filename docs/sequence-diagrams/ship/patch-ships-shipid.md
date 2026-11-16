@@ -48,3 +48,9 @@ sequenceDiagram
     Note over Service,Client: Source throws BusinessException; HTTP mapping requires exception-handler review
     end
 ```
+
+## Ship-type change
+
+The response may include shipTypeId. Creator-owned ships are in scope for Ship Managers who also hold the route permission.
+
+See [ship type flow](../SHIP-TYPE-FLOWS.md).

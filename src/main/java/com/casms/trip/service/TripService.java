@@ -56,6 +56,10 @@ public class TripService {
     private final AuditService auditService;
     private AuditRepository auditRepository;
 
+    @Autowired
+    @Setter
+    private TripGeographyCatalog geographyCatalog;
+
     @Autowired(required = false)
     @Setter
     private ShoreExcursionRepository shoreExcursionRepository;
@@ -154,6 +158,7 @@ public class TripService {
                 request.getPlannedScope() != null ? request.getPlannedScope() : "DOMESTIC");
         trip.setDomesticRegions(request.getDomesticRegions());
         trip.setCountryCodes(request.getCountryCodes());
+        if (geographyCatalog != null) geographyCatalog.selection().requireAvailable(trip);
         trip.setShipRequirements(request.getShipRequirements());
         trip.setCandidateDestinations(request.getCandidateDestinations());
         trip.setStatus(TripStatus.DRAFT);
@@ -236,6 +241,10 @@ public class TripService {
                                 .stream()
                                 .anyMatch(
                                         v -> v.getStatus() == TripScheduleVersionStatus.PUBLISHED);
+
+        if (!isLocked && geographyCatalog != null) {
+            geographyCatalog.selection().requireAvailable(trip);
+        }
 
         if (isLocked) {
             if ((request.getDurationDays() != null
@@ -486,6 +495,10 @@ public class TripService {
         if (request.getCountryCodes() != null) {
             trip.setCountryCodes(request.getCountryCodes());
         }
+        if (geographyCatalog != null && (request.getPlannedScope() != null
+                || request.getDomesticRegions() != null || request.getCountryCodes() != null)) {
+            geographyCatalog.selection().requireAvailable(trip);
+        }
         if (request.getShipRequirements() != null) {
             trip.setShipRequirements(request.getShipRequirements());
         }
@@ -582,6 +595,8 @@ public class TripService {
                     "VERSION_FROZEN",
                     "Chỉ có thể quản lý ngày trên phiên bản DRAFT");
         }
+
+        if (geographyCatalog != null) geographyCatalog.selection().requireAvailable(version);
 
         if (request.getExpectedTripRevision() == null
                 || !request.getExpectedTripRevision().equals(trip.getRevision())) {
@@ -926,6 +941,12 @@ public class TripService {
         }
         LegacyTemplateContentPolicy.rejectLegacyClone(sourceVer);
 
+        if (geographyCatalog != null) {
+            var selection = geographyCatalog.selection();
+            if (sourceVer == null) selection.requireAvailable(sourceTrip);
+            else selection.requireAvailable(sourceVer);
+        }
+
         Trip newTrip = new Trip();
         newTrip.setTripCode(businessCodeGenerator.next("TR"));
         newTrip.setName("Bản sao - " + sourceTrip.getName());
@@ -1134,6 +1155,11 @@ public class TripService {
         }
 
         LegacyTemplateContentPolicy.rejectLegacyClone(sourceVer);
+        if (geographyCatalog != null) {
+            var selection = geographyCatalog.selection();
+            if (sourceVer == null) selection.requireAvailable(trip);
+            else selection.requireAvailable(sourceVer);
+        }
 
         if (sourceVer != null) {
             newVer.setSourceVersionId(sourceVer.getVersionId());

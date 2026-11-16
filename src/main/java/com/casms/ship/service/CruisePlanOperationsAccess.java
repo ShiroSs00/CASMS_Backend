@@ -248,10 +248,11 @@ public class CruisePlanOperationsAccess implements WebMvcConfigurer, HandlerInte
                     UUID.class, UUID.fromString(value)).stream().findFirst().orElse(null);
         }
         if (ship == null || !Boolean.TRUE.equals(jdbc.queryForObject("""
-                SELECT EXISTS(SELECT 1 FROM "CruiseStaff" crew JOIN "Cruise" c USING(cruise_id)
+                SELECT EXISTS(SELECT 1 FROM "Ship" s WHERE s.ship_id=? AND s.created_by_ship_manager_id=?)
+                    OR EXISTS(SELECT 1 FROM "CruiseStaff" crew JOIN "Cruise" c USING(cruise_id)
                     WHERE c.ship_id=? AND crew.user_id=? AND crew.role_in_cruise='SHIP_MANAGER'
                     AND crew.status='ACTIVE' AND c.status NOT IN ('CANCELLED','COMPLETED'))
-                """, Boolean.class, ship, actor.getUserId()))) {
+                """, Boolean.class, ship, actor.getUserId(), ship, actor.getUserId()))) {
             throw new AccessDeniedException("Tàu này chưa được phân công cho bạn.");
         }
     }

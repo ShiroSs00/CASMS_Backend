@@ -20,11 +20,14 @@ import java.util.UUID;
 @Repository
 public interface ShipRepository extends JpaRepository<Ship, UUID> {
     @Query("""
-            SELECT s FROM Ship s WHERE EXISTS (SELECT crew.cruiseStaffId FROM CruiseStaff crew
+            SELECT s FROM Ship s WHERE s.createdByShipManagerId = :user
+                OR EXISTS (SELECT crew.cruiseStaffId FROM CruiseStaff crew
                 WHERE crew.cruise.ship=s AND crew.user.userId=:user AND crew.status='ACTIVE'
                 AND crew.roleInCruise='SHIP_MANAGER' AND crew.cruise.status NOT IN ('CANCELLED','COMPLETED'))
             """)
     Page<Ship> findManagedShips(@Param("user") UUID user, Pageable pageable);
+
+    boolean existsByShipTypeShipTypeId(UUID shipTypeId);
     boolean existsByShipCode(String shipCode);
 
     boolean existsByShipCodeAndShipIdNot(String shipCode, UUID shipId);

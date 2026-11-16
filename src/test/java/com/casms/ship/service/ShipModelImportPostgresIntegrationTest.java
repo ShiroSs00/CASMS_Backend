@@ -10,6 +10,7 @@ import com.casms.identity.enums.Role;
 import com.casms.identity.enums.UserStatus;
 import com.casms.identity.repository.UserRepository;
 import com.casms.security.jwt.JwtService;
+import com.casms.ship.dto.request.ShipCreateRequest;
 import com.casms.ship.entity.Cabin;
 import com.casms.ship.entity.Deck;
 import com.casms.ship.entity.Ship;
@@ -61,6 +62,7 @@ class ShipModelImportPostgresIntegrationTest {
 
     @Autowired MockMvc mockMvc;
     @Autowired ShipModelAssetService assetService;
+    @Autowired ShipService shipService;
     @Autowired ObjectMapper mapper;
     @Autowired JdbcTemplate jdbc;
     @Autowired ShipRepository ships;
@@ -75,6 +77,7 @@ class ShipModelImportPostgresIntegrationTest {
     @Autowired org.flywaydb.core.Flyway flyway;
 
     private final List<UUID> testShipIds = new ArrayList<>();
+    private final List<UUID> testTypeIds = new ArrayList<>();
     private final List<UUID> testUserIds = new ArrayList<>();
     private final Set<String> uploadedBundles = Collections.synchronizedSet(new LinkedHashSet<>());
     private final Map<String, String> storedVersions = new java.util.concurrent.ConcurrentHashMap<>();
@@ -1012,15 +1015,7 @@ class ShipModelImportPostgresIntegrationTest {
         String key = uniqueKey("provision");
         upload(key, "v1", smallBundle(key, "v1", "OCEAN_VIEW", "M-301", true), token);
 
-        MvcResult firstResult =
-                mockMvc.perform(
-                                post(
-                                                "/ship-model-assets/{modelKey}/register", key)
-                                        .header("Authorization", "Bearer " + token))
-                        .andExpect(status().isCreated())
-                        .andReturn();
-        JsonNode first =
-                mapper.readTree(firstResult.getResponse().getContentAsByteArray()).path("data");
+        JsonNode first = registerManifestUnchecked(key);
         UUID shipId = UUID.fromString(first.path("shipId").asText());
         testShipIds.add(shipId);
         assertTrue(first.path("shipCreated").asBoolean());
@@ -1039,10 +1034,10 @@ class ShipModelImportPostgresIntegrationTest {
         try {
             var v2 =
                     CompletableFuture.supplyAsync(
-                            () -> registerManifestUnchecked(key, "v1", token), pool);
+                            () -> registerManifestUnchecked(key), pool);
             var v3 =
                     CompletableFuture.supplyAsync(
-                            () -> registerManifestUnchecked(key, "v1", token), pool);
+                            () -> registerManifestUnchecked(key), pool);
             second = v2.join();
             third = v3.join();
         } finally {
@@ -1099,15 +1094,7 @@ class ShipModelImportPostgresIntegrationTest {
                         14,
                         13),
                 token);
-        MvcResult registration =
-                mockMvc.perform(
-                                post(
-                                                "/ship-model-assets/{modelKey}/register", key)
-                                        .header("Authorization", "Bearer " + token))
-                        .andExpect(status().isCreated())
-                        .andReturn();
-        JsonNode registered =
-                mapper.readTree(registration.getResponse().getContentAsByteArray()).path("data");
+        JsonNode registered = registerManifestUnchecked(key);
         UUID shipId = UUID.fromString(registered.path("shipId").asText());
         testShipIds.add(shipId);
         UUID modelId = UUID.fromString(registered.path("shipModelId").asText());
@@ -1170,16 +1157,11 @@ class ShipModelImportPostgresIntegrationTest {
     }
 
     @Test
-    void manualShipCreateAndUpdateValidatePassengerDeckCount() throws Exception {
+    void legacyShipUpdateValidatesPassengerDeckCount() throws Exception {
         String token = token(Role.ADMIN);
         UUID legacyId = createShip(6).getShipId();
         long before = ships.count();
         for (String count : List.of("7", "25", "8.5", "null")) {
-            mockMvc.perform(post("/ships")
-                            .header("Authorization", "Bearer " + token)
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content("{\"shipName\":\"Boundary ship\",\"totalCapacity\":100,\"totalDecks\":" + count + "}"))
-                    .andExpect(status().isBadRequest());
             if (!count.equals("null")) {
                 mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
                                 .patch("/ships/{shipId}", legacyId)
@@ -1202,17 +1184,6 @@ class ShipModelImportPostgresIntegrationTest {
                 .andExpect(jsonPath("$.data.totalDecks").value(6));
 
         for (int count : List.of(8, 12, 24)) {
-            var result = mockMvc.perform(post("/ships")
-                            .header("Authorization", "Bearer " + token)
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content(mapper.writeValueAsBytes(Map.of(
-                                    "shipName", "Boundary ship " + count,
-                                    "totalCapacity", 100, "totalDecks", count))))
-                    .andExpect(status().isCreated())
-                    .andExpect(jsonPath("$.data.totalDecks").value(count))
-                    .andReturn();
-            testShipIds.add(UUID.fromString(mapper.readTree(result.getResponse().getContentAsByteArray())
-                    .path("data").path("shipId").asText()));
             mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
                             .patch("/ships/{shipId}", legacyId)
                             .header("Authorization", "Bearer " + token)
@@ -1355,28 +1326,11 @@ class ShipModelImportPostgresIntegrationTest {
         assertEquals(75.0, ship.path("lengthMeters").asDouble());
         assertTrue(ship.path("beamMeters").isNull());
         assertTrue(ship.path("commissionDate").isNull());
-        var result =
-                mockMvc.perform(
-                                post("/ship-model-assets/{key}/register", key)
-                                        .header("Authorization", "Bearer " + token)
-                                        .contentType(MediaType.APPLICATION_JSON)
-                                        .content(
-                                                mapper.writeValueAsBytes(
-                                                        Map.of(
-                                                                "shipName",
-                                                                "Second supplemented ship",
-                                                                "totalCapacity",
-                                                                30,
-                                                                "totalDecks",
-                                                                8))))
-                        .andExpect(status().isCreated())
-                        .andReturn();
-        UUID other =
-                UUID.fromString(
-                        mapper.readTree(result.getResponse().getContentAsByteArray())
-                                .path("data")
-                                .path("shipId")
-                                .asText());
+        ShipCreateRequest supplements = new ShipCreateRequest();
+        supplements.setShipName("Second supplemented ship");
+        supplements.setTotalCapacity(30);
+        supplements.setTotalDecks(8);
+        UUID other = assetService.createShipFromManifest(key, supplements).shipId();
         testShipIds.add(other);
         assertNull(ships.findById(other).orElseThrow().getLengthMeters());
         assertNull(ships.findById(other).orElseThrow().getBeamMeters());
@@ -1494,24 +1448,92 @@ class ShipModelImportPostgresIntegrationTest {
     }
 
     @Test
-    void modelReferencesAndCreatePermissionsAreValidatedBeforeCreatingShips() throws Exception {
+    void shipTypeProvisioningSharesAssetsAndGatesStatusOnScopedProfile() throws Exception {
+        String admin = token(Role.ADMIN);
+        String manager = token(Role.SHIP_MANAGER);
+        String otherManager = token(Role.SHIP_MANAGER);
+        String key = uniqueKey("ship-type");
+        Path bundle = smallBundle(key, "v1", "OCEAN_VIEW", "TYPE-01", true);
+        long shipCount = ships.count();
+        String identity = "zip-" + sha256(Files.readAllBytes(bundle));
+        uploadedBundles.add(key + "|" + identity);
+        var type = mockMvc.perform(multipart("/ship-types")
+                        .file(new FileBackedMultipartFile("bundle", bundle))
+                        .param("modelKey", key).header("Authorization", "Bearer " + admin))
+                .andExpect(status().isCreated()).andReturn();
+        UUID typeId = UUID.fromString(mapper.readTree(type.getResponse().getContentAsByteArray())
+                .path("data").path("shipTypeId").asText());
+        testTypeIds.add(typeId);
+        assertEquals(shipCount, ships.count());
+        long assetCount = jdbc.queryForObject(
+                "SELECT count(*) FROM \"ShipModelAssetBlob\" WHERE model_key = ?", Long.class, key);
+
+        Map<String, Object> profile = Map.of(
+                "classificationSociety", "Example Classification",
+                "classificationExpiryDate", "2099-01-01",
+                "certificateReferences", List.of("certificate-1"),
+                "warrantyReferences", List.of("warranty-1"),
+                "maintenanceReferences", List.of("maintenance-1"));
+        UUID first = createTypedShip(typeId, "First physical vessel", manager,
+                Map.of("imoNumber", "1234567"));
+        UUID second = createTypedShip(typeId, "Second physical vessel", manager, profile);
+        assertNotEquals(first, second);
+        assertNotEquals(ships.findById(first).orElseThrow().getShipCode(),
+                ships.findById(second).orElseThrow().getShipCode());
+        assertEquals(assetCount, jdbc.queryForObject(
+                "SELECT count(*) FROM \"ShipModelAssetBlob\" WHERE model_key = ?", Long.class, key));
+        assertNotEquals(decks.findByShipShipIdAndDeckNumber(first, 1).orElseThrow().getDeckId(),
+                decks.findByShipShipIdAndDeckNumber(second, 1).orElseThrow().getDeckId());
+
+        mockMvc.perform(post("/ships/{shipId}/status", first)
+                        .param("status", "READY").header("Authorization", "Bearer " + manager))
+                .andExpect(status().isUnprocessableEntity());
+        mockMvc.perform(get("/ships/{shipId}/operational-profile", first)
+                        .header("Authorization", "Bearer " + otherManager))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(put("/ships/{shipId}/operational-profile", first)
+                        .header("Authorization", "Bearer " + manager)
+                        .contentType(MediaType.APPLICATION_JSON).content(mapper.writeValueAsBytes(profile)))
+                .andExpect(status().isOk());
+        for (UUID shipId : List.of(first, second)) {
+            mockMvc.perform(post("/ships/{shipId}/status", shipId)
+                            .param("status", "READY").header("Authorization", "Bearer " + manager))
+                    .andExpect(status().isOk());
+            mockMvc.perform(get("/ships/{shipId}/public-model", shipId))
+                    .andExpect(status().isOk());
+        }
+    }
+
+    private UUID createTypedShip(UUID typeId, String name, String manager, Map<String, Object> profile)
+            throws Exception {
+        var result = mockMvc.perform(post("/ship-types/{typeId}/ships", typeId)
+                        .header("Authorization", "Bearer " + manager)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsBytes(Map.of("shipName", name, "profile", profile))))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.shipName").value(name))
+                .andExpect(jsonPath("$.data.status").value("DRAFT")).andReturn();
+        UUID shipId = UUID.fromString(mapper.readTree(result.getResponse().getContentAsByteArray())
+                .path("data").path("shipId").asText());
+        testShipIds.add(shipId);
+        return shipId;
+    }
+
+    @Test
+    void retiredRoutesCannotCreateShipsOutsideShipTypes() throws Exception {
         String token = token(Role.ADMIN),
                 key = uniqueKey("create-access"),
                 passenger = token(Role.PASSENGER);
         upload(key, "v1", smallBundle(key, "v1", "OCEAN_VIEW", "M-ACCESS", true), token);
         long before = ships.count();
-        createUsingModel(uniqueKey("missing-model"), Map.of(), token, 404);
-        createUsingModel(key, Map.of(), passenger, 403);
-        mockMvc.perform(
-                        post("/ship-model-assets/{key}/register", key)
-                                .header("Authorization", "Bearer " + passenger))
+        mockMvc.perform(post("/ship-model-assets/{key}/register", key)
+                        .header("Authorization", "Bearer " + passenger))
                 .andExpect(status().isForbidden());
-        mockMvc.perform(
-                        post("/ships")
-                                .header("Authorization", "Bearer " + token)
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content("{}"))
-                .andExpect(status().isBadRequest());
+        mockMvc.perform(post("/ship-model-assets/{key}/register", key)
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isGone());
+        mockMvc.perform(post("/ships").header("Authorization", "Bearer " + token))
+                .andExpect(status().isGone());
         assertEquals(before, ships.count());
     }
 
@@ -1520,17 +1542,16 @@ class ShipModelImportPostgresIntegrationTest {
             throws Exception {
         Map<String, Object> body = new LinkedHashMap<>(supplements);
         body.put("modelKey", key);
-        var result =
-                mockMvc.perform(
-                                post("/ships")
-                                        .header("Authorization", "Bearer " + token)
-                                        .contentType(MediaType.APPLICATION_JSON)
-                                        .content(mapper.writeValueAsBytes(body)))
-                        .andExpect(status().is(expected))
-                        .andReturn();
-        JsonNode data = mapper.readTree(result.getResponse().getContentAsByteArray()).path("data");
-        if (expected == 201) testShipIds.add(UUID.fromString(data.path("shipId").asText()));
-        return data;
+        ShipCreateRequest request = mapper.convertValue(body, ShipCreateRequest.class);
+        if (expected != 201) {
+            var failure = assertThrows(org.springframework.web.server.ResponseStatusException.class,
+                    () -> shipService.create(request));
+            assertEquals(expected, failure.getStatusCode().value());
+            return mapper.nullNode();
+        }
+        var result = shipService.create(request);
+        testShipIds.add(result.getShipId());
+        return mapper.valueToTree(result);
     }
 
     private int uploadStatus(String key, String version, Path archive, String token)
@@ -1607,13 +1628,6 @@ class ShipModelImportPostgresIntegrationTest {
 
     @AfterEach
     void cleanTestRowsAndLargeObjects() {
-        for (String entry : uploadedBundles) {
-            String[] identity = entry.split("\\|", 2);
-            jdbc.update(
-                    "DELETE FROM \"ShipModelAssetBlob\" WHERE model_key = ? AND asset_version = ?",
-                    identity[0],
-                    identity[1]);
-        }
         for (UUID shipId : testShipIds) {
             jdbc.update(
                     "DELETE FROM \"DeckServiceAssignment\" WHERE deck_id IN (SELECT deck_id FROM"
@@ -1631,6 +1645,16 @@ class ShipModelImportPostgresIntegrationTest {
             jdbc.update("DELETE FROM \"Deck\" WHERE ship_id = ?", shipId);
             jdbc.update("DELETE FROM \"ShipModel\" WHERE ship_id = ?", shipId);
             jdbc.update("DELETE FROM \"Ship\" WHERE ship_id = ?", shipId);
+        }
+        for (UUID typeId : testTypeIds) {
+            jdbc.update("DELETE FROM \"ShipType\" WHERE ship_type_id = ?", typeId);
+        }
+        for (String entry : uploadedBundles) {
+            String[] identity = entry.split("\\|", 2);
+            jdbc.update(
+                    "DELETE FROM \"ShipModelAssetBlob\" WHERE model_key = ? AND asset_version = ?",
+                    identity[0],
+                    identity[1]);
         }
         for (UUID userId : testUserIds) {
             jdbc.update("DELETE FROM \"UserRole\" WHERE user_id = ?", userId);
@@ -1691,19 +1715,8 @@ class ShipModelImportPostgresIntegrationTest {
         }
     }
 
-    private JsonNode registerManifestUnchecked(String key, String version, String token) {
-        try {
-            MvcResult result =
-                    mockMvc.perform(
-                                    post(
-                                                    "/ship-model-assets/{modelKey}/register", key)
-                                            .header("Authorization", "Bearer " + token))
-                            .andExpect(status().isCreated())
-                            .andReturn();
-            return mapper.readTree(result.getResponse().getContentAsByteArray()).path("data");
-        } catch (Exception ex) {
-            throw new RuntimeException(ex);
-        }
+    private JsonNode registerManifestUnchecked(String key) {
+        return mapper.valueToTree(assetService.createShipFromManifest(key, null));
     }
 
     private void upload(String key, String version, Path zip, String token) throws Exception {
@@ -1989,6 +2002,8 @@ class ShipModelImportPostgresIntegrationTest {
         manifest.put("revision", "integration-v1");
         manifest.put("modelId", key);
         manifest.put("name", "Mini Ship");
+        manifest.put("shipManufacturerName", "Example Manufacturer");
+        manifest.put("engineType", "Diesel");
         manifest.put("length", 100.0);
         manifest.put("beam", 20.0);
         manifest.put("deckCount", deckCount);

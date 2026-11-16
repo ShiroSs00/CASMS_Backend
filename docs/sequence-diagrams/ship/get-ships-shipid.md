@@ -30,3 +30,9 @@ sequenceDiagram
 
     end
 ```
+
+## Ship-type change
+
+The scoped read includes shipTypeId for typed ships. Detailed operational records have their own scoped endpoint.
+
+See [ship type flow](../SHIP-TYPE-FLOWS.md).

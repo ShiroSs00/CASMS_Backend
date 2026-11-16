@@ -35,3 +35,9 @@ sequenceDiagram
 
     end
 ```
+
+## Ship-type change
+
+The list includes shipTypeId for typed ships. A Ship Manager sees creator-owned ships and active assignments.
+
+See [ship type flow](../SHIP-TYPE-FLOWS.md).

@@ -193,12 +193,17 @@ public class ShipService {
 
     @Transactional
     public ShipResponse changeStatus(UUID shipId, ShipStatus newStatus) {
-        Ship ship = getShipById(shipId);
+        Ship ship = shipRepository.findByIdForUpdate(shipId)
+                .orElseThrow(() -> new ResourceNotFoundException("Ship", shipId));
         if (newStatus == null) {
             throw new BusinessException("INVALID_SHIP_STATUS", "Ship status is required");
         }
         if (ship.getStatus() == newStatus) {
             return mapToResponse(ship);
+        }
+
+        if (ship.getShipType() != null) {
+            requireOperationalProfile(ship);
         }
 
         // A ship on a current cruise cannot move to a non-operational state
@@ -369,8 +374,32 @@ public class ShipService {
                 .orElseThrow(() -> new ResourceNotFoundException("Ship", shipId));
     }
 
+    private static void requireOperationalProfile(Ship ship) {
+        var profile = ship.getOperationalProfile();
+        var missing = new java.util.ArrayList<String>();
+        if (profile == null || profile.classificationSociety() == null
+                || profile.classificationExpiryDate() == null
+                || profile.certificateReferences() == null || profile.certificateReferences().isEmpty()) {
+            missing.add("certification");
+        }
+        if (profile == null || profile.warrantyReferences() == null || profile.warrantyReferences().isEmpty()) {
+            missing.add("warranty");
+        }
+        if (profile == null || profile.maintenanceReferences() == null || profile.maintenanceReferences().isEmpty()) {
+            missing.add("maintenance");
+        }
+        if (!missing.isEmpty()) {
+            throw new BusinessException(org.springframework.http.HttpStatus.UNPROCESSABLE_ENTITY,
+                    "SHIP_OPERATIONAL_PROFILE_INCOMPLETE", "Complete the ship profile before changing status",
+                    java.util.Map.of("missingGroups", missing));
+        }
+    }
+
     private ShipResponse mapToResponse(Ship ship) {
         ShipResponse res = new ShipResponse();
+        if (ship.getShipType() != null) {
+            res.setShipTypeId(ship.getShipType().getShipTypeId());
+        }
         res.setShipId(ship.getShipId());
         res.setShipCode(ship.getShipCode());
         res.setShipName(ship.getShipName());

@@ -69,6 +69,10 @@ public class TripScheduleVersionService {
     private final AuditRepository auditRepository;
     private final AuditService auditService;
 
+    @Autowired
+    @Setter
+    private TripGeographyCatalog geographyCatalog;
+
     @Autowired(required = false)
     @Setter
     private OnboardActivityRepository onboardActivityRepository;
@@ -159,6 +163,7 @@ public class TripScheduleVersionService {
         var version = versionRepository.findById(versionId)
                 .orElseThrow(() -> new ResourceNotFoundException("TripScheduleVersion", versionId));
         requireEditableRevision(version, expectedRevision, "STALE_REVISION");
+        if (geographyCatalog != null) geographyCatalog.selection().requireAvailable(version);
         var day = version.getDays().stream().filter(row -> row.getDayNumber() == dayNumber).findFirst()
                 .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "DAY_NOT_FOUND",
                         "Ngày này không còn trong lịch trình."));
@@ -201,6 +206,8 @@ public class TripScheduleVersionService {
     private TripScheduleVersionDetailResponse executeSaveDraft(
             TripScheduleVersion version, ScheduleDraftSaveRequest request, UUID actorId, String lockConflictCode) {
         requireEditableRevision(version, request.getExpectedRevision(), lockConflictCode);
+        var geography = geographyCatalog == null ? null : geographyCatalog.selection();
+        if (geography != null) geography.requireAvailable(version);
         List<TripPlanEntry> preservedLegacy =
                 LegacyTemplateContentPolicy.protectSave(version, request);
         Trip trip = version.getTrip();
@@ -293,6 +300,7 @@ public class TripScheduleVersionService {
                             "INACTIVE_PORT",
                             "Cảng khởi hành không còn hoạt động.");
                 CountryScopeValidator.validatePort(departurePort, trip, "Cảng khởi hành");
+                if (geography != null) geography.requireAvailable(departurePort);
                 if (CountryScopeValidator.isDomestic(trip)
                         && trip.getDomesticRegions() != null
                         && !trip.getDomesticRegions().isEmpty()
@@ -352,6 +360,7 @@ public class TripScheduleVersionService {
                             "Cảng " + port.getPortCode() + " hiện không ở trạng thái ACTIVE.");
                 }
 
+                if (geography != null) geography.requireAvailable(port);
                 // BE-11.2: Validate port country against Trip scope
                 if (CountryScopeValidator.isDomestic(trip)) {
                     if (port.getCountryCode() != null
@@ -1448,6 +1457,7 @@ public class TripScheduleVersionService {
                         .orElseThrow();
 
         LegacyTemplateContentPolicy.rejectLegacyClone(latestPublished);
+        if (geographyCatalog != null) geographyCatalog.selection().requireAvailable(latestPublished);
 
         User creator = null;
         if (actorId != null) {
@@ -1606,6 +1616,20 @@ public class TripScheduleVersionService {
 
     public List<PlanViolation> validateVersionInternal(TripScheduleVersion version) {
         List<PlanViolation> violations = new ArrayList<>();
+        if (geographyCatalog != null && version.getStatus() == TripScheduleVersionStatus.DRAFT) {
+            List<String> unavailable = geographyCatalog.selection().unavailable(version);
+            if (!unavailable.isEmpty()) {
+                violations.add(PlanViolation.builder()
+                        .code("TRIP_GEOGRAPHY_UNAVAILABLE")
+                        .severity("ERROR")
+                        .entityType("VERSION")
+                        .field("geography")
+                        .fieldPath("trip.geography")
+                        .actionHint("RECREATE_DRAFT")
+                        .message(TripGeographyCatalog.recreateMessage(unavailable))
+                        .build());
+            }
+        }
         Trip trip = version.getTrip();
         List<TripPlanDay> days = version.getDays();
         List<TripPlanStop> stops = version.getStops();

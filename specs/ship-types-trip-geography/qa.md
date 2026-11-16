@@ -1,0 +1,27 @@
+# Bằng chứng QA BE-01 đến BE-08
+
+## Kết quả đã chạy
+
+Checkout nền `43b19e2`, Java 21.0.11 và Maven 3.9.16. Lệnh từ PowerShell:
+
+```powershell
+mvn -o "-Dmaven.repo.local=$env:USERPROFILE/.m2/repository" -q "-Dtest=ShipTypeServiceTest,ShipServiceTest,StoredModelCatalogTest,PublicShipModelTest,TripGeographyCatalogTest,TripPlanningEnhancementTest,TripAndCruiseP0PortValidationTest" test
+```
+
+Surefire ghi 80 test, 0 failures, 0 errors, 0 skipped.
+
+| Suite | Số test | Phạm vi liên quan |
+| --- | ---: | --- |
+| ShipTypeServiceTest | 2 | Gói thiếu trường và xác định tên tàu, phiên bản 3D khi tạo |
+| ShipServiceTest | 11 | Điều kiện đổi trạng thái và hồi quy trạng thái tàu |
+| StoredModelCatalogTest | 2 | Hồi quy danh mục model |
+| PublicShipModelTest | 3 | Hồi quy API đọc mô hình |
+| TripGeographyCatalogTest | 4 | Tắt Việt Nam, khóa miền, phạm vi chuyến và cảng trong lịch nháp |
+| TripPlanningEnhancementTest | 42 | Hồi quy lập chuyến, gồm yêu cầu tạo lại lịch nháp khi miền bị tắt |
+| TripAndCruiseP0PortValidationTest | 16 | Hồi quy lập chuyến và cảng |
+
+`git diff --check` trả 0. `python scripts/sequence_docs.py --check` trả 1 do thiếu 73 dòng inventory và 610 sơ đồ trong phần nền, với 0 dòng lỗi thời và 0 lỗi cấu trúc Mermaid. Nền `origin/main` có 74 dòng inventory thiếu và 627 sơ đồ thiếu theo cùng quy tắc quét. Các mapping thêm và các route cập nhật có tài liệu trong inventory.
+
+## Chưa xác minh trên PostgreSQL
+
+Ca tích hợp `shipTypeProvisioningSharesAssetsAndGatesStatusOnScopedProfile` đã biên dịch, chờ chạy trên PostgreSQL cô lập. Docker daemon đang dừng và môi trường chưa có PostgreSQL cô lập được duyệt. Migration V121/V122, rollback trên database, trùng định danh đồng thời và bảo toàn dữ liệu lịch sử khi nâng cấp vẫn chờ bằng chứng thực thi.

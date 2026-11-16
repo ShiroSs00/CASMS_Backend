@@ -91,9 +91,18 @@ public class ShipModelImportService {
             assetService.updateImportedBundle(model, modelKey, version);
         }
 
+        return importRegisteredModel(shipId, model, authentication == null ? null : authentication.getName());
+    }
+
+    @Transactional
+    public void importForProvisioning(UUID shipId, UUID modelId, String actor) {
+        importRegisteredModel(shipId, model(shipId, modelId), actor);
+    }
+
+    private ModelImportJobResponse importRegisteredModel(UUID shipId, ShipModel model, String actor) {
         ModelImportJob job = new ModelImportJob();
         job.setShipModel(model);
-        job.setRequestedBy(authentication == null ? null : authentication.getName());
+        job.setRequestedBy(actor);
         job.setStatus(ModelImportStatus.RUNNING);
         jobs.saveAndFlush(job);
         ModelImportJobResponse result = importModelTransaction(shipId, model.getShipModelId(),

@@ -1,6 +1,7 @@
 package com.casms.ship.entity;
 
 import com.casms.ship.enums.ShipStatus;
+import com.casms.ship.dto.request.ShipOperationalProfile;
 
 import jakarta.persistence.*;
 
@@ -8,6 +9,8 @@ import lombok.Getter;
 import lombok.Setter;
 
 import org.hibernate.annotations.DynamicUpdate;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -24,6 +27,17 @@ public class Ship {
     @GeneratedValue(strategy = GenerationType.UUID)
     @Column(name = "ship_id")
     private UUID shipId;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "ship_type_id")
+    private ShipType shipType;
+
+    @Column(name = "created_by_ship_manager_id")
+    private UUID createdByShipManagerId;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "operational_profile", columnDefinition = "jsonb")
+    private ShipOperationalProfile operationalProfile;
 
     @Column(name = "ship_code", nullable = false, unique = true, length = 20)
     private String shipCode;
