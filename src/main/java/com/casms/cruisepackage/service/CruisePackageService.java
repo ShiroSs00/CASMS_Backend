@@ -61,7 +61,7 @@ public class CruisePackageService {
         }
         return new CruisePackageContext(cruiseId,shipId,status,shipId!=null&&planning&&editable&&maker,
                 planning&&editable&&maker,planning&&!unified&&hasActor(Role.OPERATIONS_MANAGER,"CRUISE_PRICING_APPROVE"),
-                unified, dep, ret, bOpen, bClose);
+                unified, dep, ret, bOpen, bClose, saleCurrency(cruiseId));
     }
     public List<ResourceOption> resources(ResourceType type,UUID cruiseId) {
         requireRead();
@@ -77,10 +77,8 @@ public class CruisePackageService {
                             (r,n)->new ResourceOption(r.getObject(1,UUID.class),r.getString(2),r.getString(3)))
                     : jdbc.query("""
                             SELECT s.service_id,s.service_name,s.unit_code FROM "Service" s
-                            WHERE s.status='ACTIVE' AND EXISTS(
-                                SELECT 1 FROM "DeckServiceAssignment" a JOIN "Deck" d USING(deck_id)
-                                JOIN "Cruise" c ON c.ship_id=d.ship_id
-                                WHERE c.cruise_id=? AND a.service_id=s.service_id)
+                            JOIN "CruiseAvailablePackageService" available USING(service_id)
+                            WHERE available.cruise_id=?
                             ORDER BY s.service_name,s.service_id
                             """, (r,n)->new ResourceOption(r.getObject(1,UUID.class),r.getString(2),r.getString(3)), cruiseId);
         };
@@ -199,7 +197,10 @@ public class CruisePackageService {
         price.setTemplateVersionId(offer.getTemplateVersionId());
         price.setOfferCommercialRevision(offer.getCommercialRevision());
         price.setRevisionNumber(repository.prices(offerId).stream().mapToInt(DepartureCruisePackagePrice::getRevisionNumber).max().orElse(0)+1);
-        price.setAmount(input.amount()); price.setCurrencyCode("USD"); price.setPriceUnit("PERSON"); price.setStatus("DRAFT");
+        String currency = saleCurrency(cruiseId);
+        if ("VND".equals(currency) && input.amount().stripTrailingZeros().scale() > 0)
+            fail("VND_WHOLE_AMOUNT_REQUIRED", "Nhập giá theo số đồng nguyên.");
+        price.setAmount(input.amount()); price.setCurrencyCode(currency); price.setPriceUnit("PERSON"); price.setStatus("DRAFT");
         price.setCreatedAt(Instant.now()); price.setCreatedBy(actor); repository.insert(price);
         repository.increment(offer); repository.flush(); return offerView(offer);
     }
@@ -215,6 +216,8 @@ public class CruisePackageService {
         requireOccurrence(type,input.occurrenceId(),cruiseId);
         if(type==ResourceType.SERVICE&&!benefit.getServiceId().equals(input.occurrenceId()))
             fail("FARE_SERVICE_MISMATCH","Phải giữ đúng dịch vụ trong định nghĩa quyền lợi.");
+        if(type==ResourceType.SERVICE&&!serviceAvailableOnCruise(cruiseId,input.occurrenceId()))
+            fail("SERVICE_NOT_AVAILABLE_ON_SHIP","Dịch vụ chưa khả dụng trên tàu hoặc còn chờ xác nhận bố trí.");
         var activeBenefitIds=repository.benefits(offer.getTemplateVersionId()).stream().map(CruisePackageBenefit::getId).collect(java.util.stream.Collectors.toSet());
         if(repository.bindings(offerId).stream().anyMatch(b->activeBenefitIds.contains(b.getBenefitId())&&!b.getBenefitId().equals(benefit.getId())
                 &&(input.occurrenceId().equals(b.getOnboardActivityId())||input.occurrenceId().equals(b.getShoreExcursionId())||input.occurrenceId().equals(b.getServiceId()))))
@@ -309,7 +312,7 @@ public class CruisePackageService {
             var slots=bindings.stream().filter(b -> b.getBenefitId().equals(benefit.getId())).toList();
             if(slots.isEmpty()) { blockers.add(new Blocker("BENEFIT_OCCURRENCE_UNBOUND","Quyền lợi chưa được liên kết tường minh với lần phục vụ trên chuyến.",benefit.getId())); continue; }
             for(var binding:slots) {
-                if(binding.getServiceId()!=null&&!Boolean.TRUE.equals(jdbc.queryForObject("SELECT EXISTS(SELECT 1 FROM \"DeckServiceAssignment\" a JOIN \"Deck\" d USING(deck_id) JOIN \"Service\" s USING(service_id) WHERE d.ship_id=? AND a.service_id=? AND s.status='ACTIVE')",Boolean.class,offer.getShipId(),binding.getServiceId())))
+                if(binding.getServiceId()!=null&&!serviceAvailableOnCruise(offer.getCruiseId(),binding.getServiceId()))
                     blockers.add(new Blocker("SERVICE_NOT_AVAILABLE_ON_SHIP","Dịch vụ trong quyền lợi chưa được cấu hình trên tàu hoặc không hoạt động.",binding.getServiceId()));
                 UUID occurrence=binding.getOnboardActivityId()!=null?binding.getOnboardActivityId():binding.getShoreExcursionId()!=null?binding.getShoreExcursionId():binding.getServiceId();
                 if(!sameCruise(resourceType(benefit),occurrence,offer.getCruiseId()))
@@ -333,11 +336,12 @@ public class CruisePackageService {
     }
 
     private DepartureCruisePackagePrice planPrice(DepartureCruisePackage offer) {
+        String currency = saleCurrency(offer.getCruiseId());
         return repository.prices(offer.getId()).stream()
                 .filter(p -> "SUBMITTED".equals(p.getStatus()) && p.getSubmittedBy() != null
                         && offer.getTemplateVersionId().equals(p.getTemplateVersionId())
                         && offer.getCommercialRevision() == p.getOfferCommercialRevision()
-                        && "USD".equals(p.getCurrencyCode()) && "PERSON".equals(p.getPriceUnit()))
+                        && currency.equals(p.getCurrencyCode()) && "PERSON".equals(p.getPriceUnit()))
                 .findFirst().orElseGet(() -> currentApprovedPrice(offer));
     }
 
@@ -426,7 +430,7 @@ public class CruisePackageService {
         cruise(cruiseId); cruiseServices.getObject().requirePublicSaleVisible(cruiseId);
         var offers=repository.offers(cruiseId).stream().filter(o->o.isSaleRequested()&&o.isSaleEnabled()&&eligibility(o).eligible())
                 .filter(this::isPlanApprovedPrice)
-                .map(o->{var price=currentApprovedPrice(o);return new AvailableCruisePackage(cruiseId,preparePurchase(cruiseId,o.getId(),price.getId()),"USD","PERSON");}).toList();
+                .map(o->{var price=currentApprovedPrice(o);return new AvailableCruisePackage(cruiseId,preparePurchase(cruiseId,o.getId(),price.getId()),price.getCurrencyCode(),"PERSON");}).toList();
         return new CruisePackageCatalog(cruiseId,plans.usesUnifiedPackages(cruiseId),offers);
     }
     /** Booking/quote callers already serialize on Cruise. Never interpret TourPackage as a Fare Offer. */
@@ -456,7 +460,7 @@ public class CruisePackageService {
         return new CruisePackagePurchaseSelection(offerId,version.getId(),priceId,offer.getShipId(),
                 offer.getLogicalCategory(),CabinType.valueOf(offer.getProposedCabinType()),price.getAmount(),
                 version.getName(),version.getDescription(),version.getVersionNumber(),price.getRevisionNumber(),offer.getCommercialRevision(),benefits,
-                offer.getLogicalCategoryId(),view.cabinMapping().mappingId(),view.cabinMapping().cabinIds());
+                offer.getLogicalCategoryId(),view.cabinMapping().mappingId(),view.cabinMapping().cabinIds(),price.getCurrencyCode());
     }
     /** Caller holds the Cruise lock and validates this booking's existing allocation separately. */
     public void validateHeldPurchase(UUID cruiseId,CruisePackagePurchaseSelection selection) {
@@ -534,8 +538,13 @@ public class CruisePackageService {
         return new OfferView(offer,versionView(require(CruisePackageTemplateVersion.class,offer.getTemplateVersionId(),false)),bindings,Map.copyOf(names),repository.prices(offer.getId()),current==null?null:current.getId(),eligibility(offer),cabinMappings.assess(offer.getShipId(),offer.getLogicalCategoryId(),offer.getTemplateVersionId()));
     }
     private DepartureCruisePackagePrice currentApprovedPrice(DepartureCruisePackage offer) {
+        String currency = saleCurrency(offer.getCruiseId());
         return repository.prices(offer.getId()).stream().filter(p -> "APPROVED".equals(p.getStatus())
-                &&p.getTemplateVersionId().equals(offer.getTemplateVersionId())&&p.getOfferCommercialRevision()==offer.getCommercialRevision()).findFirst().orElse(null);
+                &&currency.equals(p.getCurrencyCode())&&p.getTemplateVersionId().equals(offer.getTemplateVersionId())
+                &&p.getOfferCommercialRevision()==offer.getCommercialRevision()).findFirst().orElse(null);
+    }
+    private String saleCurrency(UUID cruiseId) {
+        return jdbc.queryForObject("SELECT sale_currency FROM \"Cruise\" WHERE cruise_id=?", String.class, cruiseId);
     }
     private VersionView versionView(CruisePackageTemplateVersion version) {
         var benefits=repository.benefits(version.getId()); Map<UUID,String> names=new LinkedHashMap<>();
@@ -647,6 +656,11 @@ public class CruisePackageService {
     }
     private void requireOccurrence(ResourceType type,UUID id,UUID cruiseId) {
         if(!sameCruise(type,id,cruiseId)) fail("FARE_BENEFIT_CRUISE_MISMATCH","Lần phục vụ phải thuộc đúng chuyến khởi hành; không liên kết theo tên.");
+    }
+    private boolean serviceAvailableOnCruise(UUID cruiseId, UUID serviceId) {
+        return Boolean.TRUE.equals(jdbc.queryForObject("""
+                SELECT EXISTS(SELECT 1 FROM "CruiseAvailablePackageService" WHERE cruise_id=? AND service_id=?)
+                """, Boolean.class, cruiseId, serviceId));
     }
     private boolean sameCruise(ResourceType type,UUID id,UUID cruiseId) {
         return switch(type) {

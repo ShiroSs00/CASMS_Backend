@@ -18,6 +18,7 @@ import com.casms.servicepackage.service.ServicepackageService;
 import com.casms.ship.dto.request.CruisePricingPolicyRequest;
 import com.casms.ship.dto.response.CruisePricingPolicyResponse;
 import com.casms.ship.service.CruiseMainflowService;
+import com.casms.ship.service.CruiseWorkHandoffService;
 import com.casms.ship.service.CruisePricingPolicyService;
 
 import jakarta.persistence.EntityManager;
@@ -36,14 +37,15 @@ import org.springframework.web.bind.annotation.*;
 import java.math.BigDecimal;
 import java.util.*;
 
-/** CRM can edit its Cruise programs without acquiring global activity/catalog grants. */
+/** Work on actual departure programs follows the assigned ASM request. */
 @RestController
 @RequestMapping("/cruise-plans/{cruiseId}")
 @RequiredArgsConstructor
-@PreAuthorize("hasRole('CRUISE_MANAGER') and hasAuthority('CRUISE_UPDATE_DRAFT')")
+@PreAuthorize("@cruiseWorkHandoffService.mayConfigurePrograms(#cruiseId, authentication.principal)")
 @Transactional
 public class CruiseScopedProgramsController {
     private final CruiseMainflowService plans;
+    private final CruiseWorkHandoffService handoffs;
     private final ActivityService activities;
     private final com.casms.ship.service.ItineraryProgramPolicy programPolicy;
     private final ShoreExcursionService excursions;
@@ -131,7 +133,7 @@ public class CruiseScopedProgramsController {
 
     @GetMapping("/program-options")
     @PreAuthorize(
-            "(hasRole('CRUISE_MANAGER') and hasAuthority('CRUISE_UPDATE_DRAFT')) or"
+            "@cruiseWorkHandoffService.mayReadPrograms(#cruiseId, authentication.principal) or"
                     + " (hasRole('OPERATIONS_MANAGER') and hasAuthority('CRUISE_READ'))")
     @Transactional(readOnly = true)
     public ApiResponse<Map<String, Object>> options(@PathVariable UUID cruiseId) {
@@ -203,7 +205,7 @@ public class CruiseScopedProgramsController {
 
     @GetMapping("/serving-windows")
     @PreAuthorize(
-            "(hasRole('CRUISE_MANAGER') and hasAuthority('CRUISE_UPDATE_DRAFT')) or"
+            "@cruiseWorkHandoffService.mayReadPrograms(#cruiseId, authentication.principal) or"
                     + " (hasRole('OPERATIONS_MANAGER') and hasAuthority('CRUISE_READ'))")
     @Transactional(readOnly = true)
     public ApiResponse<List<Map<String, Object>>> windows(@PathVariable UUID cruiseId) {
@@ -308,6 +310,19 @@ public class CruiseScopedProgramsController {
 
     private void start(UUID id, Long expected) {
         plans.assertEditable(id);
+        var auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || !(auth.getPrincipal() instanceof CasmsPrincipal actor)
+                || !handoffs.mayConfigurePrograms(id, actor))
+            throw new org.springframework.security.access.AccessDeniedException("Bạn chưa nhận yêu cầu chương trình cho tour này.");
+        checkRevision(id, expected);
+    }
+
+    private void startPricing(UUID id, Long expected) {
+        plans.assertEditable(id);
+        checkRevision(id, expected);
+    }
+
+    private void checkRevision(UUID id, Long expected) {
         Long revision =
                 jdbc.queryForObject(
                         "SELECT revision FROM \"Cruise\" WHERE cruise_id=?", Long.class, id);
@@ -359,7 +374,7 @@ public class CruiseScopedProgramsController {
 
     @GetMapping("/packages")
     @PreAuthorize(
-            "(hasRole('CRUISE_MANAGER') and hasAuthority('CRUISE_UPDATE_DRAFT')) or"
+            "@cruiseWorkHandoffService.mayReadPrograms(#cruiseId, authentication.principal) or"
                     + " (hasRole('OPERATIONS_MANAGER') and hasAuthority('CRUISE_READ'))")
     @Transactional(readOnly = true)
     public ApiResponse<List<Map<String, Object>>> packages(@PathVariable UUID cruiseId) {
@@ -381,7 +396,7 @@ public class CruiseScopedProgramsController {
 
     @GetMapping("/packages/{id}/components")
     @PreAuthorize(
-            "(hasRole('CRUISE_MANAGER') and hasAuthority('CRUISE_UPDATE_DRAFT')) or"
+            "@cruiseWorkHandoffService.mayReadPrograms(#cruiseId, authentication.principal) or"
                     + " (hasRole('OPERATIONS_MANAGER') and hasAuthority('CRUISE_READ'))")
     @Transactional(readOnly = true)
     public ApiResponse<ComponentsView> components(
@@ -460,7 +475,7 @@ public class CruiseScopedProgramsController {
 
     @GetMapping("/excursions")
     @PreAuthorize(
-            "(hasRole('CRUISE_MANAGER') and hasAuthority('CRUISE_UPDATE_DRAFT')) or"
+            "@cruiseWorkHandoffService.mayReadPrograms(#cruiseId, authentication.principal) or"
                     + " (hasRole('OPERATIONS_MANAGER') and hasAuthority('CRUISE_READ'))")
     @Transactional(readOnly = true)
     public ApiResponse<List<Map<String, Object>>> excursions(@PathVariable UUID cruiseId) {
@@ -484,7 +499,7 @@ public class CruiseScopedProgramsController {
 
     @GetMapping("/excursions/{id}")
     @PreAuthorize(
-            "(hasRole('CRUISE_MANAGER') and hasAuthority('CRUISE_UPDATE_DRAFT')) or"
+            "@cruiseWorkHandoffService.mayReadPrograms(#cruiseId, authentication.principal) or"
                     + " (hasRole('OPERATIONS_MANAGER') and hasAuthority('CRUISE_READ'))")
     @Transactional(readOnly = true)
     public ApiResponse<ShoreExcursionResponse> excursionDetail(
@@ -545,7 +560,7 @@ public class CruiseScopedProgramsController {
 
     @GetMapping("/activities")
     @PreAuthorize(
-            "(hasRole('CRUISE_MANAGER') and hasAuthority('CRUISE_UPDATE_DRAFT')) or"
+            "@cruiseWorkHandoffService.mayReadPrograms(#cruiseId, authentication.principal) or"
                     + " (hasRole('OPERATIONS_MANAGER') and hasAuthority('CRUISE_READ'))")
     @Transactional(readOnly = true)
     public ApiResponse<List<ActivityView>> activities(@PathVariable UUID cruiseId) {
@@ -892,13 +907,14 @@ public class CruiseScopedProgramsController {
         return ApiResponse.success(null);
     }
 
+    @PreAuthorize("@cruiseWorkHandoffService.coordinator(#cruiseId, authentication.principal) and hasAuthority('CRUISE_UPDATE_DRAFT')")
     @PutMapping("/pricing-policy")
     public ApiResponse<CruisePricingPolicyResponse> policy(
             @PathVariable UUID cruiseId,
             @RequestHeader("If-Match") Long expected,
             @Valid @RequestBody CruisePricingPolicyRequest input,
             @AuthenticationPrincipal CasmsPrincipal principal) {
-        start(cruiseId, expected);
+        startPricing(cruiseId, expected);
         var result = pricing.savePricingPolicy(cruiseId, input, principal.getUserId(), false);
         finish(cruiseId);
         return ApiResponse.success(result);

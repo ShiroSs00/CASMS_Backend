@@ -76,6 +76,26 @@ public class CruiseStop {
     @Column(name = "planned_departure", nullable = false)
     private Instant plannedDeparture;
 
+    @Column(name = "disembarkation_starts_at")
+    private Instant disembarkationStartsAt;
+
+    @Column(name = "disembarkation_minutes")
+    private Integer disembarkationMinutes;
+
+    @Column(name = "disembarkation_planned_arrival")
+    private Instant disembarkationPlannedArrival;
+
+    @Column(name = "disembarkation_revision", nullable = false)
+    private long disembarkationRevision;
+
+    public Instant validDisembarkationStart() {
+        return disembarkationStartsAt != null && plannedArrival != null && plannedDeparture != null
+                && plannedArrival.equals(disembarkationPlannedArrival)
+                && disembarkationMinutes != null
+                && !disembarkationStartsAt.plusSeconds(disembarkationMinutes * 60L).isAfter(plannedDeparture)
+                ? disembarkationStartsAt : null;
+    }
+
     @Column(name = "actual_arrival")
     private Instant actualArrival;
 

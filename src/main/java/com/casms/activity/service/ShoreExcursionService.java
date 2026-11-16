@@ -311,7 +311,7 @@ public class ShoreExcursionService {
     private void validateSchedule(ShoreExcursion excursion, UUID excludeId) {
         CruiseStop stop =
                 cruiseStopRepository
-                        .findById(excursion.getCruiseStop().getCruiseStopId())
+                        .findByIdForUpdate(excursion.getCruiseStop().getCruiseStopId())
                         .orElseThrow(() -> new EntityNotFoundException("Cruise stop not found."));
 
         if (excursion.getStartTime().isBefore(stop.getPlannedArrival())) {
@@ -323,6 +323,14 @@ public class ShoreExcursionService {
                 stop.getAllAboardTime() != null
                         ? stop.getAllAboardTime()
                         : stop.getPlannedDeparture();
+
+        Instant disembarkation = stop.validDisembarkationStart();
+        if (disembarkation != null && excursion.getPlannedReturnTime().isAfter(disembarkation)) {
+            throw new com.casms.common.exception.BusinessException(
+                    org.springframework.http.HttpStatus.UNPROCESSABLE_ENTITY,
+                    "EXCURSION_DISEMBARKATION_OVERLAP",
+                    "Tour bờ phải kết thúc trước hoặc đúng giờ bắt đầu trả khách.");
+        }
 
         if (!excursion.getPlannedReturnTime().isBefore(latestReturn)) {
             throw new IllegalArgumentException(

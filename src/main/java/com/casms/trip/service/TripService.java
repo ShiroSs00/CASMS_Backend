@@ -1247,9 +1247,14 @@ public class TripService {
             Boolean includeArchived,
             Pageable pageable) {
 
+        var actor = TripWorkspaceAccess.currentActor();
         Specification<Trip> spec =
                 (root, query, cb) -> {
                     List<Predicate> predicates = new ArrayList<>();
+                    if (actor != null) {
+                        if (!actor.hasRole(com.casms.identity.enums.Role.CRUISE_MANAGER)) return cb.disjunction();
+                        predicates.add(cb.equal(root.get("createdByUser").get("userId"), actor.getUserId()));
+                    }
 
                     if (status != null) {
                         predicates.add(cb.equal(root.get("status"), status));

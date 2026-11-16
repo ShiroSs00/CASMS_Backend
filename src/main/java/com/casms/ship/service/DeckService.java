@@ -107,6 +107,8 @@ public class DeckService {
 
     @Transactional(readOnly = true)
     public Page<DeckResponse> list(Pageable pageable) {
+        UUID manager = CruisePlanOperationsAccess.currentShipManager();
+        if (manager != null) return deckRepository.findManagedDecks(manager, pageable).map(this::mapToResponse);
         return deckRepository.findAll(pageable).map(this::mapToResponse);
     }
 

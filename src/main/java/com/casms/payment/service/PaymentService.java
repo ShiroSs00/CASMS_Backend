@@ -106,7 +106,6 @@ public class PaymentService {
         }
 
         // 2. Validate booking existence and status
-        com.casms.common.util.NewWriteCurrency.requireUsd(request.getCurrency());
         Booking booking =
                 bookingRepository
                         .findById(request.getBookingId())
@@ -138,6 +137,10 @@ public class PaymentService {
             throw new BusinessException(
                     "PAYMENT_CURRENCY_MISMATCH",
                     "Payment currency must match the booking currency");
+        }
+        if ("VND".equalsIgnoreCase(currency) && request.getRequestedAmount().stripTrailingZeros().scale() > 0) {
+            throw new BusinessException(HttpStatus.UNPROCESSABLE_ENTITY, "VND_WHOLE_AMOUNT_REQUIRED",
+                    "Nhập số tiền thu theo số đồng nguyên.");
         }
 
         // 3. Outstanding balance validation (total agreed fare - total confirmed collect payments)

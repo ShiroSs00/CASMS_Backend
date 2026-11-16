@@ -8,6 +8,8 @@ import com.casms.security.principal.CasmsPrincipal;
 import com.casms.ship.dto.request.CruiseCancelRequest;
 import com.casms.ship.dto.request.CruiseChangeImpactRequest;
 import com.casms.ship.dto.request.CruiseCreateRequest;
+import com.casms.ship.dto.request.EligibleCruiseShipsRequest;
+import com.casms.ship.dto.response.EligibleCruiseShipsResponse;
 import com.casms.ship.dto.request.CruiseOpenSaleRequest;
 import com.casms.ship.dto.request.CruiseResumeSaleRequest;
 import com.casms.ship.dto.request.CruiseSchedulePreviewRequest;
@@ -73,6 +75,11 @@ import java.util.UUID;
 @RequestMapping({"/cruise", "/cruises"})
 @RequiredArgsConstructor
 public class CruiseController {
+    @PreAuthorize("hasRole('CRUISE_MANAGER') and hasAuthority('CRUISE_CREATE') and hasAuthority('CRUISE_ASSIGN_SHIP') and hasAuthority('SHIP_READ')")
+    @PostMapping("/eligible-ships")
+    public ApiResponse<EligibleCruiseShipsResponse> eligibleShips(@RequestBody @Valid EligibleCruiseShipsRequest request) {
+        return ApiResponse.success(service.eligibleShips(request));
+    }
 
     private final CruiseService service;
     private final CruiseStaffService staffService;
@@ -201,6 +208,9 @@ public class CruiseController {
                         : CruisePlanOperationsAccess.operationsOnly(auth)
                                 ? service.listReceivedForOperations(status, shipId, unassigned, cruiseType,
                                         sourceTripId, sourceVersionId, pageable)
+                                : CruisePlanOperationsAccess.requiresRecordScope(auth)
+                                ? service.listVisibleForStaff(status, shipId, unassigned, cruiseType,
+                                        sourceTripId, sourceVersionId, pageable, (CasmsPrincipal) auth.getPrincipal())
                                 : service.list(
                                 status,
                                 shipId,
@@ -209,7 +219,7 @@ public class CruiseController {
                                 sourceTripId,
                                 sourceVersionId,
                                 pageable);
-        if (!hasCruiseRead) {
+        if (!hasCruiseRead || saleState != null) {
             page = page.map(this::sanitizeForPublic);
         }
         return ApiResponse.success(page);
@@ -240,7 +250,7 @@ public class CruiseController {
             throw new org.springframework.security.access.AccessDeniedException(
                     "Chuyến khởi hành chưa mở bán");
         }
-        if (!hasCruiseRead) {
+        if (!hasCruiseRead || saleState != null) {
             response = sanitizeForPublic(response);
         }
         return ApiResponse.success(response);
@@ -278,6 +288,9 @@ public class CruiseController {
         res.setClosureNotes(null);
         res.setRevision(null);
         res.setSourceVersionRevision(null);
+        res.setSourceTripId(null);
+        res.setSourceVersionId(null);
+        res.setExpectedPassengerCount(null);
         return res;
     }
 

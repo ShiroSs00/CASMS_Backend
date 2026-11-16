@@ -13,6 +13,8 @@ import java.util.UUID;
 @Data
 @Schema(description = "Thông tin chi tiết chuyến khởi hành du thuyền (Cruise)")
 public class CruiseResponse {
+    private String saleCurrency;
+    private Integer expectedPassengerCount;
 
     @Schema(
             description = "ID chuyến khởi hành (UUID)",

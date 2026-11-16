@@ -24,7 +24,7 @@ public class BookingCruisePackageSnapshot {
         snapshot.priceRevisionId=selection.priceRevisionId(); snapshot.shipId=selection.shipId();
         snapshot.logicalCategory=selection.logicalCategory(); snapshot.cabinType=selection.cabinType().name();
         snapshot.logicalCategoryId=selection.logicalCategoryId();snapshot.cabinMappingId=selection.cabinMappingId();snapshot.physicalCabinIds=selection.physicalCabinIds();
-        snapshot.amount=selection.amount(); snapshot.currencyCode="USD"; snapshot.priceUnit="PERSON";
+        snapshot.amount=selection.amount(); snapshot.currencyCode=selection.currencyCode(); snapshot.priceUnit="PERSON";
         snapshot.templateName=selection.templateName(); snapshot.templateDescription=selection.templateDescription();
         snapshot.purchasedAt=purchasedAt; return snapshot;
     }

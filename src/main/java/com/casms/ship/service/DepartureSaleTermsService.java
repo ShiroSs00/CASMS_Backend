@@ -35,12 +35,13 @@ public class DepartureSaleTermsService {
     public record Terms(
             @io.swagger.v3.oas.annotations.media.Schema(description = "Tax rate as a fraction from 0 to 1 when applicable")
             @NotNull @Valid Charge tax,
-            @io.swagger.v3.oas.annotations.media.Schema(description = "Port fee in USD per passenger when applicable")
+            @io.swagger.v3.oas.annotations.media.Schema(description = "Port fee per passenger in the departure sale currency")
             @NotNull @Valid Charge portFee) {}
     public record Write(@NotNull Long expectedRevision, @NotNull @Valid Terms terms) {}
     public record Review(@NotNull Long expectedRevision, String reason) {}
     public record View(long revision, String status, Terms terms, String submittedHash,
-                       UUID submittedBy, OffsetDateTime submittedAt, UUID reviewedBy, OffsetDateTime reviewedAt, String planStatus) {}
+                       UUID submittedBy, OffsetDateTime submittedAt, UUID reviewedBy, OffsetDateTime reviewedAt,
+                       String planStatus, String currency) {}
     public record SetupRequest(UUID cruiseId, String cruiseCode, String cruiseName,
                                String departurePort, String returnPort, java.util.List<String> ports) {}
 
@@ -123,6 +124,7 @@ public class DepartureSaleTermsService {
     }
 
     private View current(UUID id) {
+        String currency = jdbc.queryForObject("SELECT sale_currency FROM \"Cruise\" WHERE cruise_id=?", String.class, id);
         String planStatus = jdbc.query("SELECT status FROM \"CruisePlanReview\" WHERE cruise_id=?",
                 (row,n) -> row.getString(1), id).stream().findFirst().orElse("DRAFT");
         return jdbc.query("""
@@ -130,8 +132,8 @@ public class DepartureSaleTermsService {
             FROM "DepartureSaleTerms" WHERE cruise_id=?
             """, (r,n) -> new View(r.getLong(1),r.getString(2),decode(r.getString(3)),r.getString(4),
                 r.getObject(5,UUID.class),r.getObject(6,OffsetDateTime.class),
-                r.getObject(7,UUID.class),r.getObject(8,OffsetDateTime.class),planStatus), id)
-                .stream().findFirst().orElse(new View(0,"MISSING",null,null,null,null,null,null,planStatus));
+                r.getObject(7,UUID.class),r.getObject(8,OffsetDateTime.class),planStatus,currency), id)
+                .stream().findFirst().orElse(new View(0,"MISSING",null,null,null,null,null,null,planStatus,currency));
     }
 
     static final String PACKAGE_MANAGED_SQL = """
@@ -180,6 +182,9 @@ public class DepartureSaleTermsService {
         if ("PENDING_APPROVAL".equals(before.status())) throw conflict("SALE_TERMS_PENDING");
         validate(input.terms().tax(),true);
         validate(input.terms().portFee(),false);
+        BigDecimal portFee = input.terms().portFee().value();
+        if ("VND".equals(before.currency()) && portFee != null && portFee.stripTrailingZeros().scale() > 0)
+            throw new BusinessException(HttpStatus.UNPROCESSABLE_ENTITY, "VND_WHOLE_AMOUNT_REQUIRED", "Nhập phí cảng theo số đồng nguyên.");
         jdbc.update("""
             INSERT INTO "DepartureSaleTerms"(cruise_id,revision,status,terms,maker_ids)
             VALUES (?,1,'DRAFT',?::jsonb,ARRAY[?]::uuid[])

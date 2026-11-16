@@ -96,6 +96,7 @@ public class SecurityConfig {
                                                 "/api/v1/exchange-rates",
                                                 "/api/v1/currency-conversion",
                                                 "/booking/quotes/**",
+                                                "/usd-display-rate",
                                                 "/cruise",
                                                 "/cruise/**",
                                                 "/destinations",

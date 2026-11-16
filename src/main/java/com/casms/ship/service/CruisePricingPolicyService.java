@@ -171,16 +171,21 @@ public class CruisePricingPolicyService {
                         .orElseThrow(() -> new ResourceNotFoundException("Cruise", cruiseId));
         var current = pricingPolicyRepository.findByCruise_CruiseId(cruiseId).orElse(null);
         revision(current, request.getExpectedRevision());
-        if (!"USD".equals(request.getCurrency()))
+        String currency = cruise.getSaleCurrency();
+        if (!currency.equals(request.getCurrency()))
             throw new BusinessException(
                     HttpStatus.UNPROCESSABLE_ENTITY,
-                    "CURRENCY_USD_REQUIRED",
-                    "New pricing writes require USD");
+                    "CURRENCY_MISMATCH",
+                    "Đơn vị tiền tệ phải khớp với tour (" + currency + ").");
+        if ("VND".equals(currency) && java.util.stream.Stream.of(request.getInteriorBaseFare(),
+                request.getOceanViewBaseFare(), request.getBalconyBaseFare(), request.getSuiteBaseFare(),
+                request.getPortFeePerPassenger()).filter(Objects::nonNull).anyMatch(amount -> amount.stripTrailingZeros().scale() > 0))
+            throw new BusinessException(HttpStatus.UNPROCESSABLE_ENTITY, "VND_WHOLE_AMOUNT_REQUIRED", "Nhập giá theo số đồng nguyên.");
         if (current != null && current.getStatus() == PricingPolicyStatus.PENDING_APPROVAL)
             throw conflict("PRICING_POLICY_PENDING");
         boolean successor =
                 current == null
-                        || !"USD".equals(current.getCurrency())
+                        || !currency.equals(current.getCurrency())
                         || current.getStatus() == PricingPolicyStatus.APPROVED
                         || current.getStatus() == PricingPolicyStatus.RETURNED
                         || current.getStatus() == PricingPolicyStatus.ARCHIVED;
@@ -192,7 +197,7 @@ public class CruisePricingPolicyService {
         }
         policy.setPolicyVersion("PRC-" + cruise.getCruiseCode() + "-V" + policy.getPolicyNumber());
         policy.setRevision(nextRevision);
-        policy.setCurrency("USD");
+        policy.setCurrency(currency);
         policy.setInteriorBaseFare(request.getInteriorBaseFare());
         policy.setOceanViewBaseFare(request.getOceanViewBaseFare());
         policy.setBalconyBaseFare(request.getBalconyBaseFare());
@@ -236,11 +241,11 @@ public class CruisePricingPolicyService {
         if (submit) {
             if (p.getStatus() != PricingPolicyStatus.DRAFT)
                 throw conflict("INVALID_PRICING_TRANSITION");
-            if (!"USD".equals(p.getCurrency()))
+            if (!p.getCruise().getSaleCurrency().equals(p.getCurrency()))
                 throw new BusinessException(
                         HttpStatus.UNPROCESSABLE_ENTITY,
-                        "CURRENCY_USD_REQUIRED",
-                        "Pricing submission requires USD");
+                        "CURRENCY_MISMATCH",
+                        "Đơn vị tiền tệ phải khớp với tour.");
             validateFaresForApproval(p.getCruise(), p);
             p.setSubmittedSnapshot(snapshot(p));
             p.setSnapshotHash(hash(p.getSubmittedSnapshot()));

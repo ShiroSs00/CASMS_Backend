@@ -36,6 +36,7 @@ import java.util.UUID;
 public class ShoreExcursionController {
 
     private final ShoreExcursionService shoreExcursionService;
+    private final com.casms.ship.service.CruisePlanOperationsAccess cruiseAccess;
 
     public record DefinitionRequest(@NotBlank @Size(max=250) String name,
             @NotNull UUID supplierId,
@@ -76,7 +77,9 @@ public class ShoreExcursionController {
                     UUID supplierId,
             @Parameter(description = "Trạng thái tour tham quan") @RequestParam(required = false)
                     ShoreExcursionStatus status) {
-        return ResponseEntity.ok(shoreExcursionService.list(cruiseStopId, supplierId, status));
+        var scope = cruiseAccess.visibleStops();
+        return ResponseEntity.ok(shoreExcursionService.list(cruiseStopId, supplierId, status).stream()
+                .filter(row -> scope == null || scope.contains(row.cruiseStopId())).toList());
     }
 
     // READ DETAIL

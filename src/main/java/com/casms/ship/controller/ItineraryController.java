@@ -34,6 +34,7 @@ import java.util.UUID;
 @RequestMapping("/itineraries")
 @RequiredArgsConstructor
 public class ItineraryController {
+    private final com.casms.ship.service.CruisePlanOperationsAccess cruiseAccess;
 
     private final ItineraryService service;
     private final PassengerItineraryService passengerItineraryService;
@@ -71,6 +72,7 @@ public class ItineraryController {
                     "AUTH_REQUIRED",
                     "Yêu cầu đăng nhập để tạo lịch trình");
         }
+        cruiseAccess.requireCruiseCoordinator(request.getCruiseId());
         return ApiResponse.success(service.create(request, principal.getUserId()));
     }
 
@@ -80,7 +82,8 @@ public class ItineraryController {
     @PreAuthorize("hasAnyAuthority('ITINERARY_READ', 'CRUISE_READ')")
     @GetMapping
     public ApiResponse<Page<ItineraryResponse>> list(Pageable pageable) {
-        return ApiResponse.success(service.list(pageable));
+        var ids = cruiseAccess.visibleCruises();
+        return ApiResponse.success(ids == null ? service.list(pageable) : service.listForCruises(ids, pageable));
     }
 
     @Operation(

@@ -30,8 +30,14 @@ public class PublicCruiseItineraryService {
                                 stop.getCountryCode(), stop.getPortTimeZoneId(), stop.getPlannedArrival(),
                                 stop.getPlannedDeparture(), stop.getVisits().stream().map(visit ->
                                 new PublicCruiseItineraryResponse.Visit(visit.sequence(), visit.destinationName()))
-                                .toList(), stop.getIsDisembarkation())).toList())).toList();
+                                .toList(), Integer.valueOf(1).equals(day.getDayNumber())
+                                        && schedule.getDeparturePortId() != null
+                                        && schedule.getDeparturePortId().equals(stop.getPortId())
+                                        && schedule.getDepartureDatetime().equals(stop.getPlannedDeparture()),
+                                stop.getIsDisembarkation(), stop.getDisembarkationStartsAt(),
+                                stop.getDisembarkationEndsAt())).toList())).toList();
         return new PublicCruiseItineraryResponse(cruiseId, schedule.getDepartureDatetime(),
-                schedule.getReturnDatetime(), schedule.getDurationDays(), schedule.getDurationNights(), days);
+                schedule.getReturnDatetime(), schedule.getDurationDays(), schedule.getDurationNights(),
+                days, schedule.getDeparturePortName());
     }
 }

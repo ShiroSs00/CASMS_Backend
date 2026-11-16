@@ -22,6 +22,7 @@ import java.util.UUID;
 @Repository
 public interface ItineraryRepository extends JpaRepository<Itinerary, UUID> {
     Optional<Itinerary> findByCruiseCruiseId(UUID cruiseId);
+    Page<Itinerary> findByCruiseCruiseIdIn(Collection<UUID> cruiseIds, Pageable pageable);
 
     boolean existsByCruiseCruiseId(UUID cruiseId);
 

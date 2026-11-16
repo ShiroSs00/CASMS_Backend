@@ -144,6 +144,12 @@ public class ItineraryService {
     }
 
     @Transactional(readOnly = true)
+    public Page<ItineraryResponse> listForCruises(java.util.Set<UUID> ids, Pageable pageable) {
+        return ids.isEmpty() ? Page.empty(pageable)
+                : itineraryRepository.findByCruiseCruiseIdIn(ids, pageable).map(this::mapToResponse);
+    }
+
+    @Transactional(readOnly = true)
     public ItineraryResponse detail(UUID itineraryId) {
         Itinerary itinerary = getItineraryById(itineraryId);
         if (itinerary.getStatus() != ItineraryStatus.APPROVED

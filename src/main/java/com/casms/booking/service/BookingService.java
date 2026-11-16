@@ -409,11 +409,9 @@ public class BookingService {
     @Transactional
     public BookingDetailResponse createBooking(
             BookingCreateRequest request, CasmsPrincipal principal) {
+        requireSupportedSaleCurrency(request.getCurrency());
         requireAssignedCruise(request.getCruiseId(), principal);
         log.info("Creating new booking for cruise: {}", request.getCruiseId());
-        if (request.getCurrency() != null && !request.getCurrency().isBlank())
-            com.casms.common.util.NewWriteCurrency.requireUsd(
-                    request.getCurrency().trim().toUpperCase(java.util.Locale.ROOT));
         releaseExpiredHolds();
 
         if (request.getPassengers() == null || request.getPassengers().isEmpty()) {
@@ -731,7 +729,7 @@ public class BookingService {
         int cutoffDays = 7;
         int dueDays = 7;
         BigDecimal depositRate = BigDecimal.valueOf(0.30);
-        String initialCurrency = "USD";
+        String initialCurrency = cruise.getSaleCurrency();
 
         if (!unified) {
             policy =
@@ -746,7 +744,7 @@ public class BookingService {
                                                     "Chuyến khởi hành chưa có chính sách giá được phê"
                                                         + " duyệt. Không thể hoàn tất đặt chỗ."));
 
-            com.casms.common.util.NewWriteCurrency.requireUsd(policy.getCurrency());
+            requireMatchingCurrency(initialCurrency, policy.getCurrency());
             initialCurrency = policy.getCurrency();
             if (policy.getPortFeePerPassenger() != null) portFeePerPassenger = policy.getPortFeePerPassenger();
             if (policy.getTaxRate() != null) taxRate = policy.getTaxRate();
@@ -755,7 +753,7 @@ public class BookingService {
             if (policy.getDepositPercentage() != null) depositRate = policy.getDepositPercentage();
 
             if (validatedQuote != null) {
-                com.casms.common.util.NewWriteCurrency.requireUsd(validatedQuote.getCurrency());
+                requireMatchingCurrency(initialCurrency, validatedQuote.getCurrency());
                 if (!policy.getPolicyVersion().equals(validatedQuote.getPolicyVersion())) {
                     throw new BusinessException(
                             HttpStatus.CONFLICT,
@@ -785,7 +783,7 @@ public class BookingService {
                         (cabin.getDeck() != null && cabin.getDeck().getPriceMultiplier() != null)
                                 ? cabin.getDeck().getPriceMultiplier()
                                 : BigDecimal.valueOf(1.00);
-                BigDecimal cabinPrice = baseFare.multiply(multiplier).setScale(2, RoundingMode.HALF_UP);
+                BigDecimal cabinPrice = baseFare.multiply(multiplier).setScale(currencyScale(initialCurrency, 2), RoundingMode.HALF_UP);
                 totalCabinBaseAmount = totalCabinBaseAmount.add(cabinPrice);
 
                 if (pReq.getTourPackageId() != null) {
@@ -815,13 +813,18 @@ public class BookingService {
                                         + " chưa được mở bán cho chuyến khởi hành này");
                     }
                     validatedPackages.put(pReq.getTourPackageId(), pkg);
-                    com.casms.common.util.NewWriteCurrency.requireUsd(pkg.getCurrencyCode());
+                    requireMatchingCurrency(initialCurrency, pkg.getCurrencyCode());
                     totalPackageAmount =
                             totalPackageAmount.add(
                                     pkg.getPrice() != null ? pkg.getPrice() : BigDecimal.ZERO);
                 }
             }
         }
+
+        if (request.getCurrency() != null && !request.getCurrency().isBlank()) {
+            requireMatchingCurrency(initialCurrency, request.getCurrency());
+        }
+        if (validatedQuote != null) requireMatchingCurrency(initialCurrency, validatedQuote.getCurrency());
 
         // 5. Xác định hình thức thanh toán & mức cọc (hỗ trợ quote authoritative hoặc dynamic
         // policy)
@@ -848,7 +851,7 @@ public class BookingService {
                     portFeePerPassenger.multiply(
                             BigDecimal.valueOf(request.getPassengers().size()));
             BigDecimal taxesAmount =
-                    subtotalAmount.multiply(taxRate).setScale(4, RoundingMode.HALF_UP);
+                    subtotalAmount.multiply(taxRate).setScale(currencyScale(initialCurrency, 4), RoundingMode.HALF_UP);
             BigDecimal taxesAndFeesAmount = portFeesAmount.add(taxesAmount);
             agreedFareAmount = subtotalAmount.add(taxesAndFeesAmount);
 
@@ -864,12 +867,12 @@ public class BookingService {
                 requiredDepositAmount = agreedFareAmount;
             } else {
                 requiredDepositAmount =
-                        agreedFareAmount.multiply(depositRate).setScale(4, RoundingMode.HALF_UP);
+                        agreedFareAmount.multiply(depositRate).setScale(currencyScale(initialCurrency, 4), RoundingMode.HALF_UP);
             }
 
             currency =
                     (request.getCurrency() != null && !request.getCurrency().isBlank())
-                            ? request.getCurrency().toUpperCase()
+                            ? request.getCurrency().strip().toUpperCase(java.util.Locale.ROOT)
                             : (policy != null ? policy.getCurrency() : initialCurrency);
 
             finalPaymentDueAt = cruise.getDepartureDatetime().minus(Duration.ofDays(dueDays));
@@ -1896,11 +1899,11 @@ public class BookingService {
                 BigDecimal s1 =
                         agreedFare
                                 .multiply(BigDecimal.valueOf(0.30))
-                                .setScale(4, RoundingMode.HALF_UP);
+                                .setScale(currencyScale(currency, 4), RoundingMode.HALF_UP);
                 BigDecimal s2 =
                         agreedFare
                                 .multiply(BigDecimal.valueOf(0.40))
-                                .setScale(4, RoundingMode.HALF_UP);
+                                .setScale(currencyScale(currency, 4), RoundingMode.HALF_UP);
                 BigDecimal s3 = agreedFare.subtract(s1).subtract(s2);
 
                 // Đợt 1: 30% cọc
@@ -2085,9 +2088,7 @@ public class BookingService {
                     "REQUEST_REQUIRED",
                     "Yêu cầu báo giá không được để trống");
         }
-        if (request.getCurrency() != null && !request.getCurrency().isBlank())
-            com.casms.common.util.NewWriteCurrency.requireUsd(
-                    request.getCurrency().trim().toUpperCase(java.util.Locale.ROOT));
+        requireSupportedSaleCurrency(request.getCurrency());
         if (request.getCruiseId() == null) {
             throw new BusinessException(
                     HttpStatus.BAD_REQUEST, "CRUISE_ID_REQUIRED", "Cruise ID không được để trống");
@@ -2165,7 +2166,7 @@ public class BookingService {
         }
 
         CruisePricingPolicy policy = null;
-        String currency = "USD";
+        String currency = cruise.getSaleCurrency();
         BigDecimal portFeePerPassenger = BigDecimal.ZERO;
         BigDecimal taxRate = BigDecimal.ZERO;
 
@@ -2185,7 +2186,7 @@ public class BookingService {
                                                     "PRICING_POLICY_MISSING",
                                                     "Chuyến khởi hành chưa có chính sách giá được phê"
                                                         + " duyệt. Không thể phát hành báo giá."));
-            currency = policy.getCurrency();
+            requireMatchingCurrency(currency, policy.getCurrency());
             if (policy.getPortFeePerPassenger() != null) portFeePerPassenger = policy.getPortFeePerPassenger();
             if (policy.getTaxRate() != null) taxRate = policy.getTaxRate();
         }
@@ -2202,8 +2203,6 @@ public class BookingService {
                                 + ").");
             }
         }
-        com.casms.common.util.NewWriteCurrency.requireUsd(currency);
-
         String saleScope =
                 cruise.getSaleScope() != null
                         ? cruise.getSaleScope().toUpperCase()
@@ -2350,7 +2349,7 @@ public class BookingService {
                         (cabin.getDeck() != null && cabin.getDeck().getPriceMultiplier() != null)
                                 ? cabin.getDeck().getPriceMultiplier()
                                 : BigDecimal.valueOf(1.00);
-                BigDecimal cabinPrice = baseFare.multiply(multiplier).setScale(2, RoundingMode.HALF_UP);
+                BigDecimal cabinPrice = baseFare.multiply(multiplier).setScale(currencyScale(currency, 2), RoundingMode.HALF_UP);
                 subtotalCabin = subtotalCabin.add(cabinPrice);
 
                 UUID pkgId = null;
@@ -2386,7 +2385,7 @@ public class BookingService {
                                         + " chưa được mở bán cho chuyến khởi hành này");
                     }
                     pkgId = pkg.getTourPackageId();
-                    com.casms.common.util.NewWriteCurrency.requireUsd(pkg.getCurrencyCode());
+                    requireMatchingCurrency(currency, pkg.getCurrencyCode());
                     pkgName = pkg.getPackageName();
                     pkgPrice = pkg.getPrice() != null ? pkg.getPrice() : BigDecimal.ZERO;
                     subtotalPackage = subtotalPackage.add(pkgPrice);
@@ -2416,7 +2415,7 @@ public class BookingService {
         BigDecimal subtotalAmount = subtotalCabin.add(subtotalPackage);
         BigDecimal portFeesAmount =
                 portFeePerPassenger.multiply(BigDecimal.valueOf(request.getPassengers().size()));
-        BigDecimal taxesAmount = subtotalAmount.multiply(taxRate).setScale(4, RoundingMode.HALF_UP);
+        BigDecimal taxesAmount = subtotalAmount.multiply(taxRate).setScale(currencyScale(currency, 4), RoundingMode.HALF_UP);
         BigDecimal taxesAndFeesAmount = portFeesAmount.add(taxesAmount);
         BigDecimal totalAmount = subtotalAmount.add(taxesAndFeesAmount);
 
@@ -2439,7 +2438,7 @@ public class BookingService {
                     (policy != null && policy.getDepositPercentage() != null)
                             ? policy.getDepositPercentage()
                             : BigDecimal.valueOf(0.30);
-            depositAmount = totalAmount.multiply(depositRate).setScale(4, RoundingMode.HALF_UP);
+            depositAmount = totalAmount.multiply(depositRate).setScale(currencyScale(currency, 4), RoundingMode.HALF_UP);
         }
 
         int dueDays = (policy != null && policy.getFinalPaymentDueDays() > 0) ? policy.getFinalPaymentDueDays() : 7;
@@ -2731,6 +2730,7 @@ public class BookingService {
         for (var choice : requested) {
             var fare = selections.computeIfAbsent(new OfferPrice(choice.offerId(), choice.priceRevisionId()),
                     key -> cruisePackageService.preparePurchase(cruise.getCruiseId(), key.offerId(), key.priceId()));
+            requireMatchingCurrency(cruise.getSaleCurrency(), fare.currencyCode());
             Cabin cabin = cabins.get(choice.cabinId());
             verifyFareCabin(cruise, cabin, fare);
             String resource = choice.mode() + ":" + (cabin != null ? cabin.getCabinId() : fare.cabinType());
@@ -2808,6 +2808,24 @@ public class BookingService {
         return cruiseRepository
                 .findById(cruiseId)
                 .orElseThrow(() -> new ResourceNotFoundException("Cruise", cruiseId));
+    }
+
+    private static int currencyScale(String currency, int legacyScale) {
+        return "VND".equals(currency) ? 0 : legacyScale;
+    }
+
+    private static void requireSupportedSaleCurrency(String currency) {
+        if (currency != null && !currency.isBlank()
+                && !Set.of("USD", "VND").contains(currency.strip().toUpperCase(java.util.Locale.ROOT))) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "BOOKING_CURRENCY_UNSUPPORTED",
+                    "Đơn đặt chỗ sử dụng VND hoặc USD theo cấu hình của tour.");
+        }
+    }
+
+    private static void requireMatchingCurrency(String expected, String actual) {
+        if (actual == null || !expected.equalsIgnoreCase(actual.strip()))
+            throw new BusinessException(HttpStatus.UNPROCESSABLE_ENTITY, "CURRENCY_MISMATCH",
+                    "Giá và thanh toán phải cùng đơn vị tiền tệ của tour (" + expected + ").");
     }
 
     private Booking getBooking(UUID bookingId) {

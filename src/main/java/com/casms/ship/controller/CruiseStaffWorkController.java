@@ -30,6 +30,14 @@ public class CruiseStaffWorkController {
         return ApiResponse.success(service.workPlan(cruiseId));
     }
 
+    @GetMapping("/cruise/{cruiseId}/staff/candidates")
+    @PreAuthorize("hasAuthority('CRUISE_STAFF_ASSIGN') and hasRole('HR_MANAGER') and principal.enabled and principal.accountNonLocked")
+    public ApiResponse<List<CruiseStaffWorkService.Candidate>> candidates(
+            @PathVariable UUID cruiseId, @RequestParam CruiseStaffWorkService.AssignmentKind kind,
+            @RequestParam UUID resourceId) {
+        return ApiResponse.success(service.candidates(cruiseId, kind, resourceId));
+    }
+
     @GetMapping("/staff/{userId}/activity-qualifications")
     public ApiResponse<List<CruiseStaffWorkService.Qualification>> qualifications(@PathVariable UUID userId) {
         return ApiResponse.success(service.qualifications(userId));

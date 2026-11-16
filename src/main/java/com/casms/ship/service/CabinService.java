@@ -112,6 +112,8 @@ public class CabinService {
 
     @Transactional(readOnly = true)
     public Page<CabinSummaryResponse> list(Pageable pageable) {
+        UUID manager = CruisePlanOperationsAccess.currentShipManager();
+        if (manager != null) return cabinRepository.findManagedCabins(manager, pageable).map(this::mapToResponse);
         return cabinRepository.findAll(pageable).map(this::mapToResponse);
     }
 

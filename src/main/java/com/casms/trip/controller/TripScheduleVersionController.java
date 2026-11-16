@@ -78,6 +78,18 @@ public class TripScheduleVersionController {
                 versionService.saveDraftById(versionId, request, actorId));
     }
 
+    public record SaveIdea(@jakarta.validation.constraints.NotNull Long expectedRevision,
+                           @jakarta.validation.constraints.NotNull
+                           @jakarta.validation.constraints.Size(max = 2000) String description) {}
+
+    @PutMapping("/{versionId}/days/{dayNumber}/idea")
+    @PreAuthorize("hasRole('CRUISE_MANAGER') and hasAuthority('TRIP_PLAN_WRITE')")
+    public ApiResponse<TripScheduleVersionDetailResponse> saveIdea(
+            @PathVariable UUID versionId, @PathVariable int dayNumber, @Valid @RequestBody SaveIdea request) {
+        return ApiResponse.success(versionService.saveIdea(
+                versionId, dayNumber, request.expectedRevision(), request.description()));
+    }
+
     @Operation(
             summary = "Thẩm định tính khả thi của phiên bản",
             description =
@@ -289,7 +301,7 @@ public class TripScheduleVersionController {
             description =
                     "Tìm kiếm các phiên bản TripScheduleVersion đã xuất bản (PUBLISHED) và Trip còn"
                         + " hiệu lực (không ARCHIVED) để tạo chuyến khởi hành Cruise Draft.")
-    @PreAuthorize("hasAuthority('CRUISE_CREATE') or hasAuthority('TRIP_READ')")
+    @PreAuthorize("hasRole('CRUISE_MANAGER') and hasAuthority('CRUISE_CREATE')")
     @GetMapping("/eligible-sources")
     public ApiResponse<Page<EligibleTripSourceResponse>> getEligibleSources(
             @Parameter(description = "Lọc theo ID Trip mẫu") @RequestParam(required = false)
@@ -299,5 +311,30 @@ public class TripScheduleVersionController {
                     String keyword,
             Pageable pageable) {
         return ApiResponse.success(versionService.getEligibleSources(tripId, keyword, pageable));
+    }
+
+    public record SourceTrip(UUID tripId, String tripCode, String name, String description,
+                             com.casms.trip.enums.TripDurationGroup durationGroup,
+                             Integer durationDays, Integer durationNights, com.casms.trip.enums.TripStatus status) {}
+    public record PublishedSource(SourceTrip trip, TripScheduleVersionDetailResponse version) {}
+
+    @GetMapping("/eligible-sources/{sourceId}")
+    @PreAuthorize("hasRole('CRUISE_MANAGER') and hasAuthority('CRUISE_CREATE')")
+    public ApiResponse<PublishedSource> getEligibleSource(@PathVariable UUID sourceId) {
+        var version = versionService.getVersionDetailById(sourceId);
+        if (version.getStatus() != com.casms.trip.enums.TripScheduleVersionStatus.PUBLISHED)
+            throw new BusinessException(HttpStatus.NOT_FOUND, "SOURCE_UNAVAILABLE", "Mẫu lịch trình chưa khả dụng.");
+        var trip = tripService.getTripById(version.getTripId());
+        if (trip.getStatus() == com.casms.trip.enums.TripStatus.ARCHIVED)
+            throw new BusinessException(HttpStatus.NOT_FOUND, "SOURCE_UNAVAILABLE", "Mẫu lịch trình đã lưu trữ.");
+        version.setPublishedBy(null);
+        version.setPublishedByName(null);
+        version.setCreatorId(null);
+        version.setCreatorName(null);
+        version.setSubmitterId(null);
+        version.setSubmitterName(null);
+        return ApiResponse.success(new PublishedSource(new SourceTrip(trip.getTripId(), trip.getTripCode(),
+                trip.getName(), trip.getDescription(), trip.getDurationGroup(), trip.getDurationDays(),
+                trip.getDurationNights(), trip.getStatus()), version));
     }
 }

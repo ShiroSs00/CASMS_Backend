@@ -180,6 +180,8 @@ public class CruiseSchedulePreviewResponse {
 
         @Schema(description = "Chỉ true cho lượt ghé cuối kết thúc chuyến")
         private Boolean isDisembarkation;
+        private Instant disembarkationStartsAt;
+        private Instant disembarkationEndsAt;
 
         @Schema(description = "ID cảng ghé")
         private UUID portId;

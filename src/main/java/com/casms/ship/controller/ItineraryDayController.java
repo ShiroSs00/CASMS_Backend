@@ -31,6 +31,7 @@ import java.util.UUID;
 public class ItineraryDayController {
 
     private final ItineraryDayService service;
+    private final com.casms.ship.service.CruisePlanOperationsAccess cruiseAccess;
 
     @Operation(
             summary = "Tạo ngày mới trong lịch trình",
@@ -42,6 +43,7 @@ public class ItineraryDayController {
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<ItineraryDayResponse> create(
             @RequestBody @Valid ItineraryDayCreateRequest request) {
+        cruiseAccess.requireItineraryCoordinator(request.getItineraryId());
         return ApiResponse.success(service.create(request));
     }
 

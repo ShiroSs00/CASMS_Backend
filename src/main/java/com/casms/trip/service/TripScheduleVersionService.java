@@ -153,11 +153,25 @@ public class TripScheduleVersionService {
         return executeSaveDraft(version, request, actorId, "STALE_REVISION");
     }
 
-    private TripScheduleVersionDetailResponse executeSaveDraft(
-            TripScheduleVersion version,
-            ScheduleDraftSaveRequest request,
-            UUID actorId,
-            String lockConflictCode) {
+    @Transactional
+    public TripScheduleVersionDetailResponse saveIdea(
+            UUID versionId, int dayNumber, Long expectedRevision, String description) {
+        var version = versionRepository.findById(versionId)
+                .orElseThrow(() -> new ResourceNotFoundException("TripScheduleVersion", versionId));
+        requireEditableRevision(version, expectedRevision, "STALE_REVISION");
+        var day = version.getDays().stream().filter(row -> row.getDayNumber() == dayNumber).findFirst()
+                .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "DAY_NOT_FOUND",
+                        "Ngày này không còn trong lịch trình."));
+        if (!Objects.equals(day.getDescription(), description.strip())) {
+            day.setDescription(description.strip());
+            version.setContentHash(computeContentHash(version));
+            version.setUpdatedAt(Instant.now());
+            versionRepository.flush();
+        }
+        return mapToDetailResponse(version);
+    }
+
+    private void requireEditableRevision(TripScheduleVersion version, Long expectedRevision, String lockConflictCode) {
         if (version.getTrip().getStatus() == TripStatus.ARCHIVED) {
             throw new BusinessException(
                     HttpStatus.CONFLICT,
@@ -172,17 +186,21 @@ public class TripScheduleVersionService {
                     "Không thể chỉnh sửa phiên bản đang ở trạng thái: " + version.getStatus());
         }
 
-        if (request.getExpectedRevision() == null
-                || !request.getExpectedRevision().equals(version.getRevision())) {
+        if (expectedRevision == null || !expectedRevision.equals(version.getRevision())) {
             throw new BusinessException(
                     HttpStatus.CONFLICT,
                     lockConflictCode,
                     "Dữ liệu phiên bản đã bị thay đổi bởi phiên làm việc khác. Expected revision: "
-                            + request.getExpectedRevision()
+                            + expectedRevision
                             + ", current: "
                             + version.getRevision());
         }
 
+    }
+
+    private TripScheduleVersionDetailResponse executeSaveDraft(
+            TripScheduleVersion version, ScheduleDraftSaveRequest request, UUID actorId, String lockConflictCode) {
+        requireEditableRevision(version, request.getExpectedRevision(), lockConflictCode);
         List<TripPlanEntry> preservedLegacy =
                 LegacyTemplateContentPolicy.protectSave(version, request);
         Trip trip = version.getTrip();
@@ -415,6 +433,11 @@ public class TripScheduleVersionService {
                 throw new BusinessException(HttpStatus.BAD_REQUEST, "PORT_CALL_TIME_REQUIRED",
                         "Mỗi lượt ghé phải có giờ cập và giờ rời cảng cụ thể.",
                         Map.of("clientKey", stop.getClientKey(), "field", field));
+            }
+            if (invalidTerminalCallType(stop.getIsDisembarkation(), stop.getCallType())) {
+                throw new BusinessException(HttpStatus.BAD_REQUEST, "INVALID_TERMINAL_CALL_TYPE",
+                        "Chọn kiểu ghé Thông thường cho cảng kết thúc.",
+                        Map.of("clientKey", stop.getClientKey(), "field", "callType"));
             }
         }
 
@@ -705,6 +728,27 @@ public class TripScheduleVersionService {
                 // BE-12.3: Excursion must be within port call window
                 TripPlanStop stop = activeStopKeyMap.get(entryDto.getStopClientKey());
                 Port stopPort = stop.getPort();
+                if (entryDto.getSourceExcursionId() != null && shoreExcursionRepository != null) {
+                    var source = shoreExcursionRepository.findById(entryDto.getSourceExcursionId())
+                            .orElseThrow(() -> new BusinessException(HttpStatus.BAD_REQUEST,
+                                    "SOURCE_EXCURSION_NOT_FOUND", "Chọn tour bờ còn trong danh mục.",
+                                    Map.of("clientKey", entryDto.getClientKey(), "field", "sourceExcursionId")));
+                    Port sourcePort = source.getPort();
+                    if (sourcePort == null && source.getCruiseStop() != null) {
+                        sourcePort = source.getCruiseStop().getPort();
+                    }
+                    if (source.getStatus() == ShoreExcursionStatus.CANCELLED) {
+                        throw new BusinessException(HttpStatus.BAD_REQUEST, "SOURCE_EXCURSION_INACTIVE",
+                                "Chọn tour bờ đang hoạt động.",
+                                Map.of("clientKey", entryDto.getClientKey(), "field", "sourceExcursionId"));
+                    }
+                    if (sourcePort != null && stopPort != null
+                            && !Objects.equals(sourcePort.getPortId(), stopPort.getPortId())) {
+                        throw new BusinessException(HttpStatus.BAD_REQUEST, "SHORE_EXCURSION_PORT_MISMATCH",
+                                "Chọn tour bờ tại cảng của lần ghé này.",
+                                Map.of("clientKey", entryDto.getClientKey(), "field", "sourceExcursionId"));
+                    }
+                }
                 int excStartDay =
                         entryDto.getStartDayNumber() != null
                                 ? entryDto.getStartDayNumber()
@@ -748,7 +792,8 @@ public class TripScheduleVersionService {
                                     + stop.getArrivalDayNumber()
                                     + " "
                                     + stop.getPlannedArrivalTime()
-                                    + ").");
+                                    + ").",
+                            Map.of("clientKey", entryDto.getClientKey(), "field", "plannedStartTime"));
                 }
                 if (excEndSecond > deadlineSecond) {
                     throw new BusinessException(
@@ -768,7 +813,8 @@ public class TripScheduleVersionService {
                                     + deadlineDay
                                     + " "
                                     + deadlineTime
-                                    + ").");
+                                    + ").",
+                            Map.of("clientKey", entryDto.getClientKey(), "field", "plannedEndTime"));
                 }
             }
         }
@@ -1758,6 +1804,13 @@ public class TripScheduleVersionService {
         boolean hasDisembarkation = false;
 
         for (TripPlanStop stop : stops) {
+            if (invalidTerminalCallType(stop.getIsDisembarkation(), stop.getCallType())) {
+                violations.add(PlanViolation.builder()
+                        .code("INVALID_TERMINAL_CALL_TYPE").severity("ERROR").entityType("STOP")
+                        .clientKey(stop.getClientKey()).dayNumber(stop.getArrivalDayNumber())
+                        .field("callType").fieldPath("stops[clientKey=" + stop.getClientKey() + "].callType")
+                        .message("Chọn kiểu ghé Thông thường cho cảng kết thúc.").build());
+            }
             if (stop.getArrivalDayNumber() < 1
                     || stop.getDepartureDayNumber() > trip.getDurationDays()
                     || stop.getArrivalDayNumber() > stop.getDepartureDayNumber()) {
@@ -2999,6 +3052,10 @@ public class TripScheduleVersionService {
         } catch (NoSuchAlgorithmException e) {
             return UUID.randomUUID().toString().replace("-", "");
         }
+    }
+
+    private static boolean invalidTerminalCallType(Boolean terminal, CruiseStopCallType type) {
+        return Boolean.TRUE.equals(terminal) && type != null && type != CruiseStopCallType.NORMAL;
     }
 
     private static long toTimelineSeconds(int dayNumber, LocalTime time, boolean isEnd) {

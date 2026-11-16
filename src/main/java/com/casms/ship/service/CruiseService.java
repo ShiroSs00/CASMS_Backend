@@ -25,6 +25,8 @@ import com.casms.servicepackage.enums.TourPackageStatus;
 import com.casms.servicepackage.repository.TourPackageRepository;
 import com.casms.ship.dto.request.CruiseChangeImpactRequest;
 import com.casms.ship.dto.request.CruiseCreateRequest;
+import com.casms.ship.dto.request.EligibleCruiseShipsRequest;
+import com.casms.ship.dto.response.EligibleCruiseShipsResponse;
 import com.casms.ship.dto.request.CruiseOpenSaleRequest;
 import com.casms.ship.dto.request.CruiseResumeSaleRequest;
 import com.casms.ship.dto.request.CruiseStopSaleRequest;
@@ -154,8 +156,41 @@ public class CruiseService {
     private final CruiseMainflowService mainflow;
     private final JdbcTemplate jdbc;
 
+    @Transactional(readOnly = true)
+    public EligibleCruiseShipsResponse eligibleShips(EligibleCruiseShipsRequest request) {
+        var projection = scheduleMaterializationService.previewSchedule(request.sourceVersionId(), request.departureDatetime());
+        if (!Objects.equals(projection.getSourceVersionRevision(), request.expectedSourceVersionRevision())) {
+            throw new BusinessException(HttpStatus.CONFLICT, "STALE_PREVIEW", "Mẫu lịch trình đã thay đổi. Hãy tải lại.");
+        }
+        scheduleMaterializationService.requireMaterializationAllowed(projection);
+        if (projection.getReturnDatetime() == null || !projection.getReturnDatetime().isAfter(request.departureDatetime())) {
+            throw new BusinessException("INVALID_SCHEDULE", "Giờ kết thúc phải sau giờ khởi hành.");
+        }
+        var ships = shipRepository.findEligibleForCruise(request.expectedPassengerCount(),
+                request.departureDatetime(), projection.getReturnDatetime()).stream()
+                .map(ship -> new EligibleCruiseShipsResponse.Candidate(ship.getShipId(), ship.getShipName(),
+                        ship.getShipCode(), ship.getTotalCapacity(), ship.getStatus()))
+                .toList();
+        return new EligibleCruiseShipsResponse(request.sourceVersionId(), projection.getSourceVersionRevision(),
+                request.departureDatetime(), projection.getReturnDatetime(), request.expectedPassengerCount(), ships);
+    }
+
+    private void requirePassengerCapacity(Ship ship, Integer passengers) {
+        if (passengers != null && (ship.getTotalCapacity() == null || ship.getTotalCapacity() < passengers)) {
+            throw new BusinessException(HttpStatus.CONFLICT, "SHIP_CAPACITY_INSUFFICIENT", "Tàu không đủ chỗ cho số khách dự kiến.");
+        }
+    }
+
     @Transactional
     public CruiseResponse create(CruiseCreateRequest request) {
+        Integer passengers = request.getExpectedPassengerCount();
+        if ((Integer.valueOf(3).equals(request.getCreationPayloadVersion()) && passengers == null)
+                || (passengers != null && passengers < 1)) {
+            throw new BusinessException("EXPECTED_PASSENGERS_REQUIRED", "Nhập số khách dự kiến là số nguyên dương.");
+        }
+        if (passengers != null && (request.getSourceVersionId() == null || request.getShipId() == null)) {
+            throw new BusinessException("SHIP_REQUIRED_FOR_PASSENGERS", "Chọn mẫu lịch trình và tàu phân công cho số khách dự kiến.");
+        }
         if (request.getDepartureDatetime() == null) {
             throw new BusinessException("INVALID_SCHEDULE", "Departure datetime is required");
         }
@@ -270,7 +305,7 @@ public class CruiseService {
         if (request.getShipId() != null) {
             ship =
                     shipRepository
-                            .findById(request.getShipId())
+                            .findByIdForUpdate(request.getShipId())
                             .orElseThrow(
                                     () ->
                                             new ResourceNotFoundException(
@@ -280,6 +315,8 @@ public class CruiseService {
                 throw new BusinessException(
                         "SHIP_NOT_ACTIVE", "Assigned ship must be READY or IN_SERVICE");
             }
+
+            requirePassengerCapacity(ship, passengers);
 
             if (cruiseRepository.existsOverlappingCruises(
                     ship.getShipId(),
@@ -301,6 +338,7 @@ public class CruiseService {
         String cruiseCode = businessCodeGenerator.next("CR");
         log.info("Creating new cruise with code: {}", cruiseCode);
         Cruise cruise = new Cruise();
+        cruise.setSaleCurrency("VND");
         cruise.setCruiseCode(cruiseCode);
         cruise.setCruiseName(request.getCruiseName());
         var creatingAuth =
@@ -312,6 +350,7 @@ public class CruiseService {
                 && creator.hasRole(com.casms.identity.enums.Role.CRUISE_MANAGER))
             cruise.setPreparationCoordinator(creator.getUser());
         cruise.setShip(ship);
+        cruise.setExpectedPassengerCount(passengers);
         cruise.setCruiseType(cruiseType);
         cruise.setDepartureDatetime(request.getDepartureDatetime());
         cruise.setReturnDatetime(request.getReturnDatetime());
@@ -467,6 +506,16 @@ public class CruiseService {
         return list(status, shipId, unassigned, cruiseType, sourceTripId, sourceVersionId, pageable, null, ids);
     }
 
+    @Transactional(readOnly = true)
+    public Page<CruiseResponse> listVisibleForStaff(CruiseStatus status, UUID shipId, Boolean unassigned,
+            CruiseCruiseType cruiseType, UUID sourceTripId, UUID sourceVersionId, Pageable pageable,
+            com.casms.security.principal.CasmsPrincipal actor) {
+        List<UUID> ids = jdbc.queryForList(CruisePlanOperationsAccess.VISIBLE_CRUISES, UUID.class,
+                CruisePlanOperationsAccess.scopeArguments(actor));
+        return ids.isEmpty() ? Page.empty(pageable)
+                : list(status, shipId, unassigned, cruiseType, sourceTripId, sourceVersionId, pageable, null, ids);
+    }
+
     // Overloads for backward compat
     @Transactional(readOnly = true)
     public Page<CruiseResponse> list(
@@ -587,7 +636,7 @@ public class CruiseService {
         if (request.getShipId() != null) {
             Ship targetShip =
                     shipRepository
-                            .findById(request.getShipId())
+                            .findByIdForUpdate(request.getShipId())
                             .orElseThrow(
                                     () ->
                                             new ResourceNotFoundException(
@@ -597,6 +646,7 @@ public class CruiseService {
                 throw new BusinessException(
                         "SHIP_NOT_OPERATIONAL", "Selected ship is not in an operational status");
             }
+            requirePassengerCapacity(targetShip, cruise.getExpectedPassengerCount());
             if (cruiseRepository.existsOverlappingCruisesExcluding(
                     targetShip.getShipId(),
                     cruise.getCruiseId(),
@@ -610,6 +660,10 @@ public class CruiseService {
         } else if (cruise.getShip() != null
                 && (request.getDepartureDatetime() != null
                         || request.getReturnDatetime() != null)) {
+            UUID assignedShipId = cruise.getShip().getShipId();
+            Ship assignedShip = shipRepository.findByIdForUpdate(assignedShipId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Ship", assignedShipId));
+            requirePassengerCapacity(assignedShip, cruise.getExpectedPassengerCount());
             if (cruiseRepository.existsOverlappingCruisesExcluding(
                     cruise.getShip().getShipId(),
                     cruise.getCruiseId(),
@@ -812,6 +866,7 @@ public class CruiseService {
                     "Chuyến khởi hành chưa có đầy đủ thời gian khởi hành và kết thúc");
         }
 
+        requirePassengerCapacity(ship, cruise.getExpectedPassengerCount());
         long decks = deckRepository.countByShipShipId(shipId);
         long cabins = cabinRepository.countByShipShipId(shipId);
         if (decks == 0 || cabins == 0) {
@@ -903,6 +958,7 @@ public class CruiseService {
             throw new BusinessException("SHIP_NOT_ACTIVE", "New ship must be READY or IN_SERVICE");
         }
 
+        requirePassengerCapacity(newShip, cruise.getExpectedPassengerCount());
         long decks = deckRepository.countByShipShipId(newShipId);
         long cabins = cabinRepository.countByShipShipId(newShipId);
         if (decks == 0 || cabins == 0) {
@@ -1931,6 +1987,8 @@ public class CruiseService {
         res.setCruiseId(cruise.getCruiseId());
         res.setCruiseCode(cruise.getCruiseCode());
         res.setCruiseName(cruise.getCruiseName());
+        res.setExpectedPassengerCount(cruise.getExpectedPassengerCount());
+        res.setSaleCurrency(cruise.getSaleCurrency());
         if (cruise.getShip() != null) {
             res.setShipId(cruise.getShip().getShipId());
             res.setShipName(cruise.getShip().getShipName());
@@ -3968,7 +4026,7 @@ public class CruiseService {
         }
 
         CruisePricingPolicy policy = unified ? null : policyOpt.orElse(null);
-        String currency = unified ? "USD" : policy != null ? policy.getCurrency() : null;
+        String currency = unified ? cruise.getSaleCurrency() : policy != null ? policy.getCurrency() : null;
         String policyVersion = policy != null ? policy.getPolicyVersion() : null;
 
         BigDecimal depositPercentage = policy != null ? policy.getDepositPercentage() : null;
@@ -4083,6 +4141,14 @@ public class CruiseService {
                             cruise.getRevision(), request.getExpectedRevision()));
         }
 
+        UUID effectiveShipId = request.getNewShipId() != null ? request.getNewShipId()
+                : cruise.getShip() == null ? null : cruise.getShip().getShipId();
+        Ship lockedShip = effectiveShipId == null ? null : shipRepository.findByIdForUpdate(effectiveShipId)
+                .orElseThrow(() -> new ResourceNotFoundException("Ship", effectiveShipId));
+        if (lockedShip != null) {
+            requirePassengerCapacity(lockedShip, cruise.getExpectedPassengerCount());
+        }
+
         // 1. Kiểm tra lại dữ liệu mới nhất (không tin preview cũ)
         CruiseChangeImpactResponse impact =
                 cruiseImpactAssessmentService.previewChangeImpact(cruiseId, request);
@@ -4110,13 +4176,7 @@ public class CruiseService {
         if (request.getNewShipId() != null
                 && (cruise.getShip() == null
                         || !cruise.getShip().getShipId().equals(request.getNewShipId()))) {
-            Ship newShip =
-                    shipRepository
-                            .findById(request.getNewShipId())
-                            .orElseThrow(
-                                    () ->
-                                            new ResourceNotFoundException(
-                                                    "Ship", request.getNewShipId()));
+            Ship newShip = lockedShip;
             cruise.setShip(newShip);
 
             // Xử lý CabinAssignments có cabin thuộc tàu cũ: đóng assignment để bảo đảm không để

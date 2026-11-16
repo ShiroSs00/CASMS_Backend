@@ -9,6 +9,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.OffsetDateTime;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -26,8 +27,36 @@ public class StaffingWorkflowService {
     private record RequestState(UUID id, UUID cruiseId, String status, long revision, long scheduleRevision) {}
 
     public record Snapshot(UUID id, UUID cruiseId, String status, long revision, long scheduleRevision,
-                           List<RequirementProgress> requirements) {}
-    public record RequirementProgress(UUID serviceId, int required, long assigned) {}
+                           List<RequirementProgress> requirements, String cruiseName, String cruiseCode,
+                           OffsetDateTime departure, OffsetDateTime returning, String operatingBudgetVnd,
+                           String returnReason) {}
+    public record RequirementProgress(UUID serviceId, int required, long assigned, String serviceName) {}
+    public record ServiceOption(UUID id, String name) {}
+    public record Preparation(long scheduleRevision, Snapshot request, List<ServiceOption> services,
+                              boolean hasOperatingBudget) {}
+
+    private record PreparationSource(long revision, boolean hasOperatingBudget) {}
+
+    @Transactional(readOnly = true)
+    public Preparation preparation(UUID cruiseId, CasmsPrincipal actor) {
+        authorize(actor, Role.CRUISE_MANAGER);
+        var source = jdbc.query("""
+                SELECT revision, operating_budget_vnd IS NOT NULL
+                FROM "Cruise" WHERE cruise_id=? AND preparation_coordinator_id=?
+                  AND status NOT IN ('CANCELLED','COMPLETED')
+                """, (rs, i) -> new PreparationSource(rs.getLong(1), rs.getBoolean(2)), cruiseId, actor.getUserId())
+                .stream().findFirst().orElseThrow(() -> forbidden("STAFFING_PLANNER_SCOPE_FORBIDDEN"));
+        Snapshot request = jdbc.queryForList("""
+                SELECT request_id FROM "StaffingRequest" WHERE cruise_id=?
+                  AND status <> 'CANCELLED' ORDER BY requested_at DESC, request_id DESC LIMIT 1
+                """, UUID.class, cruiseId).stream().findFirst().map(this::read).orElse(null);
+        List<ServiceOption> services = jdbc.query("""
+                SELECT DISTINCT s.service_id, s.service_name FROM "Cruise" c JOIN "Deck" d USING(ship_id)
+                JOIN "DeckServiceAssignment" a USING(deck_id) JOIN "Service" s USING(service_id)
+                WHERE c.cruise_id=? AND s.status='ACTIVE' ORDER BY s.service_name, s.service_id
+                """, (rs, i) -> new ServiceOption(rs.getObject(1, UUID.class), rs.getString(2)), cruiseId);
+        return new Preparation(source.revision(), request, services, source.hasOperatingBudget());
+    }
 
     private boolean allowed(CasmsPrincipal actor, Role role) {
         if (actor == null || !actor.isEnabled() || !actor.isAccountNonLocked() || !actor.hasRole(role)) {
@@ -52,13 +81,14 @@ public class StaffingWorkflowService {
         return new BusinessException(HttpStatus.FORBIDDEN, code, "Không có quyền xử lý yêu cầu nhân sự.");
     }
 
-    private record CruiseState(String status, long revision, UUID coordinator) {}
+    private record CruiseState(String status, long revision, UUID coordinator, boolean hasBudget) {}
 
     private CruiseState lockCruise(UUID id) {
         var state = jdbc.query("""
-                SELECT status::text, revision, preparation_coordinator_id
+                SELECT status::text, revision, preparation_coordinator_id, operating_budget_vnd IS NOT NULL
                 FROM "Cruise" WHERE cruise_id=? FOR NO KEY UPDATE
-                """, (rs, i) -> new CruiseState(rs.getString(1), rs.getLong(2), rs.getObject(3, UUID.class)), id)
+                """, (rs, i) -> new CruiseState(rs.getString(1), rs.getLong(2), rs.getObject(3, UUID.class),
+                        rs.getBoolean(4)), id)
                 .stream().findFirst().orElseThrow(() -> conflict("STAFFING_CRUISE_NOT_FOUND"));
         if (List.of("COMPLETED", "CANCELLED").contains(state.status())) {
             throw conflict("STAFFING_CRUISE_CLOSED");
@@ -88,6 +118,10 @@ public class StaffingWorkflowService {
         }
         if (cruise.revision() != input.scheduleRevision()) {
             throw conflict("STAFFING_SOURCE_REVISION_STALE");
+        }
+        if (!cruise.hasBudget()) {
+            throw new BusinessException(HttpStatus.UNPROCESSABLE_ENTITY, "PREPARATION_BUDGET_REQUIRED",
+                    "Lưu ngân sách vận hành dự kiến trước khi gửi yêu cầu nhân sự.");
         }
         Set<UUID> unique = new HashSet<>();
         for (Requirement requirement : input.requirements()) {
@@ -124,17 +158,26 @@ public class StaffingWorkflowService {
         List<RequirementProgress> progress = jdbc.query("""
                 SELECT sr.service_id,sr.required_count,
                     count(DISTINCT cs.user_id) FILTER (WHERE d.duty_id IS NOT NULL
-                        AND u.user_id IS NOT NULL) AS assigned
+                        AND u.user_id IS NOT NULL) AS assigned, s.service_name
                 FROM "StaffingRequirement" sr JOIN "StaffingRequest" req ON req.request_id=sr.request_id
                 LEFT JOIN "CruiseStaff" cs ON cs.cruise_id=req.cruise_id AND cs.status='ACTIVE'
                 LEFT JOIN "User" u ON u.user_id=cs.user_id AND u.status='ACTIVE'
                 JOIN "Service" s ON s.service_id=sr.service_id
                 LEFT JOIN "CruiseStaffDuty" d ON s.status='ACTIVE' AND d.cruise_staff_id=cs.cruise_staff_id
                     AND d.service_id=sr.service_id AND d.ended_at IS NULL
-                WHERE sr.request_id=? GROUP BY sr.service_id,sr.required_count ORDER BY sr.service_id
-                """, (rs,i) -> new RequirementProgress(rs.getObject(1,UUID.class),rs.getInt(2),rs.getLong(3)),id);
-        return new Snapshot(request.id(), request.cruiseId(), request.status(),
-                request.revision(), request.scheduleRevision(), progress);
+                WHERE sr.request_id=? GROUP BY sr.service_id,sr.required_count,s.service_name ORDER BY s.service_name,sr.service_id
+                """, (rs,i) -> new RequirementProgress(rs.getObject(1,UUID.class),rs.getInt(2),rs.getLong(3),rs.getString(4)),id);
+        String reason = "RETURNED".equals(request.status()) ? jdbc.queryForList("""
+                SELECT comment FROM "StaffingDecision" WHERE request_id=? AND action='RETURNED'
+                ORDER BY revision DESC LIMIT 1
+                """, String.class, id).stream().filter(java.util.Objects::nonNull).findFirst().orElse(null) : null;
+        return jdbc.queryForObject("""
+                SELECT cruise_name,cruise_code,departure_datetime,return_datetime,operating_budget_vnd::text
+                FROM "Cruise" WHERE cruise_id=?
+                """, (rs,i) -> new Snapshot(request.id(), request.cruiseId(), request.status(),
+                request.revision(), request.scheduleRevision(), progress, rs.getString(1), rs.getString(2),
+                rs.getObject(3, OffsetDateTime.class), rs.getObject(4, OffsetDateTime.class),
+                rs.getString(5), reason), request.cruiseId());
     }
 
     @Transactional(readOnly = true)
@@ -147,7 +190,8 @@ public class StaffingWorkflowService {
             throw forbidden("STAFFING_READ_FORBIDDEN");
         }
         Snapshot snapshot = read(id);
-        if (hr || ops || (ship && isShipManager(snapshot.cruiseId(), actor.getUserId()))
+        if (hr || ops && Set.of("PLANNER_CONFIRMED", "OPS_APPROVED").contains(snapshot.status())
+                || (ship && isShipManager(snapshot.cruiseId(), actor.getUserId()))
                 || (planner && Boolean.TRUE.equals(jdbc.queryForObject("""
                     SELECT EXISTS(SELECT 1 FROM "Cruise" WHERE cruise_id=? AND preparation_coordinator_id=?)
                     """, Boolean.class, snapshot.cruiseId(), actor.getUserId())))) {
