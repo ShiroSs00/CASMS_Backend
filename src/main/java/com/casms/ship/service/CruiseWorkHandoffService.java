@@ -10,6 +10,7 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
@@ -22,7 +23,10 @@ public class CruiseWorkHandoffService {
     public enum Action { ACCEPT, COMPLETE, RETURN }
     public record Task(UUID cruiseId, String cruiseName, String cruiseCode, Group group, String status,
                        String request, String response, String assignee, String operatingBudgetVnd, long revision,
-                       boolean canAccept, boolean canRespond) {}
+                       boolean canAccept, boolean canRespond,
+                       UUID shipId, String shipName, Integer shipCapacity,
+                       Instant departureAt, Instant returnAt, Integer expectedPassengerCount,
+                       String sourceTripCode, String sourceTripName, Integer sourceVersionNumber) {}
     public record Panel(boolean canDispatch, boolean shipAssigned, List<Task> tasks) {}
     public record ProgramContext(String planStatus, boolean unifiedPackageReview, Windows windows,
                                  boolean mayConfigure) {}
@@ -30,8 +34,16 @@ public class CruiseWorkHandoffService {
 
     private static final String SELECT_TASKS = """
             SELECT c.cruise_id,c.cruise_name,c.cruise_code,w.work_group,w.status,w.request_text,w.response_text,
-                   u.username,c.operating_budget_vnd::text,w.revision,w.assignee_id,w.requested_by
-            FROM "CruiseWorkHandoff" w JOIN "Cruise" c USING(cruise_id) LEFT JOIN "User" u ON u.user_id=w.assignee_id
+                   u.username,c.operating_budget_vnd::text,w.revision,w.assignee_id,w.requested_by,
+                   s.ship_id,s.ship_name,s.total_capacity,
+                   c.departure_datetime,c.return_datetime,c.expected_passenger_count,
+                   t.trip_code,t.name,tv.version_number
+            FROM "CruiseWorkHandoff" w
+            JOIN "Cruise" c USING(cruise_id)
+            LEFT JOIN "User" u ON u.user_id=w.assignee_id
+            LEFT JOIN "Ship" s ON s.ship_id=c.ship_id
+            LEFT JOIN "Trip" t ON t.trip_id=c.source_trip_id
+            LEFT JOIN "TripScheduleVersion" tv ON tv.version_id=c.source_version_id
             """;
 
     private record HandoffRevision(String status, long revision) {}
@@ -214,11 +226,18 @@ public class CruiseWorkHandoffService {
             var status = rs.getString(5);
             var assignee = rs.getObject(11, UUID.class);
             boolean allowed = responder && !actor.getUserId().equals(rs.getObject(12, UUID.class));
+            var depTs = rs.getTimestamp(16);
+            var retTs = rs.getTimestamp(17);
             return new Task(rs.getObject(1, UUID.class), rs.getString(2), rs.getString(3), group, status,
                     rs.getString(6), rs.getString(7), rs.getString(8), rs.getString(9), rs.getLong(10),
                     allowed && group == Group.ASM && "PENDING".equals(status),
                     allowed && (group == Group.SHIP && "PENDING".equals(status)
-                        || group == Group.ASM && actor.getUserId().equals(assignee) && "IN_PROGRESS".equals(status)));
+                        || group == Group.ASM && actor.getUserId().equals(assignee) && "IN_PROGRESS".equals(status)),
+                    rs.getObject(13, UUID.class), rs.getString(14), (Integer) rs.getObject(15),
+                    depTs == null ? null : depTs.toInstant(),
+                    retTs == null ? null : retTs.toInstant(),
+                    (Integer) rs.getObject(18),
+                    rs.getString(19), rs.getString(20), (Integer) rs.getObject(21));
         }, args);
     }
 

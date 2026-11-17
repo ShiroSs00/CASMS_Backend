@@ -13,6 +13,20 @@ import java.util.UUID;
 public final class CruisePackageContracts {
     private CruisePackageContracts() {}
     public record CreateTemplate(@NotBlank @Size(max=50) String code) {}
+    public record CreateTemplateWithVersion(@NotBlank @Size(max=50) String code,
+            @NotNull @Valid CreateVersion version) {}
+    public record ShipOption(UUID id, String name, String code, Integer totalCapacity) {
+        public ShipOption(UUID id, String name) {
+            this(id, name, null, null);
+        }
+    }
+    public record ShipCabinItem(String cabinNumber, String deckName, int capacity) {}
+    public record ShipCabinType(CabinType type, long count, long totalCapacity, List<ShipCabinItem> cabins) {
+        public ShipCabinType(CabinType type, long count) {
+            this(type, count, 0L, List.of());
+        }
+    }
+    public record PublishedShipTemplate(UUID templateId, UUID templateVersionId, String name, List<CabinType> cabinTypes) {}
     public enum Inclusion { INCLUDED, LIMITED_INCLUDED, OPTIONAL, NOT_INCLUDED }
     public enum ResourceType { ACTIVITY, EXCURSION, SERVICE }
     public record BenefitInput(@NotNull ResourceType resourceType, @NotNull UUID resourceId,
@@ -23,9 +37,9 @@ public final class CruisePackageContracts {
             Instant usageStartsAt,Instant usageEndsAt) {}
     public record CreateVersion(@NotNull @PositiveOrZero Long expectedTemplateRevision,
             @NotBlank @Size(max=200) String name, @Size(max=10000) String description,
-            @NotEmpty @Size(max=50) List<@NotBlank @Size(max=100) String> logicalCategories,
-            @NotNull @Size(max=200) List<@NotNull @Valid BenefitInput> benefits,
-            @Size(max=50) List<@NotNull UUID> reusedLogicalCategoryIds) {}
+            @NotNull UUID sourceShipId,
+            @NotEmpty @Size(max=4) List<@NotNull CabinType> cabinTypes,
+            @NotNull @Size(max=200) List<@NotNull @Valid BenefitInput> benefits) {}
     public record Revision(@NotNull @PositiveOrZero Long expectedRevision) {}
     public record OfferInput(@NotNull UUID templateVersionId,
             @NotBlank @Size(max=100) String logicalCategory, @NotNull UUID logicalCategoryId, @NotNull CabinType proposedCabinType,
@@ -44,7 +58,8 @@ public final class CruisePackageContracts {
     public record CruisePackageCatalog(UUID cruiseId,boolean fareManaged,List<AvailableCruisePackage> offers) {}
     public record Eligibility(boolean eligible, List<Blocker> blockers) {}
     public record VersionView(CruisePackageTemplateVersion version, List<CruisePackageBenefit> benefits, Map<UUID,String> resourceNames,
-            List<com.casms.cruisepackage.service.CruisePackageCabinMappingService.Category> logicalCategoryReferences) {}
+            List<com.casms.cruisepackage.service.CruisePackageCabinMappingService.Category> logicalCategoryReferences,
+            String sourceShipName) {}
     public record CruisePackageContext(UUID cruiseId, UUID shipId, String planStatus, boolean canConfigure, boolean canCreatePrice, boolean canReviewPrice, boolean unifiedPackageReview,
             Instant departureDatetime, Instant returnDatetime, Instant bookingOpensAt, Instant bookingClosesAt, String currency) {}
     public record OfferView(DepartureCruisePackage offer, VersionView template, List<DepartureCruisePackageBenefit> bindings, Map<UUID,String> bindingNames, List<DepartureCruisePackagePrice> prices,

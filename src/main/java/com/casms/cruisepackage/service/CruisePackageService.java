@@ -88,6 +88,41 @@ public class CruisePackageService {
         return jdbc.queryForList("SELECT DISTINCT c.cabin_type FROM \"Cabin\" c JOIN \"Cruise\" f USING(ship_id) WHERE f.cruise_id=? AND c.cabin_type IS NOT NULL ORDER BY c.cabin_type",String.class,cruiseId);
     }
 
+    public List<ShipOption> templateShips() {
+        return cabinMappings.templateShips(templateAuthor());
+    }
+
+    public List<ShipCabinType> templateCabinTypes(UUID shipId) {
+        cabinMappings.requireVisibleShip(shipId, templateAuthor());
+        return cabinMappings.structuralCabinTypes(shipId);
+    }
+
+    public List<PublishedShipTemplate> publishedShipTemplates(UUID shipId) {
+        var principal = hasActor(Role.CRUISE_MANAGER,"CRUISE_CREATE") ? currentPrincipal() : templateAuthor();
+        cabinMappings.requireVisibleShip(shipId, principal);
+        var available = cabinMappings.structuralCabinTypes(shipId).stream().map(ShipCabinType::type).toList();
+        return jdbc.query("""
+                SELECT v.template_id, v.template_version_id, v.name,
+                       array_agg(c.source_cabin_type ORDER BY c.source_cabin_type) AS cabin_types
+                FROM "FarePackageTemplateVersion" v
+                JOIN "CruisePackageVersionCategory" link USING(template_version_id)
+                JOIN "CruisePackageLogicalCategory" c USING(logical_category_id)
+                WHERE v.source_ship_id=? AND v.status='PUBLISHED' AND c.source_ship_id=v.source_ship_id
+                GROUP BY v.template_version_id, v.template_id, v.name
+                ORDER BY v.name, v.template_version_id
+                """, (r,n) -> new PublishedShipTemplate(r.getObject("template_id", UUID.class),
+                        r.getObject("template_version_id", UUID.class), r.getString("name"),
+                        Arrays.stream((String[]) r.getArray("cabin_types").getArray()).map(CabinType::valueOf)
+                                .filter(available::contains).toList()), shipId)
+                .stream().filter(template -> !template.cabinTypes().isEmpty()).toList();
+    }
+
+    @Transactional
+    public VersionView createWithVersion(CreateTemplateWithVersion input) {
+        var template = createTemplate(new CreateTemplate(input.code()));
+        return createVersion(template.getId(), input.version());
+    }
+
     @Transactional
     public CruisePackageTemplate createTemplate(CreateTemplate input) {
         UUID actor=maker();
@@ -99,10 +134,11 @@ public class CruisePackageService {
 
     @Transactional
     public VersionView createVersion(UUID templateId, CreateVersion input) {
-        maker(); var template=require(CruisePackageTemplate.class,templateId,true);
+        var author = templateAuthor();
+        var template=require(CruisePackageTemplate.class,templateId,true);
         revision(template.getRevision(),input.expectedTemplateRevision());
-        var categories=input.logicalCategories().stream().map(String::trim).toList();
-        if(new HashSet<>(categories).size()!=categories.size()) fail("FARE_CATEGORY_DUPLICATE","Hạng phòng logic bị trùng.");
+        requireSourceCabinTypes(input.sourceShipId(), input.cabinTypes(), author);
+        var categories = input.cabinTypes().stream().map(CruisePackageService::cabinTypeName).toList();
         Set<String> references=new HashSet<>();
         for(var benefit:input.benefits()) {
             benefitUsage.validateDraft(benefit.inclusion().name(),benefit.quantityLimit(),benefit.usageUnit(),benefit.requiresReservation(),benefit.usageStartsAt(),benefit.usageEndsAt());
@@ -114,12 +150,14 @@ public class CruisePackageService {
         }
         var version=new CruisePackageTemplateVersion();
         version.setId(UUID.randomUUID()); version.setTemplateId(templateId);
+        version.setSourceShipId(input.sourceShipId());
         version.setVersionNumber(repository.versions(templateId).stream().mapToInt(CruisePackageTemplateVersion::getVersionNumber).max().orElse(0)+1);
         version.setName(input.name().trim()); version.setDescription(input.description());
         version.setLogicalCategories(categories); version.setStatus("DRAFT"); version.setCreatedAt(Instant.now());
         repository.insert(version);
         repository.flush();
-        cabinMappings.createCategories(version.getId(),templateId,categories,input.reusedLogicalCategoryIds());
+        for (CabinType cabinType : input.cabinTypes())
+            cabinMappings.attachSourceCategory(version.getId(), templateId, input.sourceShipId(), cabinType, cabinTypeName(cabinType));
         for(var inputBenefit:input.benefits()) {
             var benefit=new CruisePackageBenefit(); benefit.setId(UUID.randomUUID()); benefit.setTemplateVersionId(version.getId());
             benefit.setInclusion(inputBenefit.inclusion().name()); benefit.setQuantityLimit(inputBenefit.quantityLimit());
@@ -139,12 +177,15 @@ public class CruisePackageService {
 
     @Transactional
     public VersionView publish(UUID versionId, Revision input) {
-        UUID actor=maker();
+        var author = templateAuthor();
+        UUID actor=author.getUserId();
         var found=require(CruisePackageTemplateVersion.class,versionId,false);
         var template=require(CruisePackageTemplate.class,found.getTemplateId(),true);
         var version=require(CruisePackageTemplateVersion.class,versionId,true);
         revision(version.getRevision(),input.expectedRevision());
         if(!"DRAFT".equals(version.getStatus())) fail("FARE_VERSION_IMMUTABLE","Phiên bản đã phát hành không được sửa hoặc phát hành lại.");
+        requireSourceCabinTypes(version.getSourceShipId(), cabinMappings.categories(versionId).stream()
+                .map(CruisePackageCabinMappingService.Category::cabinType).toList(), author);
         for(var existing:repository.versions(template.getId())) {
             if("PUBLISHED".equals(existing.getStatus())) {
                 if(existing.getVersionNumber()>=version.getVersionNumber()) fail("FARE_VERSION_ORDER_INVALID","Phải phát hành phiên bản mới hơn phiên bản hiện hành.");
@@ -556,7 +597,9 @@ public class CruisePackageService {
             };
             names.put(benefit.getId(),jdbc.queryForObject(sql,String.class,resourceId(benefit)));
         }
-        return new VersionView(version,benefits,Map.copyOf(names),cabinMappings.categories(version.getId()));
+        String shipName = version.getSourceShipId()==null ? null : jdbc.queryForObject(
+                "SELECT ship_name FROM \"Ship\" WHERE ship_id=?", String.class, version.getSourceShipId());
+        return new VersionView(version,benefits,Map.copyOf(names),cabinMappings.categories(version.getId()),shipName);
     }
     private CruisePackageTemplateVersion offerVersion(OfferInput input) {
         var version=require(CruisePackageTemplateVersion.class,input.templateVersionId(),false);
@@ -596,7 +639,12 @@ public class CruisePackageService {
 
     private void applyOffer(DepartureCruisePackage offer,OfferInput input,CruisePackageTemplateVersion version) {
         validateSalesWindow(offer.getCruiseId(), input.salesStart(), input.salesEnd());
-        if(!Boolean.TRUE.equals(jdbc.queryForObject("SELECT EXISTS(SELECT 1 FROM \"Cabin\" WHERE ship_id=? AND cabin_type::text=?)",Boolean.class,offer.getShipId(),input.proposedCabinType().name())))
+        if(!offer.getShipId().equals(version.getSourceShipId()))
+            fail("FARE_TEMPLATE_WRONG_SHIP","Chọn mẫu gói đã phát hành cho tàu của chuyến này.");
+        var category = cabinMappings.requireCategory(input.logicalCategoryId(), version.getId());
+        if(category.cabinType()!=input.proposedCabinType() || !offer.getShipId().equals(category.sourceShipId()))
+            fail("FARE_CATEGORY_UNSUPPORTED","Hạng cabin đã chọn không thuộc mẫu gói và tàu của chuyến này.");
+        if(cabinMappings.structuralCabinTypes(offer.getShipId()).stream().noneMatch(option -> option.type()==input.proposedCabinType()))
             fail("FARE_CABIN_TYPE_NOT_ON_SHIP","Hạng phòng dự kiến không có trong dữ liệu cabin của tàu đã phân công.");
         offer.setTemplateVersionId(version.getId()); offer.setLogicalCategory(input.logicalCategory());
         offer.setLogicalCategoryId(input.logicalCategoryId());
@@ -688,6 +736,35 @@ public class CruisePackageService {
     private ResourceType resourceType(CruisePackageBenefit b) { return b.getOnboardActivityId()!=null?ResourceType.ACTIVITY:b.getShoreExcursionId()!=null?ResourceType.EXCURSION:ResourceType.SERVICE; }
     private UUID resourceId(CruisePackageBenefit b) { return b.getOnboardActivityId()!=null?b.getOnboardActivityId():b.getShoreExcursionId()!=null?b.getShoreExcursionId():b.getServiceId(); }
     private UUID maker() { return actor(Role.ACTIVITY_SERVICE_MANAGER,"TOUR_PACKAGE_MANAGE"); }
+    private CasmsPrincipal templateAuthor() {
+        maker();
+        var principal = currentPrincipal();
+        if (!principal.hasAuthority("SHIP_READ"))
+            throw new BusinessException(HttpStatus.FORBIDDEN,"ACCESS_DENIED","Không có quyền xem tàu để tạo mẫu gói.");
+        return principal;
+    }
+    private CasmsPrincipal currentPrincipal() {
+        return (CasmsPrincipal) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+    }
+    private void requireSourceCabinTypes(UUID shipId, List<CabinType> types, CasmsPrincipal author) {
+        if (shipId==null || types==null || types.isEmpty() || types.stream().anyMatch(Objects::isNull))
+            fail("FARE_SOURCE_CABIN_REQUIRED","Chọn tàu và ít nhất một hạng cabin có sẵn trên tàu.");
+        if (new HashSet<>(types).size()!=types.size())
+            fail("FARE_CATEGORY_DUPLICATE","Hạng cabin bị chọn trùng.");
+        cabinMappings.requireVisibleShip(shipId, author);
+        cabinMappings.lockShip(shipId);
+        var supported = cabinMappings.structuralCabinTypes(shipId).stream().map(ShipCabinType::type).toList();
+        if (!supported.containsAll(types))
+            fail("FARE_CABIN_TYPE_NOT_ON_SHIP","Một hạng cabin đã chọn không còn trên tàu. Tải lại danh sách và chọn lại.");
+    }
+    private static String cabinTypeName(CabinType type) {
+        return switch (type) {
+            case INTERIOR -> "Phòng trong";
+            case OCEAN_VIEW -> "Phòng hướng biển";
+            case BALCONY -> "Phòng có ban công";
+            case SUITE -> "Phòng Suite";
+        };
+    }
     private UUID checker() { return actor(Role.OPERATIONS_MANAGER,"CRUISE_PRICING_APPROVE"); }
     private UUID actor(Role role,String permission) {
         var auth=SecurityContextHolder.getContext().getAuthentication();

@@ -3,14 +3,20 @@ package com.casms.cruisepackage.service;
 import com.casms.booking.service.BookingService;
 import com.casms.common.exception.BusinessException;
 import com.casms.cruisepackage.dto.CruisePackageContracts.Blocker;
+import com.casms.cruisepackage.dto.CruisePackageContracts.ShipCabinItem;
+import com.casms.cruisepackage.dto.CruisePackageContracts.ShipCabinType;
+import com.casms.cruisepackage.dto.CruisePackageContracts.ShipOption;
 import com.casms.cruisepackage.dto.CruisePackagePurchaseSelection;
 import com.casms.identity.enums.Role;
 import com.casms.security.principal.CasmsPrincipal;
+import com.casms.ship.enums.CabinType;
 import com.casms.ship.repository.ShipRepository;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -26,7 +32,7 @@ public class CruisePackageCabinMappingService {
     private final JdbcTemplate jdbc;
     private final ShipRepository ships;
     private final ObjectProvider<BookingService> bookings;
-    public record Category(UUID id,UUID templateVersionId,String name,String packageName) {}
+    public record Category(UUID id,UUID templateVersionId,String name,String packageName,UUID sourceShipId,CabinType cabinType) {}
     public record Selection(@NotNull UUID logicalCategoryId,@NotEmpty List<@NotNull UUID> cabinIds) {}
     public record Confirmation(UUID expectedMappingId,@NotBlank String expectedStructureFingerprint,
                                @NotEmpty List<@NotNull @Valid Selection> assignments) {}
@@ -38,26 +44,75 @@ public class CruisePackageCabinMappingService {
     }
 
     public List<Category> categories(UUID versionId) {
-        return jdbc.query("SELECT c.logical_category_id,vc.template_version_id,c.display_name,v.name FROM \"CruisePackageLogicalCategory\" c JOIN \"CruisePackageVersionCategory\" vc USING(logical_category_id) JOIN \"FarePackageTemplateVersion\" v USING(template_version_id) WHERE ((?::uuid IS NULL AND v.status IN ('PUBLISHED','SUPERSEDED')) OR vc.template_version_id=?) ORDER BY v.name,c.display_name,c.logical_category_id",
-                (r,n)->new Category(r.getObject(1,UUID.class),r.getObject(2,UUID.class),r.getString(3),r.getString(4)),versionId,versionId);
+        return jdbc.query("""
+                SELECT c.logical_category_id, vc.template_version_id, c.display_name, v.name, c.source_ship_id, c.source_cabin_type
+                FROM "CruisePackageLogicalCategory" c JOIN "CruisePackageVersionCategory" vc USING(logical_category_id)
+                JOIN "FarePackageTemplateVersion" v USING(template_version_id)
+                WHERE ((?::uuid IS NULL AND v.status IN ('PUBLISHED','SUPERSEDED')) OR vc.template_version_id=?)
+                ORDER BY v.name,c.display_name,c.logical_category_id
+                """, (r,n)->new Category(r.getObject(1,UUID.class),r.getObject(2,UUID.class),r.getString(3),
+                r.getString(4),r.getObject(5,UUID.class),r.getString(6)==null?null:CabinType.valueOf(r.getString(6))),
+                versionId,versionId);
     }
     public Category requireCategory(UUID categoryId,UUID versionId) {
         if(categoryId==null)throw error("CABIN_CATEGORY_ID_REQUIRED","Cần chọn hạng thương mại bằng ID ổn định; không tự đối chiếu tên hoặc enum.");
         return categories(versionId).stream().filter(c->c.id().equals(categoryId)).findFirst()
                 .orElseThrow(()->error("CABIN_CATEGORY_REFERENCE_INVALID","Hạng thương mại không thuộc phiên bản mẫu đã chọn."));
     }
-    public void createCategories(UUID versionId,UUID templateId,List<String> names,List<UUID> reusedIds) {
-        Map<String,UUID> reused=new HashMap<>();
-        for(UUID id:reusedIds==null?List.<UUID>of():reusedIds){
-            var rows=jdbc.queryForList("SELECT display_name FROM \"CruisePackageLogicalCategory\" WHERE logical_category_id=?",String.class,id);
-            if(rows.size()!=1||!names.contains(rows.getFirst())||reused.putIfAbsent(rows.getFirst(),id)!=null)
-                throw error("CABIN_CATEGORY_REFERENCE_INVALID","ID tái sử dụng phải tồn tại trong Cruise Package domain, không trùng và có tên đã khai báo trong phiên bản mới.");
+    public void attachSourceCategory(UUID versionId, UUID templateId, UUID shipId, CabinType type, String name) {
+        jdbc.update("""
+                INSERT INTO "CruisePackageLogicalCategory"
+                    (logical_category_id,origin_template_id,display_name,source_ship_id,source_cabin_type)
+                VALUES (?,?,?,?,?) ON CONFLICT (source_ship_id,source_cabin_type) DO NOTHING
+                """, UUID.randomUUID(), templateId, name, shipId, type.name());
+        jdbc.update("""
+                INSERT INTO "CruisePackageVersionCategory"(logical_category_id,template_version_id)
+                SELECT logical_category_id, ? FROM "CruisePackageLogicalCategory"
+                WHERE source_ship_id=? AND source_cabin_type=?
+                """, versionId, shipId, type.name());
+    }
+
+    public List<ShipOption> templateShips(CasmsPrincipal actor) {
+        var page = Pageable.unpaged(Sort.by("shipName", "shipId"));
+        var options = actor.hasRole(Role.SHIP_MANAGER) && !actor.hasRole(Role.ADMIN)
+                ? ships.findManagedShips(actor.getUserId(), page) : ships.findAll(page);
+        return options.stream()
+                .map(ship -> new ShipOption(ship.getShipId(), ship.getShipName(), ship.getShipCode(), ship.getTotalCapacity()))
+                .toList();
+    }
+
+    public void requireVisibleShip(UUID shipId, CasmsPrincipal actor) {
+        boolean restricted = actor.hasRole(Role.SHIP_MANAGER) && !actor.hasRole(Role.ADMIN);
+        if (!(restricted ? ships.isManagedBy(shipId, actor.getUserId()) : ships.existsById(shipId)))
+            throw new BusinessException(HttpStatus.NOT_FOUND,"SHIP_NOT_FOUND","Không tìm thấy tàu trong phạm vi được phép.");
+    }
+
+    public List<ShipCabinType> structuralCabinTypes(UUID shipId) {
+        record CabinRow(CabinType type, ShipCabinItem cabin) {}
+        var rows = jdbc.query("""
+                SELECT c.cabin_type::text AS cabin_type,
+                       c.cabin_number,
+                       coalesce(nullif(trim(d.deck_name), ''), 'Boong ' || d.deck_number) AS deck_name,
+                       c.capacity
+                FROM "Cabin" c JOIN "Deck" d USING(deck_id)
+                WHERE c.ship_id=? AND d.ship_id=c.ship_id AND NOT d.service_level
+                    AND d.deck_number>=1 AND c.capacity>=1 AND c.cabin_type IS NOT NULL
+                ORDER BY c.cabin_type, d.deck_number, c.cabin_number
+                """, (r, n) -> new CabinRow(
+                        CabinType.valueOf(r.getString("cabin_type")),
+                        new ShipCabinItem(r.getString("cabin_number"), r.getString("deck_name"), r.getInt("capacity"))
+                ), shipId);
+        Map<CabinType, List<ShipCabinItem>> grouped = new LinkedHashMap<>();
+        for (var row : rows) {
+            grouped.computeIfAbsent(row.type(), k -> new ArrayList<>()).add(row.cabin());
         }
-        for(String name:names){
-            UUID id=reused.get(name);
-            if(id==null){id=UUID.randomUUID();jdbc.update("INSERT INTO \"CruisePackageLogicalCategory\"(logical_category_id,origin_template_id,display_name) VALUES(?,?,?)",id,templateId,name);}
-            jdbc.update("INSERT INTO \"CruisePackageVersionCategory\"(logical_category_id,template_version_id) VALUES(?,?)",id,versionId);
-        }
+        return grouped.entrySet().stream()
+                .map(entry -> new ShipCabinType(
+                        entry.getKey(),
+                        entry.getValue().size(),
+                        entry.getValue().stream().mapToLong(ShipCabinItem::capacity).sum(),
+                        List.copyOf(entry.getValue())))
+                .toList();
     }
     private List<Map<String,Object>> structure(UUID shipId) {
         return jdbc.queryForList("""
@@ -79,17 +134,26 @@ public class CruisePackageCabinMappingService {
     public View view(UUID shipId) {
         if(!ships.existsById(shipId))throw error("SHIP_NOT_FOUND","Không tìm thấy tàu cần đối chiếu mapping.");
         var current=latest(shipId);
-        var cabins=jdbc.queryForList("SELECT c.cabin_id,c.cabin_number,c.capacity,c.deck_id,d.deck_name,c.status::text FROM \"Cabin\" c JOIN \"Deck\" d USING(deck_id) WHERE c.ship_id=? AND d.ship_id=? ORDER BY d.deck_number,c.cabin_number",shipId,shipId);
+        var cabins=jdbc.queryForList("""
+                SELECT c.cabin_id,c.cabin_number,c.capacity,c.deck_id,d.deck_name,c.status::text,c.cabin_type::text
+                FROM "Cabin" c JOIN "Deck" d USING(deck_id)
+                WHERE c.ship_id=? AND d.ship_id=c.ship_id AND NOT d.service_level
+                    AND d.deck_number>=1 AND c.capacity>=1
+                ORDER BY d.deck_number,c.cabin_number
+                """,shipId);
         var assignments=current==null?List.<Map<String,Object>>of():jdbc.queryForList("SELECT logical_category_id,cabin_id,cabin_id_snapshot FROM \"ShipCruisePackageCabinMappingItem\" WHERE mapping_id=? ORDER BY logical_category_id,cabin_id_snapshot",current.get("mapping_id"));
         String fingerprint=structureFingerprint(shipId);
         var confirmation=current==null?null:new ConfirmationView((UUID)current.get("mapping_id"),((Number)current.get("mapping_revision")).longValue(),
                 (UUID)current.get("confirmed_by"),((java.sql.Timestamp)current.get("confirmed_at")).toInstant(),Objects.equals(fingerprint,current.get("structure_fingerprint"))?"CURRENT":"STALE");
-        return new View(shipId,fingerprint,confirmation,categories(null),cabins,assignments);
+        var shipCategories = categories(null).stream()
+                .filter(category -> category.sourceShipId()==null || category.sourceShipId().equals(shipId)).toList();
+        return new View(shipId,fingerprint,confirmation,shipCategories,cabins,assignments);
     }
     @Transactional
     public View confirm(UUID shipId,Confirmation input,CasmsPrincipal actor) {
         if(actor==null||!actor.hasRole(Role.SHIP_MANAGER)||!actor.hasAuthority("SHIP_CABIN_CATEGORY_MAPPING_CONFIRM"))
             throw new org.springframework.security.access.AccessDeniedException("Ship Manager mapping confirmation permission required");
+        requireVisibleShip(shipId,actor);
         lockShip(shipId);
         var current=latest(shipId);
         if(!Objects.equals(input.expectedMappingId(),current==null?null:current.get("mapping_id"))
@@ -102,16 +166,30 @@ public class CruisePackageCabinMappingService {
                 """,Boolean.class,shipId)))
             throw error("CABIN_MAPPING_BOOKING_DEPENDENCY","Có giữ chỗ hoặc Booking gói du thuyền đang hiệu lực; chưa chứng minh an toàn khi thay revision mapping. Không tự chuyển hạng/cabin đã mua.");
         var cabins=structure(shipId);Set<UUID> seenCabins=new HashSet<>(),seenCategories=new HashSet<>();
+        var cabinTypes = jdbc.query(
+                "SELECT cabin_id,cabin_type::text FROM \"Cabin\" WHERE ship_id=?",
+                records -> {
+                    Map<UUID,CabinType> result = new HashMap<>();
+                    while (records.next()) {
+                        String type = records.getString(2);
+                        if (type!=null) result.put(records.getObject(1,UUID.class), CabinType.valueOf(type));
+                    }
+                    return result;
+                }, shipId);
         for(var selection:input.assignments()) {
             if(!seenCategories.add(selection.logicalCategoryId()))throw error("CABIN_MAPPING_DUPLICATE","Hạng thương mại bị lặp trong revision mapping.");
             var category=categories(null).stream().filter(c->c.id().equals(selection.logicalCategoryId())).findFirst()
                     .orElseThrow(()->error("CABIN_CATEGORY_REFERENCE_INVALID","Không tìm thấy ID hạng thương mại."));
+            if(category.sourceShipId()!=null && !category.sourceShipId().equals(shipId))
+                throw error("CABIN_MAPPING_WRONG_SHIP","Hạng cabin được chọn thuộc tàu khác.");
             String state=jdbc.queryForObject("SELECT status FROM \"FarePackageTemplateVersion\" WHERE template_version_id=?",String.class,category.templateVersionId());
             if(!Set.of("PUBLISHED","SUPERSEDED").contains(state))throw error("TEMPLATE_NOT_PUBLISHED","Chỉ xác nhận mapping cho phiên bản đã phát hành.");
             for(UUID cabinId:selection.cabinIds()) {
                 if(!seenCabins.add(cabinId))throw error("CABIN_MAPPING_DUPLICATE","Một cabin vật lý chỉ thuộc một hạng thương mại trong revision mapping.");
                 var cabin=cabins.stream().filter(c->cabinId.equals(c.get("cabin_id"))).findFirst()
                         .orElseThrow(()->error("CABIN_MAPPING_WRONG_SHIP","Cabin không tồn tại trên đúng tàu."));
+                if(category.cabinType()!=null && !Objects.equals(cabinTypes.get(cabinId), category.cabinType()))
+                    throw error("CABIN_MAPPING_WRONG_TYPE","Cabin đã chọn không thuộc hạng cabin của mẫu.");
                 if(!shipId.equals(cabin.get("deck_ship_id"))||Boolean.TRUE.equals(cabin.get("service_level"))
                         ||!(cabin.get("deck_number") instanceof Number deck)||deck.intValue()<1
                         ||!(cabin.get("capacity") instanceof Number n)||n.intValue()<1)

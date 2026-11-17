@@ -13,6 +13,7 @@ import java.util.UUID;
 public class CruisePackageTemplateVersion {
     @Id @Column(name="template_version_id") private UUID id;
     @Column(name="template_id",nullable=false) private UUID templateId;
+    @Column(name="source_ship_id") private UUID sourceShipId;
     @Column(name="version_number",nullable=false) private int versionNumber;
     @Column(nullable=false,length=200) private String name;
     @Column(columnDefinition="text") private String description;
