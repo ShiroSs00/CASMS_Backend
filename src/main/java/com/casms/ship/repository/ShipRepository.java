@@ -1,6 +1,7 @@
 package com.casms.ship.repository;
 
 import com.casms.ship.entity.Ship;
+import com.casms.ship.enums.ShipStatus;
 
 import jakarta.persistence.LockModeType;
 
@@ -30,6 +31,26 @@ public interface ShipRepository extends JpaRepository<Ship, UUID> {
 
     @Query("SELECT count(s) > 0 FROM Ship s WHERE s.shipId=:shipId AND " + MANAGED_SHIP)
     boolean isManagedBy(@Param("shipId") UUID shipId, @Param("user") UUID user);
+
+    String FILTERED_SHIPS = """
+            SELECT s FROM Ship s LEFT JOIN s.shipType t
+            WHERE (:pattern = '' OR LOWER(s.shipName) LIKE LOWER(:pattern) ESCAPE '!'
+                OR LOWER(s.shipCode) LIKE LOWER(:pattern) ESCAPE '!')
+            AND s.status = COALESCE(:status, s.status)
+            AND t.shipTypeId IS NOT DISTINCT FROM COALESCE(:typeId, t.shipTypeId)
+            AND (:legacy = false OR s.shipType IS NULL)
+            """;
+
+    @EntityGraph(attributePaths = "shipType")
+    @Query(FILTERED_SHIPS)
+    Page<Ship> findFilteredShips(@Param("pattern") String pattern, @Param("status") ShipStatus status,
+            @Param("typeId") UUID typeId, @Param("legacy") boolean legacy, Pageable pageable);
+
+    @EntityGraph(attributePaths = "shipType")
+    @Query(FILTERED_SHIPS + " AND " + MANAGED_SHIP)
+    Page<Ship> findFilteredManagedShips(@Param("user") UUID user, @Param("pattern") String pattern,
+            @Param("status") ShipStatus status, @Param("typeId") UUID typeId,
+            @Param("legacy") boolean legacy, Pageable pageable);
 
     String MANAGED_SHIP = """
             (s.createdByShipManagerId = :user

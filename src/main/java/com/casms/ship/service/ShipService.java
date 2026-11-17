@@ -93,6 +93,23 @@ public class ShipService {
     }
 
     @Transactional(readOnly = true)
+    public Page<ShipResponse> list(Pageable pageable, String q, ShipStatus status, UUID typeId, boolean legacy) {
+        String term = q == null ? "" : q.strip();
+        if (term.length() > 100 || (legacy && typeId != null)) {
+            throw new BusinessException(org.springframework.http.HttpStatus.BAD_REQUEST, "INVALID_SHIP_FILTER",
+                    "Use a search term of at most 100 characters and either a ship type or the legacy filter");
+        }
+        if (term.isEmpty() && status == null && typeId == null && !legacy) return list(pageable);
+        String pattern = term.isEmpty() ? "" : "%" + term.replace("!", "!!")
+                .replace("%", "!%").replace("_", "!_") + "%";
+        UUID manager = CruisePlanOperationsAccess.currentShipManager();
+        Page<Ship> ships = manager == null
+                ? shipRepository.findFilteredShips(pattern, status, typeId, legacy, pageable)
+                : shipRepository.findFilteredManagedShips(manager, pattern, status, typeId, legacy, pageable);
+        return ships.map(this::mapToResponse);
+    }
+
+    @Transactional(readOnly = true)
     public ShipResponse detail(UUID shipId) {
         Ship ship = getShipById(shipId);
         return mapToResponse(ship);
@@ -101,6 +118,16 @@ public class ShipService {
     @Transactional
     public ShipResponse update(UUID shipId, ShipUpdateRequest request) {
         Ship ship = getShipById(shipId);
+        if (ship.getShipType() != null
+                && (changes(request.getTotalCapacity(), ship.getTotalCapacity())
+                    || changes(request.getTotalDecks(), ship.getTotalDecks())
+                    || changes(request.getLengthMeters(), ship.getLengthMeters())
+                    || changes(request.getBeamMeters(), ship.getBeamMeters())
+                    || changes(request.getManufacturerName(), ship.getManufacturerName())
+                    || changes(request.getEngineType(), ship.getEngineType()))) {
+            throw new BusinessException(org.springframework.http.HttpStatus.CONFLICT,
+                    "SHIP_TYPE_DESIGN_LOCKED", "Inherited ship design fields cannot be changed on a physical ship");
+        }
         Double proposedLength =
                 request.getLengthMeters() == null
                         ? ship.getLengthMeters()
@@ -174,6 +201,10 @@ public class ShipService {
         }
         ship.setShipName(name.strip());
         return mapToResponse(ship);
+    }
+
+    private static boolean changes(Object proposed, Object current) {
+        return proposed != null && !proposed.equals(current);
     }
 
     @Transactional

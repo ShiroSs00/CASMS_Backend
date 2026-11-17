@@ -62,8 +62,12 @@ public class ShipController {
             description = "Lấy danh sách tàu trong hệ thống (hỗ trợ phân trang và sắp xếp)")
     @PreAuthorize("hasAuthority('SHIP_READ')")
     @GetMapping
-    public ApiResponse<Page<ShipResponse>> list(Pageable pageable) {
-        return ApiResponse.success(service.list(pageable));
+    public ApiResponse<Page<ShipResponse>> list(Pageable pageable,
+            @RequestParam(required = false) String q,
+            @RequestParam(required = false) ShipStatus status,
+            @RequestParam(required = false) UUID shipTypeId,
+            @RequestParam(defaultValue = "false") boolean legacy) {
+        return ApiResponse.success(service.list(pageable, q, status, shipTypeId, legacy));
     }
 
     @Operation(summary = "Chi tiết tàu", description = "Xem thông tin chi tiết của một tàu theo ID")
