@@ -28,6 +28,9 @@ public interface ShipRepository extends JpaRepository<Ship, UUID> {
     @Query("SELECT s FROM Ship s WHERE " + MANAGED_SHIP)
     Page<Ship> findManagedShips(@Param("user") UUID user, Pageable pageable);
 
+    @Query("SELECT count(s) > 0 FROM Ship s WHERE s.shipId=:shipId AND " + MANAGED_SHIP)
+    boolean isManagedBy(@Param("shipId") UUID shipId, @Param("user") UUID user);
+
     String MANAGED_SHIP = """
             (s.createdByShipManagerId = :user
                 OR EXISTS (SELECT crew.cruiseStaffId FROM CruiseStaff crew

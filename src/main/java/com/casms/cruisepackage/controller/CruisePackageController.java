@@ -22,6 +22,29 @@ public class CruisePackageController {
     private final CruisePackageService service;
     private final CruisePackageBenefitUsagePolicy benefitUsage;
     private final CruisePackageCabinMappingService cabinMappings;
+    @GetMapping("/ship-options")
+    @PreAuthorize("hasRole('ACTIVITY_SERVICE_MANAGER') and hasAuthority('TOUR_PACKAGE_MANAGE') and hasAuthority('SHIP_READ')")
+    public ApiResponse<List<ShipOption>> shipOptions() {
+        return ApiResponse.success(service.templateShips());
+    }
+
+    @GetMapping("/ship-options/{shipId}/cabin-types")
+    @PreAuthorize("hasRole('ACTIVITY_SERVICE_MANAGER') and hasAuthority('TOUR_PACKAGE_MANAGE') and hasAuthority('SHIP_READ')")
+    public ApiResponse<List<ShipCabinType>> shipCabinTypes(@PathVariable UUID shipId) {
+        return ApiResponse.success(service.templateCabinTypes(shipId));
+    }
+
+    @GetMapping("/ship-options/{shipId}/published-templates")
+    @PreAuthorize("(hasRole('ACTIVITY_SERVICE_MANAGER') and hasAuthority('TOUR_PACKAGE_MANAGE') and hasAuthority('SHIP_READ')) or (hasRole('CRUISE_MANAGER') and hasAuthority('CRUISE_CREATE'))")
+    public ApiResponse<List<PublishedShipTemplate>> publishedShipTemplates(@PathVariable UUID shipId) {
+        return ApiResponse.success(service.publishedShipTemplates(shipId));
+    }
+
+    @PostMapping("/with-version")
+    @PreAuthorize("hasRole('ACTIVITY_SERVICE_MANAGER') and hasAuthority('TOUR_PACKAGE_MANAGE') and hasAuthority('SHIP_READ')")
+    public ApiResponse<VersionView> createWithVersion(@RequestBody @Valid CreateTemplateWithVersion input) {
+        return ApiResponse.success(service.createWithVersion(input));
+    }
     @GetMapping("/logical-categories")
     public ApiResponse<List<Category>> logicalCategories(){return ApiResponse.success(cabinMappings.categories(null));}
 
@@ -35,8 +58,8 @@ public class CruisePackageController {
     @PostMapping @PreAuthorize("hasRole('ACTIVITY_SERVICE_MANAGER') and hasAuthority('TOUR_PACKAGE_MANAGE')")
     public ApiResponse<CruisePackageTemplate> create(@RequestBody @Valid CreateTemplate input) { return ApiResponse.success(service.createTemplate(input)); }
     @GetMapping("/{id}/versions") public ApiResponse<List<VersionView>> versions(@PathVariable UUID id) { return ApiResponse.success(service.versions(id)); }
-    @PostMapping("/{id}/versions") @PreAuthorize("hasRole('ACTIVITY_SERVICE_MANAGER') and hasAuthority('TOUR_PACKAGE_MANAGE')")
+    @PostMapping("/{id}/versions") @PreAuthorize("hasRole('ACTIVITY_SERVICE_MANAGER') and hasAuthority('TOUR_PACKAGE_MANAGE') and hasAuthority('SHIP_READ')")
     public ApiResponse<VersionView> createVersion(@PathVariable UUID id,@RequestBody @Valid CreateVersion input) { return ApiResponse.success(service.createVersion(id,input)); }
-    @PostMapping("/versions/{id}/publish") @PreAuthorize("hasRole('ACTIVITY_SERVICE_MANAGER') and hasAuthority('TOUR_PACKAGE_MANAGE')")
+    @PostMapping("/versions/{id}/publish") @PreAuthorize("hasRole('ACTIVITY_SERVICE_MANAGER') and hasAuthority('TOUR_PACKAGE_MANAGE') and hasAuthority('SHIP_READ')")
     public ApiResponse<VersionView> publish(@PathVariable UUID id,@RequestBody @Valid Revision input) { return ApiResponse.success(service.publish(id,input)); }
 }

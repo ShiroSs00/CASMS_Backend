@@ -15,7 +15,11 @@ import java.util.UUID;
 public class CruisePackageCabinMappingController {
     private final CruisePackageCabinMappingService service;
     @GetMapping @PreAuthorize("hasRole('SHIP_MANAGER') and hasAuthority('SHIP_READ')")
-    public ApiResponse<CruisePackageCabinMappingService.View> view(@PathVariable UUID shipId){return ApiResponse.success(service.view(shipId));}
+    public ApiResponse<CruisePackageCabinMappingService.View> view(@PathVariable UUID shipId,
+            @AuthenticationPrincipal CasmsPrincipal actor) {
+        service.requireVisibleShip(shipId, actor);
+        return ApiResponse.success(service.view(shipId));
+    }
     @PostMapping("/confirm") @PreAuthorize("hasRole('SHIP_MANAGER') and hasAuthority('SHIP_CABIN_CATEGORY_MAPPING_CONFIRM')")
     public ApiResponse<CruisePackageCabinMappingService.View> confirm(@PathVariable UUID shipId,@RequestBody @Valid CruisePackageCabinMappingService.Confirmation input,@AuthenticationPrincipal CasmsPrincipal actor){return ApiResponse.success(service.confirm(shipId,input,actor));}
 }

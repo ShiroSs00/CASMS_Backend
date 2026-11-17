@@ -585,6 +585,31 @@ public class TripScheduleVersionService {
             }
         }
 
+        // BE-12b: Chronological sequence between Day 1 Departure (Cảng khởi hành) and stops
+        TripPlanDay depDay = dayMap.get(1);
+        if (depDay != null && depDay.getDeparturePort() != null && depDay.getPlannedDepartureTime() != null
+                && stopDtos.stream().noneMatch(s -> Boolean.TRUE.equals(s.getIsEmbarkation()))) {
+            String day1Zone = depDay.getShipTimeZoneId() != null ? depDay.getShipTimeZoneId() : "Asia/Ho_Chi_Minh";
+            for (TripPlanStopDraftDto stopDto : stopDtos) {
+                Port stopPort = portCache.get(stopDto.getPortId());
+                DepartureConflict conflict = checkDepartureStopSequence(
+                        depDay.getPlannedDepartureTime(),
+                        day1Zone,
+                        stopDto.getArrivalDayNumber(),
+                        stopDto.getPlannedArrivalTime(),
+                        stopPort != null ? stopPort.getTimeZoneId() : null,
+                        stopPort != null ? stopPort.getPortName() : stopDto.getClientKey());
+                if (conflict != null) {
+                    throw new BusinessException(
+                            HttpStatus.BAD_REQUEST,
+                            conflict.code(),
+                            conflict.message(),
+                            Map.of("clientKey", stopDto.getClientKey(), "field", "plannedArrivalTime"));
+                }
+            }
+        }
+
+        // Map<String, TripPlanStop> existingStopMap
         Map<String, TripPlanStop> existingStopMap =
                 version.getStops().stream()
                         .collect(Collectors.toMap(TripPlanStop::getClientKey, s -> s));
@@ -1963,17 +1988,17 @@ public class TripScheduleVersionService {
                                 .build());
             }
 
-            // All aboard logic
+            // All aboard logic: must be strictly after arrival and <= departure
             if (stop.getAllAboardTime() != null) {
                 int aaDay =
                         stop.getAllAboardDayNumber() != null
                                 ? stop.getAllAboardDayNumber()
                                 : stop.getDepartureDayNumber();
-                if (aaDay > stop.getDepartureDayNumber()
-                        || (aaDay == stop.getDepartureDayNumber()
-                                && stop.getPlannedDepartureTime() != null
-                                && stop.getAllAboardTime()
-                                        .isAfter(stop.getPlannedDepartureTime()))) {
+                long aaSec = toTimelineSeconds(aaDay, stop.getAllAboardTime(), false);
+                boolean invalidAllAboard =
+                        (stop.getPlannedArrivalTime() != null && aaSec <= stopArrivalSecond)
+                                || (stop.getPlannedDepartureTime() != null && aaSec > stopDepartureSecond);
+                if (invalidAllAboard) {
                     violations.add(
                             PlanViolation.builder()
                                     .code("INVALID_ALL_ABOARD_TIME")
@@ -1988,7 +2013,7 @@ public class TripScheduleVersionService {
                                                     + "].allAboardTime")
                                     .actionHint("SET_ALL_ABOARD_TIME")
                                     .message(
-                                            "Giờ tất cả lên tàu phải trước hoặc bằng giờ rời cảng.")
+                                            "Giờ tất cả lên tàu phải sau giờ tàu đến và trước hoặc bằng giờ rời cảng.")
                                     .build());
                 }
             }
@@ -2154,6 +2179,36 @@ public class TripScheduleVersionService {
                                                         + " chuyển.")
                                         .build());
                     }
+                }
+            }
+        }
+
+        // Validate Day 1 Departure Time against first stops in compatible clock
+        if (departureDay != null && departureDay.getDeparturePort() != null
+                && departureDay.getPlannedDepartureTime() != null && !hasEmbarkation) {
+            String day1Zone = departureDay.getShipTimeZoneId() != null
+                    ? departureDay.getShipTimeZoneId() : "Asia/Ho_Chi_Minh";
+            for (TripPlanStop stop : stops) {
+                Port stopPort = stop.getPort();
+                DepartureConflict conflict = checkDepartureStopSequence(
+                        departureDay.getPlannedDepartureTime(),
+                        day1Zone,
+                        stop.getArrivalDayNumber(),
+                        stop.getPlannedArrivalTime(),
+                        stopPort != null ? stopPort.getTimeZoneId() : null,
+                        stopPort != null ? stopPort.getPortName() : stop.getClientKey());
+                if (conflict != null) {
+                    violations.add(PlanViolation.builder()
+                            .code(conflict.code())
+                            .severity("ERROR")
+                            .entityType("STOP")
+                            .clientKey(stop.getClientKey())
+                            .dayNumber(stop.getArrivalDayNumber())
+                            .field("plannedArrivalTime")
+                            .fieldPath("stops[clientKey=" + stop.getClientKey() + "].plannedArrivalTime")
+                            .actionHint("ADJUST_PORT_CALL_SCHEDULE")
+                            .message(conflict.message())
+                            .build());
                 }
             }
         }
@@ -3087,6 +3142,58 @@ public class TripScheduleVersionService {
 
     private static boolean invalidTerminalCallType(Boolean terminal, CruiseStopCallType type) {
         return Boolean.TRUE.equals(terminal) && type != null && type != CruiseStopCallType.NORMAL;
+    }
+
+    private record DepartureConflict(String code, String message) {}
+
+    /** Verifies a stop arrival falls strictly after Day 1 departure in compatible port clocks. */
+    private static DepartureConflict checkDepartureStopSequence(
+            LocalTime day1DepartureTime,
+            String day1Zone,
+            Integer arrivalDayNumber,
+            LocalTime stopArrivalTime,
+            String stopZone,
+            String portName) {
+        if (day1DepartureTime == null || arrivalDayNumber == null || stopArrivalTime == null) {
+            return null;
+        }
+        if (!samePortClock(day1Zone, stopZone)) {
+            return null;
+        }
+        long dep1Sec = toTimelineSeconds(1, day1DepartureTime, true);
+        long arrSec = toTimelineSeconds(arrivalDayNumber, stopArrivalTime, false);
+        if (arrSec > dep1Sec) {
+            return null;
+        }
+        return new DepartureConflict(
+                arrSec < dep1Sec ? "INVALID_DEPARTURE_STOP_SEQUENCE" : "NON_POSITIVE_TRANSIT_TIME",
+                arrSec < dep1Sec
+                        ? "Giờ tàu đến cảng '" + portName + "' (Ngày " + arrivalDayNumber
+                                + " " + stopArrivalTime
+                                + ") phải sau giờ khởi hành Ngày 1 (" + day1DepartureTime + ")."
+                        : "Thời gian di chuyển từ cảng khởi hành Ngày 1 (" + day1DepartureTime
+                                + ") đến cảng '" + portName + "' phải lớn hơn 0.");
+    }
+
+    private static boolean samePortClock(String firstZone, String secondZone) {
+        if (firstZone == null || secondZone == null) {
+            return true;
+        }
+        String canonicalA = normalizeClockZone(firstZone);
+        String canonicalB = normalizeClockZone(secondZone);
+        return canonicalA != null && canonicalA.equals(canonicalB);
+    }
+
+    private static String normalizeClockZone(String zone) {
+        try {
+            String id = java.time.ZoneId.of(zone.trim()).getId();
+            if (java.util.Set.of("Asia/Kuala_Lumpur", "Asia/Kuching", "Asia/Singapore", "Singapore").contains(id)) {
+                return "PORT_CLOCK_UTC_PLUS_08";
+            }
+            return id;
+        } catch (Exception ex) {
+            return null;
+        }
     }
 
     private static long toTimelineSeconds(int dayNumber, LocalTime time, boolean isEnd) {
