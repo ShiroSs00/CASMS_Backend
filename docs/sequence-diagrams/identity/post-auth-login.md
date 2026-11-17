@@ -35,3 +35,4 @@ sequenceDiagram
 ```
 
 Username is limited to 100 Unicode code points. Passwords are limited to 72 UTF-8 bytes. A persistence or commit failure is handled by auth-specific exception advice. The shared bearer and unexpected error handling is described in the [security flow](../README.md#shared-security-and-error-flow).
+The effective permissions include `SHIP_MODEL_DELETE` for `SHIP_MANAGER` after the role initializer runs. The [model deletion endpoint](../ship/delete-ships-shipid-models-modelid-unused.md) also checks ship scope and draft eligibility.

@@ -29,6 +29,7 @@ public class ShipModelService {
     private final ShipRepository ships;
     private final ShipModelRepository models;
     private final ShipModelObjectRepository objects;
+    private final ModelImportJobRepository importJobs;
     private final DeckRepository decks;
     private final CabinRepository cabins;
     private final LocationDeviceRepository devices;
@@ -122,16 +123,23 @@ public class ShipModelService {
 
     @Transactional
     public void deleteDraft(UUID shipId, UUID modelId) {
-        ShipModel model = getModel(shipId, modelId);
+        ShipModel model = models.lockModelForShip(shipId, modelId)
+                .orElseThrow(() -> new ResourceNotFoundException("Ship model", modelId));
+        boolean draftOnly = CruisePlanOperationsAccess.currentShipManager() != null;
         if (model.getStatus() != ShipModelStatus.DRAFT
-                && model.getStatus() != ShipModelStatus.FAILED) {
+                && (draftOnly || model.getStatus() != ShipModelStatus.FAILED)) {
             throw new BusinessException(
-                    "SHIP_MODEL_IN_USE", "Only draft or failed models can be deleted");
+                    "SHIP_MODEL_IN_USE",
+                    draftOnly ? "Only draft models can be deleted" : "Only draft or failed models can be deleted");
         }
-        if (!objects.findByShipModelShipModelId(modelId).isEmpty()) {
+        if (objects.existsByShipModelShipModelId(modelId)) {
             throw new BusinessException(
                     "SHIP_MODEL_HAS_OBJECTS",
                     "Delete model object mappings before deleting the draft model");
+        }
+        if (importJobs.existsByShipModelShipModelId(modelId)) {
+            throw new BusinessException(
+                    "SHIP_MODEL_IN_USE", "Cannot delete a model with import history");
         }
         models.delete(model);
     }

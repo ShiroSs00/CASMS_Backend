@@ -45,6 +45,7 @@ Thumbs.db
 !/docs/sequence-diagrams/ship/
 /docs/sequence-diagrams/ship/*
 !/docs/sequence-diagrams/ship/*ship-types*.md
+!/docs/sequence-diagrams/ship/delete-ships-shipid-models-modelid-unused.md
 !/docs/sequence-diagrams/ship/*operational-profile.md
 !/docs/sequence-diagrams/ship/get-ships.md
 !/docs/sequence-diagrams/ship/get-ships-shipid.md

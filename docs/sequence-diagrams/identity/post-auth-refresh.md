@@ -36,3 +36,4 @@ sequenceDiagram
 ```
 
 Refresh uses an unexpired access token and issues a new access token. See [shared error handling](../README.md#shared-security-and-error-flow).
+The effective permissions include `SHIP_MODEL_DELETE` for `SHIP_MANAGER` after the role initializer runs. The [model deletion endpoint](../ship/delete-ships-shipid-models-modelid-unused.md) also checks ship scope and draft eligibility.

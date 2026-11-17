@@ -157,7 +157,7 @@ public class RolePermissionInitializer implements CommandLineRunner {
                         Permission.TOUR_GROUP_READ,
                         Permission.BOOKING_READ));
 
-        // SHIP_MANAGER owns operational status; ADMIN owns technical/model configuration.
+        // Ship managers own operational status and may delete unused model drafts.
         saveRolePermission(
                 Role.SHIP_MANAGER,
                 EnumSet.of(
@@ -171,6 +171,7 @@ public class RolePermissionInitializer implements CommandLineRunner {
                         Permission.SHIP_VALIDATE,
                         Permission.SHIP_READINESS,
                         Permission.SHIP_MODEL_READ,
+                        Permission.SHIP_MODEL_DELETE,
                         Permission.SHIP_CONFIGURATION_READ,
                         Permission.SHIP_CONFIGURATION_VALIDATE,
                         Permission.BLE_ANCHOR_READ,

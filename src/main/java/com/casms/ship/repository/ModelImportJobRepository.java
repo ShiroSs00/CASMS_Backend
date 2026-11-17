@@ -9,4 +9,6 @@ import java.util.UUID;
 
 public interface ModelImportJobRepository extends JpaRepository<ModelImportJob, UUID> {
     List<ModelImportJob> findByShipModelShipModelIdOrderByStartedAtDesc(UUID shipModelId);
+
+    boolean existsByShipModelShipModelId(UUID shipModelId);
 }

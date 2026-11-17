@@ -135,6 +135,7 @@ class RolePermissionInitializerTest {
 
         // Positive checks
         assertTrue(perms.contains(Permission.SHIP_READ));
+        assertTrue(perms.contains(Permission.SHIP_MODEL_DELETE));
         assertTrue(
                 perms.contains(Permission.SHIP_READINESS), "Ship Manager must have SHIP_READINESS");
         assertTrue(

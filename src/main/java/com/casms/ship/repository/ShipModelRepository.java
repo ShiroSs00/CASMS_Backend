@@ -35,6 +35,10 @@ public interface ShipModelRepository extends JpaRepository<ShipModel, UUID> {
     @Query("select s from Ship s where s.shipId = :shipId")
     Optional<Ship> lockShip(@Param("shipId") UUID shipId);
 
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select m from ShipModel m where m.shipModelId = :modelId and m.ship.shipId = :shipId")
+    Optional<ShipModel> lockModelForShip(@Param("shipId") UUID shipId, @Param("modelId") UUID modelId);
+
     @Query(
             "select m from ShipModel m where m.ship.shipId = :shipId and m.status = :status and"
                 + " m.modelKey is null order by m.createdAt desc")

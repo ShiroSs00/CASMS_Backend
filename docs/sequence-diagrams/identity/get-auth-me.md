@@ -32,3 +32,4 @@ sequenceDiagram
 ```
 
 The [shared security and error flow](../README.md#shared-security-and-error-flow) covers JWT verification and filter errors before dispatch.
+The effective permissions include `SHIP_MODEL_DELETE` for `SHIP_MANAGER` after the role initializer runs. The [model deletion endpoint](../ship/delete-ships-shipid-models-modelid-unused.md) also checks ship scope and draft eligibility.
