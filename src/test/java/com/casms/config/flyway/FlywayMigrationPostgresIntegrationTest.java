@@ -45,7 +45,7 @@ class FlywayMigrationPostgresIntegrationTest {
     private static final String[] PROD_LOCATIONS = {
         "classpath:db/migration", "classpath:db/prod-migration"
     };
-    private static final String LATEST = "128";
+    private static final String LATEST = "129";
 
     private final List<String> createdDatabases = new ArrayList<>();
 
@@ -56,6 +56,61 @@ class FlywayMigrationPostgresIntegrationTest {
             for (String db : createdDatabases) {
                 st.execute("DROP DATABASE IF EXISTS " + db + " WITH (FORCE)");
             }
+        }
+    }
+
+    @Test
+    void removesV128HullUniquenessAndKeepsLegacyProfilesAndOriginalDesignVersions() throws SQLException {
+        String db = createDatabase();
+        flyway(db, "128", APP_LOCATIONS).migrate();
+        String shipId = "85000000-0000-4000-8000-000000000401";
+        try (Connection c = connect(db); Statement st = c.createStatement()) {
+            st.execute("""
+                    INSERT INTO "ShipModelAssetBlob"
+                        (asset_id, model_key, asset_version, asset_path, blob_oid, byte_size, sha256)
+                    SELECT gen_random_uuid(), 'migration-design', version, 'manifest.json',
+                           lo_from_bytea(0, convert_to('{}','UTF8')), 2, repeat('0',64)
+                    FROM (VALUES ('old-version'), ('current-version')) AS versions(version)
+                    """);
+            st.execute("""
+                    INSERT INTO "ShipType"
+                        (ship_type_id, type_code, type_name, model_key, asset_version, manufacturer_name,
+                         engine_type, total_capacity, total_decks, length_meters, beam_meters)
+                    VALUES ('85000000-0000-4000-8000-000000000400', 'migration-design', 'Design',
+                            'migration-design', 'current-version', 'Yard', 'Diesel', 100, 8, 100, 20)
+                    """);
+            st.execute("""
+                    INSERT INTO "Ship"
+                        (ship_id, ship_code, ship_name, status, total_capacity, total_decks, created_at, updated_at,
+                         ship_type_id, manifest_model_id, operational_profile, design_metadata_imported, origin,
+                         production_year)
+                    VALUES ('85000000-0000-4000-8000-000000000401', 'IT-V128-DESIGN', 'Preserved ship',
+                            'DRAFT', 100, 8, now(), now(), '85000000-0000-4000-8000-000000000400',
+                            'migration-design', '{"manufacturerShipCode":"OLD","shipyard":"Yard","buildCountry":"NL","buildYear":2000,"imoNumber":"1238901"}',
+                            true, 'NL', 2000)
+                    """);
+            st.execute("""
+                    INSERT INTO "ShipModel"
+                        (ship_id, version, file_uri, file_format, model_key, asset_version, status, created_at)
+                    VALUES ('85000000-0000-4000-8000-000000000401', 'v1', 'fixture', 'glb',
+                            'migration-design', 'old-version', 'ARCHIVED', now() - interval '1 day'),
+                           ('85000000-0000-4000-8000-000000000401', 'v2', 'fixture', 'glb',
+                            'migration-design', 'current-version', 'READY', now())
+                    """);
+            assertEquals(1L, count(c, "SELECT count(*) FROM pg_indexes WHERE indexname='uq_ship_imported_yard_hull_code'"));
+        }
+        Flyway upgraded = flyway(db, null, APP_LOCATIONS);
+        assertEquals(1, upgraded.migrate().migrationsExecuted);
+        assertTrue(upgraded.validateWithResult().validationSuccessful);
+        try (Connection c = connect(db)) {
+            assertEquals(0L, count(c, "SELECT count(*) FROM pg_indexes WHERE indexname='uq_ship_imported_yard_hull_code'"));
+            assertEquals(1L, count(c, """
+                    SELECT count(*) FROM "Ship"
+                    WHERE ship_id = '%s' AND design_model_key = 'migration-design'
+                      AND design_asset_version = 'old-version'
+                      AND operational_profile = '{"manufacturerShipCode":"OLD","shipyard":"Yard","buildCountry":"NL","buildYear":2000,"imoNumber":"1238901"}'::jsonb
+                      AND origin = 'NL' AND production_year = 2000
+                    """.formatted(shipId)));
         }
     }
 

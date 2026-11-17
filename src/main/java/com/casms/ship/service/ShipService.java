@@ -112,23 +112,23 @@ public class ShipService {
     @Transactional(readOnly = true)
     public ShipResponse detail(UUID shipId) {
         Ship ship = getShipById(shipId);
-        return mapToResponse(ship);
+        ShipResponse response = mapToResponse(ship);
+        if (ship.getDesignModelKey() != null) {
+            response.setDesignReference(modelAssets.designReference(ship.getDesignModelKey(), ship.getDesignAssetVersion()));
+        }
+        return response;
     }
 
     @Transactional
     public ShipResponse update(UUID shipId, ShipUpdateRequest request) {
         Ship ship = getShipById(shipId);
-        boolean changesImportedManufacturing = ship.isDesignMetadataImported()
-                && (changes(request.getOrigin(), ship.getOrigin())
-                    || changes(request.getProductionYear(), ship.getProductionYear()));
         if (ship.getShipType() != null
                 && (changes(request.getTotalCapacity(), ship.getTotalCapacity())
                     || changes(request.getTotalDecks(), ship.getTotalDecks())
                     || changes(request.getLengthMeters(), ship.getLengthMeters())
                     || changes(request.getBeamMeters(), ship.getBeamMeters())
                     || changes(request.getManufacturerName(), ship.getManufacturerName())
-                    || changes(request.getEngineType(), ship.getEngineType())
-                    || changesImportedManufacturing)) {
+                    || changes(request.getEngineType(), ship.getEngineType()))) {
             throw new BusinessException(org.springframework.http.HttpStatus.CONFLICT,
                     "SHIP_TYPE_DESIGN_LOCKED", "Inherited ship design fields cannot be changed on a physical ship");
         }

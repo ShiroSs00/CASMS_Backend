@@ -243,11 +243,6 @@ public class GlobalExceptionHandler {
                 root != null && root.getMessage() != null ? root.getMessage().toLowerCase() : "";
         String msg =
                 ex.getMessage() != null ? ex.getMessage() : "Dữ liệu xung đột toàn vẹn dữ liệu";
-        if (rootMsg.contains("uq_ship_imported_yard_hull_code")) {
-            return ResponseEntity.status(HttpStatus.CONFLICT)
-                    .body(ApiResponse.error("Mã thân tàu này đã được sử dụng tại cùng xưởng đóng tàu.",
-                            "SHIP_HULL_CODE_IN_USE"));
-        }
         if (rootMsg.contains("uq_cruise_staff_one_active_per_cruise_user")) {
             return ResponseEntity.status(HttpStatus.CONFLICT)
                     .body(ApiResponse.error("Nhân viên đã được phân công vào chuyến này.",

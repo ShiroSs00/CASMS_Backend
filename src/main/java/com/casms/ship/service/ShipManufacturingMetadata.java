@@ -1,6 +1,6 @@
 package com.casms.ship.service;
 
-import com.casms.ship.dto.request.ShipOperationalProfile;
+import com.casms.ship.dto.response.ShipDesignMetadata;
 import com.fasterxml.jackson.databind.JsonNode;
 
 import java.time.Year;
@@ -40,26 +40,7 @@ record ShipManufacturingMetadata(String code, String yard, String country, Integ
         return fields;
     }
 
-    static ShipOperationalProfile merge(ShipOperationalProfile editable, ShipManufacturingMetadata imported) {
-        if (editable == null && imported == null) return null;
-        return new ShipOperationalProfile(
-                imported == null ? null : imported.code(),
-                editable == null ? null : editable.imoNumber(),
-                imported == null ? null : imported.yard(),
-                imported == null ? null : imported.country(),
-                imported == null ? null : imported.year(),
-                editable == null ? null : editable.deliveryDate(),
-                editable == null ? null : editable.registrationCountry(),
-                editable == null ? null : editable.registrationNumber(),
-                editable == null ? null : editable.classificationSociety(),
-                editable == null ? null : editable.classificationExpiryDate(),
-                editable == null ? null : editable.certificateReferences(),
-                editable == null ? null : editable.warrantyReferences(),
-                editable == null ? null : editable.maintenanceReferences());
-    }
-
-    static ShipManufacturingMetadata fromProfile(ShipOperationalProfile previous) {
-        return previous == null ? null : new ShipManufacturingMetadata(
-                previous.manufacturerShipCode(), previous.shipyard(), previous.buildCountry(), previous.buildYear());
+    ShipDesignMetadata response() {
+        return new ShipDesignMetadata(code, yard, country, year);
     }
 }

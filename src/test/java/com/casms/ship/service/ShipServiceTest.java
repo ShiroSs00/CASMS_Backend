@@ -111,30 +111,6 @@ class ShipServiceTest {
     }
 
     @Test
-    void genericShipUpdateCannotChangeImportedCountryOrYear() {
-        UUID id = UUID.randomUUID();
-        Ship ship = new Ship();
-        ship.setShipType(new ShipType());
-        ship.setOrigin("NL");
-        ship.setProductionYear(2000);
-        ship.setDesignMetadataImported(true);
-        when(shipRepository.findById(id)).thenReturn(Optional.of(ship));
-
-        ShipUpdateRequest country = new ShipUpdateRequest();
-        country.setOrigin("CA");
-        ShipUpdateRequest year = new ShipUpdateRequest();
-        year.setProductionYear(1999);
-
-        for (ShipUpdateRequest request : List.of(country, year)) {
-            assertEquals("SHIP_TYPE_DESIGN_LOCKED",
-                    assertThrows(BusinessException.class, () -> service.update(id, request)).getCode());
-        }
-        assertEquals("NL", ship.getOrigin());
-        assertEquals(2000, ship.getProductionYear());
-        verify(shipRepository, never()).save(any(Ship.class));
-    }
-
-    @Test
     void typedShipRequiresAllOperationalProfileGroupsBeforeChangingState() {
         UUID id = UUID.randomUUID();
         Ship ship = new Ship();

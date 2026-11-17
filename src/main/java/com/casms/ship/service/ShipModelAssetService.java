@@ -10,6 +10,7 @@ import com.casms.ship.dto.request.ShipModelDeckMappingRequest;
 import com.casms.ship.dto.response.PublicShipModelResponse;
 import com.casms.ship.dto.response.ShipModelAssetResponse;
 import com.casms.ship.dto.response.ShipModelAssetUploadResponse;
+import com.casms.ship.dto.response.ShipDesignReference;
 import com.casms.ship.dto.response.ShipModelManifestRegistrationResponse;
 import com.casms.ship.entity.Cabin;
 import com.casms.ship.entity.Deck;
@@ -71,6 +72,11 @@ public class ShipModelAssetService {
     @Transactional(readOnly = true)
     public AssetDownload storedAsset(String modelKey, String version, String name) {
         return new AssetDownload(modelKey, version, name, assets.asset(modelKey, version, name));
+    }
+
+    ShipDesignReference designReference(String modelKey, String assetVersion) {
+        var metadata = ShipManufacturingMetadata.read(assets.manifest(modelKey, assetVersion));
+        return new ShipDesignReference(modelKey, assetVersion, metadata.response());
     }
 
     private static JsonNode bundlePreview(JsonNode manifest) {

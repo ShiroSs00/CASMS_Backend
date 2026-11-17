@@ -87,6 +87,8 @@ class ShipTypeServiceTest {
             assertEquals(10, ship.getDeckNumberLimit());
             assertSame(type, ship.getShipType());
             assertEquals(ShipStatus.DRAFT, ship.getStatus());
+            assertEquals("voyager", ship.getDesignModelKey());
+            assertEquals("pinned", ship.getDesignAssetVersion());
             assertNull(ship.getOperationalProfile());
             ship.setShipId(shipId);
             return ship;
