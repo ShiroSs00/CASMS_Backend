@@ -8,6 +8,7 @@ import com.casms.security.principal.CasmsPrincipal;
 import com.casms.ship.ShipDeckCount;
 import com.casms.ship.dto.request.ShipFromTypeRequest;
 import com.casms.ship.dto.request.ShipOperationalProfile;
+import com.casms.ship.dto.response.ShipDesignMetadata;
 import com.casms.ship.dto.response.ShipResponse;
 import com.casms.ship.dto.response.ShipTypeResponse;
 import com.casms.ship.entity.Ship;
@@ -61,9 +62,6 @@ public class ShipTypeService {
 
     @Transactional
     public ShipTypeResponse createFromStored(String modelKey, String version) {
-        ShipType candidate = new ShipType();
-        readBundle(candidate, modelKey, version);
-        candidate.setCode(modelKey);
         assets.lockShipTypeDesign(modelKey);
         var existing = types.findByCodeOrModelKey(modelKey, modelKey);
         if (!existing.isEmpty()) {
@@ -75,7 +73,10 @@ public class ShipTypeService {
             throw new BusinessException(HttpStatus.CONFLICT, "SHIP_TYPE_CODE_CONFLICT",
                     "This design code already exists. Use model replacement to apply another version.");
         }
-        return ShipTypeResponse.from(types.saveAndFlush(candidate), 0);
+        ShipType candidate = new ShipType();
+        ShipDesignMetadata metadata = readBundle(candidate, modelKey, version);
+        candidate.setCode(modelKey);
+        return ShipTypeResponse.from(types.saveAndFlush(candidate), 0, metadata);
     }
 
     @Transactional
@@ -90,7 +91,9 @@ public class ShipTypeService {
             throw new BusinessException(HttpStatus.CONFLICT, "SHIP_TYPE_DESIGN_MISMATCH",
                     "The replacement must belong to the same model design");
         }
-        readBundle(type, modelKey, version);
+        if (!Objects.equals(type.getAssetVersion(), version)) {
+            readBundle(type, modelKey, version);
+        }
         return describe(type, true);
     }
 
@@ -103,7 +106,7 @@ public class ShipTypeService {
         Page<ShipType> page = types.findCatalog(activeFilter, "%" + term + "%", pageable);
 
         Map<UUID, Long> counts = counts(page.map(ShipType::getShipTypeId).getContent(), admin);
-        return page.map(type -> ShipTypeResponse.from(type, counts.getOrDefault(type.getShipTypeId(), 0L)));
+        return page.map(type -> ShipTypeResponse.from(type, counts.getOrDefault(type.getShipTypeId(), 0L), null));
     }
 
     @Transactional(readOnly = true)
@@ -126,7 +129,8 @@ public class ShipTypeService {
 
     private ShipTypeResponse describe(ShipType type, boolean admin) {
         UUID id = type.getShipTypeId();
-        return ShipTypeResponse.from(type, counts(List.of(id), admin).getOrDefault(id, 0L));
+        var metadata = ShipManufacturingMetadata.read(assets.manifest(type.getModelKey(), type.getAssetVersion()));
+        return ShipTypeResponse.from(type, counts(List.of(id), admin).getOrDefault(id, 0L), metadata.response());
     }
 
     private Map<UUID, Long> counts(List<UUID> ids, boolean admin) {
@@ -222,9 +226,13 @@ public class ShipTypeService {
             throw new BusinessException(HttpStatus.CONFLICT, "SHIP_TYPE_INACTIVE",
                     "Only an active ship type can be used to create a ship");
         }
-        JsonNode manifest = assets.manifest(type.getModelKey(), type.getAssetVersion());
+        String modelKey = type.getModelKey();
+        String assetVersion = type.getAssetVersion();
+        JsonNode manifest = assets.manifest(modelKey, assetVersion);
         Ship ship = new Ship();
         ship.setShipType(type);
+        ship.setDesignModelKey(modelKey);
+        ship.setDesignAssetVersion(assetVersion);
         ship.setCreatedByShipManagerId(managerId);
         ship.setShipName(shipName);
         ship.setShipCode(codes.next("SH"));
@@ -241,9 +249,9 @@ public class ShipTypeService {
             deckLimit = Math.max(deckLimit, deck.path("number").asInt());
         }
         ship.setDeckNumberLimit(deckLimit);
-        applyProfile(ship, profile);
+        ship.setOperationalProfile(profile == null ? null : profile.withLegacyManufacturing(null));
         UUID shipId = ships.saveAndFlush(ship).getShipId();
-        UUID modelId = modelAssets.register(shipId, type.getModelKey(), type.getAssetVersion());
+        UUID modelId = modelAssets.register(shipId, modelKey, assetVersion);
         importer.importForProvisioning(shipId, modelId, actor);
         modelAssets.activate(shipId, modelId);
         return shipService.detail(shipId);
@@ -254,8 +262,9 @@ public class ShipTypeService {
         Ship ship = ships.findByIdForUpdate(shipId)
                 .orElseThrow(() -> new ResourceNotFoundException("Ship", shipId));
         requireTypedShip(ship);
-        applyProfile(ship, profile);
-        return profile;
+        ShipOperationalProfile updated = profile.withLegacyManufacturing(ship.getOperationalProfile());
+        ship.setOperationalProfile(updated);
+        return updated;
     }
 
     @Transactional(readOnly = true)
@@ -270,14 +279,6 @@ public class ShipTypeService {
         if (ship.getShipType() == null) {
             throw new BusinessException(HttpStatus.CONFLICT, "SHIP_TYPE_REQUIRED",
                     "This profile is available for ships created from a ship type");
-        }
-    }
-
-    private static void applyProfile(Ship ship, ShipOperationalProfile profile) {
-        ship.setOperationalProfile(profile);
-        if (profile != null) {
-            ship.setOrigin(profile.buildCountry());
-            ship.setProductionYear(profile.buildYear());
         }
     }
 
@@ -300,7 +301,7 @@ public class ShipTypeService {
         }
     }
 
-    private void readBundle(ShipType type, String modelKey, String version) {
+    private ShipDesignMetadata readBundle(ShipType type, String modelKey, String version) {
         JsonNode manifest = assets.manifest(modelKey, version);
         requiredText(manifest, "modelId", 80);
         type.setModelKey(modelKey);
@@ -316,8 +317,12 @@ public class ShipTypeService {
         type.setTotalDecks(decks);
         type.setLengthMeters(requiredDimension(manifest, "length"));
         type.setBeamMeters(requiredDimension(manifest, "beam"));
+        var metadata = ShipManufacturingMetadata.read(manifest);
+        List<String> invalidFields = metadata.invalidFields();
+        if (!invalidFields.isEmpty()) throw invalid(String.join(", ", invalidFields));
         ShipModelImportService.validateProvisioningDesign(manifest,
                 assets.validateStoredGlbs(modelKey, version, manifest));
+        return metadata.response();
     }
 
     private static String requiredText(JsonNode manifest, String field, int max) {

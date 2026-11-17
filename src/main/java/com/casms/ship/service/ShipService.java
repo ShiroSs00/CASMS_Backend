@@ -112,7 +112,11 @@ public class ShipService {
     @Transactional(readOnly = true)
     public ShipResponse detail(UUID shipId) {
         Ship ship = getShipById(shipId);
-        return mapToResponse(ship);
+        ShipResponse response = mapToResponse(ship);
+        if (ship.getDesignModelKey() != null) {
+            response.setDesignReference(modelAssets.designReference(ship.getDesignModelKey(), ship.getDesignAssetVersion()));
+        }
+        return response;
     }
 
     @Transactional

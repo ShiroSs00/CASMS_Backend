@@ -39,6 +39,12 @@ public class Ship {
     @Column(name = "operational_profile", columnDefinition = "jsonb")
     private ShipOperationalProfile operationalProfile;
 
+    @Column(name = "design_model_key", length = 80)
+    private String designModelKey;
+
+    @Column(name = "design_asset_version", length = 80)
+    private String designAssetVersion;
+
     @Column(name = "ship_code", nullable = false, unique = true, length = 20)
     private String shipCode;
 

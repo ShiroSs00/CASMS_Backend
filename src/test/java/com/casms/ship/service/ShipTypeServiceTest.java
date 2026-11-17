@@ -60,7 +60,8 @@ class ShipTypeServiceTest {
 
         var error = assertThrows(ResponseStatusException.class, () -> service.create("voyager", bundle));
         assertTrue(error.getReason().contains(missingField));
-        verifyNoInteractions(types, ships, modelAssets, importer);
+        verify(types, never()).saveAndFlush(any());
+        verifyNoInteractions(ships, modelAssets, importer);
     }
 
     @Test
@@ -86,6 +87,8 @@ class ShipTypeServiceTest {
             assertEquals(10, ship.getDeckNumberLimit());
             assertSame(type, ship.getShipType());
             assertEquals(ShipStatus.DRAFT, ship.getStatus());
+            assertEquals("voyager", ship.getDesignModelKey());
+            assertEquals("pinned", ship.getDesignAssetVersion());
             assertNull(ship.getOperationalProfile());
             ship.setShipId(shipId);
             return ship;

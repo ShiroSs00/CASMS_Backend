@@ -40,6 +40,17 @@ public record ShipOperationalProfile(
         return (registrationCountry == null) == (registrationNumber == null);
     }
 
+    public ShipOperationalProfile withLegacyManufacturing(ShipOperationalProfile previous) {
+        return new ShipOperationalProfile(
+                previous == null ? null : previous.manufacturerShipCode(),
+                imoNumber,
+                previous == null ? null : previous.shipyard(),
+                previous == null ? null : previous.buildCountry(),
+                previous == null ? null : previous.buildYear(),
+                deliveryDate, registrationCountry, registrationNumber, classificationSociety,
+                classificationExpiryDate, certificateReferences, warrantyReferences, maintenanceReferences);
+    }
+
     private static String trim(String value) {
         return value == null || value.isBlank() ? null : value.strip();
     }

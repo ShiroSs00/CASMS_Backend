@@ -1549,16 +1549,18 @@ class ShipModelImportPostgresIntegrationTest {
         String manager = token(Role.SHIP_MANAGER);
         String otherManager = token(Role.SHIP_MANAGER);
         String key = uniqueKey("ship-type");
-        Path bundle = smallBundle(key, "v1", "OCEAN_VIEW", "TYPE-01", true);
+        Path bundle = rewriteManifest(smallBundle(key, "v1", "OCEAN_VIEW", "TYPE-01", true),
+                key, "v1", Set.of("manufacturerShipCode", "shipyard", "buildCountry", "buildYear"));
         long shipCount = ships.count();
-        String identity = "zip-" + sha256(Files.readAllBytes(bundle));
-        uploadedBundles.add(key + "|" + identity);
-        var type = mockMvc.perform(multipart("/ship-types")
-                        .file(new FileBackedMultipartFile("bundle", bundle))
-                        .param("modelKey", key).header("Authorization", "Bearer " + admin))
-                .andExpect(status().isCreated()).andReturn();
-        UUID typeId = UUID.fromString(mapper.readTree(type.getResponse().getContentAsByteArray())
-                .path("data").path("shipTypeId").asText());
+        upload(key, "v1", bundle, admin);
+        String identity = storedVersions.get(key + "|v1");
+        // Emulate a type accepted before ZIP manufacturing metadata became mandatory.
+        UUID typeId = UUID.randomUUID();
+        jdbc.update("""
+                INSERT INTO "ShipType" (ship_type_id, type_code, type_name, model_key, asset_version,
+                    manufacturer_name, engine_type, total_capacity, total_decks, length_meters, beam_meters)
+                VALUES (?, ?, 'Mini Ship', ?, ?, 'Example Manufacturer', 'Diesel', 20, 8, 100, 20)
+                """, typeId, key, key, identity);
         testTypeIds.add(typeId);
         assertEquals(shipCount, ships.count());
         long assetCount = jdbc.queryForObject(
@@ -1601,6 +1603,11 @@ class ShipModelImportPostgresIntegrationTest {
                 .andExpect(status().isNotFound());
         UUID second = createTypedShip(typeId, "Aurora 02", manager, profile);
         assertEquals(shipCount + 2, ships.count());
+        assertNull(ships.findById(first).orElseThrow().getOperationalProfile().manufacturerShipCode());
+        mockMvc.perform(get("/ships/{id}", second).header("Authorization", "Bearer " + manager))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.designReference.assetVersion").value(identity))
+                .andExpect(jsonPath("$.data.designReference.manufacturingMetadata.manufacturerShipCode").doesNotExist());
         mockMvc.perform(post("/ship-types/{typeId}/ships", typeId)
                         .header("Authorization", "Bearer " + manager)
                         .header("Idempotency-Key", firstKey)
@@ -1685,6 +1692,101 @@ class ShipModelImportPostgresIntegrationTest {
             mockMvc.perform(get("/ships/{shipId}/public-model", shipId))
                     .andExpect(status().isOk());
         }
+    }
+
+    @Test
+    void oneDesignProvisionsThreeIndependentShipsAndKeepsTheirOriginalReference() throws Exception {
+        String admin = token(Role.ADMIN);
+        String manager = token(Role.SHIP_MANAGER);
+        String key = uniqueKey("design-metadata");
+        upload(key, "v1", smallBundle(key, "v1", "OCEAN_VIEW", "HULL-01", true), admin);
+        String v1 = storedVersions.get(key + "|v1");
+        byte[] design = mapper.writeValueAsBytes(Map.of("modelKey", key, "assetVersion", v1));
+        var created = mockMvc.perform(post("/ship-types/from-stored")
+                        .header("Authorization", "Bearer " + admin)
+                        .contentType(MediaType.APPLICATION_JSON).content(design))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.manufacturingMetadata.manufacturerShipCode").value(key + "-v1"))
+                .andReturn();
+        UUID typeId = UUID.fromString(mapper.readTree(created.getResponse().getContentAsByteArray())
+                .path("data").path("shipTypeId").asText());
+        testTypeIds.add(typeId);
+        var supplied = Map.<String, Object>of("manufacturerShipCode", "CLIENT",
+                "shipyard", "Client yard", "buildCountry", "CA", "buildYear", 1990);
+        UUID first = createTypedShip(typeId, "Ship One", manager, supplied);
+        UUID second = createTypedShip(typeId, "Ship Two", manager, Map.of());
+        UUID third = createTypedShip(typeId, "Ship Three", manager, Map.of());
+        Set<String> codes = new HashSet<>();
+        Set<UUID> deckIds = new HashSet<>(), cabinIds = new HashSet<>(), modelIds = new HashSet<>(), mappingIds = new HashSet<>();
+        for (UUID id : List.of(first, second, third)) {
+            Ship ship = ships.findById(id).orElseThrow();
+            assertTrue(codes.add(ship.getShipCode()));
+            assertNull(ship.getOrigin());
+            assertNull(ship.getProductionYear());
+            assertNull(ship.getOperationalProfile().manufacturerShipCode());
+            assertNull(ship.getOperationalProfile().shipyard());
+            assertNull(ship.getOperationalProfile().buildCountry());
+            assertNull(ship.getOperationalProfile().buildYear());
+            assertTrue(deckIds.add(decks.findByShipShipIdAndDeckNumber(id, 1).orElseThrow().getDeckId()));
+            ShipModel model = models.findByShipShipIdOrderByCreatedAtDesc(id).getFirst();
+            assertTrue(modelIds.add(model.getShipModelId()));
+            assertEquals(v1, model.getAssetVersion());
+            var mapping = objects.findByShipModelShipModelIdAndNodeKey(model.getShipModelId(), "mini-c1").orElseThrow();
+            assertTrue(mappingIds.add(mapping.getShipModelObjectId()));
+            assertTrue(cabinIds.add(mapping.getCabin().getCabinId()));
+        }
+        mockMvc.perform(put("/ships/{shipId}/operational-profile", first)
+                        .header("Authorization", "Bearer " + manager).contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsBytes(Map.of("manufacturerShipCode", "CHANGED",
+                                "shipyard", "Wrong yard", "buildCountry", "FR", "buildYear", 1991, "imoNumber", "7654321"))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.manufacturerShipCode").doesNotExist())
+                .andExpect(jsonPath("$.data.imoNumber").value("7654321"));
+
+        upload(key, "v2", smallBundle(key, "v2", "OCEAN_VIEW", "HULL-02", true), admin);
+        String v2 = storedVersions.get(key + "|v2");
+        mockMvc.perform(put("/ship-types/{typeId}/model", typeId).header("Authorization", "Bearer " + admin)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsBytes(Map.of("modelKey", key, "assetVersion", v2))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.manufacturingMetadata.manufacturerShipCode").value(key + "-v2"));
+        for (UUID id : List.of(first, second, third)) {
+            String reference = "$.data.designReference.";
+            mockMvc.perform(get("/ships/{shipId}", id).header("Authorization", "Bearer " + manager))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath(reference + "assetVersion").value(v1))
+                    .andExpect(jsonPath(reference + "manufacturingMetadata.manufacturerShipCode").value(key + "-v1"))
+                    .andExpect(jsonPath(reference + "manufacturingMetadata.shipyard").value("Example Yard"))
+                    .andExpect(jsonPath(reference + "manufacturingMetadata.buildCountry").value("NL"))
+                    .andExpect(jsonPath(reference + "manufacturingMetadata.buildYear").value(2000));
+        }
+        UUID fourth = createTypedShip(typeId, "Ship Four", manager, Map.of());
+        mockMvc.perform(get("/ships/{shipId}", fourth).header("Authorization", "Bearer " + manager))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.designReference.assetVersion").value(v2));
+    }
+
+    @Test
+    void previewReportsInvalidManufacturingFieldsAndRefusesToCreateType() throws Exception {
+        String admin = token(Role.ADMIN);
+        String key = uniqueKey("bad-metadata");
+        Path source = smallBundle(key, "v1", "OCEAN_VIEW", "HULL-01", true);
+        var entries = readBundle(source, key, "v1");
+        var manifest = (com.fasterxml.jackson.databind.node.ObjectNode) mapper.readTree(entries.get("manifest.json"));
+        manifest.remove("manufacturerShipCode");
+        manifest.put("shipyard", 1);
+        manifest.put("buildCountry", "ZZ");
+        manifest.put("buildYear", "2000");
+        entries.put("manifest.json", mapper.writeValueAsBytes(manifest));
+        upload(key, "v1", writeBundle(entries, key, "v1", true), admin);
+        String version = storedVersions.get(key + "|v1");
+        mockMvc.perform(get("/ship-model-assets/{key}/preview", key)
+                        .param("assetVersion", version).header("Authorization", "Bearer " + admin))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.shipTypeManufacturingIssues",
+                        org.hamcrest.Matchers.contains("manufacturerShipCode", "shipyard", "buildCountry", "buildYear")));
+        mockMvc.perform(post("/ship-types/from-stored").header("Authorization", "Bearer " + admin)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsBytes(Map.of("modelKey", key, "assetVersion", version))))
+                .andExpect(status().isBadRequest());
     }
 
     @Test
@@ -2244,6 +2346,10 @@ class ShipModelImportPostgresIntegrationTest {
         manifest.put("modelId", key);
         manifest.put("name", "Mini Ship");
         manifest.put("shipManufacturerName", "Example Manufacturer");
+        manifest.put("manufacturerShipCode", key + "-" + version);
+        manifest.put("shipyard", "Example Yard");
+        manifest.put("buildCountry", "NL");
+        manifest.put("buildYear", 2000);
         manifest.put("engineType", "Diesel");
         manifest.put("length", 100.0);
         manifest.put("beam", 20.0);
