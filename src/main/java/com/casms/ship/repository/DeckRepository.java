@@ -18,6 +18,10 @@ import java.util.UUID;
 
 @Repository
 public interface DeckRepository extends JpaRepository<Deck, UUID> {
+    @Override
+    @Query("SELECT d FROM Deck d WHERE d.ship.archivedAt IS NULL")
+    Page<Deck> findAll(Pageable pageable);
+
     long countByShipShipId(UUID shipId);
 
     long countByShipShipIdAndServiceLevelFalse(UUID shipId);
@@ -31,7 +35,7 @@ public interface DeckRepository extends JpaRepository<Deck, UUID> {
     Page<Deck> findByShipShipId(UUID shipId, Pageable pageable);
 
     @Query("""
-            SELECT d FROM Deck d WHERE EXISTS (SELECT crew.cruiseStaffId FROM CruiseStaff crew
+            SELECT d FROM Deck d WHERE d.ship.archivedAt IS NULL AND EXISTS (SELECT crew.cruiseStaffId FROM CruiseStaff crew
                 WHERE crew.cruise.ship=d.ship AND crew.user.userId=:user AND crew.status='ACTIVE'
                 AND crew.roleInCruise='SHIP_MANAGER' AND crew.cruise.status NOT IN ('CANCELLED','COMPLETED'))
             """)

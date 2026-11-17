@@ -241,6 +241,10 @@ public class GlobalExceptionHandler {
         Throwable root = ex.getMostSpecificCause();
         String rootMsg =
                 root != null && root.getMessage() != null ? root.getMessage().toLowerCase() : "";
+        if (rootMsg.contains("casms_ship_archived")) {
+            return ResponseEntity.status(HttpStatus.CONFLICT)
+                    .body(ApiResponse.error("Tàu đã được lưu trữ.", "SHIP_ARCHIVED"));
+        }
         String msg =
                 ex.getMessage() != null ? ex.getMessage() : "Dữ liệu xung đột toàn vẹn dữ liệu";
         if (rootMsg.contains("uq_cruise_staff_one_active_per_cruise_user")) {

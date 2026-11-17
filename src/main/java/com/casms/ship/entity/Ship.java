@@ -45,6 +45,12 @@ public class Ship {
     @Column(name = "design_asset_version", length = 80)
     private String designAssetVersion;
 
+    @Column(name = "archived_at")
+    private Instant archivedAt;
+
+    @Column(name = "archived_by")
+    private UUID archivedBy;
+
     @Column(name = "ship_code", nullable = false, unique = true, length = 20)
     private String shipCode;
 

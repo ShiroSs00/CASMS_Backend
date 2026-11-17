@@ -18,6 +18,8 @@ public class ShipResponse {
     private String shipTypeName;
     private String shipTypeCode;
     private ShipDesignReference designReference;
+    private Instant archivedAt;
+    private UUID archivedBy;
 
     @Schema(
             description = "ID duy nhất của tàu (UUID)",

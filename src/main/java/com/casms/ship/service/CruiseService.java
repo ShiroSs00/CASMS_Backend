@@ -208,6 +208,7 @@ public class CruiseService {
     }
 
     private void requireOperationalShip(Ship ship, String errorCode) {
+        ShipArchiveService.requireUnarchived(ship);
         if (!ShipStatus.isOperational(ship.getStatus())) {
             throw new BusinessException(errorCode, "Selected ship is not in an operational status");
         }
@@ -847,6 +848,7 @@ public class CruiseService {
                         .findByIdForUpdate(shipId)
                         .orElseThrow(() -> new ResourceNotFoundException("Ship", shipId));
 
+        ShipArchiveService.requireUnarchived(ship);
         if (ship.getStatus() == ShipStatus.MAINTENANCE) {
             throw new BusinessException(
                     "SHIP_IN_MAINTENANCE",
@@ -930,6 +932,7 @@ public class CruiseService {
                         .findByIdForUpdate(newShipId)
                         .orElseThrow(() -> new ResourceNotFoundException("Ship", newShipId));
 
+        ShipArchiveService.requireUnarchived(newShip);
         if (newShip.getStatus() == ShipStatus.MAINTENANCE) {
             throw new BusinessException(
                     "SHIP_IN_MAINTENANCE",

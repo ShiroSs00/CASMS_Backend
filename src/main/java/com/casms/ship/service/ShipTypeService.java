@@ -117,7 +117,7 @@ public class ShipTypeService {
     @Transactional(readOnly = true)
     public Page<ShipResponse> listShips(UUID id, Pageable pageable, boolean admin) {
         visibleType(id, admin);
-        return (admin ? ships.findByShipTypeShipTypeId(id, pageable)
+        return (admin ? ships.findByShipTypeShipTypeIdAndArchivedAtIsNull(id, pageable)
                 : ships.findManagedShipsByType(id, CruisePlanOperationsAccess.currentShipManager(), pageable))
                 .map(shipService::mapToResponse);
     }
@@ -261,6 +261,7 @@ public class ShipTypeService {
     public ShipOperationalProfile replaceProfile(UUID shipId, ShipOperationalProfile profile) {
         Ship ship = ships.findByIdForUpdate(shipId)
                 .orElseThrow(() -> new ResourceNotFoundException("Ship", shipId));
+        ShipArchiveService.requireUnarchived(ship);
         requireTypedShip(ship);
         ShipOperationalProfile updated = profile.withLegacyManufacturing(ship.getOperationalProfile());
         ship.setOperationalProfile(updated);

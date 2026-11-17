@@ -172,6 +172,7 @@ public class RolePermissionInitializer implements CommandLineRunner {
                         Permission.SHIP_READINESS,
                         Permission.SHIP_MODEL_READ,
                         Permission.SHIP_MODEL_DELETE,
+                        Permission.SHIP_ARCHIVE,
                         Permission.SHIP_CONFIGURATION_READ,
                         Permission.SHIP_CONFIGURATION_VALIDATE,
                         Permission.BLE_ANCHOR_READ,

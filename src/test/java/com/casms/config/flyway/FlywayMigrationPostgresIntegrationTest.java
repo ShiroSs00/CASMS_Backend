@@ -45,7 +45,7 @@ class FlywayMigrationPostgresIntegrationTest {
     private static final String[] PROD_LOCATIONS = {
         "classpath:db/migration", "classpath:db/prod-migration"
     };
-    private static final String LATEST = "129";
+    private static final String LATEST = "130";
 
     private final List<String> createdDatabases = new ArrayList<>();
 
@@ -100,7 +100,7 @@ class FlywayMigrationPostgresIntegrationTest {
             assertEquals(1L, count(c, "SELECT count(*) FROM pg_indexes WHERE indexname='uq_ship_imported_yard_hull_code'"));
         }
         Flyway upgraded = flyway(db, null, APP_LOCATIONS);
-        assertEquals(1, upgraded.migrate().migrationsExecuted);
+        assertEquals(2, upgraded.migrate().migrationsExecuted);
         assertTrue(upgraded.validateWithResult().validationSuccessful);
         try (Connection c = connect(db)) {
             assertEquals(0L, count(c, "SELECT count(*) FROM pg_indexes WHERE indexname='uq_ship_imported_yard_hull_code'"));
@@ -111,6 +111,30 @@ class FlywayMigrationPostgresIntegrationTest {
                       AND operational_profile = '{"manufacturerShipCode":"OLD","shipyard":"Yard","buildCountry":"NL","buildYear":2000,"imoNumber":"1238901"}'::jsonb
                       AND origin = 'NL' AND production_year = 2000
                     """.formatted(shipId)));
+        }
+    }
+
+    @Test
+    void upgradesV129WhilePreservingLegacyShipColumns() throws SQLException {
+        String db = createDatabase();
+        flyway(db, "129", APP_LOCATIONS).migrate();
+        try (Connection c = connect(db); Statement st = c.createStatement()) {
+            st.execute("""
+                    INSERT INTO "Ship" (ship_id, ship_code, ship_name, status, total_capacity, total_decks,
+                                        origin, production_year, created_at, updated_at)
+                    VALUES ('85000000-0000-4000-8000-000000000499', 'IT-V129-LEGACY', 'Legacy',
+                            'DRAFT', 100, 8, 'NL', 2000, now(), now())
+                    """);
+        }
+        Flyway upgraded = flyway(db, null, APP_LOCATIONS);
+        assertEquals(1, upgraded.migrate().migrationsExecuted);
+        assertTrue(upgraded.validateWithResult().validationSuccessful);
+        try (Connection c = connect(db)) {
+            assertEquals(1L, count(c, """
+                    SELECT count(*) FROM "Ship" WHERE ship_code='IT-V129-LEGACY'
+                      AND origin='NL' AND production_year=2000
+                      AND ship_type_id IS NULL AND archived_at IS NULL AND archived_by IS NULL
+                    """));
         }
     }
 

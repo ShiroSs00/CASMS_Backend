@@ -10,6 +10,7 @@ import com.casms.ship.dto.response.ShipReadinessAssessmentResponse;
 import com.casms.ship.dto.response.ShipResponse;
 import com.casms.ship.enums.ShipStatus;
 import com.casms.ship.service.ShipAreaService;
+import com.casms.ship.service.ShipArchiveService;
 import com.casms.ship.service.ShipService;
 
 import io.swagger.v3.oas.annotations.Operation;
@@ -39,6 +40,7 @@ public class ShipController {
 
     private final ShipService service;
     private final ShipAreaService shipAreas;
+    private final ShipArchiveService archiveService;
 
     @Operation(summary = "Danh sách khu vực dịch vụ đã nhập của tàu")
     @PreAuthorize("hasAuthority('SHIP_CONFIGURATION_READ')")
@@ -66,8 +68,21 @@ public class ShipController {
             @RequestParam(required = false) String q,
             @RequestParam(required = false) ShipStatus status,
             @RequestParam(required = false) UUID shipTypeId,
-            @RequestParam(defaultValue = "false") boolean legacy) {
-        return ApiResponse.success(service.list(pageable, q, status, shipTypeId, legacy));
+            @RequestParam(defaultValue = "false") boolean legacy,
+            @RequestParam(defaultValue = "false") boolean archived) {
+        return ApiResponse.success(service.list(pageable, q, status, shipTypeId, legacy, archived));
+    }
+
+    @PreAuthorize("hasRole('SHIP_MANAGER') and hasAuthority('SHIP_ARCHIVE')")
+    @GetMapping("/{shipId}/archive-eligibility")
+    public ApiResponse<ShipArchiveService.Eligibility> archiveEligibility(@PathVariable UUID shipId) {
+        return ApiResponse.success(archiveService.eligibility(shipId));
+    }
+
+    @PreAuthorize("hasRole('SHIP_MANAGER') and hasAuthority('SHIP_ARCHIVE')")
+    @PostMapping("/{shipId}/archive")
+    public ApiResponse<ShipResponse> archive(@PathVariable UUID shipId) {
+        return ApiResponse.success(archiveService.archive(shipId));
     }
 
     @Operation(summary = "Chi tiết tàu", description = "Xem thông tin chi tiết của một tàu theo ID")
