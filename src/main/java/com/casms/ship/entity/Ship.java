@@ -39,6 +39,9 @@ public class Ship {
     @Column(name = "operational_profile", columnDefinition = "jsonb")
     private ShipOperationalProfile operationalProfile;
 
+    @Column(name = "design_metadata_imported", nullable = false)
+    private boolean designMetadataImported;
+
     @Column(name = "ship_code", nullable = false, unique = true, length = 20)
     private String shipCode;
 

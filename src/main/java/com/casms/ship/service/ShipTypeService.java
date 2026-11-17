@@ -8,6 +8,7 @@ import com.casms.security.principal.CasmsPrincipal;
 import com.casms.ship.ShipDeckCount;
 import com.casms.ship.dto.request.ShipFromTypeRequest;
 import com.casms.ship.dto.request.ShipOperationalProfile;
+import com.casms.ship.dto.response.ShipOperationalProfileResponse;
 import com.casms.ship.dto.response.ShipResponse;
 import com.casms.ship.dto.response.ShipTypeResponse;
 import com.casms.ship.entity.Ship;
@@ -61,9 +62,6 @@ public class ShipTypeService {
 
     @Transactional
     public ShipTypeResponse createFromStored(String modelKey, String version) {
-        ShipType candidate = new ShipType();
-        readBundle(candidate, modelKey, version);
-        candidate.setCode(modelKey);
         assets.lockShipTypeDesign(modelKey);
         var existing = types.findByCodeOrModelKey(modelKey, modelKey);
         if (!existing.isEmpty()) {
@@ -75,6 +73,9 @@ public class ShipTypeService {
             throw new BusinessException(HttpStatus.CONFLICT, "SHIP_TYPE_CODE_CONFLICT",
                     "This design code already exists. Use model replacement to apply another version.");
         }
+        ShipType candidate = new ShipType();
+        readBundle(candidate, modelKey, version);
+        candidate.setCode(modelKey);
         return ShipTypeResponse.from(types.saveAndFlush(candidate), 0);
     }
 
@@ -90,7 +91,9 @@ public class ShipTypeService {
             throw new BusinessException(HttpStatus.CONFLICT, "SHIP_TYPE_DESIGN_MISMATCH",
                     "The replacement must belong to the same model design");
         }
-        readBundle(type, modelKey, version);
+        if (!Objects.equals(type.getAssetVersion(), version)) {
+            readBundle(type, modelKey, version);
+        }
         return describe(type, true);
     }
 
@@ -223,6 +226,9 @@ public class ShipTypeService {
                     "Only an active ship type can be used to create a ship");
         }
         JsonNode manifest = assets.manifest(type.getModelKey(), type.getAssetVersion());
+        var manufacturing = ShipManufacturingMetadata.read(manifest);
+        // Older designs did not require manufacturing metadata.
+        boolean imported = manufacturing.invalidFields().isEmpty();
         Ship ship = new Ship();
         ship.setShipType(type);
         ship.setCreatedByShipManagerId(managerId);
@@ -241,7 +247,8 @@ public class ShipTypeService {
             deckLimit = Math.max(deckLimit, deck.path("number").asInt());
         }
         ship.setDeckNumberLimit(deckLimit);
-        applyProfile(ship, profile);
+        ship.setDesignMetadataImported(imported);
+        applyProfile(ship, ShipManufacturingMetadata.merge(profile, imported ? manufacturing : null));
         UUID shipId = ships.saveAndFlush(ship).getShipId();
         UUID modelId = modelAssets.register(shipId, type.getModelKey(), type.getAssetVersion());
         importer.importForProvisioning(shipId, modelId, actor);
@@ -250,20 +257,26 @@ public class ShipTypeService {
     }
 
     @Transactional
-    public ShipOperationalProfile replaceProfile(UUID shipId, ShipOperationalProfile profile) {
+    public ShipOperationalProfileResponse replaceProfile(UUID shipId, ShipOperationalProfile profile) {
         Ship ship = ships.findByIdForUpdate(shipId)
                 .orElseThrow(() -> new ResourceNotFoundException("Ship", shipId));
         requireTypedShip(ship);
-        applyProfile(ship, profile);
-        return profile;
+        ship.setOperationalProfile(ShipManufacturingMetadata.merge(profile,
+                ShipManufacturingMetadata.fromProfile(ship.getOperationalProfile())));
+        return profileResponse(ship);
     }
 
     @Transactional(readOnly = true)
-    public ShipOperationalProfile profile(UUID shipId) {
+    public ShipOperationalProfileResponse profile(UUID shipId) {
         Ship ship = ships.findById(shipId)
                 .orElseThrow(() -> new ResourceNotFoundException("Ship", shipId));
         requireTypedShip(ship);
-        return ship.getOperationalProfile();
+        return profileResponse(ship);
+    }
+
+    private static ShipOperationalProfileResponse profileResponse(Ship ship) {
+        var profile = ship.getOperationalProfile();
+        return profile == null ? null : new ShipOperationalProfileResponse(profile, ship.isDesignMetadataImported());
     }
 
     private static void requireTypedShip(Ship ship) {
@@ -316,6 +329,8 @@ public class ShipTypeService {
         type.setTotalDecks(decks);
         type.setLengthMeters(requiredDimension(manifest, "length"));
         type.setBeamMeters(requiredDimension(manifest, "beam"));
+        List<String> invalidFields = ShipManufacturingMetadata.read(manifest).invalidFields();
+        if (!invalidFields.isEmpty()) throw invalid(String.join(", ", invalidFields));
         ShipModelImportService.validateProvisioningDesign(manifest,
                 assets.validateStoredGlbs(modelKey, version, manifest));
     }

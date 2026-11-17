@@ -60,12 +60,12 @@ public class ShipModelAssetService {
 
     @Transactional(readOnly = true)
     public JsonNode previewStoredBundle(String modelKey) {
-        return manifestForClient(assets.manifest(modelKey, assets.latestVersion(modelKey)));
+        return bundlePreview(assets.manifest(modelKey, assets.latestVersion(modelKey)));
     }
 
     @Transactional(readOnly = true)
     public JsonNode previewStoredBundle(String modelKey, String assetVersion) {
-        return manifestForClient(assets.manifest(modelKey, assetVersion));
+        return bundlePreview(assets.manifest(modelKey, assetVersion));
     }
 
     @Transactional(readOnly = true)
@@ -73,7 +73,14 @@ public class ShipModelAssetService {
         return new AssetDownload(modelKey, version, name, assets.asset(modelKey, version, name));
     }
 
-    private static JsonNode manifestForClient(JsonNode manifest) {
+    private static JsonNode bundlePreview(JsonNode manifest) {
+        var preview = manifestForClient(manifest);
+        var issues = preview.putArray("shipTypeManufacturingIssues");
+        ShipManufacturingMetadata.read(manifest).invalidFields().forEach(issues::add);
+        return preview;
+    }
+
+    private static com.fasterxml.jackson.databind.node.ObjectNode manifestForClient(JsonNode manifest) {
         var preview = (com.fasterxml.jackson.databind.node.ObjectNode) manifest.deepCopy();
         preview.remove("revision");
         return preview;

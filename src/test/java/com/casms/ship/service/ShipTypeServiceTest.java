@@ -60,7 +60,8 @@ class ShipTypeServiceTest {
 
         var error = assertThrows(ResponseStatusException.class, () -> service.create("voyager", bundle));
         assertTrue(error.getReason().contains(missingField));
-        verifyNoInteractions(types, ships, modelAssets, importer);
+        verify(types, never()).saveAndFlush(any());
+        verifyNoInteractions(ships, modelAssets, importer);
     }
 
     @Test
