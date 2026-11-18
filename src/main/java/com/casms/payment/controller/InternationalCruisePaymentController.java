@@ -182,7 +182,7 @@ public class InternationalCruisePaymentController {
     }
 
     @Operation(summary = "Refund a captured payment via the payment gateway")
-    @PreAuthorize("isAuthenticated()")
+    @PreAuthorize("hasRole('FINANCE_OFFICER') and hasAuthority('PAYMENT_REFUND')")
     @PostMapping("/payments/{id}/refund")
     public ApiResponse<GatewayPaymentResponse> refundPayment(
             @PathVariable("id") UUID paymentId,

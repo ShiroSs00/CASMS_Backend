@@ -71,6 +71,9 @@ public class BookingQuote {
     @Column(name = "fingerprint", nullable = false, length = 128)
     private String fingerprint;
 
+    @Column(name = "commercial_terms_fingerprint", length = 64, updatable = false)
+    private String commercialTermsFingerprint;
+
     @Column(name = "quote_payload_json", columnDefinition = "TEXT")
     private String quotePayloadJson;
 

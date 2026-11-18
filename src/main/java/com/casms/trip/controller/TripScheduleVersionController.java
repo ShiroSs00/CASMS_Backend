@@ -33,6 +33,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.Instant;
 import java.util.UUID;
 
 @Tag(
@@ -315,7 +316,8 @@ public class TripScheduleVersionController {
 
     public record SourceTrip(UUID tripId, String tripCode, String name, String description,
                              com.casms.trip.enums.TripDurationGroup durationGroup,
-                             Integer durationDays, Integer durationNights, com.casms.trip.enums.TripStatus status) {}
+                             Integer durationDays, Integer durationNights, com.casms.trip.enums.TripStatus status,
+                             Instant earliestDeparture, Instant latestDeparture) {}
     public record PublishedSource(SourceTrip trip, TripScheduleVersionDetailResponse version) {}
 
     @GetMapping("/eligible-sources/{sourceId}")
@@ -335,6 +337,7 @@ public class TripScheduleVersionController {
         version.setSubmitterName(null);
         return ApiResponse.success(new PublishedSource(new SourceTrip(trip.getTripId(), trip.getTripCode(),
                 trip.getName(), trip.getDescription(), trip.getDurationGroup(), trip.getDurationDays(),
-                trip.getDurationNights(), trip.getStatus()), version));
+                trip.getDurationNights(), trip.getStatus(), trip.getEarliestDeparture(),
+                trip.getLatestDeparture()), version));
     }
 }

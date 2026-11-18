@@ -1,25 +1,31 @@
 package com.casms.ship.controller;
 
 import com.casms.common.response.ApiResponse;
+import com.casms.security.principal.CasmsPrincipal;
 import com.casms.ship.dto.request.OperationalRegulationRequest;
 import com.casms.ship.dto.response.OperationalRegulationResponse;
 import com.casms.ship.dto.response.RegulationConflictResponse;
 import com.casms.ship.service.OperationalRegulationService;
+import com.casms.ship.enums.RegulationScope;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
 
 import lombok.RequiredArgsConstructor;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.UUID;
+import java.time.Instant;
 
 @Tag(
         name = "Operational Regulation Management",
@@ -111,6 +117,23 @@ public class OperationalRegulationController {
     @GetMapping("/effective")
     public ResponseEntity<ApiResponse<List<OperationalRegulationResponse>>> getEffective() {
         return ResponseEntity.ok(ApiResponse.success(regulationService.getEffectiveRegulations()));
+    }
+
+    @PreAuthorize("hasRole('OPERATIONS_MANAGER') and hasAuthority('REGULATION_READ')")
+    @GetMapping("/compliance-summary")
+    public ApiResponse<List<OperationalRegulationService.ComplianceSummary>> complianceSummary(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant at,
+            @RequestParam(required = false) RegulationScope scope) {
+        return ApiResponse.success(regulationService.complianceSummary(at, scope));
+    }
+
+    public record ComplianceFilter(@NotNull Instant at, RegulationScope scope) {}
+
+    @PreAuthorize("hasRole('OPERATIONS_MANAGER') and hasAuthority('REGULATION_READ') and hasAuthority('REPORT_GENERATE')")
+    @PostMapping("/compliance-summary/export")
+    public ApiResponse<String> exportComplianceSummary(@Valid @RequestBody ComplianceFilter filter,
+            @AuthenticationPrincipal CasmsPrincipal actor) {
+        return ApiResponse.success(regulationService.exportComplianceSummary(filter.at(), filter.scope(), actor.getUserId()));
     }
 
     @Operation(

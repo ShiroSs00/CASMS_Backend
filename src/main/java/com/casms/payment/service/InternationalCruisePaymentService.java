@@ -44,6 +44,7 @@ public class InternationalCruisePaymentService {
     private final OnboardTransactionRepository onboardTransactionRepository;
     private final RegisteredPaymentMethodRepository registeredPaymentMethodRepository;
     private final PaymentRepository paymentRepository;
+    private final RefundRepository refundRepository;
     private final PaymentAttemptRepository paymentAttemptRepository;
     private final PaymentWebhookEventRepository paymentWebhookEventRepository;
     private final OfflineSyncLogRepository offlineSyncLogRepository;
@@ -754,8 +755,26 @@ public class InternationalCruisePaymentService {
             UUID paymentId,
             GatewayRefundRequest request,
             CasmsPrincipal principal) {
+        if (principal == null || !principal.hasRole(Role.FINANCE_OFFICER)) {
+            throw new AccessDeniedException("Only Finance can refund gateway payments");
+        }
         Payment payment = paymentRepository.findByIdForUpdate(paymentId)
                 .orElseThrow(() -> new ResourceNotFoundException("Payment", paymentId));
+
+        String requestKey = request.idempotencyKey().strip();
+        BigDecimal refundAmt = request.refundAmount().setScale(4, RoundingMode.HALF_UP);
+        var prior = paymentAttemptRepository.findFirstByPayment_PaymentIdAndOperationAndIdempotencyKeyOrderByAttemptNoDesc(
+                paymentId, "REFUND", requestKey);
+        if (prior.isPresent()) {
+            var attempt = prior.get();
+            if (refundAmt.compareTo(attempt.getAmount()) != 0) {
+                throw new BusinessException(HttpStatus.CONFLICT, "GATEWAY_REFUND_REPLAY_CONFLICT",
+                        "Khóa hoàn tiền đã được dùng với số tiền khác.");
+            }
+            if ("SUCCESS".equals(attempt.getStatus())) return toGatewayPaymentResponse(payment);
+            throw new BusinessException(HttpStatus.CONFLICT, "GATEWAY_REFUND_REVIEW_REQUIRED",
+                    "Cần đối soát lần hoàn tiền trước khi thử lại.");
+        }
 
         if (payment.getStatus() != PaymentStatus.Captured
                 && payment.getStatus() != PaymentStatus.Confirmed
@@ -766,13 +785,11 @@ public class InternationalCruisePaymentService {
                     "Only CAPTURED/CONFIRMED payments can be refunded (current status: " + payment.getStatus() + ")");
         }
 
-        BigDecimal captured = payment.getCapturedAmount() != null
-                ? payment.getCapturedAmount()
-                : (payment.getConfirmedAmount() != null ? payment.getConfirmedAmount() : payment.getRequestedAmount());
-        BigDecimal alreadyRefunded = payment.getRefundedAmount() != null ? payment.getRefundedAmount() : BigDecimal.ZERO;
-        BigDecimal remaining = captured.subtract(alreadyRefunded);
+        BigDecimal captured = RefundBalance.eligible(payment);
+        BigDecimal alreadyRefunded = RefundBalance.gatewayRefunded(payment);
+        BigDecimal remaining = RefundBalance.remaining(payment,
+                refundRepository.findByOriginalPayment_PaymentIdOrderByRequestedAtDesc(paymentId));
 
-        BigDecimal refundAmt = request.refundAmount().setScale(4, RoundingMode.HALF_UP);
         if (refundAmt.compareTo(remaining) > 0) {
             throw new BusinessException(
                     HttpStatus.BAD_REQUEST,
@@ -785,9 +802,9 @@ public class InternationalCruisePaymentService {
                 refundAmt,
                 payment.getCurrency(),
                 request.reason(),
-                request.idempotencyKey().trim());
+                requestKey);
 
-        recordPaymentAttempt(payment, "REFUND", refundAmt, payment.getCurrency(), request.idempotencyKey().trim(), gwResult);
+        recordPaymentAttempt(payment, "REFUND", refundAmt, payment.getCurrency(), requestKey, gwResult);
 
         if (!gwResult.successful()) {
             throw new BusinessException(

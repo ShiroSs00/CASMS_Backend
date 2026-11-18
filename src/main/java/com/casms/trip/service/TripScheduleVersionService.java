@@ -203,6 +203,44 @@ public class TripScheduleVersionService {
 
     }
 
+    private void validateDraftVisits(List<TripPlanStopDraftDto> stops) {
+        for (int index = 0; index < stops.size(); index++) {
+            var stop = stops.get(index);
+            if (stop.getVisits() == null) continue;
+
+            Set<String> visitKeys = new HashSet<>();
+            Set<Integer> visitOrders = new HashSet<>();
+            Set<UUID> destinationIds = new HashSet<>();
+            for (var dto : stop.getVisits()) {
+                if (dto == null
+                        || dto.clientKey() == null
+                        || dto.clientKey().isBlank()
+                        || dto.clientKey().length() > 100
+                        || !visitKeys.add(dto.clientKey())
+                        || dto.sequence() == null
+                        || dto.sequence() < 1
+                        || !visitOrders.add(dto.sequence())
+                        || dto.destinationId() == null)
+                    throw new BusinessException(
+                            HttpStatus.BAD_REQUEST,
+                            "INVALID_DESTINATION_VISIT",
+                            "Mỗi lượt tham quan cần điểm đến, khóa riêng và thứ tự dương không"
+                                + " trùng trong lần ghé.");
+                if (!destinationIds.add(dto.destinationId())) {
+                    String key = stop.getClientKey();
+                    throw new BusinessException(
+                            HttpStatus.UNPROCESSABLE_ENTITY,
+                            "DUPLICATE_DESTINATION_VISIT",
+                            "Điểm tham quan này đã có trong lần ghé cảng. Không thể thêm hai lần.",
+                            Map.of("stopClientKey", key == null ? "" : key,
+                                    "destinationId", dto.destinationId(),
+                                    "fieldPath", "stops[" + index + "].visits",
+                                    "entityType", "STOP"));
+                }
+            }
+        }
+    }
+
     private TripScheduleVersionDetailResponse executeSaveDraft(
             TripScheduleVersion version, ScheduleDraftSaveRequest request, UUID actorId, String lockConflictCode) {
         requireEditableRevision(version, request.getExpectedRevision(), lockConflictCode);
@@ -210,6 +248,9 @@ public class TripScheduleVersionService {
         if (geography != null) geography.requireAvailable(version);
         List<TripPlanEntry> preservedLegacy =
                 LegacyTemplateContentPolicy.protectSave(version, request);
+        List<TripPlanStopDraftDto> stopDtos =
+                request.getStops() != null ? request.getStops() : List.of();
+        validateDraftVisits(stopDtos);
         Trip trip = version.getTrip();
         if (request.getDays() == null || request.getDays().size() != trip.getDurationDays()) {
             throw new BusinessException(
@@ -318,8 +359,6 @@ public class TripScheduleVersionService {
         }
 
         // 2. Reconcile Stops
-        List<TripPlanStopDraftDto> stopDtos =
-                request.getStops() != null ? request.getStops() : List.of();
         Set<String> stopKeys = new HashSet<>();
         Set<Integer> stopOrders = new HashSet<>();
         Map<UUID, Port> portCache = new HashMap<>();
@@ -662,24 +701,8 @@ public class TripScheduleVersionService {
                                                 com.casms.trip.entity.DestinationVisit
                                                         ::getClientKey,
                                                 v -> v));
-                java.util.Set<String> visitKeys = new java.util.HashSet<>();
-                java.util.Set<Integer> visitOrders = new java.util.HashSet<>();
                 var nextVisits = new java.util.ArrayList<com.casms.trip.entity.DestinationVisit>();
                 for (var dto : stopDto.getVisits()) {
-                    if (dto == null
-                            || dto.clientKey() == null
-                            || dto.clientKey().isBlank()
-                            || dto.clientKey().length() > 100
-                            || !visitKeys.add(dto.clientKey())
-                            || dto.sequence() == null
-                            || dto.sequence() < 1
-                            || !visitOrders.add(dto.sequence())
-                            || dto.destinationId() == null)
-                        throw new BusinessException(
-                                HttpStatus.BAD_REQUEST,
-                                "INVALID_DESTINATION_VISIT",
-                                "Mỗi lượt tham quan cần điểm đến, khóa riêng và thứ tự dương không"
-                                    + " trùng trong lần ghé.");
                     var visit = oldVisits.get(dto.clientKey());
                     if (dto.visitId() != null
                             && (visit == null || !dto.visitId().equals(visit.getVisitId())))

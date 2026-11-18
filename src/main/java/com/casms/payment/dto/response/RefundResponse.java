@@ -23,6 +23,10 @@ public class RefundResponse {
     private Instant requestedAt;
     private UUID approvedByUserId;
     private Instant approvedAt;
+    private String rejectionReason;
+    private UUID rejectedByUserId;
+    private Instant rejectedAt;
+    private UUID adjustmentInvoiceId;
     private Instant completedAt;
     private String processorOrReceiptReference;
     private RefundStatus status;
