@@ -92,6 +92,7 @@ import lombok.extern.slf4j.Slf4j;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -137,6 +138,9 @@ public class BookingService {
     private final CruiseTourPackageRepository cruiseTourPackageRepository;
     private final ItineraryRepository itineraryRepository;
     private final CruisePricingPolicyRepository cruisePricingPolicyRepository;
+
+    @Value("${casms.commercial-terms.approved-package-payment-terms:false}")
+    private boolean approvedPackagePaymentTerms;
     private final BookingQuoteRepository bookingQuoteRepository;
     private final IdempotencyRecordRepository idempotencyRecordRepository;
     private final ObjectMapper objectMapper;
@@ -636,6 +640,7 @@ public class BookingService {
         BigDecimal totalCabinBaseAmount = BigDecimal.ZERO;
 
         BookingQuote validatedQuote = null;
+        EffectiveCommercialTermsService.SaleTerms acceptedSaleTerms = null;
         List<QuoteLineItem> quoteLineItems = null;
         List<QuoteLineItem> matchedQuoteLines = List.of();
         boolean isStaff =
@@ -716,54 +721,21 @@ public class BookingService {
             quoteLineItems = readQuoteLines(validatedQuote);
             matchedQuoteLines = matchQuoteLines(requested, quoteLineItems);
             if (unified) {
-                verifyUnifiedQuote(cruise, validatedQuote, quoteLineItems);
+                acceptedSaleTerms = verifyUnifiedQuote(cruise, validatedQuote, quoteLineItems);
                 for (QuoteLineItem line : matchedQuoteLines)
                     verifyFareCabin(cruise, validatedCabins.get(line.getCabinId()), line.getFareSelection());
                 fareHoldInventory.verify(cruise, matchedQuoteLines);
             }
         }
 
-        CruisePricingPolicy policy = null;
-        BigDecimal portFeePerPassenger = BigDecimal.ZERO;
-        BigDecimal taxRate = BigDecimal.ZERO;
-        int cutoffDays = 7;
-        int dueDays = 7;
-        BigDecimal depositRate = BigDecimal.valueOf(0.30);
-        String initialCurrency = cruise.getSaleCurrency();
-
-        if (!unified) {
-            policy =
-                    cruisePricingPolicyRepository
-                            .findByCruise_CruiseId(cruise.getCruiseId())
-                            .filter(p -> p.getStatus() == PricingPolicyStatus.APPROVED)
-                            .orElseThrow(
-                                    () ->
-                                            new BusinessException(
-                                                    HttpStatus.UNPROCESSABLE_ENTITY,
-                                                    "PRICING_POLICY_MISSING",
-                                                    "Chuyến khởi hành chưa có chính sách giá được phê"
-                                                        + " duyệt. Không thể hoàn tất đặt chỗ."));
-
-            requireMatchingCurrency(initialCurrency, policy.getCurrency());
-            initialCurrency = policy.getCurrency();
-            if (policy.getPortFeePerPassenger() != null) portFeePerPassenger = policy.getPortFeePerPassenger();
-            if (policy.getTaxRate() != null) taxRate = policy.getTaxRate();
-            if (policy.getFullPaymentCutoffDays() > 0) cutoffDays = policy.getFullPaymentCutoffDays();
-            if (policy.getFinalPaymentDueDays() > 0) dueDays = policy.getFinalPaymentDueDays();
-            if (policy.getDepositPercentage() != null) depositRate = policy.getDepositPercentage();
-
-            if (validatedQuote != null) {
-                requireMatchingCurrency(initialCurrency, validatedQuote.getCurrency());
-                if (!policy.getPolicyVersion().equals(validatedQuote.getPolicyVersion())) {
-                    throw new BusinessException(
-                            HttpStatus.CONFLICT,
-                            "QUOTE_POLICY_MISMATCH",
-                            "Báo giá thuộc phiên bản chính sách giá cũ ("
-                                    + validatedQuote.getPolicyVersion()
-                                    + "), chính sách hiện tại là ("
-                                    + policy.getPolicyVersion()
-                                    + "). Vui lòng yêu cầu báo giá mới.");
-                }
+        CruisePricingPolicy policy = approvedPricingPolicy(cruise.getCruiseId(), unified);
+        EffectiveCommercialTermsService.Terms terms = resolveEffectiveTerms(cruise, acceptedSaleTerms, policy);
+        String initialCurrency = terms.currency();
+        if (validatedQuote != null) {
+            requireMatchingCurrency(initialCurrency, validatedQuote.getCurrency());
+            verifyEffectiveTerms(validatedQuote, terms);
+            if (!unified && !terms.version().equals(validatedQuote.getPolicyVersion())) {
+                throw staleCommercialTerms();
             }
         }
 
@@ -848,15 +820,15 @@ public class BookingService {
         } else {
             BigDecimal subtotalAmount = totalCabinBaseAmount.add(totalPackageAmount);
             BigDecimal portFeesAmount =
-                    portFeePerPassenger.multiply(
+                    terms.portFee().multiply(
                             BigDecimal.valueOf(request.getPassengers().size()));
             BigDecimal taxesAmount =
-                    subtotalAmount.multiply(taxRate).setScale(currencyScale(initialCurrency, 4), RoundingMode.HALF_UP);
+                    subtotalAmount.multiply(terms.taxRate()).setScale(currencyScale(initialCurrency, 4), RoundingMode.HALF_UP);
             BigDecimal taxesAndFeesAmount = portFeesAmount.add(taxesAmount);
             agreedFareAmount = subtotalAmount.add(taxesAndFeesAmount);
 
             if (cruise.getDepartureDatetime()
-                    .isBefore(scheduleCreatedAt.plus(Duration.ofDays(cutoffDays)))) {
+                    .isBefore(scheduleCreatedAt.plus(Duration.ofDays(terms.cutoffDays())))) {
                 paymentPlan =
                         PaymentPlan
                                 .FULL; // BE-11: booking vượt hạn cutoff phải áp đúng FULL theo
@@ -867,15 +839,15 @@ public class BookingService {
                 requiredDepositAmount = agreedFareAmount;
             } else {
                 requiredDepositAmount =
-                        agreedFareAmount.multiply(depositRate).setScale(currencyScale(initialCurrency, 4), RoundingMode.HALF_UP);
+                        agreedFareAmount.multiply(terms.depositRate()).setScale(currencyScale(initialCurrency, 4), RoundingMode.HALF_UP);
             }
 
             currency =
                     (request.getCurrency() != null && !request.getCurrency().isBlank())
                             ? request.getCurrency().strip().toUpperCase(java.util.Locale.ROOT)
-                            : (policy != null ? policy.getCurrency() : initialCurrency);
+                            : initialCurrency;
 
-            finalPaymentDueAt = cruise.getDepartureDatetime().minus(Duration.ofDays(dueDays));
+            finalPaymentDueAt = cruise.getDepartureDatetime().minus(Duration.ofDays(terms.dueDays()));
             if (finalPaymentDueAt.isBefore(scheduleCreatedAt)) {
                 finalPaymentDueAt = scheduleCreatedAt;
             }
@@ -900,6 +872,11 @@ public class BookingService {
             booking.setPricingPolicyVersion(validatedQuote.getPolicyVersion());
         } else {
             booking.setPricingPolicyVersion(policy.getPolicyVersion());
+        }
+        if (validatedQuote == null || validatedQuote.getCommercialTermsFingerprint() != null) {
+            booking.setCommercialTermsSnapshot(writeQuoteData(EffectiveCommercialTermsService.snapshot(
+                    terms, validatedQuote == null ? null : validatedQuote.getQuoteId(), paymentPlan,
+                    agreedFareAmount, requiredDepositAmount, finalPaymentDueAt, scheduleCreatedAt)));
         }
         booking = bookingRepository.save(booking);
 
@@ -2165,31 +2142,12 @@ public class BookingService {
                     "Chuyến khởi hành chưa được gán tàu.");
         }
 
-        CruisePricingPolicy policy = null;
-        String currency = cruise.getSaleCurrency();
-        BigDecimal portFeePerPassenger = BigDecimal.ZERO;
-        BigDecimal taxRate = BigDecimal.ZERO;
-
-        UnifiedTerms unifiedTerms = unified ? approvedUnifiedTerms(cruise.getCruiseId()) : null;
-        if (unified) {
-            portFeePerPassenger = unifiedTerms.portFee();
-            taxRate = unifiedTerms.taxRate();
-        } else {
-            policy =
-                    cruisePricingPolicyRepository
-                            .findByCruise_CruiseId(cruise.getCruiseId())
-                            .filter(p -> p.getStatus() == PricingPolicyStatus.APPROVED)
-                            .orElseThrow(
-                                    () ->
-                                            new BusinessException(
-                                                    HttpStatus.UNPROCESSABLE_ENTITY,
-                                                    "PRICING_POLICY_MISSING",
-                                                    "Chuyến khởi hành chưa có chính sách giá được phê"
-                                                        + " duyệt. Không thể phát hành báo giá."));
-            requireMatchingCurrency(currency, policy.getCurrency());
-            if (policy.getPortFeePerPassenger() != null) portFeePerPassenger = policy.getPortFeePerPassenger();
-            if (policy.getTaxRate() != null) taxRate = policy.getTaxRate();
-        }
+        var saleTerms = unified ? approvedUnifiedTerms(cruise.getCruiseId()) : null;
+        CruisePricingPolicy policy = approvedPricingPolicy(cruise.getCruiseId(), unified);
+        var terms = resolveEffectiveTerms(cruise, saleTerms, policy);
+        String currency = terms.currency();
+        BigDecimal portFeePerPassenger = terms.portFee();
+        BigDecimal taxRate = terms.taxRate();
 
         if (request.getCurrency() != null && !request.getCurrency().isBlank()) {
             if (!request.getCurrency().trim().equalsIgnoreCase(currency)) {
@@ -2424,9 +2382,7 @@ public class BookingService {
                 request.getPaymentPlan() != null ? request.getPaymentPlan() : PaymentPlan.DEPOSIT;
         Instant now = Instant.now();
         Instant departure = cruise.getDepartureDatetime();
-        int cutoffDays =
-                (policy != null && policy.getFullPaymentCutoffDays() > 0) ? policy.getFullPaymentCutoffDays() : 7;
-        if (departure != null && departure.isBefore(now.plus(Duration.ofDays(cutoffDays)))) {
+        if (departure != null && departure.isBefore(now.plus(Duration.ofDays(terms.cutoffDays())))) {
             plan = PaymentPlan.FULL; // Within cutoff days, must pay in full
         }
 
@@ -2434,24 +2390,20 @@ public class BookingService {
         if (plan == PaymentPlan.FULL) {
             depositAmount = totalAmount;
         } else {
-            BigDecimal depositRate =
-                    (policy != null && policy.getDepositPercentage() != null)
-                            ? policy.getDepositPercentage()
-                            : BigDecimal.valueOf(0.30);
-            depositAmount = totalAmount.multiply(depositRate).setScale(currencyScale(currency, 4), RoundingMode.HALF_UP);
+            depositAmount = totalAmount.multiply(terms.depositRate())
+                    .setScale(currencyScale(currency, 4), RoundingMode.HALF_UP);
         }
 
-        int dueDays = (policy != null && policy.getFinalPaymentDueDays() > 0) ? policy.getFinalPaymentDueDays() : 7;
         Instant finalPaymentDueAt =
-                departure != null ? departure.minus(Duration.ofDays(dueDays)) : now;
+                departure != null ? departure.minus(Duration.ofDays(terms.dueDays())) : now;
         if (finalPaymentDueAt.isBefore(now)) {
             finalPaymentDueAt = now;
         }
 
-        String policyVersion = unified ? unifiedTerms.version() : policy.getPolicyVersion();
+        String policyVersion = terms.version();
         String quotePayloadJson = writeQuoteData(lineItems);
         String fingerprint = unified
-                ? unifiedQuoteFingerprint(cruise, unifiedTerms, totalAmount, quotePayloadJson)
+                ? unifiedQuoteFingerprint(cruise, saleTerms, totalAmount, quotePayloadJson)
                 : generateQuoteFingerprint(cruise, policy, totalAmount);
         String quoteCode;
         try {
@@ -2483,6 +2435,7 @@ public class BookingService {
                         .paymentPlan(plan)
                         .finalPaymentDueAt(finalPaymentDueAt)
                         .fingerprint(fingerprint)
+                        .commercialTermsFingerprint(terms.fingerprint())
                         .quotePayloadJson(quotePayloadJson)
                         .guestToken(guestToken)
                         .status("ACTIVE")
@@ -2578,11 +2531,22 @@ public class BookingService {
         String responseStatus = quote.getStatus();
         if ("ACTIVE".equals(responseStatus) && quote.getExpiresAt() != null && quote.isExpired()) {
             responseStatus = "EXPIRED";
-        } else if ("ACTIVE".equals(responseStatus) && quote.getPolicyVersion() != null
-                && quote.getPolicyVersion().startsWith("TERMS-")) {
+        } else if ("ACTIVE".equals(responseStatus)) {
+            boolean unifiedQuote = quote.getPolicyVersion() != null && quote.getPolicyVersion().startsWith("TERMS-");
             try {
-                mainflow.requireBookable(quote.getCruise().getCruiseId());
-                verifyUnifiedQuote(quote.getCruise(), quote, readQuoteLines(quote));
+                var cruise = quote.getCruise();
+                EffectiveCommercialTermsService.SaleTerms saleTerms = null;
+                if (unifiedQuote) {
+                    mainflow.requireBookable(cruise.getCruiseId());
+                    saleTerms = verifyUnifiedQuote(cruise, quote, readQuoteLines(quote));
+                }
+                if (quote.getCommercialTermsFingerprint() != null) {
+                    if (unifiedQuote != mainflow.usesUnifiedPackages(cruise.getCruiseId())) {
+                        throw staleCommercialTerms();
+                    }
+                    var policy = approvedPricingPolicy(cruise.getCruiseId(), unifiedQuote);
+                    verifyEffectiveTerms(quote, resolveEffectiveTerms(cruise, saleTerms, policy));
+                }
             } catch (BusinessException stale) {
                 responseStatus = "INVALIDATED";
             }
@@ -2667,16 +2631,38 @@ public class BookingService {
         return mapToDetailResponse(booking);
     }
 
-    private record UnifiedTerms(String version, String hash, BigDecimal portFee, BigDecimal taxRate) {}
+    private CruisePricingPolicy approvedPricingPolicy(UUID cruiseId, boolean unified) {
+        if (unified && !approvedPackagePaymentTerms) return null;
+        return cruisePricingPolicyRepository.findByCruise_CruiseId(cruiseId)
+                .filter(policy -> policy.getStatus() == PricingPolicyStatus.APPROVED)
+                .orElse(null);
+    }
 
-    private UnifiedTerms approvedUnifiedTerms(UUID cruiseId) {
+    private EffectiveCommercialTermsService.Terms resolveEffectiveTerms(Cruise cruise,
+            EffectiveCommercialTermsService.SaleTerms saleTerms, CruisePricingPolicy policy) {
+        return EffectiveCommercialTermsService.resolve(cruise, saleTerms, policy, approvedPackagePaymentTerms);
+    }
+
+    private static void verifyEffectiveTerms(BookingQuote quote, EffectiveCommercialTermsService.Terms terms) {
+        if (quote.getCommercialTermsFingerprint() != null
+                && !quote.getCommercialTermsFingerprint().equals(terms.fingerprint())) {
+            throw staleCommercialTerms();
+        }
+    }
+
+    private static BusinessException staleCommercialTerms() {
+        return new BusinessException(HttpStatus.CONFLICT, "QUOTE_POLICY_MISMATCH",
+                "Cấu hình thương mại đã thay đổi. Vui lòng lấy báo giá mới.");
+    }
+
+    private EffectiveCommercialTermsService.SaleTerms approvedUnifiedTerms(UUID cruiseId) {
         var approved = departureSaleTermsService.approvedForBooking(cruiseId);
-        return new UnifiedTerms("TERMS-" + approved.revision(), approved.submittedHash(),
+        return new EffectiveCommercialTermsService.SaleTerms("TERMS-" + approved.revision(), approved.submittedHash(),
                 Objects.requireNonNullElse(approved.terms().portFee().value(), BigDecimal.ZERO),
                 Objects.requireNonNullElse(approved.terms().tax().value(), BigDecimal.ZERO));
     }
 
-    private String unifiedQuoteFingerprint(Cruise cruise, UnifiedTerms terms, BigDecimal total, String payload) {
+    private String unifiedQuoteFingerprint(Cruise cruise, EffectiveCommercialTermsService.SaleTerms terms, BigDecimal total, String payload) {
         return CruiseMainflowService.hash(cruise.getCruiseId() + ":" + cruise.getRevision() + ":"
                 + cruise.getOpenedForSaleAt() + ":" + terms.version() + ":" + terms.hash() + ":"
                 + total.stripTrailingZeros().toPlainString() + ":" + payload);
@@ -2761,8 +2747,9 @@ public class BookingService {
         }
     }
 
-    private void verifyUnifiedQuote(Cruise cruise, BookingQuote quote, List<QuoteLineItem> lines) {
-        UnifiedTerms terms = approvedUnifiedTerms(cruise.getCruiseId());
+    private EffectiveCommercialTermsService.SaleTerms verifyUnifiedQuote(
+            Cruise cruise, BookingQuote quote, List<QuoteLineItem> lines) {
+        var terms = approvedUnifiedTerms(cruise.getCruiseId());
         if (!terms.version().equals(quote.getPolicyVersion())
                 || !unifiedQuoteFingerprint(cruise, terms, quote.getTotalAmount(), quote.getQuotePayloadJson())
                         .equals(quote.getFingerprint())) {
@@ -2779,6 +2766,7 @@ public class BookingService {
                 throw new BusinessException(HttpStatus.CONFLICT, "FARE_QUOTED_PRICE_STALE",
                         "Gói hoặc quyền lợi trong báo giá đã thay đổi. Vui lòng lấy báo giá mới.");
         }
+        return terms;
     }
 
     private String generateQuoteFingerprint(

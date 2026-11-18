@@ -57,6 +57,18 @@ public class Refund {
     @Column(name = "approved_at")
     private Instant approvedAt;
 
+    @Column(name = "rejection_reason", columnDefinition = "text")
+    private String rejectionReason;
+
+    @Column(name = "rejected_by_user_id")
+    private UUID rejectedByUserId;
+
+    @Column(name = "rejected_at")
+    private Instant rejectedAt;
+
+    @Column(name = "adjustment_invoice_id", unique = true)
+    private UUID adjustmentInvoiceId;
+
     @Column(name = "completed_at")
     private Instant completedAt;
 
