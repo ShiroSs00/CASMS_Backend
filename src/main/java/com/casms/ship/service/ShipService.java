@@ -94,18 +94,25 @@ public class ShipService {
 
     @Transactional(readOnly = true)
     public Page<ShipResponse> list(Pageable pageable, String q, ShipStatus status, UUID typeId, boolean legacy) {
+        return list(pageable, q, status, typeId, legacy, false);
+    }
+
+    @Transactional(readOnly = true)
+    public Page<ShipResponse> list(Pageable pageable, String q, ShipStatus status, UUID typeId, boolean legacy,
+            boolean archived) {
+        if (archived) ShipArchiveService.requireActor();
         String term = q == null ? "" : q.strip();
         if (term.length() > 100 || (legacy && typeId != null)) {
             throw new BusinessException(org.springframework.http.HttpStatus.BAD_REQUEST, "INVALID_SHIP_FILTER",
                     "Use a search term of at most 100 characters and either a ship type or the legacy filter");
         }
-        if (term.isEmpty() && status == null && typeId == null && !legacy) return list(pageable);
+        if (term.isEmpty() && status == null && typeId == null && !legacy && !archived) return list(pageable);
         String pattern = term.isEmpty() ? "" : "%" + term.replace("!", "!!")
                 .replace("%", "!%").replace("_", "!_") + "%";
         UUID manager = CruisePlanOperationsAccess.currentShipManager();
         Page<Ship> ships = manager == null
-                ? shipRepository.findFilteredShips(pattern, status, typeId, legacy, pageable)
-                : shipRepository.findFilteredManagedShips(manager, pattern, status, typeId, legacy, pageable);
+                ? shipRepository.findFilteredShips(pattern, status, typeId, legacy, false, pageable)
+                : shipRepository.findFilteredManagedShips(manager, pattern, status, typeId, legacy, archived, pageable);
         return ships.map(this::mapToResponse);
     }
 
@@ -122,12 +129,15 @@ public class ShipService {
     @Transactional
     public ShipResponse update(UUID shipId, ShipUpdateRequest request) {
         Ship ship = getShipById(shipId);
+        ShipArchiveService.requireUnarchived(ship);
         if (ship.getShipType() != null
                 && (changes(request.getTotalCapacity(), ship.getTotalCapacity())
                     || changes(request.getTotalDecks(), ship.getTotalDecks())
                     || changes(request.getLengthMeters(), ship.getLengthMeters())
                     || changes(request.getBeamMeters(), ship.getBeamMeters())
                     || changes(request.getManufacturerName(), ship.getManufacturerName())
+                    || changes(request.getOrigin(), ship.getOrigin())
+                    || changes(request.getProductionYear(), ship.getProductionYear())
                     || changes(request.getEngineType(), ship.getEngineType()))) {
             throw new BusinessException(org.springframework.http.HttpStatus.CONFLICT,
                     "SHIP_TYPE_DESIGN_LOCKED", "Inherited ship design fields cannot be changed on a physical ship");
@@ -199,6 +209,7 @@ public class ShipService {
     public ShipResponse renameTypedShip(UUID shipId, String name) {
         Ship ship = shipRepository.findByIdForUpdate(shipId)
                 .orElseThrow(() -> new ResourceNotFoundException("Ship", shipId));
+        ShipArchiveService.requireUnarchived(ship);
         if (ship.getShipType() == null) {
             throw new BusinessException(org.springframework.http.HttpStatus.CONFLICT, "SHIP_TYPE_REQUIRED",
                     "This operation is available to managers of ships created from a ship type");
@@ -214,6 +225,7 @@ public class ShipService {
     @Transactional
     public void deleteUnused(UUID shipId) {
         Ship ship = getShipById(shipId);
+        ShipArchiveService.requireUnarchived(ship);
 
         // Check if used in any Cruise
         if (cruiseRepository.existsByShip(ship)) {
@@ -242,6 +254,7 @@ public class ShipService {
     public ShipResponse changeStatus(UUID shipId, ShipStatus newStatus) {
         Ship ship = shipRepository.findByIdForUpdate(shipId)
                 .orElseThrow(() -> new ResourceNotFoundException("Ship", shipId));
+        ShipArchiveService.requireUnarchived(ship);
         if (newStatus == null) {
             throw new BusinessException("INVALID_SHIP_STATUS", "Ship status is required");
         }
@@ -451,6 +464,8 @@ public class ShipService {
             res.setShipTypeCode(shipType.getCode());
         }
         res.setShipId(ship.getShipId());
+        res.setArchivedAt(ship.getArchivedAt());
+        res.setArchivedBy(ship.getArchivedBy());
         res.setShipCode(ship.getShipCode());
         res.setShipName(ship.getShipName());
         res.setStatus(ship.getStatus());

@@ -23,10 +23,11 @@ import java.util.UUID;
 public interface ShipRepository extends JpaRepository<Ship, UUID> {
     @Override
     @EntityGraph(attributePaths = "shipType")
+    @Query("SELECT s FROM Ship s WHERE s.archivedAt IS NULL")
     Page<Ship> findAll(Pageable pageable);
 
     @EntityGraph(attributePaths = "shipType")
-    @Query("SELECT s FROM Ship s WHERE " + MANAGED_SHIP)
+    @Query("SELECT s FROM Ship s WHERE s.archivedAt IS NULL AND " + MANAGED_SHIP)
     Page<Ship> findManagedShips(@Param("user") UUID user, Pageable pageable);
 
     @Query("SELECT count(s) > 0 FROM Ship s WHERE s.shipId=:shipId AND " + MANAGED_SHIP)
@@ -39,18 +40,21 @@ public interface ShipRepository extends JpaRepository<Ship, UUID> {
             AND s.status = COALESCE(:status, s.status)
             AND t.shipTypeId IS NOT DISTINCT FROM COALESCE(:typeId, t.shipTypeId)
             AND (:legacy = false OR s.shipType IS NULL)
+            AND ((:archived = true AND s.archivedAt IS NOT NULL)
+                OR (:archived = false AND s.archivedAt IS NULL))
             """;
 
     @EntityGraph(attributePaths = "shipType")
     @Query(FILTERED_SHIPS)
     Page<Ship> findFilteredShips(@Param("pattern") String pattern, @Param("status") ShipStatus status,
-            @Param("typeId") UUID typeId, @Param("legacy") boolean legacy, Pageable pageable);
+            @Param("typeId") UUID typeId, @Param("legacy") boolean legacy,
+            @Param("archived") boolean archived, Pageable pageable);
 
     @EntityGraph(attributePaths = "shipType")
     @Query(FILTERED_SHIPS + " AND " + MANAGED_SHIP)
     Page<Ship> findFilteredManagedShips(@Param("user") UUID user, @Param("pattern") String pattern,
             @Param("status") ShipStatus status, @Param("typeId") UUID typeId,
-            @Param("legacy") boolean legacy, Pageable pageable);
+            @Param("legacy") boolean legacy, @Param("archived") boolean archived, Pageable pageable);
 
     String MANAGED_SHIP = """
             (s.createdByShipManagerId = :user
@@ -60,10 +64,10 @@ public interface ShipRepository extends JpaRepository<Ship, UUID> {
             """;
 
     @EntityGraph(attributePaths = "shipType")
-    Page<Ship> findByShipTypeShipTypeId(UUID shipTypeId, Pageable pageable);
+    Page<Ship> findByShipTypeShipTypeIdAndArchivedAtIsNull(UUID shipTypeId, Pageable pageable);
 
     @EntityGraph(attributePaths = "shipType")
-    @Query("SELECT s FROM Ship s WHERE s.shipType.shipTypeId = :typeId AND " + MANAGED_SHIP)
+    @Query("SELECT s FROM Ship s WHERE s.shipType.shipTypeId = :typeId AND s.archivedAt IS NULL AND " + MANAGED_SHIP)
     Page<Ship> findManagedShipsByType(@Param("typeId") UUID typeId, @Param("user") UUID user,
             Pageable pageable);
 
@@ -74,7 +78,7 @@ public interface ShipRepository extends JpaRepository<Ship, UUID> {
 
     String TYPE_COUNTS = """
             SELECT s.shipType.shipTypeId AS typeId, count(s) AS shipCount FROM Ship s
-            WHERE s.shipType.shipTypeId IN :ids
+            WHERE s.shipType.shipTypeId IN :ids AND s.archivedAt IS NULL
             """;
 
     @Query(TYPE_COUNTS + " GROUP BY s.shipType.shipTypeId")
@@ -96,7 +100,7 @@ public interface ShipRepository extends JpaRepository<Ship, UUID> {
 
     @Query("""
             SELECT s FROM Ship s
-            WHERE s.status IN ('READY', 'IN_SERVICE') AND s.totalCapacity >= :passengers
+            WHERE s.archivedAt IS NULL AND s.status IN ('READY', 'IN_SERVICE') AND s.totalCapacity >= :passengers
               AND EXISTS (SELECT d.deckId FROM Deck d WHERE d.ship = s)
               AND EXISTS (SELECT c.cabinId FROM Cabin c WHERE c.ship = s)
               AND NOT EXISTS (SELECT c.cruiseId FROM Cruise c WHERE c.ship = s

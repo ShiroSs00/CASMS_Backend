@@ -20,6 +20,10 @@ import java.util.UUID;
 
 @Repository
 public interface CabinRepository extends JpaRepository<Cabin, UUID> {
+    @Override
+    @Query("SELECT c FROM Cabin c WHERE c.ship.archivedAt IS NULL")
+    Page<Cabin> findAll(Pageable pageable);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select c from Cabin c where c.cabinId = :cabinId")
     Optional<Cabin> findByIdForUpdate(@Param("cabinId") UUID cabinId);
@@ -31,7 +35,7 @@ public interface CabinRepository extends JpaRepository<Cabin, UUID> {
     Page<Cabin> findByDeckDeckId(UUID deckId, Pageable pageable);
 
     @Query("""
-            SELECT b FROM Cabin b WHERE EXISTS (SELECT crew.cruiseStaffId FROM CruiseStaff crew
+            SELECT b FROM Cabin b WHERE b.ship.archivedAt IS NULL AND EXISTS (SELECT crew.cruiseStaffId FROM CruiseStaff crew
                 WHERE crew.cruise.ship=b.ship AND crew.user.userId=:user AND crew.status='ACTIVE'
                 AND crew.roleInCruise='SHIP_MANAGER' AND crew.cruise.status NOT IN ('CANCELLED','COMPLETED'))
             """)

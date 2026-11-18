@@ -42,6 +42,7 @@ class InternationalCruisePaymentServiceTest {
     @Mock private OnboardTransactionRepository onboardTransactionRepository;
     @Mock private RegisteredPaymentMethodRepository registeredPaymentMethodRepository;
     @Mock private PaymentRepository paymentRepository;
+    @Mock private RefundRepository refundRepository;
     @Mock private PaymentAttemptRepository paymentAttemptRepository;
     @Mock private PaymentWebhookEventRepository paymentWebhookEventRepository;
     @Mock private OfflineSyncLogRepository offlineSyncLogRepository;
@@ -88,6 +89,7 @@ class InternationalCruisePaymentServiceTest {
                 onboardTransactionRepository,
                 registeredPaymentMethodRepository,
                 paymentRepository,
+                refundRepository,
                 paymentAttemptRepository,
                 paymentWebhookEventRepository,
                 offlineSyncLogRepository,

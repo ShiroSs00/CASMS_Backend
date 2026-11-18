@@ -1765,6 +1765,172 @@ class ShipModelImportPostgresIntegrationTest {
     }
 
     @Test
+    void patchLocksTypedDesignAndArchivePreservesProvisioningAndStructure() throws Exception {
+        String admin = token(Role.ADMIN), manager = token(Role.SHIP_MANAGER), other = token(Role.SHIP_MANAGER);
+        String key = uniqueKey("archive-draft");
+        upload(key, "v1", smallBundle(key, "v1", "OCEAN_VIEW", "ARCH-01", true), admin);
+        String version = storedVersions.get(key + "|v1");
+        var design = mapper.writeValueAsBytes(Map.of("modelKey", key, "assetVersion", version));
+        MvcResult created = mockMvc.perform(post("/ship-types/from-stored").header("Authorization", "Bearer " + admin)
+                        .contentType(MediaType.APPLICATION_JSON).content(design))
+                .andExpect(status().isCreated()).andReturn();
+        UUID type = UUID.fromString(mapper.readTree(created.getResponse().getContentAsByteArray())
+                .path("data").path("shipTypeId").asText());
+        testTypeIds.add(type);
+        UUID requestKey = UUID.randomUUID();
+        String name = key + " first";
+        UUID first = provisionedShipId(type, manager, requestKey,
+                mapper.writeValueAsBytes(Map.of("shipName", name)), name);
+        testShipIds.add(first);
+        UUID second = createTypedShip(type, key + " second", manager, Map.of());
+        UUID managerId = ships.findById(first).orElseThrow().getCreatedByShipManagerId();
+        long deckCount = decks.countByShipShipId(first);
+        long cabinCount = cabins.countByShipShipId(first);
+        UUID model = models.findByShipShipIdOrderByCreatedAtDesc(first).getFirst().getShipModelId();
+        assertTrue(deckCount > 0 && cabinCount > 0);
+
+        for (Map<String, Object> body : List.<Map<String, Object>>of(Map.of("origin", "CA"), Map.of("productionYear", 1990))) {
+            mockMvc.perform(patch("/ships/{id}", first).header("Authorization", "Bearer " + admin)
+                            .contentType(MediaType.APPLICATION_JSON).content(mapper.writeValueAsBytes(body)))
+                    .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("SHIP_TYPE_DESIGN_LOCKED"));
+        }
+        Ship rejected = ships.findById(first).orElseThrow();
+        assertNull(rejected.getOrigin());
+        assertNull(rejected.getProductionYear());
+        assertEquals(version, rejected.getDesignAssetVersion());
+        mockMvc.perform(get("/ships/{id}", first).header("Authorization", "Bearer " + manager))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.designReference.assetVersion").value(version));
+        mockMvc.perform(patch("/ships/{id}", first).header("Authorization", "Bearer " + admin)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsBytes(Map.of("shipName", name, "commissionDate", "2000-01-01"))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.commissionDate").value("2000-01-01"));
+        Ship legacy = createShip(8);
+        mockMvc.perform(patch("/ships/{id}", legacy.getShipId()).header("Authorization", "Bearer " + admin)
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"origin\":\"CA\",\"productionYear\":1990}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.origin").value("CA"))
+                .andExpect(jsonPath("$.data.productionYear").value(1990));
+
+        for (String outsider : List.of(admin, other, token(Role.CRUISE_MANAGER))) {
+            mockMvc.perform(post("/ships/{id}/archive", first).header("Authorization", "Bearer " + outsider))
+                    .andExpect(status().isForbidden());
+        }
+        mockMvc.perform(get("/ships").param("archived", "true").header("Authorization", "Bearer " + admin))
+                .andExpect(status().isForbidden());
+        jdbc.update("UPDATE \"Ship\" SET status='IN_SERVICE' WHERE ship_id=?", second);
+        mockMvc.perform(post("/ships/{id}/archive", second).header("Authorization", "Bearer " + manager))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.details.blockers[0]").value("NOT_DRAFT"));
+        jdbc.update("UPDATE \"Ship\" SET status='DRAFT' WHERE ship_id=?", second);
+
+        var service = new com.casms.servicepackage.entity.Service();
+        service.setServiceCode("IT-" + UUID.randomUUID());
+        service.setServiceName("Archive dependency");
+        service.setServiceType("DINING");
+        service.setStatus(com.casms.servicepackage.enums.ServiceStatus.ACTIVE);
+        UUID serviceId = catalogueServices.saveAndFlush(service).getServiceId();
+        testServiceIds.add(serviceId);
+        UUID deck = decks.findByShipShipIdAndDeckNumber(second, 1).orElseThrow().getDeckId();
+        jdbc.update("""
+                INSERT INTO "DeckServiceAssignment" (assignment_id,deck_id,service_id,created_at)
+                VALUES (gen_random_uuid(),?,?,now())
+                """, deck, serviceId);
+        mockMvc.perform(post("/ships/{id}/archive", second).header("Authorization", "Bearer " + manager))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.details.blockers[0]").value("SERVICE_ASSIGNMENT"));
+
+        mockMvc.perform(get("/ships/{id}/archive-eligibility", first).header("Authorization", "Bearer " + manager))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.eligible").value(true));
+        mockMvc.perform(post("/ships/{id}/archive", first).header("Authorization", "Bearer " + manager))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.archivedBy").value(managerId.toString()));
+
+        // The production database guards forbid deleting archived history. This fixture lives only in the test DB.
+        testShipIds.remove(first);
+        testTypeIds.remove(type);
+        uploadedBundles.remove(key + "|" + version);
+        testUserIds.remove(managerId);
+
+        var timestamp = ships.findById(first).orElseThrow().getArchivedAt();
+        mockMvc.perform(post("/ships/{id}/archive", first).header("Authorization", "Bearer " + manager))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.archivedAt").value(timestamp.toString()));
+        mockMvc.perform(get("/ship-types/{id}/ships/provisioning/{key}", type, requestKey)
+                        .header("Authorization", "Bearer " + manager))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.shipId").value(first.toString()))
+                .andExpect(jsonPath("$.data.archivedAt").exists());
+        mockMvc.perform(get("/ships").param("q", key).header("Authorization", "Bearer " + manager))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.totalElements").value(1))
+                .andExpect(jsonPath("$.data.content[0].shipId").value(second.toString()));
+        mockMvc.perform(get("/ships").param("q", key).param("archived", "true").header("Authorization", "Bearer " + manager))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.totalElements").value(1))
+                .andExpect(jsonPath("$.data.content[0].shipId").value(first.toString()));
+        assertEquals(deckCount, decks.countByShipShipId(first));
+        assertEquals(cabinCount, cabins.countByShipShipId(first));
+        assertEquals(version, models.findById(model).orElseThrow().getAssetVersion());
+        assertNotNull(ships.findById(second).orElseThrow().getShipType());
+        assertNull(ships.findById(second).orElseThrow().getArchivedAt());
+        jdbc.update("UPDATE \"Ship\" SET status='READY' WHERE ship_id=?", second);
+        var candidates = ships.findEligibleForCruise(1, java.time.Instant.now(),
+                java.time.Instant.now().plusSeconds(3600)).stream().map(Ship::getShipId).toList();
+        assertTrue(candidates.contains(second));
+        assertFalse(candidates.contains(first));
+        mockMvc.perform(delete("/ships/{id}/unused", first).header("Authorization", "Bearer " + admin))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("SHIP_ARCHIVED"));
+        UUID cruise = insertArchiveFixtureCruise();
+        try {
+            assertThrows(org.springframework.dao.DataIntegrityViolationException.class,
+                    () -> jdbc.update("UPDATE \"Cruise\" SET ship_id=? WHERE cruise_id=?", first, cruise));
+        } finally {
+            jdbc.update("DELETE FROM \"Cruise\" WHERE cruise_id=?", cruise);
+        }
+    }
+
+    @Test
+    void archiveWaitsForCruiseAssignmentAndRemembersItsHistoryAfterUnassignment() throws Exception {
+        String manager = token(Role.SHIP_MANAGER);
+        UUID actor = testUserIds.getLast();
+        Ship ship = createShip(8);
+        UUID id = ship.getShipId();
+        jdbc.update("UPDATE \"Ship\" SET status='DRAFT', created_by_ship_manager_id=? WHERE ship_id=?", actor, id);
+        UUID cruise = insertArchiveFixtureCruise();
+        try {
+            try (ExecutorService executor = Executors.newSingleThreadExecutor();
+                    var connection = Objects.requireNonNull(jdbc.getDataSource()).getConnection()) {
+                connection.setAutoCommit(false);
+                try (var assign = connection.prepareStatement(
+                        "UPDATE \"Cruise\" SET ship_id=?, status='CANCELLED' WHERE cruise_id=?")) {
+                    assign.setObject(1, id);
+                    assign.setObject(2, cruise);
+                    assertEquals(1, assign.executeUpdate());
+                }
+                var archive = executor.submit(() -> mockMvc.perform(post("/ships/{id}/archive", id)
+                        .header("Authorization", "Bearer " + manager)).andReturn());
+                assertThrows(java.util.concurrent.TimeoutException.class,
+                        () -> archive.get(200, java.util.concurrent.TimeUnit.MILLISECONDS));
+                connection.commit();
+                var result = archive.get(10, java.util.concurrent.TimeUnit.SECONDS);
+                assertEquals(409, result.getResponse().getStatus());
+                assertEquals("CRUISE_HISTORY", mapper.readTree(result.getResponse().getContentAsByteArray())
+                        .path("details").path("blockers").get(0).asText());
+            }
+            jdbc.update("UPDATE \"Cruise\" SET ship_id=NULL WHERE cruise_id=?", cruise);
+            mockMvc.perform(get("/ships/{id}/archive-eligibility", id).header("Authorization", "Bearer " + manager))
+                    .andExpect(status().isOk()).andExpect(jsonPath("$.data.blockers[0]").value("CRUISE_HISTORY"));
+            assertNull(ships.findById(id).orElseThrow().getArchivedAt());
+        } finally {
+            jdbc.update("DELETE FROM \"Cruise\" WHERE cruise_id=?", cruise);
+            jdbc.update("DELETE FROM \"ShipCruiseUsage\" WHERE ship_id=?", id);
+        }
+    }
+
+    private UUID insertArchiveFixtureCruise() {
+        UUID id = UUID.randomUUID();
+        assertEquals(1, jdbc.update("""
+                INSERT INTO "Cruise" (cruise_id,cruise_code,cruise_name,cruise_type,departure_datetime,return_datetime,
+                                      departure_port_id,return_port_id,status,created_at,updated_at)
+                SELECT ?,?,'Archive fixture','ONE_DAY',now(),now()+interval '1 hour',port_id,port_id,'DRAFT',now(),now()
+                FROM "Port" LIMIT 1
+                """, id, "ARC-" + id.toString().substring(0, 8)));
+        return id;
+    }
+
+    @Test
     void previewReportsInvalidManufacturingFieldsAndRefusesToCreateType() throws Exception {
         String admin = token(Role.ADMIN);
         String key = uniqueKey("bad-metadata");
