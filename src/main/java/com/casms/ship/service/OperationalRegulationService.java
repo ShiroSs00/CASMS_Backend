@@ -1,5 +1,7 @@
 package com.casms.ship.service;
 
+import com.casms.audit.AuditLog;
+import com.casms.audit.AuditRepository;
 import com.casms.common.exception.BusinessException;
 import com.casms.common.service.BusinessCodeGenerator;
 import com.casms.ship.dto.request.OperationalRegulationRequest;
@@ -8,6 +10,8 @@ import com.casms.ship.dto.response.RegulationConflictComparedItem;
 import com.casms.ship.dto.response.RegulationConflictResponse;
 import com.casms.ship.entity.OperationalRegulation;
 import com.casms.ship.enums.RegulationStatus;
+import com.casms.ship.enums.RegulationUnit;
+import com.casms.ship.enums.RegulationScope;
 import com.casms.ship.repository.CruiseRegulationRepository;
 import com.casms.ship.repository.OperationalRegulationRepository;
 import com.casms.ship.repository.ShipRegulationRepository;
@@ -23,6 +27,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
@@ -37,6 +42,7 @@ public class OperationalRegulationService {
     private final ShipRegulationRepository shipRegulationRepository;
     private final CruiseRegulationRepository cruiseRegulationRepository;
     private final BusinessCodeGenerator businessCodeGenerator;
+    private final AuditRepository auditRepository;
 
     // ==================== CREATE ====================
 
@@ -235,7 +241,8 @@ public class OperationalRegulationService {
                         .toList();
 
         boolean hasConflictingValue =
-                candidates.stream().anyMatch(c -> !Objects.equals(c.getValue(), target.getValue()));
+                candidates.stream().anyMatch(c -> !equivalentValue(c.getValue(), c.getUnit(),
+                        target.getValue(), target.getUnit()));
 
         if (hasConflictingValue) {
             return RegulationConflictResponse.builder()
@@ -256,6 +263,59 @@ public class OperationalRegulationService {
                 .message("Có các khoảng hiệu lực cần được rà soát.")
                 .comparedWith(comparedItems)
                 .build();
+    }
+
+    public record ComplianceSummary(RegulationScope scope, long active, long upcoming, long expired) {}
+
+    @Transactional(readOnly = true)
+    public List<ComplianceSummary> complianceSummary(Instant at, RegulationScope selectedScope) {
+        var records = regulationRepository.findAll();
+        return java.util.Arrays.stream(RegulationScope.values())
+                .filter(scope -> selectedScope == null || scope == selectedScope)
+                .map(scope -> {
+            var scoped = records.stream().filter(regulation -> regulation.getScope() == scope).toList();
+            long active = scoped.stream().filter(regulation -> regulation.getStatus() == RegulationStatus.ACTIVE
+                    && !regulation.getEffectiveFrom().isAfter(at)
+                    && (regulation.getEffectiveTo() == null || !regulation.getEffectiveTo().isBefore(at))).count();
+            long upcoming = scoped.stream().filter(regulation -> regulation.getStatus() == RegulationStatus.DRAFT
+                    && regulation.getEffectiveFrom().isAfter(at)).count();
+            long expired = scoped.stream().filter(regulation -> regulation.getStatus() == RegulationStatus.EXPIRED
+                    || regulation.getStatus() == RegulationStatus.ACTIVE && regulation.getEffectiveTo() != null
+                    && regulation.getEffectiveTo().isBefore(at)).count();
+            return new ComplianceSummary(scope, active, upcoming, expired);
+        }).toList();
+    }
+
+    public String exportComplianceSummary(Instant at, RegulationScope scope, UUID actorId) {
+        var csv = new StringBuilder("scope,active,upcoming,expired\r\n");
+        for (var row : complianceSummary(at, scope)) {
+            csv.append(row.scope()).append(',').append(row.active()).append(',').append(row.upcoming())
+                    .append(',').append(row.expired()).append("\r\n");
+        }
+        var entry = new AuditLog();
+        entry.setActorUserId(actorId);
+        entry.setAction("REGULATION_COMPLIANCE_EXPORT");
+        entry.setEntityType("OperationalRegulation");
+        entry.setResult("SUCCESS");
+        entry.setDetail("Effective at " + at + ", scope " + (scope == null ? "ALL" : scope.name()));
+        auditRepository.saveAndFlush(entry);
+        return csv.toString();
+    }
+
+    static boolean equivalentValue(String first, RegulationUnit firstUnit, String second, RegulationUnit secondUnit) {
+        boolean firstDistance = firstUnit == RegulationUnit.KM || firstUnit == RegulationUnit.METER;
+        boolean secondDistance = secondUnit == RegulationUnit.KM || secondUnit == RegulationUnit.METER;
+        if (firstUnit != secondUnit && !(firstDistance && secondDistance)) return false;
+        if (first == null || second == null) return Objects.equals(first, second) && firstUnit == secondUnit;
+        try {
+            var left = new BigDecimal(first.strip());
+            var right = new BigDecimal(second.strip());
+            if (firstUnit == RegulationUnit.KM) left = left.scaleByPowerOfTen(3);
+            if (secondUnit == RegulationUnit.KM) right = right.scaleByPowerOfTen(3);
+            return left.compareTo(right) == 0;
+        } catch (NumberFormatException | ArithmeticException ignored) {
+            return firstUnit == secondUnit && first.strip().equals(second.strip());
+        }
     }
 
     // ==================== PRIVATE HELPERS ====================

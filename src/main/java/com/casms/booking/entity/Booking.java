@@ -70,6 +70,10 @@ public class Booking {
     @Column(name = "pricing_policy_version", length = 50)
     private String pricingPolicyVersion;
 
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "commercial_terms_snapshot", columnDefinition = "jsonb", updatable = false)
+    private String commercialTermsSnapshot;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 

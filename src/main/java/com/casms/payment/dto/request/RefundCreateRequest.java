@@ -38,8 +38,8 @@ public class RefundCreateRequest {
     @DecimalMin(value = "0.01", message = "Requested amount must be strictly positive")
     private BigDecimal requestedAmount;
 
-    @Schema(description = "Đơn vị tiền tệ (mặc định USD)", example = "USD")
-    private String currency = "USD";
+    @Schema(description = "Đơn vị tiền tệ của giao dịch gốc nếu được gửi", example = "USD")
+    private String currency;
 
     @Schema(
             description = "Khóa chống trùng lặp Idempotency",

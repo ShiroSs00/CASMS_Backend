@@ -36,7 +36,7 @@ public class RefundController {
     private final RefundService refundService;
 
     @Operation(summary = "Tạo yêu cầu hoàn tiền cho giao dịch thanh toán gốc")
-    @PreAuthorize("hasAnyAuthority('PAYMENT_REFUND', 'PAYMENT_PROCESS')")
+    @PreAuthorize("hasRole('FINANCE_OFFICER') and hasAnyAuthority('PAYMENT_REFUND', 'PAYMENT_PROCESS')")
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<RefundResponse> createRefund(
@@ -46,7 +46,7 @@ public class RefundController {
     }
 
     @Operation(summary = "Phê duyệt yêu cầu hoàn tiền (dành cho Kế toán / Quản lý)")
-    @PreAuthorize("hasAuthority('PAYMENT_REFUND')")
+    @PreAuthorize("hasRole('FINANCE_OFFICER') and hasAuthority('PAYMENT_REFUND')")
     @PostMapping("/{refundId}/approve")
     public ApiResponse<RefundResponse> approveRefund(
             @Parameter(description = "ID yêu cầu hoàn tiền", required = true) @PathVariable
@@ -62,7 +62,7 @@ public class RefundController {
     }
 
     @Operation(summary = "Xác nhận hoàn tất chuyển tiền hoàn trả (gắn mã biên lai/giao dịch)")
-    @PreAuthorize("hasAuthority('PAYMENT_REFUND')")
+    @PreAuthorize("hasRole('FINANCE_OFFICER') and hasAuthority('PAYMENT_REFUND')")
     @PostMapping("/{refundId}/complete")
     public ApiResponse<RefundResponse> completeRefund(
             @Parameter(description = "ID yêu cầu hoàn tiền", required = true) @PathVariable
@@ -73,18 +73,20 @@ public class RefundController {
     }
 
     @Operation(summary = "Từ chối yêu cầu hoàn tiền")
-    @PreAuthorize("hasAuthority('PAYMENT_REFUND')")
+    @PreAuthorize("hasRole('FINANCE_OFFICER') and hasAuthority('PAYMENT_REFUND')")
     @PostMapping("/{refundId}/reject")
     public ApiResponse<RefundResponse> rejectRefund(
             @Parameter(description = "ID yêu cầu hoàn tiền", required = true) @PathVariable
                     UUID refundId,
-            @RequestParam(required = false, defaultValue = "Rejected by finance authority")
-                    String reason) {
-        return ApiResponse.success("Refund rejected", refundService.rejectRefund(refundId, reason));
+            @RequestParam String reason,
+            Authentication auth) {
+        UUID actorId = auth != null && auth.getPrincipal() instanceof CasmsPrincipal principal
+                ? principal.getUserId() : null;
+        return ApiResponse.success("Refund rejected", refundService.rejectRefund(refundId, reason, actorId));
     }
 
     @Operation(summary = "Xem chi tiết yêu cầu hoàn tiền")
-    @PreAuthorize("hasAnyAuthority('PAYMENT_READ', 'PAYMENT_REFUND')")
+    @PreAuthorize("hasRole('FINANCE_OFFICER') and hasAnyAuthority('PAYMENT_READ', 'PAYMENT_REFUND')")
     @GetMapping("/{refundId}")
     public ApiResponse<RefundResponse> getRefund(
             @Parameter(description = "ID yêu cầu hoàn tiền", required = true) @PathVariable
@@ -93,7 +95,7 @@ public class RefundController {
     }
 
     @Operation(summary = "Lấy danh sách yêu cầu hoàn tiền theo đơn đặt tour")
-    @PreAuthorize("hasAnyAuthority('PAYMENT_READ', 'PAYMENT_REFUND')")
+    @PreAuthorize("hasRole('FINANCE_OFFICER') and hasAnyAuthority('PAYMENT_READ', 'PAYMENT_REFUND')")
     @GetMapping("/booking/{bookingId}")
     public ApiResponse<List<RefundResponse>> getRefundsForBooking(
             @Parameter(description = "ID đơn đặt tour", required = true) @PathVariable
@@ -102,7 +104,7 @@ public class RefundController {
     }
 
     @Operation(summary = "Lấy danh sách yêu cầu hoàn tiền theo giao dịch thanh toán")
-    @PreAuthorize("hasAnyAuthority('PAYMENT_READ', 'PAYMENT_REFUND')")
+    @PreAuthorize("hasRole('FINANCE_OFFICER') and hasAnyAuthority('PAYMENT_READ', 'PAYMENT_REFUND')")
     @GetMapping("/payment/{paymentId}")
     public ApiResponse<List<RefundResponse>> getRefundsForPayment(
             @Parameter(description = "ID giao dịch thanh toán", required = true) @PathVariable

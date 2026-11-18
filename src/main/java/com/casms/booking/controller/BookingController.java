@@ -27,6 +27,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
 import org.springframework.data.domain.Page;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -48,6 +49,9 @@ public class BookingController {
 
     private final BookingService bookingService;
     private final IdempotencyService idempotencyService;
+
+    @Value("${casms.booking.cancellation-workflow.enabled:false}")
+    private boolean cancellationWorkflowEnabled;
 
     @Operation(
             summary = "Tra cứu phòng trống để tự chọn (Công khai / Khách vãng lai)",
@@ -322,6 +326,10 @@ public class BookingController {
                     UUID bookingId,
             @RequestBody @Valid BookingCancelRequest request,
             @AuthenticationPrincipal CasmsPrincipal principal) {
+        if (cancellationWorkflowEnabled) {
+            throw new BusinessException(HttpStatus.CONFLICT, "CANCELLATION_CASE_REQUIRED",
+                    "Gửi yêu cầu hủy để bộ phận tài chính xem xét trước.");
+        }
         return ApiResponse.success(bookingService.cancel(bookingId, request, principal));
     }
 
