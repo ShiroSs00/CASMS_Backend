@@ -39,3 +39,9 @@ Scheduling and staff assignment occur after catalog creation. Responsible user m
 ## Staff scheduling constraint
 
 A schedule edit checks active staff duties in the database transaction. An overlapping shift is rejected with 409 STAFF_WORK_TIME_CONFLICT. See [work scheduling](../ITINERARY-PROGRAM-FLOWS.md#dịch-vụ-và-ca-hoạt-động).
+
+### Chuẩn bị chương trình trước khi gán POS
+
+Khi quản lý dịch vụ và hoạt động đã nhận việc và yêu cầu staffing chờ ASM, có thể lập ca cho dịch vụ đang hoạt động trước khi gán tầng tàu. Giao dịch dùng If-Match để kiểm tra revision và khóa chuyến trước khi lưu.
+
+[Luồng bàn giao](../SHIP-STAFFING-HANDOFF.md).

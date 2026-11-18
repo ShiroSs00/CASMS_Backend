@@ -15,3 +15,5 @@ When changing an API, update the inventory, affected route files and end-to-end 
 ## Shared security and error flow
 
 See [Bearer authentication](BEARER-AUTHENTICATION.md) for JWT checks, route authorization and error responses.
+
+The [ship and staffing handoff](SHIP-STAFFING-HANDOFF.md) describes the request queues, mutable coverage checks, in-app notification and approval history. Route addenda describe the effect on staffing, readiness, preparation and area assignment.

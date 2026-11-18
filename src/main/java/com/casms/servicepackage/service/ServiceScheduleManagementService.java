@@ -4,6 +4,7 @@ import com.casms.activity.enums.SupplierStatus;
 import com.casms.activity.enums.SupplierVerificationStatus;
 import com.casms.activity.repository.SupplierRepository;
 import com.casms.servicepackage.entity.ServiceSchedule;
+import com.casms.servicepackage.enums.ServiceStatus;
 import com.casms.servicepackage.repository.ServiceRepository;
 import com.casms.servicepackage.repository.ServiceScheduleRepository;
 import com.casms.ship.enums.CruiseStopStatus;
@@ -42,6 +43,12 @@ public class ServiceScheduleManagementService {
             Instant endsAt,
             String location,
             Integer capacity) {
+        return create(serviceId, cruiseId, cruiseStopId, supplierId, startsAt, endsAt, location, capacity, false);
+    }
+
+    public ServiceSchedule create(
+            UUID serviceId, UUID cruiseId, UUID cruiseStopId, UUID supplierId, Instant startsAt,
+            Instant endsAt, String location, Integer capacity, boolean stagedProgram) {
         return configure(
                 new ServiceSchedule(),
                 serviceId,
@@ -51,7 +58,8 @@ public class ServiceScheduleManagementService {
                 startsAt,
                 endsAt,
                 location,
-                capacity);
+                capacity,
+                stagedProgram);
     }
 
     public ServiceSchedule update(
@@ -64,6 +72,12 @@ public class ServiceScheduleManagementService {
             String location,
             Integer capacity,
             UUID id) {
+        return update(serviceId, cruiseId, cruiseStopId, supplierId, startsAt, endsAt, location, capacity, id, false);
+    }
+
+    public ServiceSchedule update(
+            UUID serviceId, UUID cruiseId, UUID cruiseStopId, UUID supplierId, Instant startsAt,
+            Instant endsAt, String location, Integer capacity, UUID id, boolean stagedProgram) {
         var schedule = editable(id, cruiseId);
         return configure(
                 schedule,
@@ -74,7 +88,8 @@ public class ServiceScheduleManagementService {
                 startsAt,
                 endsAt,
                 location,
-                capacity);
+                capacity,
+                stagedProgram);
     }
 
     public void remove(UUID id, UUID cruiseId) {
@@ -110,7 +125,8 @@ public class ServiceScheduleManagementService {
             Instant startsAt,
             Instant endsAt,
             String location,
-            Integer capacity) {
+            Integer capacity,
+            boolean stagedProgram) {
         if (startsAt == null || endsAt == null || !endsAt.isAfter(startsAt))
             throw new IllegalArgumentException("Schedule end time must be after start time");
         if (location == null || location.isBlank() || location.length() > 250)
@@ -159,7 +175,12 @@ public class ServiceScheduleManagementService {
         if (cruise == null)
             throw new IllegalArgumentException(
                     "A cruise or cruise stop is required to assign a service");
-        shipServices.requireService(cruise.getCruiseId(), serviceId);
+        if (stagedProgram) {
+            if (cruise.getShip() == null || service.getStatus() != ServiceStatus.ACTIVE)
+                throw new IllegalArgumentException("Staged programs require an assigned ship and an active service");
+        } else {
+            shipServices.requireService(cruise.getCruiseId(), serviceId);
+        }
         if (supplier != null
                 && (supplier.getStatus() != SupplierStatus.ACTIVE
                         || supplier.getVerificationStatus() != SupplierVerificationStatus.VERIFIED))

@@ -62,6 +62,7 @@ public class PosAccessService {
 
     public PosDtos.AreaStaff assignStaff(
             UUID ship, UUID area, UUID userId, PosDtos.AreaStaffInput input, CasmsPrincipal actor) {
+        lockCruise(input.cruiseId(), ship);
         area(ship, area, true, input.enabled());
         var user =
                 users.findById(userId)
@@ -119,6 +120,7 @@ public class PosAccessService {
     }
 
     public void unassignStaff(UUID ship, UUID area, UUID userId, UUID cruiseId) {
+        lockCruise(cruiseId, ship);
         area(ship, area, true, false);
         var ids =
                 jdbc.queryForList(
@@ -136,6 +138,13 @@ public class PosAccessService {
                     id);
             revokeAssignment(id);
         }
+    }
+
+    private void lockCruise(UUID cruiseId, UUID shipId) {
+        // Staffing sign-off and membership edits lock the cruise before crew or area assignments.
+        jdbc.queryForList("""
+                SELECT cruise_id FROM "Cruise" WHERE cruise_id=? AND ship_id=? FOR NO KEY UPDATE
+                """, UUID.class, cruiseId, shipId);
     }
 
     private void revokeAssignment(UUID id) {
@@ -160,6 +169,38 @@ public class PosAccessService {
     public PosDtos.TerminalArea linkArea(UUID terminal, UUID area, boolean enabled) {
         var d = device(terminal);
         area(d.shipId(), area, true, enabled);
+        return writeAreaLink(terminal, area, enabled);
+    }
+
+    public void ensureAreaLinkForPlacement(UUID terminal, UUID area) {
+        var d = device(terminal);
+        if (!d.enabled()) throw invalid("POS_TERMINAL_DISABLED", "Select an enabled POS terminal");
+        area(d.shipId(), area, true, true);
+        var existing = areaLinkEnabled(terminal, area);
+        if (existing.isEmpty()) {
+            int inserted = jdbc.update("""
+                    INSERT INTO "PosTerminalArea" (terminal_id,area_object_id,enabled) VALUES (?,?,true)
+                    ON CONFLICT (terminal_id,area_object_id) DO NOTHING
+                    """, terminal, area);
+            if (inserted == 1) {
+                revokeAreaSessions(terminal, area);
+                return;
+            }
+            existing = areaLinkEnabled(terminal, area);
+        }
+        if (!existing.orElse(false)) {
+            throw new BusinessException(HttpStatus.CONFLICT, "POS_AREA_LINK_DISABLED",
+                    "The POS-area link is disabled or no longer available");
+        }
+    }
+
+    private Optional<Boolean> areaLinkEnabled(UUID terminal, UUID area) {
+        return jdbc.queryForList("""
+                SELECT enabled FROM "PosTerminalArea" WHERE terminal_id=? AND area_object_id=?
+                """, Boolean.class, terminal, area).stream().findFirst();
+    }
+
+    private PosDtos.TerminalArea writeAreaLink(UUID terminal, UUID area, boolean enabled) {
         jdbc.update(
                 "INSERT INTO \"PosTerminalArea\" (terminal_id,area_object_id,enabled) VALUES"
                     + " (?,?,?) ON CONFLICT (terminal_id,area_object_id) DO UPDATE SET"
@@ -167,13 +208,17 @@ public class PosAccessService {
                 terminal,
                 area,
                 enabled);
+        revokeAreaSessions(terminal, area);
+        return new PosDtos.TerminalArea(terminal, area, enabled);
+    }
+
+    private void revokeAreaSessions(UUID terminal, UUID area) {
         jdbc.update(
                 "UPDATE \"PosSession\" SET revoked_at=now() WHERE terminal_id=? AND revoked_at IS"
                     + " NULL AND area_staff_assignment_id IN (SELECT assignment_id FROM"
                     + " \"AreaStaffAssignment\" WHERE area_object_id=?)",
                 terminal,
                 area);
-        return new PosDtos.TerminalArea(terminal, area, enabled);
     }
 
     public List<PosDtos.TerminalService> policies(UUID terminal, UUID area) {

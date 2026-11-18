@@ -39,3 +39,9 @@ Confirmed delays create in-app notifications for assigned active staff. Notifica
 ## HR assignment lifecycle
 
 Direct HR replacement notifications are visible in the recipient-owned notification list after the removal transaction commits. See [assignment lifecycle](../ITINERARY-PROGRAM-FLOWS.md#một-chuyến-đang-hiệu-lực-cho-mỗi-nhân-viên).
+
+### Thông báo bàn giao nhân sự
+
+Quyền NOTIFICATION_READ mặc định của quản lý chuyến áp dụng cho API này. Khi danh sách thông báo cá nhân được tải, hệ thống có thể trả bản ghi STAFFING_SENT_TO_HR của chính người dùng. Các thao tác đọc và xác nhận vẫn kiểm tra chủ sở hữu thông báo.
+
+[Luồng kiểm tra và bàn giao](../SHIP-STAFFING-HANDOFF.md).

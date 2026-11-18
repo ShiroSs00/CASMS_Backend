@@ -101,6 +101,7 @@ public class RolePermissionInitializer implements CommandLineRunner {
                         Permission.CRUISE_STATUS_CHANGE,
                         Permission.CRUISE_PREPARATION_READ,
                         Permission.CRUISE_PREPARATION_SUBMIT,
+                        Permission.NOTIFICATION_READ,
                         Permission.ITINERARY_CREATE,
                         Permission.ITINERARY_READ,
                         Permission.ITINERARY_UPDATE_DRAFT,

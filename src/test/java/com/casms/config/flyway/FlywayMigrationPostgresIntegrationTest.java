@@ -45,7 +45,7 @@ class FlywayMigrationPostgresIntegrationTest {
     private static final String[] PROD_LOCATIONS = {
         "classpath:db/migration", "classpath:db/prod-migration"
     };
-    private static final String LATEST = "133";
+    private static final String LATEST = "135";
 
     private final List<String> createdDatabases = new ArrayList<>();
 
@@ -165,6 +165,21 @@ class FlywayMigrationPostgresIntegrationTest {
                             c,
                             "SELECT count(*) FROM \"TripPlanEntry\" WHERE category ="
                                 + " 'WORKSHOPS_CLASSES'"));
+            assertEquals(4L, count(c, """
+                    SELECT count(*) FROM information_schema.columns
+                    WHERE table_schema=current_schema() AND table_name='StaffingShipInspection'
+                    AND column_name IN ('cruise_id','ship_model_id','pos_covered','fingerprint')
+                    """));
+            assertEquals(3L, count(c, """
+                    SELECT count(*) FROM information_schema.columns
+                    WHERE table_schema=current_schema() AND table_name='StaffingRequest'
+                    AND column_name IN ('ship_review_workflow','ship_review_fingerprint','hr_approved_by')
+                    """));
+            assertEquals(4L, count(c, """
+                    SELECT count(*) FROM information_schema.columns
+                    WHERE table_schema=current_schema() AND table_name='StaffingProgramInspection'
+                    AND column_name IN ('cruise_id','asm_completed','services_covered','fingerprint')
+                    """));
             assertLineageConstraintsValidated(c);
         }
     }

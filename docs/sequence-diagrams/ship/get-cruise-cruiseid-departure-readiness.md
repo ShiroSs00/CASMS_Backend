@@ -41,3 +41,7 @@ sequenceDiagram
 ```
 
 Delay eligibility reuses this gate and adds lifecycle, departure evidence, clock and shifted schedule checks. See [departure and delay flows](../CRUISE-DEPARTURE-DELAY.md).
+
+### Kiểm tra tàu và bố trí nhân sự
+
+Khi nhánh xử lý gọi kiểm tra chuẩn bị vận hành, yêu cầu nhân sự mới phải được vận hành duyệt và vẫn đáp ứng điều kiện về tàu, POS, định mức dịch vụ, khu vực và hoạt động. Kết quả còn thiếu được phản ánh qua kiểm tra staffing của bước hiện tại. [Luồng kiểm tra và bàn giao](../SHIP-STAFFING-HANDOFF.md).

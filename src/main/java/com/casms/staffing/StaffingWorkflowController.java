@@ -3,10 +3,12 @@ package com.casms.staffing;
 import com.casms.common.response.ApiResponse;
 import com.casms.security.principal.CasmsPrincipal;
 import lombok.RequiredArgsConstructor;
+import jakarta.validation.Valid;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -44,6 +46,28 @@ public class StaffingWorkflowController {
     public ApiResponse<StaffingWorkflowService.Snapshot> detail(
             @PathVariable UUID requestId, @AuthenticationPrincipal CasmsPrincipal actor) {
         return ApiResponse.success(workflow.detail(requestId, actor));
+    }
+
+    @GetMapping("/staffing-requests/{requestId}/review-details")
+    public ApiResponse<StaffingWorkflowService.ReviewDetails> reviewDetails(
+            @PathVariable UUID requestId, @AuthenticationPrincipal CasmsPrincipal actor) {
+        return ApiResponse.success(workflow.reviewDetails(requestId, actor));
+    }
+
+    @PutMapping("/staffing-requests/{requestId}/service-placements/{serviceId}")
+    public ApiResponse<StaffingWorkflowService.ReviewDetails> placeService(
+            @PathVariable UUID requestId, @PathVariable UUID serviceId,
+            @Valid @RequestBody StaffingWorkflowService.ServicePlacementInput input,
+            @AuthenticationPrincipal CasmsPrincipal actor) {
+        return ApiResponse.success(workflow.placeService(requestId, serviceId, input, actor));
+    }
+
+    @PutMapping("/staffing-requests/{requestId}/area-pos/{areaId}")
+    public ApiResponse<StaffingWorkflowService.ReviewDetails> placeAreaPos(
+            @PathVariable UUID requestId, @PathVariable UUID areaId,
+            @Valid @RequestBody StaffingWorkflowService.AreaPosInput input,
+            @AuthenticationPrincipal CasmsPrincipal actor) {
+        return ApiResponse.success(workflow.placeAreaPos(requestId, areaId, input, actor));
     }
 
     @PostMapping("/staffing-requests/{requestId}/{action}")

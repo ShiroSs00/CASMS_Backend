@@ -181,11 +181,11 @@ public class CruiseScopedProgramsController {
                                         "SELECT s.service_id AS id,s.service_name AS"
                                             + " name,s.requires_schedule AS scheduled FROM"
                                             + " \"Service\" s WHERE s.status='ACTIVE' AND"
-                                            + " EXISTS(SELECT 1 FROM \"DeckServiceAssignment\" a"
-                                            + " JOIN \"Deck\" d USING(deck_id) JOIN \"Cruise\" c ON"
-                                            + " c.ship_id=d.ship_id WHERE c.cruise_id=? AND"
-                                            + " a.service_id=s.service_id) ORDER BY s.service_name",
-                                        cruiseId),
+                                            + " ((? AND s.requires_schedule) OR EXISTS(SELECT 1"
+                                            + " FROM \"DeckServiceAssignment\" a JOIN \"Deck\" d USING(deck_id)"
+                                            + " JOIN \"Cruise\" c ON c.ship_id=d.ship_id WHERE c.cruise_id=? AND"
+                                            + " a.service_id=s.service_id)) ORDER BY s.service_name",
+                                        handoffs.hasPendingStaffingProgram(cruiseId), cruiseId),
                         "suppliers",
                                 jdbc.queryForList(
                                         "SELECT supplier_id AS id,supplier_name AS name FROM"
@@ -250,7 +250,8 @@ public class CruiseScopedProgramsController {
                         input.startsAt(),
                         input.endsAt(),
                         input.location(),
-                        input.capacity());
+                        input.capacity(),
+                        handoffs.hasPendingStaffingProgram(cruiseId));
         finish(cruiseId);
         return ApiResponse.success(
                 Map.of("id", saved.getServiceScheduleId(), "cruiseId", cruiseId));
@@ -274,7 +275,8 @@ public class CruiseScopedProgramsController {
                         input.endsAt(),
                         input.location(),
                         input.capacity(),
-                        id);
+                        id,
+                        handoffs.hasPendingStaffingProgram(cruiseId));
         finish(cruiseId);
         return ApiResponse.success(
                 Map.of("id", saved.getServiceScheduleId(), "cruiseId", cruiseId));

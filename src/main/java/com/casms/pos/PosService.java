@@ -75,6 +75,16 @@ public class PosService {
     public PosDtos.AreaService assign(
             UUID ship, UUID id, UUID service, PosDtos.AssignmentInput input) {
         var area = area(ship, id, true);
+        validateAreaServiceAssignment(area, service, input.permissions());
+        repository.assign(id, service, input);
+        return repository.assignments(id).stream()
+                .filter(a -> a.serviceId().equals(service))
+                .findFirst()
+                .orElseThrow();
+    }
+
+    private void validateAreaServiceAssignment(PosRepository.Area area, UUID service,
+                                               Set<PosPermission> permissions) {
         services.findById(service)
                 .orElseThrow(() -> new ResourceNotFoundException("Service", service));
         if (deckServices.findByDeckDeckIdAndServiceServiceId(area.deckId(), service).isEmpty())
@@ -82,13 +92,27 @@ public class PosService {
                     "SERVICE_NOT_ON_AREA_DECK", "Assign the service to this area's deck first");
         ResourceOperationService.validate(
                 PosPermission.ResourceType.SERVICE,
-                input.permissions(),
+                permissions,
                 operationPolicies.get(PosPermission.ResourceType.SERVICE, service).permissions());
-        repository.assign(id, service, input);
-        return repository.assignments(id).stream()
-                .filter(a -> a.serviceId().equals(service))
-                .findFirst()
-                .orElseThrow();
+    }
+
+    public void enableAreaServiceForPlacement(UUID ship, UUID areaId, UUID service) {
+        var area = area(ship, areaId, true);
+        var configured = configuredAreaService(areaId, service);
+        if (configured.isEmpty()) {
+            validateAreaServiceAssignment(area, service, Set.of(PosPermission.SERVICE_READ));
+            if (repository.insertAreaServiceForPlacement(areaId, service) == 1) return;
+            configured = configuredAreaService(areaId, service);
+        }
+        if (configured.isEmpty() || !configured.get().enabled()) {
+            throw new BusinessException(HttpStatus.CONFLICT, "POS_AREA_SERVICE_DISABLED",
+                    "The area-service link is disabled or no longer available");
+        }
+    }
+
+    private Optional<PosDtos.AreaService> configuredAreaService(UUID area, UUID service) {
+        return repository.assignments(area).stream()
+                .filter(assignment -> assignment.serviceId().equals(service)).findFirst();
     }
 
     public void unassign(UUID ship, UUID area, UUID service) {

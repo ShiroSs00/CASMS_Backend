@@ -161,6 +161,15 @@ public class PosRepository {
                 input.permissions() == null);
     }
 
+    int insertAreaServiceForPlacement(UUID area, UUID service) {
+        return jdbc.update("""
+                INSERT INTO "AreaServiceAssignment"
+                    (assignment_id,area_object_id,service_id,permissions,enabled,inherit_permissions)
+                VALUES (?,?,?,ARRAY['SERVICE_READ'],true,false)
+                ON CONFLICT (area_object_id,service_id) DO NOTHING
+                """, UUID.randomUUID(), area, service);
+    }
+
     void unassign(UUID area, UUID service) {
         jdbc.update(
                 "DELETE FROM \"AreaServiceAssignment\" WHERE area_object_id=? AND service_id=?",
