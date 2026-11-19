@@ -70,6 +70,21 @@ public class StaffingWorkflowController {
         return ApiResponse.success(workflow.placeAreaPos(requestId, areaId, input, actor));
     }
 
+    @PutMapping("/staffing-requests/{requestId}/ship-plan")
+    public ApiResponse<StaffingWorkflowService.ReviewDetails> saveShipPlan(
+            @PathVariable UUID requestId, @Valid @RequestBody StaffingWorkflowService.ShipPlanInput input,
+            @AuthenticationPrincipal CasmsPrincipal actor) {
+        return ApiResponse.success(workflow.saveShipPlan(requestId, input, actor));
+    }
+
+    @PutMapping("/staffing-requests/{requestId}/needs/{needId}/assignments/{userId}")
+    public ApiResponse<StaffingWorkflowService.Snapshot> assignNeed(
+            @PathVariable UUID requestId, @PathVariable UUID needId, @PathVariable UUID userId,
+            @Valid @RequestBody StaffingWorkflowService.NeedAssignmentInput input,
+            @AuthenticationPrincipal CasmsPrincipal actor) {
+        return ApiResponse.success(workflow.assignNeed(requestId, needId, userId, input, actor));
+    }
+
     @PostMapping("/staffing-requests/{requestId}/{action}")
     public ApiResponse<StaffingWorkflowService.Snapshot> review(
             @PathVariable UUID requestId, @PathVariable String action,
