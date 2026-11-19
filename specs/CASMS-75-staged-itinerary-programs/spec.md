@@ -38,3 +38,9 @@ Không thay đổi công thức giá, tiền tệ USD của dự án, quyền ch
 ## Success Criteria
 
 Kiểm thử được luồng gán thiếu thông tin → hoàn thiện → đủ điều kiện, chặn phạm vi/revision/quyền/khu vực sai, kiểm chứng migration và trigger trên PostgreSQL độc lập; route inventory/sequence coverage hợp lệ và delta nghiệp vụ được rà soát.
+
+## Mẫu tour theo địa điểm
+
+- Khi người quản lý tạo mẫu tour trên bờ, API yêu cầu một `destinationId` đang hoạt động và lưu liên kết đó trên mẫu.
+- Khi chọn tour cho điểm dừng, danh sách chỉ có mẫu thuộc địa điểm đã chọn. Mẫu cũ thiếu địa điểm được ẩn cho đến khi quản lý bổ sung.
+- Khi gắn mẫu vào chuyến, địa điểm của mẫu phải trùng địa điểm được chọn, có trong kế hoạch điểm dừng và được cảng của điểm dừng phục vụ. Nếu bất kỳ mục nào không hợp lệ, phép gắn không ghi thay đổi.

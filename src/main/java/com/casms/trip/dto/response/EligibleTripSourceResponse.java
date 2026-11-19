@@ -1,5 +1,6 @@
 package com.casms.trip.dto.response;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 import lombok.AllArgsConstructor;
@@ -8,6 +9,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.Instant;
+import java.time.LocalTime;
 import java.util.List;
 import java.util.UUID;
 
@@ -50,8 +52,10 @@ public class EligibleTripSourceResponse {
     @Schema(description = "Thời lượng số đêm", example = "2")
     private Integer durationNights;
 
-    private Instant earliestDeparture;
-    private Instant latestDeparture;
+    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "HH:mm")
+    private LocalTime earliestDeparture;
+    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "HH:mm")
+    private LocalTime latestDeparture;
 
     @Schema(description = "Phạm vi địa lý đã định (DOMESTIC, INTERNATIONAL)", example = "DOMESTIC")
     private String plannedScope;

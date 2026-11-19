@@ -1,10 +1,8 @@
 package com.casms.trip.controller;
 
 import com.casms.activity.entity.OnboardActivity;
-import com.casms.activity.entity.ShoreExcursion;
 import com.casms.activity.enums.OnboardActivityCategory;
 import com.casms.activity.enums.OnboardActivityStatus;
-import com.casms.activity.enums.ShoreExcursionStatus;
 import com.casms.activity.repository.OnboardActivityRepository;
 import com.casms.activity.repository.ShoreExcursionRepository;
 import com.casms.common.exception.BusinessException;
@@ -57,6 +55,8 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -267,124 +267,48 @@ public class TripCatalogController {
 
     @Operation(
             summary = "Nguồn tham quan trên bờ (Shore Excursions) cho lập kế hoạch",
-            description =
-                    "Cung cấp danh sách mẫu tour tham quan trên bờ được phép tái sử dụng cho lập kế"
-                        + " hoạch lịch trình, hỗ trợ lọc theo cảng và từ khóa (yêu cầu TRIP_READ)")
+            description = "Tìm mẫu tour theo địa điểm. Bộ lọc cảng chỉ lấy các địa điểm do cảng phục vụ.")
     @PreAuthorize("hasAuthority('TRIP_READ')")
     @GetMapping("/sources/excursions")
     public ApiResponse<List<PlanningSourceExcursionResponse>> getSourceExcursions(
-            @Parameter(description = "Lọc theo ID cảng ghé") @RequestParam(required = false)
-                    UUID portId,
-            @Parameter(description = "Từ khóa tìm kiếm theo tên hoặc mã tour")
-                    @RequestParam(required = false)
-                    String keyword) {
-        List<ShoreExcursion> excursions = shoreExcursionRepository.findAll();
-        String kw = keyword != null ? keyword.trim().toLowerCase() : null;
+            @RequestParam(required = false) UUID portId,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) UUID destinationId) {
+        Port port = portId == null ? null : portRepository.findById(portId).orElse(null);
+        Set<UUID> served = port == null ? Set.of()
+                : Set.copyOf(portRepository.findServedDestinationIds(portId));
+        String kw = keyword == null ? "" : keyword.trim().toLowerCase(Locale.ROOT);
 
-        List<PlanningSourceExcursionResponse> result =
-                excursions.stream()
-                        .filter(e -> e.getStatus() != ShoreExcursionStatus.CANCELLED)
-                        .filter(
-                                e -> {
-                                    UUID pId = null;
-                                    if (e.getPort() != null) {
-                                        pId = e.getPort().getPortId();
-                                    } else if (e.getCruiseStop() != null
-                                            && e.getCruiseStop().getPort() != null) {
-                                        pId = e.getCruiseStop().getPort().getPortId();
-                                    }
-                                    return portId == null || (pId != null && portId.equals(pId));
-                                })
-                        .filter(
-                                e ->
-                                        kw == null
-                                                || (e.getExcursionName() != null
-                                                        && e.getExcursionName()
-                                                                .toLowerCase()
-                                                                .contains(kw))
-                                                || (e.getExcursionCode() != null
-                                                        && e.getExcursionCode()
-                                                                .toLowerCase()
-                                                                .contains(kw)))
-                        .map(
-                                e -> {
-                                    UUID pId = null;
-                                    String pCode = null;
-                                    String pName = null;
-                                    if (e.getPort() != null) {
-                                        pId = e.getPort().getPortId();
-                                        pCode = e.getPort().getPortCode();
-                                        pName = e.getPort().getPortName();
-                                    } else if (e.getCruiseStop() != null
-                                            && e.getCruiseStop().getPort() != null) {
-                                        pId = e.getCruiseStop().getPort().getPortId();
-                                        pCode = e.getCruiseStop().getPort().getPortCode();
-                                        pName = e.getCruiseStop().getPort().getPortName();
-                                    }
-
-                                    // Destination info — điểm đến liên kết
-                                    UUID destId = null;
-                                    String destName = null;
-                                    if (e.getPort() != null
-                                            && e.getPort().getDestination() != null) {
-                                        destId = e.getPort().getDestination().getDestinationId();
-                                        destName =
-                                                e.getPort().getDestination().getDestinationName();
-                                    } else if (e.getCruiseStop() != null
-                                            && e.getCruiseStop().getDestination() != null) {
-                                        destId =
-                                                e.getCruiseStop()
-                                                        .getDestination()
-                                                        .getDestinationId();
-                                        destName =
-                                                e.getCruiseStop()
-                                                        .getDestination()
-                                                        .getDestinationName();
-                                    } else if (e.getCruiseStop() != null
-                                            && e.getCruiseStop().getPort() != null
-                                            && e.getCruiseStop().getPort().getDestination()
-                                                    != null) {
-                                        destId =
-                                                e.getCruiseStop()
-                                                        .getPort()
-                                                        .getDestination()
-                                                        .getDestinationId();
-                                        destName =
-                                                e.getCruiseStop()
-                                                        .getPort()
-                                                        .getDestination()
-                                                        .getDestinationName();
-                                    }
-
-                                    // Supplier info — nhà cung cấp tour
-                                    String supplierName = null;
-                                    if (e.getSupplier() != null) {
-                                        supplierName = e.getSupplier().getSupplierName();
-                                    }
-
-                                    return PlanningSourceExcursionResponse.builder()
-                                            .excursionId(e.getShoreExcursionId())
-                                            .sourceExcursionId(e.getShoreExcursionId())
-                                            .excursionCode(e.getExcursionCode())
-                                            .excursionName(e.getExcursionName())
-                                            .description(null)
-                                            .meetingPoint(e.getMeetingPoint())
-                                            .portId(pId)
-                                            .portCode(pCode)
-                                            .portName(pName)
-                                            .destinationId(destId)
-                                            .destinationName(destName)
-                                            .supplierName(supplierName)
-                                            .price(e.getPrice())
-                                            .currencyCode(e.getCurrencyCode())
-                                            .build();
-                                })
-                        .collect(Collectors.toList());
+        var result = shoreExcursionRepository.findSelectableDefinitions(destinationId).stream()
+                .filter(e -> portId == null || served.contains(e.getDestination().getDestinationId()))
+                .filter(e -> kw.isEmpty()
+                        || e.getExcursionName().toLowerCase(Locale.ROOT).contains(kw)
+                        || e.getExcursionCode().toLowerCase(Locale.ROOT).contains(kw))
+                .map(e -> PlanningSourceExcursionResponse.builder()
+                        .excursionId(e.getShoreExcursionId())
+                        .sourceExcursionId(e.getShoreExcursionId())
+                        .excursionCode(e.getExcursionCode())
+                        .excursionName(e.getExcursionName())
+                        .meetingPoint(e.getMeetingPoint())
+                        .portId(port == null ? null : port.getPortId())
+                        .portCode(port == null ? null : port.getPortCode())
+                        .portName(port == null ? null : port.getPortName())
+                        .destinationId(e.getDestination().getDestinationId())
+                        .destinationName(e.getDestination().getDestinationName())
+                        .supplierName(e.getSupplier().getSupplierName())
+                        .price(e.getPrice())
+                        .currencyCode(e.getCurrencyCode())
+                        .build())
+                .toList();
         return ApiResponse.success(result);
     }
 
+    public ApiResponse<List<PlanningSourceExcursionResponse>> getSourceExcursions(UUID portId, String keyword) {
+        return getSourceExcursions(portId, keyword, null);
+    }
+
     public ApiResponse<List<PlanningSourceExcursionResponse>> getSourceExcursions() {
-        return getSourceExcursions(null, null);
+        return getSourceExcursions(null, null, null);
     }
 
     @Operation(

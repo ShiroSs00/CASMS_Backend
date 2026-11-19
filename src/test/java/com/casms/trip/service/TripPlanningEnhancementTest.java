@@ -902,6 +902,7 @@ public class TripPlanningEnhancementTest {
         assertTrue(
                 hasTimingViolation,
                 "Phải phát hiện vi phạm INVALID_EXCURSION_TIME khi end <= start");
+        assertTrue(violations.stream().anyMatch(v -> "EXCURSION_SOURCE_REQUIRED".equals(v.getCode())));
     }
 
     @Test
@@ -1169,8 +1170,8 @@ public class TripPlanningEnhancementTest {
 
     @Test
     @DisplayName(
-            "BE-07: Tour tham quan nguồn không khớp cảng ghé báo lỗi SHORE_EXCURSION_PORT_MISMATCH")
-    void testBE07_ShoreExcursionPortMismatchViolation() {
+            "BE-07: Tour tham quan nguồn không khớp địa điểm báo lỗi EXCURSION_SOURCE_DESTINATION_MISMATCH")
+    void testBE07_ShoreExcursionDestinationMismatchViolation() {
         Trip trip = new Trip();
         trip.setDurationDays(2);
 
@@ -1179,10 +1180,11 @@ public class TripPlanningEnhancementTest {
         portA.setPortCode("VNSGN");
         portA.setPortName("Cảng Sài Gòn");
 
-        Port portB = new Port();
-        portB.setPortId(UUID.randomUUID());
-        portB.setPortCode("VNDAD");
-        portB.setPortName("Cảng Đà Nẵng");
+        var otherDestination = new com.casms.ship.entity.Destination();
+        otherDestination.setDestinationId(UUID.randomUUID());
+
+        var selectedDestination = new com.casms.ship.entity.Destination();
+        selectedDestination.setDestinationId(UUID.randomUUID());
 
         TripPlanStop stop = new TripPlanStop();
         stop.setClientKey("stop-sgn");
@@ -1195,8 +1197,8 @@ public class TripPlanningEnhancementTest {
                 new com.casms.activity.entity.ShoreExcursion();
         masterTour.setShoreExcursionId(sourceExcursionId);
         masterTour.setExcursionName("Tour Bà Nà Hills");
-        masterTour.setPort(portB); // Cảng Đà Nẵng != Cảng Sài Gòn
-        masterTour.setStatus(com.casms.activity.enums.ShoreExcursionStatus.OPEN);
+        masterTour.setDestination(otherDestination);
+        masterTour.setStatus(com.casms.activity.enums.ShoreExcursionStatus.PLANNED);
 
         when(shoreExcursionRepository.findById(sourceExcursionId))
                 .thenReturn(Optional.of(masterTour));
@@ -1206,6 +1208,7 @@ public class TripPlanningEnhancementTest {
         entry.setTitle("Tour Bà Nà Hills");
         entry.setKind(TripPlanEntryKind.SHORE_EXCURSION);
         entry.setStop(stop);
+        entry.setDestination(selectedDestination);
         entry.setSourceExcursionId(sourceExcursionId);
         entry.setStartDayNumber(1);
         entry.setPlannedStartTime(LocalTime.of(8, 0));
@@ -1223,12 +1226,12 @@ public class TripPlanningEnhancementTest {
 
         PlanViolation mismatch =
                 violations.stream()
-                        .filter(v -> "SHORE_EXCURSION_PORT_MISMATCH".equals(v.getCode()))
+                        .filter(v -> "EXCURSION_SOURCE_DESTINATION_MISMATCH".equals(v.getCode()))
                         .findFirst()
                         .orElse(null);
         assertNotNull(
                 mismatch,
-                "Phải báo lỗi SHORE_EXCURSION_PORT_MISMATCH khi tour nguồn thuộc cảng khác");
+                "Phải báo lỗi EXCURSION_SOURCE_DESTINATION_MISMATCH khi tour nguồn thuộc địa điểm khác");
         assertEquals("ERROR", mismatch.getSeverity());
     }
 

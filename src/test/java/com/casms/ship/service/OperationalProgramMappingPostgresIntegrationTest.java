@@ -280,6 +280,7 @@ public class OperationalProgramMappingPostgresIntegrationTest {
 
     private ShoreExcursion createTestTemplateExcursion(String name, Supplier supplier) {
         ShoreExcursion template = new ShoreExcursion();
+        template.setDestination(destinationDan);
         template.setExcursionCode("TPL-" + UUID.randomUUID().toString().substring(0, 8));
         template.setExcursionName(name);
         template.setSupplier(supplier);

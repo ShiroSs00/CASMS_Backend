@@ -17,3 +17,7 @@ Java 21, Spring Boot 3.3.4 MVC; Maven 3.9.16, Surefire 3.2.5, JUnit/Mockito từ
 ## Validation
 
 Hồi quy service hiện có; test quy tắc thời gian; PostgreSQL thật với toàn bộ Flyway, scope/revision/rollback/ràng buộc area và quyền HTTP. Không dùng H2 chứng minh SQL. Cập nhật [sequence flow](../../docs/sequence-diagrams/ITINERARY-PROGRAM-FLOWS.md), inventory và route diagrams; chạy checker và rà soát delta.
+
+## Mẫu tour theo địa điểm
+
+Dùng khóa ngoại `ShoreExcursion.destination_id` và liên kết `PortDestinationAccess` hiện có. Kiểm tra địa điểm khi tạo mẫu và lọc khi đọc danh sách chọn. Giữ validation điểm dừng, khóa và revision hiện có khi sao chép mẫu vào chuyến. Mẫu cũ có thể nhận địa điểm thông qua thao tác quản lý rõ ràng.

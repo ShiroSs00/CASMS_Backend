@@ -9,3 +9,9 @@
 - [x] T07 — Hoàn tất unit/PostgreSQL tests và ghi số lượng thực tế trong qa.md.
 - [x] T08 — Hoàn tất inventory/sequence/end-to-end flow và checker.
 - [x] T09 — Rà soát diff và đóng gói thay đổi để commit/push nhánh; giữ nguyên thay đổi toolkit/editor ngoài phạm vi.
+
+## Mẫu tour theo địa điểm
+
+- [x] Lưu địa điểm bắt buộc khi tạo mẫu và chỉ trả mẫu của địa điểm được chọn.
+- [x] Cho phép bổ sung địa điểm vào mẫu cũ và chặn gắn mẫu thiếu địa điểm hoặc sai địa điểm.
+- [x] Cập nhật inventory, sơ đồ và kiểm thử hồi quy cho luồng gắn tour.

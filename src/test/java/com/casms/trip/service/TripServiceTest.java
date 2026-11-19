@@ -29,6 +29,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.Instant;
+import java.time.LocalTime;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -67,8 +68,8 @@ class TripServiceTest {
         request.setDurationDays(4);
         request.setTripType(ItineraryType.ROUND_TRIP);
         request.setShipRequirements("Tàu dưới 50k GT");
-        request.setEarliestDeparture(Instant.parse("2026-11-10T01:00:00Z"));
-        request.setLatestDeparture(Instant.parse("2026-11-12T01:00:00Z"));
+        request.setEarliestDeparture(LocalTime.of(8, 0));
+        request.setLatestDeparture(LocalTime.of(10, 30));
 
         when(businessCodeGenerator.next("TR")).thenReturn("TR-1001");
         when(userRepository.findById(actorId)).thenReturn(Optional.of(actor));

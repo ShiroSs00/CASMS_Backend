@@ -12,6 +12,14 @@ import com.casms.ship.repository.CruiseStopRepository;
 import com.casms.ship.repository.DestinationRepository;
 import com.casms.ship.repository.PortRepository;
 
+import com.casms.activity.entity.Supplier;
+import com.casms.activity.enums.SupplierStatus;
+import com.casms.activity.enums.SupplierVerificationStatus;
+import com.casms.common.exception.BusinessException;
+import com.casms.common.service.BusinessCodeGenerator;
+import com.casms.ship.entity.Destination;
+import com.casms.ship.enums.DestinationStatus;
+
 import jakarta.persistence.EntityNotFoundException;
 
 import org.junit.jupiter.api.Test;
@@ -39,7 +47,52 @@ class ShoreExcursionServiceTest {
 
     @Mock private PortRepository portRepository;
 
+    @Mock private BusinessCodeGenerator businessCodeGenerator;
+
     @InjectMocks private ShoreExcursionService service;
+
+    @Test
+    void definitionPersistsSelectedActiveDestinationWithoutAStop() {
+        UUID supplierId = UUID.randomUUID();
+        UUID destinationId = UUID.randomUUID();
+        Supplier supplier = new Supplier();
+        supplier.setStatus(SupplierStatus.ACTIVE);
+        supplier.setVerificationStatus(SupplierVerificationStatus.VERIFIED);
+        Destination destination = new Destination();
+        destination.setDestinationId(destinationId);
+        destination.setStatus(DestinationStatus.ACTIVE);
+        when(supplierRepository.findById(supplierId)).thenReturn(Optional.of(supplier));
+        when(destinationRepository.findById(destinationId)).thenReturn(Optional.of(destination));
+        when(businessCodeGenerator.next("EX")).thenReturn("EX-SYNTHETIC");
+        when(excursionRepository.save(any(ShoreExcursion.class))).thenAnswer(call -> call.getArgument(0));
+
+        var definition = service.createDefinition("Tour", supplierId, "Meeting point", destinationId);
+
+        assertSame(destination, definition.getDestination());
+        assertNull(definition.getPort());
+        assertNull(definition.getCruiseStop());
+    }
+
+    @Test
+    void legacyDefinitionCanBeLinkedButCannotBeMovedToAnotherDestination() {
+        UUID definitionId = UUID.randomUUID();
+        UUID destinationId = UUID.randomUUID();
+        ShoreExcursion definition = new ShoreExcursion();
+        definition.setStatus(ShoreExcursionStatus.PLANNED);
+        Destination destination = new Destination();
+        destination.setDestinationId(destinationId);
+        destination.setStatus(DestinationStatus.ACTIVE);
+        when(excursionRepository.lockById(definitionId)).thenReturn(Optional.of(definition));
+        when(destinationRepository.findById(destinationId)).thenReturn(Optional.of(destination));
+        when(excursionRepository.save(definition)).thenReturn(definition);
+
+        assertSame(destination, service.linkDefinitionDestination(definitionId, destinationId).getDestination());
+        assertSame(definition, service.linkDefinitionDestination(definitionId, destinationId));
+        var error = assertThrows(BusinessException.class,
+                () -> service.linkDefinitionDestination(definitionId, UUID.randomUUID()));
+        assertEquals("EXCURSION_DEFINITION_DESTINATION_ALREADY_SET", error.getCode());
+        verify(excursionRepository, times(1)).save(definition);
+    }
 
     @Test
     void list_withoutFilters_excludesUnscheduledDefinitions() {

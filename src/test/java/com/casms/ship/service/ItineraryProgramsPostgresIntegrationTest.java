@@ -118,9 +118,9 @@ class ItineraryProgramsPostgresIntegrationTest {
             VALUES (?,'Synthetic provider','Test contact','ACTIVE','VERIFIED',now(),now())
             """,supplier);
         jdbc.update("""
-            INSERT INTO "ShoreExcursion"(shore_excursion_id,excursion_code,excursion_name,supplier_id,meeting_point,status,created_at,updated_at)
-            VALUES (?,?,'Catalog excursion',?,'Pier','PLANNED',now(),now())
-            """,sourceExcursion,"EX-T"+code,supplier);
+            INSERT INTO "ShoreExcursion"(shore_excursion_id,excursion_code,excursion_name,supplier_id,destination_id,meeting_point,status,created_at,updated_at)
+            VALUES (?,?,'Catalog excursion',?,?,'Pier','PLANNED',now(),now())
+            """,sourceExcursion,"EX-T"+code,supplier,destinationId);
     }
     private UUID area(ShipModel model,Deck deck,String name) {
         ShipModelObject area=new ShipModelObject(); area.setShipModel(model); area.setDeck(deck);
@@ -183,6 +183,52 @@ class ItineraryProgramsPostgresIntegrationTest {
             """,destinationId,stopId);
         long before=revision();
         assertCode("EXCURSION_DESTINATION_NOT_SERVED",()->programs.assign(itineraryId,before,List.of(),
+                List.of(new ItineraryProgramService.ShoreSelection(sourceExcursion,stopId,destinationId))));
+        assertEquals(before,revision());
+        assertEquals(0,jdbc.queryForObject(
+                "SELECT count(*) FROM \"ShoreExcursion\" WHERE cruise_stop_id=?",Integer.class,stopId));
+    }
+
+    @Test void excursionPickerReturnsOnlyTemplatesForTheSelectedDestination() throws Exception {
+        var other = new Destination();
+        other.setDestinationName("Another planned visit");
+        other.setCountryCode("VN");
+        other.setStatus(DestinationStatus.ACTIVE);
+        em.persist(other);
+        em.flush();
+        jdbc.update("""
+                INSERT INTO "ShoreExcursion" (shore_excursion_id, excursion_code, excursion_name,
+                    supplier_id, destination_id, meeting_point, status, created_at, updated_at)
+                SELECT ?, ?, excursion_name, supplier_id, ?, meeting_point, status, now(), now()
+                FROM "ShoreExcursion" WHERE shore_excursion_id=?
+                """, UUID.randomUUID(), "EX-" + UUID.randomUUID().toString().substring(0, 8),
+                other.getDestinationId(), sourceExcursion);
+        jdbc.update("""
+                INSERT INTO "ShoreExcursion" (shore_excursion_id, excursion_code, excursion_name,
+                    supplier_id, meeting_point, status, created_at, updated_at)
+                SELECT ?, ?, excursion_name, supplier_id, meeting_point, status, now(), now()
+                FROM "ShoreExcursion" WHERE shore_excursion_id=?
+                """, UUID.randomUUID(), "EX-" + UUID.randomUUID().toString().substring(0, 8),
+                sourceExcursion);
+        var assigned = assignBoth();
+        assertFalse(assigned.excursionIds().isEmpty());
+        UUID portId = jdbc.queryForObject(
+                "SELECT port_id FROM \"CruiseStop\" WHERE cruise_stop_id=?", UUID.class, stopId);
+
+        mvc.perform(get("/trip-planning/catalogs/sources/excursions")
+                        .header("Authorization", token(Role.CRUISE_MANAGER))
+                        .param("destinationId", destinationId.toString())
+                        .param("portId", portId.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].sourceExcursionId").value(sourceExcursion.toString()))
+                .andExpect(jsonPath("$.data[0].destinationId").value(destinationId.toString()));
+    }
+
+    @Test void legacyTemplateWithoutDestinationCannotBeAssigned() {
+        jdbc.update("UPDATE \"ShoreExcursion\" SET destination_id=NULL WHERE shore_excursion_id=?", sourceExcursion);
+        long before=revision();
+        assertCode("EXCURSION_SOURCE_DESTINATION_MISMATCH",()->programs.assign(itineraryId,before,List.of(),
                 List.of(new ItineraryProgramService.ShoreSelection(sourceExcursion,stopId,destinationId))));
         assertEquals(before,revision());
         assertEquals(0,jdbc.queryForObject(

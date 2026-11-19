@@ -5,11 +5,13 @@ import com.casms.trip.enums.TripDurationGroup;
 import com.casms.trip.enums.TripScheduleVersionStatus;
 import com.casms.trip.enums.TripStatus;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 import lombok.Data;
 
 import java.time.Instant;
+import java.time.LocalTime;
 import java.util.List;
 import java.util.UUID;
 
@@ -24,8 +26,10 @@ public class TripSummaryResponse {
     private TripDurationGroup durationGroup;
     private Integer durationDays;
     private Integer durationNights;
-    private Instant earliestDeparture;
-    private Instant latestDeparture;
+    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "HH:mm")
+    private LocalTime earliestDeparture;
+    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "HH:mm")
+    private LocalTime latestDeparture;
     private ItineraryType tripType;
     private String plannedScope;
     private List<String> domesticRegions;

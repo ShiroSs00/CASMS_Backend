@@ -90,9 +90,11 @@ public class ItineraryProgramService {
             var sources = jdbc.queryForList("SELECT * FROM \"ShoreExcursion\" WHERE shore_excursion_id=? AND cruise_stop_id IS NULL AND status='PLANNED' FOR SHARE", selection.sourceExcursionId());
             if (sources.isEmpty()) throw new BusinessException("EXCURSION_SOURCE_REQUIRED", "Select an excursion definition");
             var source = sources.getFirst();
-            if (source.get("port_id") != null && !source.get("port_id").equals(stops.getFirst().get("port_id"))
-                    || source.get("destination_id") != null && !source.get("destination_id").equals(selection.destinationId()))
-                throw new BusinessException("EXCURSION_SOURCE_DESTINATION_MISMATCH", "Source destination/port does not match the selected call");
+            if (!selection.destinationId().equals(source.get("destination_id"))) {
+                throw new BusinessException(HttpStatus.UNPROCESSABLE_ENTITY,
+                        "EXCURSION_SOURCE_DESTINATION_MISMATCH",
+                        "The source excursion must belong to the selected destination");
+            }
             UUID id = UUID.randomUUID();
             jdbc.update("""
                     INSERT INTO "ShoreExcursion" (shore_excursion_id,cruise_stop_id,port_id,destination_id,

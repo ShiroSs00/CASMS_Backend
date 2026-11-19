@@ -217,8 +217,8 @@ class ScheduleMaterializationServiceTest {
 
     @Test
     void previewRejectsDepartureOutsideConfiguredWindowBeforeBuildingSchedule() {
-        testTrip.setEarliestDeparture(departureTime.plusSeconds(60));
-        testTrip.setLatestDeparture(departureTime.plusSeconds(120));
+        testTrip.setEarliestDeparture(LocalTime.of(8, 1));
+        testTrip.setLatestDeparture(LocalTime.of(8, 2));
         when(tripScheduleVersionRepository.findById(testVersion.getVersionId()))
                 .thenReturn(Optional.of(testVersion));
 
