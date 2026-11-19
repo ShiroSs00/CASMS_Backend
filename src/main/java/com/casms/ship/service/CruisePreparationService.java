@@ -1028,7 +1028,7 @@ public class CruisePreparationService {
                                 .state(shipActive ? "PASSED" : "BLOCKED")
                                 .evidence(
                                         ship != null
-                                                ? "Trạng thái: " + ship.getStatus()
+                                                ? "Trạng thái: " + shipStatusLabel(ship.getStatus() != null ? ship.getStatus().name() : null)
                                                 : "Chưa có tàu")
                                 .details(
                                         shipActive
@@ -1117,19 +1117,19 @@ public class CruisePreparationService {
                 items.add(
                         PreparationCheckItemDto.builder()
                                 .itemCode("ONBOARD_STAFF_ASSIGNED")
-                                .itemName("Phân công Onboard Staff")
+                                .itemName("Phân công nhân viên phục vụ trên tàu")
                                 .ready(crewReady)
                                 .required(true)
                                 .state(crewReady ? "PASSED" : "BLOCKED")
                                 .evidence(
                                         onboardAssigned
-                                                ? "Onboard Staff đã phân công (Tổng thuyền viên"
+                                                ? "Đã phân công nhân viên phục vụ trên tàu (Tổng thuyền viên"
                                                       + " hoạt động: "
                                                         + activeCrew
                                                         + ")"
-                                                : "Chưa phân công Onboard Staff")
+                                                : "Chưa phân công nhân viên phục vụ trên tàu")
                                 .details(
-                                        "Onboard Staff: "
+                                        "Nhân viên phục vụ trên tàu: "
                                                 + (onboardAssigned ? "SẴN SÀNG" : "CHƯA PHÂN CÔNG")
                                                 + ", Thuyền viên: "
                                                 + activeCrew + ", Nhu cầu nhân sự đã được duyệt: " + crewReady)
@@ -1138,6 +1138,19 @@ public class CruisePreparationService {
             default -> {}
         }
         return items;
+    }
+
+    private static String shipStatusLabel(String status) {
+        if (status == null) return "Chưa xác định";
+        return switch (status) {
+            case "DRAFT" -> "Đang thiết lập";
+            case "READY" -> "Sẵn sàng hoạt động";
+            case "IN_SERVICE" -> "Đang hoạt động";
+            case "MAINTENANCE" -> "Đang bảo trì";
+            case "SUSPENDED" -> "Tạm dừng hoạt động";
+            case "RETIRED" -> "Đã ngừng hoạt động";
+            default -> status;
+        };
     }
 
     private CruisePreparationSectionResponse mapToResponse(

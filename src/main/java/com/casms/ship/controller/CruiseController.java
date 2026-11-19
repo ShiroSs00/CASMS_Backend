@@ -103,7 +103,7 @@ public class CruiseController {
                         + " portCallWindowStatus=BLOCK và dependency=PORT-05 khi chưa có"
                         + " evaluator/dữ liệu khung giờ cảng; không được hiểu lịch tính được là đã"
                         + " đủ điều kiện tạo")
-    @PreAuthorize("hasAnyAuthority('CRUISE_CREATE', 'CRUISE_READ', 'TRIP_READ')")
+    @PreAuthorize("hasAnyAuthority('CRUISE_CREATE', 'TRIP_READ') or (hasAuthority('CRUISE_READ') and hasAnyRole('ADMIN', 'CRUISE_MANAGER', 'OPERATIONS_MANAGER', 'SHIP_MANAGER', 'ACTIVITY_SERVICE_MANAGER'))")
     @PostMapping("/preview-schedule")
     public ApiResponse<CruiseSchedulePreviewResponse> previewSchedule(
             @RequestBody @Valid CruiseSchedulePreviewRequest request) {
@@ -186,13 +186,18 @@ public class CruiseController {
             @RequestParam(required = false) String saleState,
             Pageable pageable,
             org.springframework.security.core.Authentication auth) {
+        if (CruisePlanOperationsAccess.financeOnly(auth)) {
+            throw new org.springframework.security.access.AccessDeniedException(
+                    "Vai trò Tài chính không có quyền truy cập danh sách chuyến khởi hành.");
+        }
         boolean hasCruiseRead =
                 auth != null
                         && auth.getAuthorities().stream()
                                 .anyMatch(a -> a.getAuthority().equals("CRUISE_READ"));
         validateSaleState(saleState);
         UUID bookingAgentId = BookingAgentCruiseScope.assignee(auth);
-        boolean bookingView = !hasCruiseRead || bookingOnly(auth) || saleState != null;
+        boolean onboardScoped = CruisePlanOperationsAccess.onboardOnly(auth);
+        boolean bookingView = !onboardScoped && (!hasCruiseRead || bookingOnly(auth) || saleState != null);
         Page<CruiseResponse> page =
                 bookingAgentId != null
                         ? service.listOpenForSale(shipId, unassigned, cruiseType, sourceTripId,
@@ -235,6 +240,10 @@ public class CruiseController {
                     UUID cruiseId,
             @RequestParam(required = false) String saleState,
             org.springframework.security.core.Authentication auth) {
+        if (CruisePlanOperationsAccess.financeOnly(auth)) {
+            throw new org.springframework.security.access.AccessDeniedException(
+                    "Vai trò Tài chính không có quyền truy cập trực tiếp thông tin chuyến khởi hành.");
+        }
         validateSaleState(saleState);
         UUID bookingAgentId = BookingAgentCruiseScope.assignee(auth);
         if (bookingAgentId != null) service.requireBookingAgentAssignment(cruiseId, bookingAgentId);
