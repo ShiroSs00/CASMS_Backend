@@ -307,6 +307,17 @@ Dự án đã tích hợp sẵn script thông minh kiểm tra toàn diện môi 
    - Kiểm tra xem cổng `8080` có bị tiến trình khác chiếm dụng hay không.
    - Biên dịch và khởi chạy Spring Boot.
 
+   Launcher đọc database từ `.env.local`, đồng bộ các biến Spring datasource và chạy
+   `mvn clean package` để tránh dùng JAR/class cũ. Flyway chỉ dùng bản sao các migration
+   đang được Git quản lý, validate rồi áp dụng các version còn thiếu khi BE khởi động;
+   Hibernate chỉ validate schema. Script không reset database hoặc tự repair checksum.
+   `start-local.ps1` gọi cùng launcher, không giữ cấu hình database/Java riêng.
+
+   Chạy `start-be.bat --check` để kiểm tra Java/Maven/Git, cấu hình, cổng DB/BE và
+   danh sách migration; lệnh này chưa chạy Flyway hay thay đổi database. Dùng
+   `--no-pause` khi chạy từ terminal/automation. Có thể đặt `SERVER_PORT` trong env
+   để đổi cổng (mặc định 8080), hoặc `CASMS_BE_ENV_FILE` để chọn file env QA riêng.
+
 #### Cách 2: Khởi chạy thủ công bằng lệnh Maven
 1. Nạp biến môi trường (Windows PowerShell):
    ```powershell
