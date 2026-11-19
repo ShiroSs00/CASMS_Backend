@@ -3,6 +3,7 @@ package com.casms.trip.dto.request;
 import com.casms.ship.enums.ItineraryType;
 import com.casms.trip.enums.TripDurationGroup;
 
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 import jakarta.validation.constraints.Min;
@@ -11,7 +12,7 @@ import jakarta.validation.constraints.Size;
 
 import lombok.Data;
 
-import java.time.Instant;
+import java.time.LocalTime;
 import java.util.List;
 
 @Data
@@ -46,11 +47,13 @@ public class TripCreateRequest {
     @Schema(description = "Số đêm (tùy chọn, mặc định N-1 hoặc 0 nếu 1 ngày)", example = "1")
     private Integer durationNights;
 
-    @Schema(description = "Earliest allowed planned departure, inclusive (ISO-8601)")
-    private Instant earliestDeparture;
+    @JsonDeserialize(using = DepartureMinuteDeserializer.class)
+    @Schema(type = "string", description = "Earliest inclusive ship-local departure minute", example = "08:00")
+    private LocalTime earliestDeparture;
 
-    @Schema(description = "Latest allowed planned departure, inclusive (ISO-8601)")
-    private Instant latestDeparture;
+    @JsonDeserialize(using = DepartureMinuteDeserializer.class)
+    @Schema(type = "string", description = "Latest inclusive ship-local departure minute", example = "10:30")
+    private LocalTime latestDeparture;
 
     @Schema(
             description =

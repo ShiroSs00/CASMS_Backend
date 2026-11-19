@@ -13,6 +13,7 @@ import lombok.Getter;
 import lombok.Setter;
 
 import java.time.Instant;
+import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -45,10 +46,10 @@ public class Trip {
     private Integer durationNights;
 
     @Column(name = "earliest_departure")
-    private Instant earliestDeparture;
+    private LocalTime earliestDeparture;
 
     @Column(name = "latest_departure")
-    private Instant latestDeparture;
+    private LocalTime latestDeparture;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "duration_group", length = 20)

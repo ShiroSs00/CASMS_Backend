@@ -8,6 +8,8 @@ See the [Ship Type flow](SHIP-TYPE-FLOWS.md) and [trip geography flow](TRIP-GEOG
 
 See the [shared security and error flow](BEARER-AUTHENTICATION.md) for bearer authentication, route authorization and generic error responses.
 
+The [departure window flow](TRIP-DEPARTURE-WINDOW.md) covers the trip write and read contract, eligible sources, and voyage scheduling, change and delay routes that enforce the recurring window.
+
 | Module | HTTP Method | Endpoint | Controller | Handler Method | Service Method / Calls | Permission | Sequence Diagram | Status |
 |---|---|---|---|---|---|---|---|---|
 | activity | GET | /activities | ActivityController | list | service.listActivities() | hasAuthority('ACTIVITY_READ') | [activity/get-activities.md](activity/get-activities.md) | Static handler/source trace; semantic review pending |

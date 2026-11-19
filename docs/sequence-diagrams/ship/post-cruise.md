@@ -55,3 +55,5 @@ Materialization applies the offset from template departure LocalTime to chosen C
 ## Ship schedule and fleet
 
 See the [reviewed flow](../TRIP-DEPARTURE-WINDOW.md) for authorization, validation, transaction boundaries and responses. This note covers the BE-09 to BE-20 change.
+
+Voyage departure window validation compares the ship-local departure minute against the template bounds. See the [departure window flow](../TRIP-DEPARTURE-WINDOW.md).

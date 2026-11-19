@@ -1,5 +1,6 @@
 package com.casms.trip.controller;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import com.casms.common.exception.BusinessException;
 import com.casms.common.response.ApiResponse;
 import com.casms.security.principal.CasmsPrincipal;
@@ -33,7 +34,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
-import java.time.Instant;
+import java.time.LocalTime;
 import java.util.UUID;
 
 @Tag(
@@ -317,7 +318,8 @@ public class TripScheduleVersionController {
     public record SourceTrip(UUID tripId, String tripCode, String name, String description,
                              com.casms.trip.enums.TripDurationGroup durationGroup,
                              Integer durationDays, Integer durationNights, com.casms.trip.enums.TripStatus status,
-                             Instant earliestDeparture, Instant latestDeparture) {}
+                             @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "HH:mm") LocalTime earliestDeparture,
+                             @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "HH:mm") LocalTime latestDeparture) {}
     public record PublishedSource(SourceTrip trip, TripScheduleVersionDetailResponse version) {}
 
     @GetMapping("/eligible-sources/{sourceId}")

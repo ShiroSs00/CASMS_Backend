@@ -7,6 +7,7 @@ import com.casms.trip.service.TripDepartureWindow;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
+import java.time.LocalTime;
 import java.time.ZoneId;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -35,19 +36,19 @@ class CruiseDurationTest {
 
     @Test
     void validatesBothWindowBoundsAndIncludesEachEndpoint() {
-        Instant earliest = Instant.parse("2026-11-10T01:00:00Z");
-        Instant latest = earliest.plusSeconds(60);
+        LocalTime earliest = LocalTime.of(8, 0);
+        LocalTime latest = LocalTime.of(8, 1);
         assertDoesNotThrow(() -> TripDepartureWindow.validate(null, null));
         assertThrows(BusinessException.class, () -> TripDepartureWindow.validate(earliest, null));
         assertThrows(BusinessException.class, () -> TripDepartureWindow.validate(latest, earliest));
         Trip trip = new Trip();
         trip.setEarliestDeparture(earliest);
         trip.setLatestDeparture(latest);
-        assertDoesNotThrow(() -> TripDepartureWindow.requireWithin(trip, earliest));
-        assertDoesNotThrow(() -> TripDepartureWindow.requireWithin(trip, latest));
+        assertDoesNotThrow(() -> TripDepartureWindow.requireWithin(trip, Instant.parse("2026-10-15T01:00:00Z")));
+        assertDoesNotThrow(() -> TripDepartureWindow.requireWithin(trip, Instant.parse("2026-12-15T01:01:59.999999999Z")));
         assertThrows(BusinessException.class,
-                () -> TripDepartureWindow.requireWithin(trip, earliest.minusNanos(1)));
+                () -> TripDepartureWindow.requireWithin(trip, Instant.parse("2026-12-15T00:59:59Z")));
         assertThrows(BusinessException.class,
-                () -> TripDepartureWindow.requireWithin(trip, latest.plusNanos(1)));
+                () -> TripDepartureWindow.requireWithin(trip, Instant.parse("2026-10-15T01:02:00Z")));
     }
 }
