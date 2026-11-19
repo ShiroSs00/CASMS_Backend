@@ -38,16 +38,35 @@ public class ShoreExcursionController {
     private final ShoreExcursionService shoreExcursionService;
     private final com.casms.ship.service.CruisePlanOperationsAccess cruiseAccess;
 
-    public record DefinitionRequest(@NotBlank @Size(max=250) String name,
+    public record DefinitionRequest(
+            @NotBlank @Size(max = 250) String name,
             @NotNull UUID supplierId,
-            @NotBlank @Size(max=250) String meetingPoint) {}
-    public record DefinitionView(UUID id,String name,String unitCode) {}
+            @NotBlank @Size(max = 250) String meetingPoint,
+            @NotNull UUID destinationId) {}
+
+    public record DefinitionDestinationRequest(@NotNull UUID destinationId) {}
+
+    public record DefinitionView(UUID id, String name, String unitCode, UUID destinationId) {
+        private static DefinitionView from(com.casms.activity.entity.ShoreExcursion excursion) {
+            return new DefinitionView(excursion.getShoreExcursionId(), excursion.getExcursionName(),
+                    null, excursion.getDestination().getDestinationId());
+        }
+    }
+
     @PostMapping("/definitions")
     @PreAuthorize("hasRole('ACTIVITY_SERVICE_MANAGER') and hasAuthority('EXCURSION_CREATE')")
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<DefinitionView> createDefinition(@Valid @RequestBody DefinitionRequest input) {
-        var e=shoreExcursionService.createDefinition(input.name(),input.supplierId(),input.meetingPoint());
-        return ApiResponse.success(new DefinitionView(e.getShoreExcursionId(),e.getExcursionName(),null));
+        return ApiResponse.success(DefinitionView.from(shoreExcursionService.createDefinition(
+                input.name(), input.supplierId(), input.meetingPoint(), input.destinationId())));
+    }
+
+    @PatchMapping("/definitions/{id}/destination")
+    @PreAuthorize("hasRole('ACTIVITY_SERVICE_MANAGER') and hasAuthority('EXCURSION_UPDATE')")
+    public ApiResponse<DefinitionView> linkDefinitionDestination(
+            @PathVariable UUID id, @Valid @RequestBody DefinitionDestinationRequest input) {
+        return ApiResponse.success(DefinitionView.from(
+                shoreExcursionService.linkDefinitionDestination(id, input.destinationId())));
     }
     // CREATE
     @Operation(

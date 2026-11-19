@@ -59,15 +59,40 @@ public class ShoreExcursionService {
 
     // ==================== CRUD ====================
 
-    /** Shared benefit source. Real occurrences still use the unchanged operational request. */
-    public ShoreExcursion createDefinition(String name,UUID supplierId,String meetingPoint) {
-        var supplier=supplierRepository.findById(supplierId).orElseThrow(()->new EntityNotFoundException("Supplier not found"));
-        if(supplier.getStatus()!=SupplierStatus.ACTIVE||supplier.getVerificationStatus()!=SupplierVerificationStatus.VERIFIED)
+    public ShoreExcursion createDefinition(
+            String name, UUID supplierId, String meetingPoint, UUID destinationId) {
+        var supplier = supplierRepository.findById(supplierId)
+                .orElseThrow(() -> new EntityNotFoundException("Supplier not found"));
+        if (supplier.getStatus() != SupplierStatus.ACTIVE
+                || supplier.getVerificationStatus() != SupplierVerificationStatus.VERIFIED) {
             throw new IllegalStateException("Supplier must be active and verified");
-        var e=new ShoreExcursion();e.setExcursionCode(businessCodeGenerator.next("EX"));
-        e.setExcursionName(name.trim());e.setSupplier(supplier);e.setMeetingPoint(meetingPoint.trim());
-        e.setStatus(ShoreExcursionStatus.PLANNED);
-        return excursionRepository.save(e);
+        }
+        Destination destination = requireActiveDestination(destinationId);
+        var excursion = new ShoreExcursion();
+        excursion.setExcursionCode(businessCodeGenerator.next("EX"));
+        excursion.setExcursionName(name.trim());
+        excursion.setSupplier(supplier);
+        excursion.setMeetingPoint(meetingPoint.trim());
+        excursion.setDestination(destination);
+        excursion.setStatus(ShoreExcursionStatus.PLANNED);
+        return excursionRepository.save(excursion);
+    }
+
+    public ShoreExcursion linkDefinitionDestination(UUID id, UUID destinationId) {
+        ShoreExcursion excursion = excursionRepository.lockById(id)
+                .filter(e -> e.getCruiseStop() == null && e.getStatus() == ShoreExcursionStatus.PLANNED)
+                .orElseThrow(() -> new EntityNotFoundException("Excursion definition not found: " + id));
+        if (excursion.getDestination() != null) {
+            if (excursion.getDestination().getDestinationId().equals(destinationId)) {
+                return excursion;
+            }
+            throw new com.casms.common.exception.BusinessException(
+                    org.springframework.http.HttpStatus.CONFLICT,
+                    "EXCURSION_DEFINITION_DESTINATION_ALREADY_SET",
+                    "The excursion definition is already linked to a destination");
+        }
+        excursion.setDestination(requireActiveDestination(destinationId));
+        return excursionRepository.save(excursion);
     }
     public ShoreExcursionResponse create(ShoreExcursionRequest request) {
         ShoreExcursion excursion = new ShoreExcursion();
@@ -291,13 +316,7 @@ public class ShoreExcursionService {
         CruiseStop stop = cruiseStopRepository.findById(excursion.getCruiseStop().getCruiseStopId())
                 .orElseThrow(() -> new EntityNotFoundException("Cruise stop not found."));
         UUID destinationId = excursion.getDestination().getDestinationId();
-        Destination destination = destinationRepository.findById(destinationId)
-                .orElseThrow(() -> new EntityNotFoundException("Destination not found: " + destinationId));
-        if (destination.getStatus() != com.casms.ship.enums.DestinationStatus.ACTIVE) {
-            throw new com.casms.common.exception.BusinessException(
-                    org.springframework.http.HttpStatus.UNPROCESSABLE_ENTITY,
-                    "EXCURSION_DESTINATION_INACTIVE", "Excursion destination must be active");
-        }
+        requireActiveDestination(destinationId);
         if (stop.getPort() == null || !portRepository.servesActiveDestination(
                 stop.getPort().getPortId(), destinationId)) {
             throw new com.casms.common.exception.BusinessException(
@@ -315,6 +334,17 @@ public class ShoreExcursionService {
                     "EXCURSION_DESTINATION_NOT_PLANNED",
                     "The destination must be planned for this exact port call");
         }
+    }
+
+    private Destination requireActiveDestination(UUID destinationId) {
+        Destination destination = destinationRepository.findById(destinationId)
+                .orElseThrow(() -> new EntityNotFoundException("Destination not found: " + destinationId));
+        if (destination.getStatus() != com.casms.ship.enums.DestinationStatus.ACTIVE) {
+            throw new com.casms.common.exception.BusinessException(
+                    org.springframework.http.HttpStatus.UNPROCESSABLE_ENTITY,
+                    "EXCURSION_DESTINATION_INACTIVE", "Excursion destination must be active");
+        }
+        return destination;
     }
 
     private static void requireActivitySlot(ShoreExcursion excursion) {

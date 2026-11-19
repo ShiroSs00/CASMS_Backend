@@ -366,3 +366,69 @@ sequenceDiagram
 - `/employees/imports` hỗ trợ XLSX thực, giới hạn 500 dòng và 2 MB. Confirm lặp không tạo thêm Employee hay Account. XLSX kết quả chỉ có số dòng, mã nhân viên, trạng thái và mã lỗi.
 - `POST /employees/{employeeId}/inactivate` khóa Employee/Account và kiểm tra lifecycle chuyến đang phân công. Nếu chuyến đang hoạt động, trả `409 EMPLOYEE_ON_ACTIVE_CRUISE`. Với chuyến chưa khởi hành, kết thúc assignment qua luồng CruiseStaff, giữ lịch sử và tạo thông báo cần người thay thế cho HR.
 - Worker kích hoạt dùng `casms.employee-activation-email.enabled`, SMTP, `casms.employee-activation-email.portal-url` HTTPS và `casms.employee-activation-email.token-key` Base64 có ít nhất 32 byte sau giải mã. Token hoàn chỉnh chỉ được dựng khi gửi. Database giữ ID, hạn dùng và thời điểm tiêu thụ.
+
+## Shore excursion template selection
+
+The port manager configures a destination served by the port. The activity service manager creates a planned tour definition tied to that destination or completes a legacy definition with the destination PATCH. The planner loads sources filtered by destination before selecting a template for the itinerary call.
+
+```mermaid
+sequenceDiagram
+    actor Creator as Port / activity manager
+    actor Planner
+    participant API as Authorized controllers
+    participant Service as Catalog and planning services
+    participant Repo as JPA / JdbcTemplate
+    participant DB as PostgreSQL
+    Creator->>API: Save port to destination access
+    API->>Service: Validate port and destination
+    Service->>Repo: Store PortDestinationAccess
+    Repo->>DB: Write port access association
+    Creator->>API: POST definition with destinationId or PATCH legacy definition
+    API->>Service: Validate role, authority and request
+    Service->>Repo: Persist active destination on template in a write transaction
+    Repo->>DB: INSERT or UPDATE ShoreExcursion
+    Planner->>API: GET excursion sources for destinationId
+    API->>Service: Resolve planned templates for active destination
+    Service->>Repo: Read eligible sources
+    Repo->>DB: SELECT matching templates
+    API-->>Planner: 200 with matching templates
+    Planner->>API: POST program assignments with If-Match
+    API->>Service: Authorized draft assignment
+    Service->>Repo: Lock draft and recheck revision, port call and template
+    Repo->>DB: Read planned destination, port access and template destination
+    alt Missing destination, mismatch or destination not served/planned
+        Service-->>API: Business error and transaction rollback
+        API-->>Planner: Validation error
+    else Valid template for this port call destination
+        Service->>Repo: Copy occurrence and increment cruise revision atomically
+        Repo->>DB: INSERT occurrence and UPDATE revision
+        API-->>Planner: 201 with occurrence IDs and revision
+    end
+```
+
+### Trip schedule and materialization
+
+A draft can retain an unfinished entry without a source. Validation reports `EXCURSION_SOURCE_REQUIRED` for that entry, and finalization blocks it. Invalid linked templates abort operational materialization with a 422.
+
+```mermaid
+sequenceDiagram
+    actor Client
+    participant Security as Spring Security
+    participant Controller as Trip schedule or cruise controller
+    participant Service as Schedule / materialization service
+    participant Repo as JPA repositories
+    participant DB as PostgreSQL
+    Client->>Security: Save / validate / finalize schedule, create / update cruise, or sync programs
+    Security->>Controller: Existing route authorization
+    Controller->>Service: Validated inputs and existing revision checks
+    Service->>Repo: Read source template, planned stop destination and active port access
+    Repo->>DB: Bound queries under operation transaction
+    alt Template missing, inactive, unlinked or tied to a different destination
+        Service-->>Controller: Save error, validation issue or failed operational mapping
+    else Eligible linked template for this call
+        Service->>Repo: Continue schedule write or materialize linked occurrence
+        Repo->>DB: Persist scheduled changes when requested
+        Service-->>Controller: Existing operation result
+    end
+    Controller-->>Client: Result or mapped error
+```

@@ -62,3 +62,15 @@ Reviewed CASMS-75 controller/service/repository/DB, authorization, transaction, 
 ## Deployment / scope boundary
 
 Apply V95 through the normal deployment process before running the new code. Existing unknown facilities remain OTHER; configure ACTIVITY_SPACE with the existing model-update permission (default Admin), then supply missing area/schedule data before resubmission. No shared/production migration or application deployment was performed. No frontend or whole-repository test run is claimed.
+
+## Mẫu tour theo địa điểm
+
+```powershell
+mvn -o -B -ntp "-Dtest=ShoreExcursionServiceTest,TripPlanningEnhancementTest,RolePermissionInitializerTest,StaffingWorkflowServiceTest" test
+python scripts/sequence_docs.py --check
+git diff --check
+```
+
+Maven đạt 80/80, gồm 11 ca tour trên bờ, 42 ca lập kế hoạch, 12 ca RBAC và 15 ca staffing. Không có assertion thất bại, lỗi thực thi hoặc ca bị bỏ qua trong nhóm chạy. Đã thêm ca tích hợp cho API danh sách tour và gắn mẫu cũ thiếu địa điểm. Chưa chạy các ca PostgreSQL vì chưa có DB cô lập lắng nghe ở cổng kiểm thử.
+
+Sequence checker báo 73 route và 536 sơ đồ thiếu, giảm 9 sơ đồ so với baseline 73 route và 545 sơ đồ. Không phát sinh lỗi cấu trúc Mermaid. `git diff --check` đạt.

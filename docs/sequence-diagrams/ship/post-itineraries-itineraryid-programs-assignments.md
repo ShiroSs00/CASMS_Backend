@@ -28,3 +28,7 @@ sequenceDiagram
         Controller-->>Client: HTTP success
     end
 ```
+
+## Tour templates tied to a destination
+
+For each selected excursion, load the selected stop within the locked draft itinerary. Check that the chosen active destination is planned for that call and reachable through `PortDestinationAccess`. Take a shared lock on the planned template. Reject a missing or different template destination with `EXCURSION_SOURCE_DESTINATION_MISMATCH`; the full assignment transaction rolls back. The inserted occurrence uses the template destination and the port of the itinerary call.

@@ -1,5 +1,6 @@
 package com.casms.trip.service;
 
+import com.casms.activity.entity.ShoreExcursion;
 import com.casms.activity.enums.OnboardActivityStatus;
 import com.casms.activity.enums.ShoreExcursionStatus;
 import com.casms.activity.repository.OnboardActivityRepository;
@@ -790,21 +791,7 @@ public class TripScheduleVersionService {
                             .orElseThrow(() -> new BusinessException(HttpStatus.BAD_REQUEST,
                                     "SOURCE_EXCURSION_NOT_FOUND", "Chọn tour bờ còn trong danh mục.",
                                     Map.of("clientKey", entryDto.getClientKey(), "field", "sourceExcursionId")));
-                    Port sourcePort = source.getPort();
-                    if (sourcePort == null && source.getCruiseStop() != null) {
-                        sourcePort = source.getCruiseStop().getPort();
-                    }
-                    if (source.getStatus() == ShoreExcursionStatus.CANCELLED) {
-                        throw new BusinessException(HttpStatus.BAD_REQUEST, "SOURCE_EXCURSION_INACTIVE",
-                                "Chọn tour bờ đang hoạt động.",
-                                Map.of("clientKey", entryDto.getClientKey(), "field", "sourceExcursionId"));
-                    }
-                    if (sourcePort != null && stopPort != null
-                            && !Objects.equals(sourcePort.getPortId(), stopPort.getPortId())) {
-                        throw new BusinessException(HttpStatus.BAD_REQUEST, "SHORE_EXCURSION_PORT_MISMATCH",
-                                "Chọn tour bờ tại cảng của lần ghé này.",
-                                Map.of("clientKey", entryDto.getClientKey(), "field", "sourceExcursionId"));
-                    }
+                    validateExcursionSource(source, stop, entryDto.getDestinationId(), entryDto.getClientKey());
                 }
                 int excStartDay =
                         entryDto.getStartDayNumber() != null
@@ -2730,7 +2717,20 @@ public class TripScheduleVersionService {
                 }
             }
 
-            if (entry.getSourceExcursionId() != null && shoreExcursionRepository != null) {
+            if (entry.getKind() == TripPlanEntryKind.SHORE_EXCURSION
+                    && entry.getSourceExcursionId() == null) {
+                violations.add(PlanViolation.builder()
+                        .code("EXCURSION_SOURCE_REQUIRED")
+                        .severity("ERROR")
+                        .entityType("ENTRY")
+                        .clientKey(entry.getClientKey())
+                        .dayNumber(entry.getStartDayNumber())
+                        .field("sourceExcursionId")
+                        .fieldPath("entries[clientKey=" + entry.getClientKey() + "].sourceExcursionId")
+                        .actionHint("SELECT_VALID_SOURCE")
+                        .message("Chọn mẫu tour bờ thuộc địa điểm đã lên kế hoạch.")
+                        .build());
+            } else if (entry.getSourceExcursionId() != null && shoreExcursionRepository != null) {
                 var excOpt = shoreExcursionRepository.findById(entry.getSourceExcursionId());
                 if (excOpt.isEmpty()) {
                     violations.add(
@@ -2751,79 +2751,54 @@ public class TripScheduleVersionService {
                                                     + entry.getSourceExcursionId()
                                                     + ") không tồn tại trong danh mục.")
                                     .build());
-                } else {
-                    var exc = excOpt.get();
-                    if (exc.getStatus() == ShoreExcursionStatus.CANCELLED) {
-                        violations.add(
-                                PlanViolation.builder()
-                                        .code("SOURCE_EXCURSION_INACTIVE")
-                                        .severity("ERROR")
-                                        .entityType("ENTRY")
-                                        .clientKey(entry.getClientKey())
-                                        .dayNumber(entry.getStartDayNumber())
-                                        .field("sourceExcursionId")
-                                        .fieldPath(
-                                                "entries[clientKey="
-                                                        + entry.getClientKey()
-                                                        + "].sourceExcursionId")
-                                        .actionHint("SELECT_VALID_SOURCE")
-                                        .message(
-                                                "Tour tham quan nguồn '"
-                                                        + exc.getExcursionName()
-                                                        + "' đã bị hủy / ngừng hoạt động.")
-                                        .build());
-                    }
-
-                    // Kiểm tra tour tham quan đúng cảng
-                    UUID excursionPortId =
-                            exc.getPort() != null
-                                    ? exc.getPort().getPortId()
-                                    : (exc.getCruiseStop() != null
-                                                    && exc.getCruiseStop().getPort() != null
-                                            ? exc.getCruiseStop().getPort().getPortId()
-                                            : null);
-                    if (excursionPortId != null
-                            && entry.getStop() != null
-                            && entry.getStop().getPort() != null) {
-                        UUID stopPortId = entry.getStop().getPort().getPortId();
-                        if (!excursionPortId.equals(stopPortId)) {
-                            String excursionPortName =
-                                    exc.getPort() != null
-                                            ? exc.getPort().getPortName()
-                                            : (exc.getCruiseStop() != null
-                                                            && exc.getCruiseStop().getPort() != null
-                                                    ? exc.getCruiseStop().getPort().getPortName()
-                                                    : "Khác");
-                            violations.add(
-                                    PlanViolation.builder()
-                                            .code("SHORE_EXCURSION_PORT_MISMATCH")
-                                            .severity("ERROR")
-                                            .entityType("ENTRY")
-                                            .clientKey(entry.getClientKey())
-                                            .dayNumber(entry.getStartDayNumber())
-                                            .field("sourceExcursionId")
-                                            .fieldPath(
-                                                    "entries[clientKey="
-                                                            + entry.getClientKey()
-                                                            + "].sourceExcursionId")
-                                            .actionHint("SELECT_VALID_SOURCE")
-                                            .message(
-                                                    "Tour tham quan nguồn thuộc cảng '"
-                                                            + excursionPortName
-                                                            + "' nhưng được gán vào điểm dừng tại"
-                                                            + " cảng '"
-                                                            + entry.getStop()
-                                                                    .getPort()
-                                                                    .getPortName()
-                                                            + "'.")
-                                            .build());
-                        }
+                } else if (entry.getKind() == TripPlanEntryKind.SHORE_EXCURSION) {
+                    try {
+                        validateExcursionSource(excOpt.get(), entry.getStop(),
+                                entry.getDestination() == null ? null : entry.getDestination().getDestinationId(),
+                                entry.getClientKey());
+                    } catch (BusinessException ex) {
+                        violations.add(PlanViolation.builder()
+                                .code(ex.getCode())
+                                .severity("ERROR")
+                                .entityType("ENTRY")
+                                .clientKey(entry.getClientKey())
+                                .dayNumber(entry.getStartDayNumber())
+                                .field("sourceExcursionId")
+                                .fieldPath("entries[clientKey=" + entry.getClientKey() + "].sourceExcursionId")
+                                .actionHint("SELECT_VALID_SOURCE")
+                                .message(ex.getMessage())
+                                .build());
                     }
                 }
             }
         }
 
         return violations;
+    }
+
+    private void validateExcursionSource(
+            ShoreExcursion source, TripPlanStop stop, UUID destinationId, String clientKey) {
+        Map<String, Object> details = Map.of("clientKey", Objects.toString(clientKey, ""), "field", "sourceExcursionId");
+        if (source.getStatus() != ShoreExcursionStatus.PLANNED || source.getCruiseStop() != null) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "SOURCE_EXCURSION_INACTIVE",
+                    "Chọn mẫu tour bờ đang hoạt động.", details);
+        }
+        if (destinationId == null || source.getDestination() == null
+                || !destinationId.equals(source.getDestination().getDestinationId())) {
+            throw new BusinessException(HttpStatus.UNPROCESSABLE_ENTITY, "EXCURSION_SOURCE_DESTINATION_MISMATCH",
+                    "Chọn mẫu tour bờ thuộc địa điểm đã chọn.", details);
+        }
+        if (stop == null || stop.getPort() == null
+                || !portRepository.servesActiveDestination(stop.getPort().getPortId(), destinationId)) {
+            throw new BusinessException(HttpStatus.UNPROCESSABLE_ENTITY, "EXCURSION_DESTINATION_NOT_SERVED",
+                    "Cảng của lần ghé này phải phục vụ địa điểm đã chọn.", details);
+        }
+        if ((stop.getDestination() == null || !destinationId.equals(stop.getDestination().getDestinationId()))
+                && stop.getVisits().stream().noneMatch(visit -> visit.getDestination() != null
+                        && destinationId.equals(visit.getDestination().getDestinationId()))) {
+            throw new BusinessException(HttpStatus.UNPROCESSABLE_ENTITY, "EXCURSION_DESTINATION_NOT_PLANNED",
+                    "Địa điểm phải nằm trong kế hoạch của lần ghé này.", details);
+        }
     }
 
     public static String resolveDomesticRegion(Port port) {
@@ -3004,7 +2979,8 @@ public class TripScheduleVersionService {
         if (entry.getDestination() != null) {
             res.setDestinationId(entry.getDestination().getDestinationId());
             res.setDestinationName(entry.getDestination().getDestinationName());
-        } else if (entry.getStop() != null
+        } else if (entry.getKind() != TripPlanEntryKind.SHORE_EXCURSION
+                && entry.getStop() != null
                 && entry.getStop().getPort() != null
                 && entry.getStop().getPort().getDestination() != null) {
             res.setDestinationId(entry.getStop().getPort().getDestination().getDestinationId());

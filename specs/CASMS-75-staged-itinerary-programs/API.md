@@ -46,3 +46,11 @@ Giá dùng USD theo quy tắc hiện có. Hai API trả revision mới trong dat
 409 STALE_REVISION/PLAN_FROZEN/ITINERARY_NOT_EDITABLE/PROGRAM_NOT_EDITABLE; tải lại dữ liệu trước khi sửa tiếp. Sai scope không tạo dữ liệu sang chuyến khác. 422 cho window/area/destination không hợp lệ; `ITINERARY_PROGRAMS_INCOMPLETE` kèm issues khi gửi trực tiếp itinerary. Mainflow vẫn dùng cấu trúc blockers và mã lỗi PLAN_INCOMPLETE hiện có.
 
 Migration V95 cần được triển khai trước code. Các occurrence cũ chưa có area phải được bổ sung qua quy trình phù hợp trước lần gửi/duyệt tiếp theo. Không tự suy luận area theo chuỗi location cũ. Không bắt gán toàn bộ danh mục.
+
+## Chọn tour theo địa điểm
+
+- `POST /shore-excursions/definitions` yêu cầu `destinationId` cùng tên, nhà cung cấp và điểm tập trung. Kết quả 201 có `data.destinationId`.
+- `GET /trip-planning/catalogs/sources/excursions?destinationId={id}` trả về các mẫu có thể chọn cho địa điểm. Cảng được dùng để kiểm tra khả năng phục vụ qua `PortDestinationAccess`.
+- `PATCH /shore-excursions/definitions/{id}/destination` nhận `{"destinationId":"<uuid>"}` để bổ sung địa điểm cho mẫu cũ.
+- Trong `POST /itineraries/{itineraryId}/programs/assignments`, `excursions[].destinationId` phải trùng với địa điểm đã lưu trên mẫu và thuộc kế hoạch điểm dừng.
+- Người quản lý cấu hình địa điểm do cảng phục vụ qua `servedDestinationIds` trên API tạo hoặc cập nhật cảng.

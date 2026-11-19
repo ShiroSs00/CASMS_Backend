@@ -53,3 +53,7 @@ This route was traced to its shared service callers for the V90 change. The revi
 Catalog and timed occurrences share storage but have explicit catalogEntry identity. Catalog POST rejects schedule fields. Scheduling copies metadata and retains sourceActivityId. Operational activity reads return catalogEntry/sourceActivityId/category/responsibleUserId. Catalog lifecycle/registration is rejected; source deletion is protected. Cruise-scoped reads/writes require the existing cruise access and revision guards.
 
 When initial program mapping is permitted, the selected departure is the anchor for template activity offsets. See [departure and delay flows](../CRUISE-DEPARTURE-DELAY.md).
+
+## Shore excursion destination
+
+When applying a schedule or synchronizing its programs, materialization verifies the destination of the exact port call and checks that referenced tours are planned templates tied to that destination. An unlinked, mismatched or ineligible existing template raises a 422 and rolls back the operation. A missing source or supplier produces a failed mapping without a tour. See [the reviewed flow](../ITINERARY-PROGRAM-FLOWS.md#shore-excursion-template-selection).

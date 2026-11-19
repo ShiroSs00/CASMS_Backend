@@ -626,8 +626,15 @@ public class OperationalProgramMappingService {
                             ShoreExcursion template = templateOpt.get();
                             UUID destinationId = entry.getDestination() == null
                                     ? null : entry.getDestination().getDestinationId();
-                            if (template.getDestination() != null
-                                    && !template.getDestination().getDestinationId().equals(destinationId)) {
+                            if (template.getCruiseStop() != null
+                                    || template.getStatus() != ShoreExcursionStatus.PLANNED) {
+                                throw new com.casms.common.exception.BusinessException(
+                                        org.springframework.http.HttpStatus.UNPROCESSABLE_ENTITY,
+                                        "EXCURSION_SOURCE_REQUIRED",
+                                        "Chọn mẫu tour bờ đang hoạt động");
+                            }
+                            if (template.getDestination() == null
+                                    || !template.getDestination().getDestinationId().equals(destinationId)) {
                                 throw new com.casms.common.exception.BusinessException(
                                         org.springframework.http.HttpStatus.UNPROCESSABLE_ENTITY,
                                         "EXCURSION_SOURCE_DESTINATION_MISMATCH",

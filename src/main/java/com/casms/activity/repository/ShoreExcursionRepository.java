@@ -34,6 +34,18 @@ public interface ShoreExcursionRepository extends JpaRepository<ShoreExcursion, 
     boolean existsByExcursionCodeIgnoreCaseAndCruiseStop_CruiseStopIdAndShoreExcursionIdNot(
             String excursionCode, UUID cruiseStopId, UUID shoreExcursionId);
 
+    @Query("""
+            SELECT e FROM ShoreExcursion e
+            JOIN FETCH e.destination d
+            JOIN FETCH e.supplier
+            WHERE e.cruiseStop IS NULL
+              AND e.status = 'PLANNED'
+              AND d.status = 'ACTIVE'
+              AND d.destinationId = COALESCE(:destinationId, d.destinationId)
+            ORDER BY e.excursionName, e.shoreExcursionId
+            """)
+    List<ShoreExcursion> findSelectableDefinitions(@Param("destinationId") UUID destinationId);
+
     List<ShoreExcursion> findByCruiseStop_CruiseStopId(UUID cruiseStopId);
 
     List<ShoreExcursion> findByPort_PortId(UUID portId);
