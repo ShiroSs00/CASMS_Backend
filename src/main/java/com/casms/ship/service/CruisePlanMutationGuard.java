@@ -154,7 +154,7 @@ public class CruisePlanMutationGuard {
                                         em.flush();
                                         for (var entry : before.entrySet()) {
                                             if (!Objects.equals(entry.getValue(), plans.planSnapshot(entry.getKey()))) {
-                                                jdbc.query("SELECT invalidate_staffing_plan(?)",
+                                                jdbc.query("SELECT invalidate_staffing_legacy_plan(?)",
                                                         rs -> {}, entry.getKey());
                                             }
                                         }
