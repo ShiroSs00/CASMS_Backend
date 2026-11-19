@@ -497,11 +497,7 @@ public class RolePermissionInitializer implements CommandLineRunner {
                         Permission.REPORT_GENERATE,
                         Permission.REPORT_EXPORT,
                         Permission.BOOKING_READ,
-                        Permission.CHECKIN_READ,
-                        Permission.CRUISE_READ,
-                        Permission.ITINERARY_READ,
-                        Permission.ITINERARY_DAY_READ,
-                        Permission.CRUISE_STOP_READ));
+                        Permission.CHECKIN_READ));
 
         // PASSENGER: chức năng dành cho hành khách (chỉ dữ liệu của mình, không tự confirm hoặc cấp
         // boarding pass)

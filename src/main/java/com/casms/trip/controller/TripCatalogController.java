@@ -710,6 +710,9 @@ public class TripCatalogController {
                                                                 ? p.getDestination()
                                                                         .getDestinationName()
                                                                 : null)
+                                                .servedDestinationIds(
+                                                        portRepository.findServedDestinationIds(
+                                                                p.getPortId()))
                                                 .latitude(p.getLatitude())
                                                 .longitude(p.getLongitude())
                                                 .description(p.getDescription())

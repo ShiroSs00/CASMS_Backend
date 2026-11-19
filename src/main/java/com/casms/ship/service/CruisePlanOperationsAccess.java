@@ -39,6 +39,24 @@ public class CruisePlanOperationsAccess implements WebMvcConfigurer, HandlerInte
                         "ROLE_HR_MANAGER", "ROLE_SHIP_MANAGER", "ROLE_ACTIVITY_SERVICE_MANAGER")::contains);
     }
 
+    public static boolean financeOnly(Authentication auth) {
+        if (auth == null) return false;
+        var roles = auth.getAuthorities().stream().map(a -> a.getAuthority()).toList();
+        return roles.contains("ROLE_FINANCE_OFFICER")
+                && roles.stream().noneMatch(Set.of("ROLE_ADMIN", "ROLE_CRUISE_MANAGER",
+                        "ROLE_OPERATIONS_MANAGER", "ROLE_SHIP_MANAGER", "ROLE_ACTIVITY_SERVICE_MANAGER",
+                        "ROLE_HR_MANAGER", "ROLE_BOOKING_AGENT", "ROLE_ONBOARD_STAFF")::contains);
+    }
+
+    public static boolean onboardOnly(Authentication auth) {
+        if (auth == null) return false;
+        var roles = auth.getAuthorities().stream().map(a -> a.getAuthority()).toList();
+        return roles.contains("ROLE_ONBOARD_STAFF")
+                && roles.stream().noneMatch(Set.of("ROLE_ADMIN", "ROLE_CRUISE_MANAGER",
+                        "ROLE_OPERATIONS_MANAGER", "ROLE_SHIP_MANAGER", "ROLE_ACTIVITY_SERVICE_MANAGER",
+                        "ROLE_HR_MANAGER", "ROLE_BOOKING_AGENT")::contains);
+    }
+
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
         registry.addInterceptor(this).addPathPatterns(
@@ -54,7 +72,8 @@ public class CruisePlanOperationsAccess implements WebMvcConfigurer, HandlerInte
             return false;
         return actor.hasRole(Role.CRUISE_MANAGER) || actor.hasRole(Role.OPERATIONS_MANAGER)
                 || actor.hasRole(Role.SHIP_MANAGER) || actor.hasRole(Role.ACTIVITY_SERVICE_MANAGER)
-                || actor.hasRole(Role.HR_MANAGER);
+                || actor.hasRole(Role.HR_MANAGER) || actor.hasRole(Role.ONBOARD_STAFF)
+                || actor.hasRole(Role.FINANCE_OFFICER);
     }
 
     static UUID currentShipManager() {
@@ -72,17 +91,21 @@ public class CruisePlanOperationsAccess implements WebMvcConfigurer, HandlerInte
                OR (? AND (EXISTS (SELECT 1 FROM "CruiseWorkHandoff" w WHERE w.cruise_id=c.cruise_id
                     AND w.work_group='ASM' AND w.assignee_id=?)
                     OR EXISTS (SELECT 1 FROM "DepartureFarePackage" f WHERE f.cruise_id=c.cruise_id AND f.created_by=?)))
+               OR (? AND EXISTS (SELECT 1 FROM "CruiseStaff" s WHERE s.cruise_id=c.cruise_id
+                    AND s.role_in_cruise='ONBOARD_STAFF' AND s.status='ACTIVE' AND s.user_id=?))
             """.formatted(RECEIVED_PLANS);
 
     static Object[] scopeArguments(CasmsPrincipal actor) {
-        return scopeArguments(actor, true, true);
+        return scopeArguments(actor, true, true, true);
     }
 
-    private static Object[] scopeArguments(CasmsPrincipal actor, boolean includeShip, boolean includeAsm) {
+    private static Object[] scopeArguments(
+            CasmsPrincipal actor, boolean includeShip, boolean includeAsm, boolean includeOnboard) {
         UUID user = actor.getUserId();
         return new Object[] { actor.hasRole(Role.CRUISE_MANAGER), user, actor.hasRole(Role.OPERATIONS_MANAGER),
                 includeShip && actor.hasRole(Role.SHIP_MANAGER), user,
-                includeAsm && actor.hasRole(Role.ACTIVITY_SERVICE_MANAGER), user, user };
+                includeAsm && actor.hasRole(Role.ACTIVITY_SERVICE_MANAGER), user, user,
+                includeOnboard && actor.hasRole(Role.ONBOARD_STAFF), user };
     }
 
     public Set<UUID> visibleCruises() {
@@ -105,7 +128,9 @@ public class CruisePlanOperationsAccess implements WebMvcConfigurer, HandlerInte
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) {
         var auth = SecurityContextHolder.getContext().getAuthentication();
         var operationsOnly = operationsOnly(auth);
-        if (!operationsOnly && !requiresRecordScope(auth)) return true;
+        var financeOnly = financeOnly(auth);
+        var onboardOnly = onboardOnly(auth);
+        if (!operationsOnly && !financeOnly && !onboardOnly && !requiresRecordScope(auth)) return true;
         if (!(request.getAttribute(HandlerMapping.URI_TEMPLATE_VARIABLES_ATTRIBUTE) instanceof Map<?, ?> vars)
                 || vars.isEmpty()) return true;
         var pattern = String.valueOf(request.getAttribute(HandlerMapping.BEST_MATCHING_PATTERN_ATTRIBUTE));
@@ -155,7 +180,22 @@ public class CruisePlanOperationsAccess implements WebMvcConfigurer, HandlerInte
             return true; // Let Spring report the invalid route parameter.
         }
         if (cruiseId == null) throw new AccessDeniedException("Chuyến khởi hành ngoài phạm vi công việc.");
+        if (financeOnly) {
+            throw new AccessDeniedException("Vai trò Tài chính không có quyền truy cập trực tiếp dữ liệu chuyến khởi hành.");
+        }
         String uri = request.getRequestURI();
+        if (onboardOnly) {
+            if (!isOnboardOperationalRoute(request.getMethod(), pattern)) {
+                throw new AccessDeniedException("Chức năng này ngoài phạm vi công việc của nhân viên trên tàu.");
+            }
+            if (auth.getPrincipal() instanceof CasmsPrincipal actor && Boolean.TRUE.equals(jdbc.queryForObject("""
+                    SELECT EXISTS(SELECT 1 FROM "CruiseStaff" WHERE cruise_id=?
+                        AND role_in_cruise='ONBOARD_STAFF' AND status='ACTIVE' AND user_id=?)
+                    """, Boolean.class, cruiseId, actor.getUserId()))) {
+                return true;
+            }
+            throw new AccessDeniedException("Chuyến khởi hành ngoài phạm vi phân công trên tàu.");
+        }
         if ("GET".equals(request.getMethod()) && (pattern.endsWith("/public-itinerary")
                 || pattern.endsWith("/sellability") || pattern.endsWith("/cruise-package-offers/available")
                 || (pattern.equals("/cruise/{cruiseId}") || pattern.equals("/cruises/{cruiseId}"))
@@ -184,9 +224,11 @@ public class CruisePlanOperationsAccess implements WebMvcConfigurer, HandlerInte
             if (pattern.endsWith("/{cruiseId}/staff/candidates")
                     || actor.hasRole(Role.HR_MANAGER) && !"GET".equals(request.getMethod())
                         && (pattern.endsWith("/{cruiseId}/staff") || pattern.contains("/{cruiseId}/staff/"))) {
-                if (actor.hasRole(Role.HR_MANAGER) && Boolean.TRUE.equals(jdbc.queryForObject("""
+                if (actor.hasRole(Role.HR_MANAGER) && (Boolean.TRUE.equals(jdbc.queryForObject("""
                         SELECT EXISTS(SELECT 1 FROM "StaffingRequest" WHERE cruise_id=? AND status='SENT_TO_HR')
-                        """, Boolean.class, cruiseId))) return true;
+                        """, Boolean.class, cruiseId))
+                        || ("POST".equals(request.getMethod()) && pattern.endsWith("/{cruiseId}/staff")
+                            && needsShipManagerAssignment(cruiseId)))) return true;
                 throw new AccessDeniedException("Yêu cầu nhân sự này ngoài phạm vi phân công.");
             }
             boolean crmWrite = !"GET".equals(request.getMethod()) &&
@@ -200,16 +242,18 @@ public class CruisePlanOperationsAccess implements WebMvcConfigurer, HandlerInte
                             || Set.of("reorder","reorder-with-reason","planned-arrival","planned-departure").contains(operation)));
             if (crmWrite) requireCoordinator(cruiseId, actor);
             if (actor.hasRole(Role.HR_MANAGER) && pattern.contains("/{cruiseId}/staff")
-                    && Boolean.TRUE.equals(jdbc.queryForObject("""
+                    && (Boolean.TRUE.equals(jdbc.queryForObject("""
                        SELECT EXISTS(SELECT 1 FROM "StaffingRequest" WHERE cruise_id=? AND status IN
-                           ('SENT_TO_HR','HR_SUBMITTED','SHIP_CONFIRMED','PLANNER_CONFIRMED'))
-                       """, Boolean.class, cruiseId))) return true;
+                           ('PENDING_ASM','PENDING_SHIP_REVIEW','SHIP_REVIEWED','SENT_TO_HR','HR_SUBMITTED','SHIP_CONFIRMED','PLANNER_CONFIRMED','OPS_APPROVED'))
+                       """, Boolean.class, cruiseId))
+                       || needsShipManagerAssignment(cruiseId))) return true;
             boolean managementRead = pattern.equals("/cruise-plans/{cruiseId}")
                     || pattern.equals("/cruise-plans/{cruiseId}/cruise-packages") || saleTerms;
             if (pattern.equals("/cruise-plans/{cruiseId}/sale-terms-request")
                     || pattern.equals("/cruise-plans/{cruiseId}/ship-assignment-context"))
                 requireCoordinator(cruiseId, actor);
-            Object[] scope = scopeArguments(actor, !managementRead || pattern.equals("/cruise-plans/{cruiseId}"), !managementRead);
+            Object[] scope = scopeArguments(actor, !managementRead || pattern.equals("/cruise-plans/{cruiseId}"),
+                    !managementRead, isOnboardOperationalRoute(request.getMethod(), pattern));
             Object[] arguments = java.util.Arrays.copyOf(scope, scope.length + 1);
             arguments[scope.length] = cruiseId;
             if (Boolean.TRUE.equals(jdbc.queryForObject(
@@ -217,6 +261,42 @@ public class CruisePlanOperationsAccess implements WebMvcConfigurer, HandlerInte
                     Boolean.class, arguments))) return true;
         }
         throw new AccessDeniedException("Chuyến khởi hành ngoài phạm vi công việc.");
+    }
+
+    private boolean needsShipManagerAssignment(UUID cruiseId) {
+        return Boolean.TRUE.equals(jdbc.queryForObject("""
+                SELECT EXISTS(
+                    SELECT 1 FROM "Cruise" c
+                    WHERE c.cruise_id=? AND c.status NOT IN ('CANCELLED','COMPLETED') AND c.ship_id IS NOT NULL
+                        AND NOT EXISTS (SELECT 1 FROM "CruiseStaff" crew WHERE crew.cruise_id=c.cruise_id
+                            AND crew.status='ACTIVE' AND crew.role_in_cruise='SHIP_MANAGER')
+                        AND (EXISTS (SELECT 1 FROM "StaffingRequest" r WHERE r.cruise_id=c.cruise_id
+                            AND r.asm_program_workflow AND r.status IN ('PENDING_ASM','PENDING_SHIP_REVIEW'))
+                          OR (c.status='DRAFT' AND EXISTS (
+                            SELECT 1 FROM "CruiseServiceLocationRequest" r
+                            JOIN "Deck" d ON d.deck_id=r.deck_id AND d.ship_id=c.ship_id
+                            WHERE r.cruise_id=c.cruise_id AND r.status='PENDING')))
+                )
+                """, Boolean.class, cruiseId));
+    }
+
+    private static boolean isOnboardOperationalRoute(String method, String pattern) {
+        if (pattern.startsWith("/cruise-plans/")) return false;
+        if (pattern.startsWith("/activities/") || pattern.startsWith("/shore-excursions/")) {
+            return true;
+        }
+        if (!"GET".equals(method)) return false;
+        return pattern.equals("/cruise/{cruiseId}")
+                || pattern.equals("/cruises/{cruiseId}")
+                || pattern.equals("/api/cruise/{cruiseId}")
+                || pattern.equals("/api/cruises/{cruiseId}")
+                || pattern.equals("/cruise/{cruiseId}/schedule")
+                || pattern.equals("/cruises/{cruiseId}/schedule")
+                || pattern.equals("/api/cruise/{cruiseId}/schedule")
+                || pattern.equals("/api/cruises/{cruiseId}/schedule")
+                || pattern.startsWith("/itineraries/")
+                || pattern.startsWith("/itinerary-days/")
+                || pattern.startsWith("/cruise-stops/");
     }
 
     public void requireItineraryCoordinator(UUID itineraryId) {

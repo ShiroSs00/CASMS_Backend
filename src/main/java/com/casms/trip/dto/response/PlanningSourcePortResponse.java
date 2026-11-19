@@ -8,6 +8,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.UUID;
 
 @Data
@@ -44,6 +45,9 @@ public class PlanningSourcePortResponse {
 
     @Schema(description = "Tên điểm đến / vùng liên kết", example = "TP. Hồ Chí Minh & Nam Bộ")
     private String destinationName;
+
+    @Schema(description = "Danh sách ID điểm đến do cảng phục vụ cho tour tham quan trên bờ")
+    private List<UUID> servedDestinationIds;
 
     @Schema(description = "Tọa độ vĩ độ")
     private BigDecimal latitude;
