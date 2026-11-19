@@ -210,7 +210,7 @@ public class CruiseMainflowService {
             Windows windows,
             List<ProgramIssue> programIssues,
             List<com.casms.ship.dto.PortWindowContract.Check> portWindowChecks,
-            boolean cruisePackagePricing, boolean unifiedPackageReview) {}
+            boolean cruisePackagePricing, boolean unifiedPackageReview, boolean readyNeedsRefresh) {}
 
     public record ProgramIssue(
             String code,
@@ -506,11 +506,12 @@ public class CruiseMainflowService {
     }
 
     private String readinessFingerprint(UUID id) {
+        return readinessFingerprint(id, "[]");
+    }
+
+    private String readinessFingerprint(UUID id, String staffingEvidence) {
         StringBuilder evidence = new StringBuilder(planSnapshot(id));
-        evidence.append(aggregate("""
-                SELECT jsonb_build_object('id', request_id, 'revision', revision, 'status', status)
-                FROM "StaffingRequest" WHERE cruise_id=? AND status NOT IN ('CANCELLED','RETURNED')
-                """, id));
+        evidence.append(staffingEvidence);
         for (String table : List.of("CruiseRegulation"))
             evidence.append(
                     aggregate(
@@ -755,6 +756,7 @@ SELECT EXISTS(SELECT 1 FROM "CruisePricingPolicy" p JOIN "Cruise" c USING(cruise
                                 "PLAN_APPROVAL_REQUIRED",
                                 "PREPARATION_CONFIRMATION_REQUIRED",
                                 "PREPARATION_SECTIONS_NOT_CONFIRMED",
+                                "STAFFING_APPROVAL_REQUIRED",
                                 "ONBOARD_STAFF_REQUIRED",
                                 "MISSING_ONBOARD_STAFF",
                                 "MISSING_CAPTAIN",
@@ -765,10 +767,19 @@ SELECT EXISTS(SELECT 1 FROM "CruisePricingPolicy" p JOIN "Cruise" c USING(cruise
                         .forEach(b::add);
         }
         boolean ready = r.get("ready_at") != null;
+        Object savedFingerprint = r.get("ready_fingerprint");
+        // Recognize still-valid old confirmations during rollout. New confirmations use
+        // the commercial fingerprint; older records can be refreshed with SET_READY.
+        boolean commerciallyReady = ready && b.isEmpty()
+                && (Objects.equals(savedFingerprint, fingerprint)
+                    || Objects.equals(savedFingerprint, readinessFingerprint(id, aggregate("""
+                        SELECT jsonb_build_object('id', request_id, 'revision', revision, 'status', status)
+                        FROM "StaffingRequest" WHERE cruise_id=? AND status NOT IN ('CANCELLED','RETURNED')
+                        """, id))));
         String readyStatus =
                 !ready
                         ? "NOT_READY"
-                        : b.isEmpty() && Objects.equals(r.get("ready_fingerprint"), fingerprint)
+                        : commerciallyReady
                                 ? "READY"
                                 : "INVALIDATED";
         List<String> actions = new ArrayList<>();
@@ -814,7 +825,8 @@ SELECT EXISTS(SELECT 1 FROM "CruisePricingPolicy" p JOIN "Cruise" c USING(cruise
                 issues,
                 portWindowEvaluator.cruise(id),
                 usesUnifiedPackages(id),
-                usesUnifiedPackages(id));
+                usesUnifiedPackages(id),
+                commerciallyReady && !Objects.equals(savedFingerprint, fingerprint));
     }
 
     public List<View> queue() {

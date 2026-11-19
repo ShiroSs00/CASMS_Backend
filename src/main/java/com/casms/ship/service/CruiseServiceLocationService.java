@@ -26,7 +26,7 @@ public class CruiseServiceLocationService {
     public record Request(UUID serviceId, String serviceName, String deckName,
                           String status, String note, String reviewNote, long revision) {}
     public record View(boolean canPropose, boolean canReview, List<Option> services,
-                       List<Option> decks, List<Request> requests, String operatingBudgetVnd) {}
+                       List<Option> decks, List<Request> requests, String operatingBudgetVnd, boolean shipAssigned) {}
     public record InboxItem(UUID cruiseId, String name, String code, long pending) {}
 
     @Transactional(readOnly = true)
@@ -87,8 +87,12 @@ public class CruiseServiceLocationService {
                 """, (rs, i) -> new Option(rs.getObject(1, UUID.class), rs.getString(2)),
                 cruise.getShip().getShipId()) : List.<Option>of();
         var budget = cruise.getOperatingBudgetVnd();
+        boolean shipAssigned = reviewer || proposer && Boolean.TRUE.equals(jdbc.queryForObject("""
+                SELECT EXISTS (SELECT 1 FROM "CruiseStaff" WHERE cruise_id=?
+                      AND role_in_cruise='SHIP_MANAGER' AND status='ACTIVE')
+                """, Boolean.class, id));
         return new View(proposer && editable, reviewer && editable, services, decks, requests,
-                budget == null ? null : budget.toPlainString());
+                budget == null ? null : budget.toPlainString(), shipAssigned);
     }
 
     @Transactional

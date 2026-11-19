@@ -1035,6 +1035,20 @@ public class TripService {
                 newStop.setAllAboardTime(oldStop.getAllAboardTime());
                 newStop.setIsEmbarkation(oldStop.getIsEmbarkation());
                 newStop.setIsDisembarkation(oldStop.getIsDisembarkation());
+                if (oldStop.getVisits() != null) {
+                    List<com.casms.trip.entity.DestinationVisit> visits = new ArrayList<>();
+                    for (com.casms.trip.entity.DestinationVisit oldVisit : oldStop.getVisits()) {
+                        com.casms.trip.entity.DestinationVisit newVisit =
+                                new com.casms.trip.entity.DestinationVisit();
+                        newVisit.setStop(newStop);
+                        newVisit.setClientKey(oldVisit.getClientKey());
+                        newVisit.setDestination(oldVisit.getDestination());
+                        newVisit.setSequence(oldVisit.getSequence());
+                        newVisit.setDestinationNameSnapshot(null);
+                        visits.add(newVisit);
+                    }
+                    newStop.setVisits(visits);
+                }
                 stops.add(newStop);
                 stopMap.put(newStop.getClientKey(), newStop);
             }
@@ -1055,6 +1069,9 @@ public class TripService {
                 newEntry.setServiceId(oldEntry.getServiceId());
                 newEntry.setSeriesClientKey(oldEntry.getSeriesClientKey());
                 newEntry.setDestination(oldEntry.getDestination());
+                newEntry.setCategory(oldEntry.getCategory());
+                newEntry.setDeck(oldEntry.getDeck());
+                newEntry.setCabin(oldEntry.getCabin());
                 newEntry.setTitle(oldEntry.getTitle());
                 newEntry.setStartDayNumber(oldEntry.getStartDayNumber());
                 newEntry.setPlannedStartTime(oldEntry.getPlannedStartTime());
@@ -1223,6 +1240,20 @@ public class TripService {
                 newStop.setAllAboardTime(oldStop.getAllAboardTime());
                 newStop.setIsEmbarkation(oldStop.getIsEmbarkation());
                 newStop.setIsDisembarkation(oldStop.getIsDisembarkation());
+                if (oldStop.getVisits() != null) {
+                    List<com.casms.trip.entity.DestinationVisit> visits = new ArrayList<>();
+                    for (com.casms.trip.entity.DestinationVisit oldVisit : oldStop.getVisits()) {
+                        com.casms.trip.entity.DestinationVisit newVisit =
+                                new com.casms.trip.entity.DestinationVisit();
+                        newVisit.setStop(newStop);
+                        newVisit.setClientKey(oldVisit.getClientKey());
+                        newVisit.setDestination(oldVisit.getDestination());
+                        newVisit.setSequence(oldVisit.getSequence());
+                        newVisit.setDestinationNameSnapshot(null);
+                        visits.add(newVisit);
+                    }
+                    newStop.setVisits(visits);
+                }
                 stops.add(newStop);
                 stopMap.put(newStop.getClientKey(), newStop);
             }
@@ -1243,6 +1274,9 @@ public class TripService {
                 newEntry.setServiceId(oldEntry.getServiceId());
                 newEntry.setSeriesClientKey(oldEntry.getSeriesClientKey());
                 newEntry.setDestination(oldEntry.getDestination());
+                newEntry.setCategory(oldEntry.getCategory());
+                newEntry.setDeck(oldEntry.getDeck());
+                newEntry.setCabin(oldEntry.getCabin());
                 newEntry.setTitle(oldEntry.getTitle());
                 newEntry.setStartDayNumber(oldEntry.getStartDayNumber());
                 newEntry.setPlannedStartTime(oldEntry.getPlannedStartTime());
@@ -1615,6 +1649,35 @@ public class TripService {
                                     stopRes.setAllAboardTime(s.getAllAboardTime());
                                     stopRes.setIsEmbarkation(s.getIsEmbarkation());
                                     stopRes.setIsDisembarkation(s.getIsDisembarkation());
+                                    if (s.getVisits() != null) {
+                                        boolean frozen =
+                                                version.getStatus()
+                                                        != TripScheduleVersionStatus.DRAFT;
+                                        stopRes.setVisits(
+                                                s.getVisits().stream()
+                                                        .sorted(
+                                                                java.util.Comparator.comparing(
+                                                                        com.casms.trip.entity
+                                                                                .DestinationVisit
+                                                                                ::getSequence))
+                                                        .map(
+                                                                v ->
+                                                                        new com.casms.trip.dto
+                                                                                .response
+                                                                                .DestinationVisitResponse(
+                                                                                v.getVisitId(),
+                                                                                v.getClientKey(),
+                                                                                v.getDestination()
+                                                                                        .getDestinationId(),
+                                                                                frozen
+                                                                                        ? v
+                                                                                                .getDestinationNameSnapshot()
+                                                                                        : v
+                                                                                                .getDestination()
+                                                                                                .getDestinationName(),
+                                                                                v.getSequence()))
+                                                        .collect(Collectors.toList()));
+                                    }
                                     return stopRes;
                                 })
                         .collect(Collectors.toList()));

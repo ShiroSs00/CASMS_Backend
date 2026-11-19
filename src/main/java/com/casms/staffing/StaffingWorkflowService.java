@@ -50,6 +50,7 @@ public class StaffingWorkflowService {
     }
 
     public record Requirement(UUID serviceId, int requiredCount) {}
+    public record ShipManagerNeeded(UUID cruiseId, String cruiseName, String cruiseCode) {}
     public record CreateRequest(Long scheduleRevision, List<Requirement> requirements) {}
     public record ReviewRequest(Long expectedRevision, String comment) {}
     public record ServicePlacementInput(@NotNull UUID areaId, @NotNull UUID terminalId,
@@ -83,12 +84,13 @@ public class StaffingWorkflowService {
     public record StaffReview(UUID userId, String username, String role, List<ServiceOption> services,
                               List<ServiceOption> areas, List<ActivityReview> activities) {}
     public record Placement(UUID areaId, UUID terminalId) {}
+    public record ServiceProposal(String deckName, String note, String status) {}
     public record PlannedService(UUID serviceId, String name, List<UUID> eligibleAreaIds,
-                                 List<Placement> placements) {}
+                                 List<Placement> placements, ServiceProposal proposal) {}
     public record ReviewDetails(Snapshot request, ShipReview ship, List<AreaReview> areas,
                                 List<ActivityReview> activities, List<StaffReview> staff,
                                 List<PosReview> terminalOptions, List<PlannedService> plannedServices,
-                                List<String> positionOptions) {}
+                                List<String> positionOptions, boolean canReturnToAsm) {}
     public record ServiceOption(UUID id, String name) {}
     public record Preparation(long scheduleRevision, Snapshot request, List<ServiceOption> services,
                               boolean hasOperatingBudget) {}
@@ -282,6 +284,24 @@ public class StaffingWorkflowService {
             return snapshot;
         }
         throw forbidden("STAFFING_READ_FORBIDDEN");
+    }
+
+    @Transactional(readOnly = true)
+    public List<ShipManagerNeeded> cruisesWithoutShipManager(CasmsPrincipal actor) {
+        authorize(actor, Role.HR_MANAGER);
+        return jdbc.query("""
+                SELECT c.cruise_id,c.cruise_name,c.cruise_code FROM "Cruise" c
+                WHERE c.status NOT IN ('CANCELLED','COMPLETED') AND c.ship_id IS NOT NULL
+                    AND NOT EXISTS (SELECT 1 FROM "CruiseStaff" crew WHERE crew.cruise_id=c.cruise_id
+                        AND crew.status='ACTIVE' AND crew.role_in_cruise='SHIP_MANAGER')
+                    AND (EXISTS (SELECT 1 FROM "StaffingRequest" r WHERE r.cruise_id=c.cruise_id
+                        AND r.asm_program_workflow AND r.status IN ('PENDING_ASM','PENDING_SHIP_REVIEW'))
+                      OR (c.status='DRAFT' AND EXISTS (
+                        SELECT 1 FROM "CruiseServiceLocationRequest" r
+                        JOIN "Deck" d ON d.deck_id=r.deck_id AND d.ship_id=c.ship_id
+                        WHERE r.cruise_id=c.cruise_id AND r.status='PENDING')))
+                ORDER BY c.departure_datetime,c.cruise_id
+                """, (rs, row) -> new ShipManagerNeeded(rs.getObject(1, UUID.class), rs.getString(2), rs.getString(3)));
     }
 
     @Transactional(readOnly = true)
@@ -985,7 +1005,8 @@ public class StaffingWorkflowService {
                 """, (rs, row) -> new PosReview(rs.getObject(1, UUID.class), rs.getString(2)), cruiseId);
         return new ReviewDetails(request, ship, areas, activities, staffRoster(cruiseId, areas, activities),
                 terminalOptions, request.asmProgramWorkflow() ? plannedServices(cruiseId, request) : List.of(),
-                request.v2() ? AREA_POSITIONS.stream().sorted().toList() : List.of());
+                request.v2() ? AREA_POSITIONS.stream().sorted().toList() : List.of(),
+                request.v2() && "PENDING_SHIP_REVIEW".equals(request.status()) && handoffs.canChange(cruiseId));
     }
 
     private List<PlannedService> plannedServices(UUID cruiseId, Snapshot request) {
@@ -1008,13 +1029,20 @@ public class StaffingWorkflowService {
                     JOIN "Deck" d ON d.deck_id=o.deck_id AND d.ship_id=a.ship_id
                     WHERE a.cruise_id=service.cruise_id
                     ORDER BY a.area_id
-                )
-                FROM "StaffingPlannedOnboardService" service WHERE service.cruise_id=?
+                ), coalesce(d.deck_name,'Boong ' || d.deck_number), proposal.note, proposal.status
+                FROM "StaffingPlannedOnboardService" service
+                JOIN "Cruise" c ON c.cruise_id=service.cruise_id
+                LEFT JOIN ("CruiseServiceLocationRequest" proposal JOIN "Deck" d USING (deck_id))
+                    ON proposal.cruise_id=service.cruise_id AND proposal.service_id=service.service_id
+                    AND d.ship_id=c.ship_id
+                WHERE service.cruise_id=?
                 ORDER BY service.service_name,service.service_id
                 """, (rs, row) -> {
                     UUID service = rs.getObject(1, UUID.class);
                     return new PlannedService(service, rs.getString(2), Arrays.asList((UUID[]) rs.getArray(3).getArray()),
-                            placements.getOrDefault(service, List.of()));
+                            placements.getOrDefault(service, List.of()),
+                            rs.getString(6) == null ? null
+                                    : new ServiceProposal(rs.getString(4), rs.getString(5), rs.getString(6)));
                 }, cruiseId);
     }
 
