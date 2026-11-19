@@ -4,6 +4,7 @@ import com.casms.common.exception.BusinessException;
 import com.casms.identity.enums.Role;
 import com.casms.pos.PosAccessService;
 import com.casms.pos.PosService;
+import com.casms.ship.service.CruiseStaffService;
 import com.casms.ship.service.CruiseWorkHandoffService;
 import com.casms.ship.service.DeckServiceAssignmentService;
 import com.casms.security.principal.CasmsPrincipal;
@@ -23,7 +24,9 @@ class StaffingWorkflowServiceTest {
     private final PosService pos = mock(PosService.class);
     private final CruiseWorkHandoffService handoffs = mock(CruiseWorkHandoffService.class);
     private final DeckServiceAssignmentService decks = mock(DeckServiceAssignmentService.class);
-    private final StaffingWorkflowService subject = new StaffingWorkflowService(jdbc, handoffs, posAccess, pos, decks);
+    private final CruiseStaffService cruiseStaff = mock(CruiseStaffService.class);
+    private final StaffingWorkflowService subject =
+            new StaffingWorkflowService(jdbc, handoffs, posAccess, pos, decks, cruiseStaff);
 
     @Test
     void rejectNonPlannerWithoutTouchingDatabase() {

@@ -353,10 +353,10 @@ class RolePermissionInitializerTest {
     }
 
     @Test
-    void mergeRetainsOpsWindowGrantsAndManualOpsGrantsWithoutGrantingCrmWrites() {
+    void initializationReplacesStaleOpsGrantsAndPreservesPortWindowBoundaries() {
         var ops = new RolePermission();
         ops.setRole(Role.OPERATIONS_MANAGER);
-        ops.setPermissions(java.util.EnumSet.of(Permission.USER_READ));
+        ops.setPermissions(java.util.EnumSet.of(Permission.USER_READ, Permission.TRIP_PUBLISH));
         when(rolePermissionRepository.findByRole(any(Role.class)))
                 .thenAnswer(
                         call ->
@@ -364,7 +364,8 @@ class RolePermissionInitializerTest {
                                         ? java.util.Optional.of(ops)
                                         : java.util.Optional.empty());
         initializer.initializeRolePermissions();
-        assertTrue(ops.getPermissions().contains(Permission.USER_READ));
+        assertFalse(ops.getPermissions().contains(Permission.USER_READ));
+        assertFalse(ops.getPermissions().contains(Permission.TRIP_PUBLISH));
         assertTrue(
                 ops.getPermissions()
                         .containsAll(
