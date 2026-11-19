@@ -1,0 +1,33 @@
+// !$*UTF8*$!
+{
+    archiveVersion = 1;
+    classes = {};
+    objectVersion = 56;
+    objects = {
+        A00000000000000000000001 = {isa = PBXProject; mainGroup = A00000000000000000000002; productRefGroup = A00000000000000000000003; targets = (A00000000000000000000004); buildConfigurationList = A00000000000000000000005; compatibilityVersion = "Xcode 14.0"; developmentRegion = en; knownRegions = (en, Base); projectDirPath = ""; projectRoot = ""; };
+        A00000000000000000000002 = {isa = PBXGroup; children = (A00000000000000000000010, A00000000000000000000011, A00000000000000000000012, A00000000000000000000013, A00000000000000000000014, A00000000000000000000015, A00000000000000000000017, A00000000000000000000003); sourceTree = "<group>"; };
+        A00000000000000000000003 = {isa = PBXGroup; children = (A00000000000000000000016); name = Products; sourceTree = "<group>"; };
+        A00000000000000000000004 = {isa = PBXNativeTarget; buildConfigurationList = A00000000000000000000006; buildPhases = (A00000000000000000000007); buildRules = (); dependencies = (); name = PassengerCardPOS; productName = PassengerCardPOS; productReference = A00000000000000000000016; productType = "com.apple.product-type.application"; };
+        A00000000000000000000005 = {isa = XCConfigurationList; buildConfigurations = (A00000000000000000000020, A00000000000000000000021); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+        A00000000000000000000006 = {isa = XCConfigurationList; buildConfigurations = (A00000000000000000000022, A00000000000000000000023); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+        A00000000000000000000007 = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A00000000000000000000030, A00000000000000000000031, A00000000000000000000032, A00000000000000000000033, A00000000000000000000034); runOnlyForDeploymentPostprocessing = 0; };
+        A00000000000000000000010 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PassengerCardPOSApp.swift; sourceTree = "<group>"; };
+        A00000000000000000000011 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = POSAPI.swift; sourceTree = "<group>"; };
+        A00000000000000000000012 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CardReader.swift; sourceTree = "<group>"; };
+        A00000000000000000000013 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaimScanner.swift; sourceTree = "<group>"; };
+        A00000000000000000000014 = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+        A00000000000000000000015 = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = PassengerCardPOS.entitlements; sourceTree = "<group>"; };
+        A00000000000000000000016 = {isa = PBXFileReference; explicitFileType = wrapper.application; path = PassengerCardPOS.app; sourceTree = BUILT_PRODUCTS_DIR; };
+        A00000000000000000000017 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CustomerCheckinView.swift; sourceTree = "<group>"; };
+        A00000000000000000000020 = {isa = XCBuildConfiguration; name = Debug; buildSettings = {IPHONEOS_DEPLOYMENT_TARGET = 16.0; SDKROOT = iphoneos; SWIFT_VERSION = 5.0; }; };
+        A00000000000000000000021 = {isa = XCBuildConfiguration; name = Release; buildSettings = {IPHONEOS_DEPLOYMENT_TARGET = 16.0; SDKROOT = iphoneos; SWIFT_VERSION = 5.0; }; };
+        A00000000000000000000022 = {isa = XCBuildConfiguration; name = Debug; buildSettings = {CODE_SIGN_ENTITLEMENTS = PassengerCardPOS.entitlements; CODE_SIGN_STYLE = Automatic; INFOPLIST_FILE = Info.plist; PRODUCT_BUNDLE_IDENTIFIER = com.casms.PassengerCardPOS; PRODUCT_NAME = "$(TARGET_NAME)"; TARGETED_DEVICE_FAMILY = 1; }; };
+        A00000000000000000000023 = {isa = XCBuildConfiguration; name = Release; buildSettings = {CODE_SIGN_ENTITLEMENTS = PassengerCardPOS.entitlements; CODE_SIGN_STYLE = Automatic; INFOPLIST_FILE = Info.plist; PRODUCT_BUNDLE_IDENTIFIER = com.casms.PassengerCardPOS; PRODUCT_NAME = "$(TARGET_NAME)"; TARGETED_DEVICE_FAMILY = 1; }; };
+        A00000000000000000000030 = {isa = PBXBuildFile; fileRef = A00000000000000000000010; };
+        A00000000000000000000031 = {isa = PBXBuildFile; fileRef = A00000000000000000000011; };
+        A00000000000000000000032 = {isa = PBXBuildFile; fileRef = A00000000000000000000012; };
+        A00000000000000000000033 = {isa = PBXBuildFile; fileRef = A00000000000000000000013; };
+        A00000000000000000000034 = {isa = PBXBuildFile; fileRef = A00000000000000000000017; };
+    };
+    rootObject = A00000000000000000000001;
+}

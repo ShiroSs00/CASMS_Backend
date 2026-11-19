@@ -3,20 +3,24 @@ package com.casms.checkin.service;
 import com.casms.booking.entity.BookingPassenger;
 import com.casms.booking.enums.BookingContractStatus;
 import com.casms.booking.enums.BookingStatus;
+import com.casms.booking.enums.BookingPassengerParticipationStatus;
 import com.casms.booking.repository.BookingContractRepository;
 import com.casms.booking.repository.BookingPassengerRepository;
 import com.casms.checkin.entity.CruiseCheckin;
 import com.casms.checkin.enums.CruiseCheckinStatus;
 import com.casms.checkin.repository.CruiseCheckinRepository;
+import com.casms.common.exception.BusinessException;
 import com.casms.common.exception.ResourceNotFoundException;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
+import org.springframework.http.HttpStatus;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.UUID;
 
@@ -24,6 +28,8 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 public class CheckinService {
+
+    private static final Duration ONLINE_CHECKIN_LEAD = Duration.ofHours(3);
 
     private final CruiseCheckinRepository checkinRepository;
     private final BookingPassengerRepository bookingPassengerRepository;
@@ -36,15 +42,13 @@ public class CheckinService {
             String emergencyPhone,
             UUID userId,
             boolean staff) {
-        BookingPassenger passenger =
-                bookingPassengerRepository
-                        .findById(bookingPassengerId)
-                        .orElseThrow(
-                                () ->
-                                        new ResourceNotFoundException(
-                                                "Booking passenger not found: "
-                                                        + bookingPassengerId));
+        BookingPassenger passenger = lockPassenger(bookingPassengerId);
         assertOwner(passenger, userId, staff);
+        Instant now = Instant.now();
+        if (!staff) {
+            requireOnlineWindow(passenger, now);
+            requireActiveConfirmedPassenger(passenger);
+        }
 
         CruiseCheckin checkin =
                 checkinRepository
@@ -55,13 +59,16 @@ public class CheckinService {
                                     c.setBookingPassenger(passenger);
                                     c.setLocationTrackingAllowed(true);
                                     c.setLocationSharingAllowed(true);
-                                    c.setStartedAt(Instant.now());
+                                    c.setStartedAt(now);
                                     return c;
                                 });
 
+        if (!staff && checkin.getCheckinStatus() == CruiseCheckinStatus.BoardingReady) {
+            return checkin;
+        }
         checkin.setCheckinStatus(CruiseCheckinStatus.InProgress);
         if (checkin.getStartedAt() == null) {
-            checkin.setStartedAt(Instant.now());
+            checkin.setStartedAt(now);
         }
         if (emergencyName != null && !emergencyName.isBlank()) {
             checkin.setEmergencyContactName(emergencyName.trim());
@@ -74,6 +81,8 @@ public class CheckinService {
 
     @Transactional
     public CruiseCheckin completeCheckin(UUID bookingPassengerId, UUID userId, boolean staff) {
+        BookingPassenger passenger = lockPassenger(bookingPassengerId);
+        assertOwner(passenger, userId, staff);
         CruiseCheckin checkin =
                 checkinRepository
                         .findByBookingPassenger_BookingPassengerId(bookingPassengerId)
@@ -82,8 +91,9 @@ public class CheckinService {
                                         new ResourceNotFoundException(
                                                 "Checkin record not found for passenger: "
                                                         + bookingPassengerId));
-        assertOwner(checkin.getBookingPassenger(), userId, staff);
-
+        if (!staff) {
+            requireActiveConfirmedPassenger(passenger);
+        }
         // Idempotency: If already BoardingReady, return existing record
         if (checkin.getCheckinStatus() == CruiseCheckinStatus.BoardingReady) {
             log.info(
@@ -92,8 +102,13 @@ public class CheckinService {
             return checkin;
         }
 
+        Instant now = Instant.now();
+        if (!staff) {
+            requireOnlineWindow(passenger, now);
+        }
+
         // Validate booking prerequisites
-        var booking = checkin.getBookingPassenger().getBooking();
+        var booking = passenger.getBooking();
         if (booking.getBookingStatus() != BookingStatus.Confirmed) {
             throw new IllegalStateException(
                     "Cannot complete check-in: Booking status is "
@@ -120,8 +135,8 @@ public class CheckinService {
         }
 
         checkin.setCheckinStatus(CruiseCheckinStatus.BoardingReady);
-        checkin.setCompletedAt(Instant.now());
-        checkin.setBoardingReadyAt(Instant.now());
+        checkin.setCompletedAt(now);
+        checkin.setBoardingReadyAt(now);
         log.info("Completed check-in for passenger {}, boarding ready.", bookingPassengerId);
         return checkinRepository.save(checkin);
     }
@@ -138,6 +153,34 @@ public class CheckinService {
                                                         + bookingPassengerId));
         assertOwner(checkin.getBookingPassenger(), userId, staff);
         return checkin;
+    }
+
+    private BookingPassenger lockPassenger(UUID id) {
+        return bookingPassengerRepository.lockById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Booking passenger", id));
+    }
+
+    private static void requireOnlineWindow(BookingPassenger passenger, Instant now) {
+        var cruise = passenger.getBooking().getCruise();
+        var departure = cruise == null ? null : cruise.getDepartureDatetime();
+        if (departure == null) {
+            throw new BusinessException(HttpStatus.CONFLICT, "CHECKIN_SCHEDULE_UNAVAILABLE",
+                    "Scheduled departure is unavailable");
+        }
+        Instant opensAt = departure.minus(ONLINE_CHECKIN_LEAD);
+        if (now.isBefore(opensAt) || !now.isBefore(departure)) {
+            throw new BusinessException(HttpStatus.CONFLICT, "CHECKIN_WINDOW_CLOSED",
+                    "Online check-in is available from three hours before scheduled departure until departure",
+                    java.util.Map.of("opensAt", opensAt, "closesAt", departure));
+        }
+    }
+
+    private static void requireActiveConfirmedPassenger(BookingPassenger passenger) {
+        if (passenger.getBooking().getBookingStatus() != BookingStatus.Confirmed
+                || passenger.getParticipationStatus() != BookingPassengerParticipationStatus.Active) {
+            throw new BusinessException(HttpStatus.CONFLICT, "CHECKIN_PASSENGER_INELIGIBLE",
+                    "Online check-in requires an active passenger on a confirmed booking");
+        }
     }
 
     private void assertOwner(BookingPassenger bookingPassenger, UUID userId, boolean staff) {
