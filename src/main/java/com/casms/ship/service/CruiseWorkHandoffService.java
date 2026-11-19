@@ -30,7 +30,7 @@ public class CruiseWorkHandoffService {
                        UUID shipId, String shipName, Integer shipCapacity,
                        Instant departureAt, Instant returnAt, Integer expectedPassengerCount,
                        String sourceTripCode, String sourceTripName, Integer sourceVersionNumber) {}
-    public record Panel(boolean canDispatch, boolean shipAssigned, List<Task> tasks) {}
+    public record Panel(boolean canDispatch, boolean shipAssigned, List<Task> tasks, UUID staffingRequestId) {}
     public record ProgramContext(String planStatus, boolean unifiedPackageReview, Windows windows,
                                  boolean mayConfigure) {}
     public record Windows(long expectedRevision) {}
@@ -72,8 +72,13 @@ public class CruiseWorkHandoffService {
     @Transactional(readOnly = true)
     public Panel forCoordinator(UUID cruiseId, CasmsPrincipal actor) {
         requireCoordinator(cruiseId, actor);
+        UUID staffingRequestId = jdbc.queryForList("""
+                SELECT request_id FROM "StaffingRequest" WHERE cruise_id=?
+                    AND asm_program_workflow AND status NOT IN ('CANCELLED','RETURNED')
+                """, UUID.class, cruiseId).stream().findFirst().orElse(null);
         return new Panel(canChange(cruiseId), hasShipReviewer(cruiseId),
-                select(SELECT_TASKS + " WHERE c.cruise_id=? ORDER BY w.work_group", actor, false, cruiseId));
+                select(SELECT_TASKS + " WHERE c.cruise_id=? ORDER BY w.work_group", actor, false, cruiseId),
+                staffingRequestId);
     }
 
     @Transactional(readOnly = true)
@@ -121,6 +126,14 @@ public class CruiseWorkHandoffService {
             sendTask(cruiseId, Group.ASM, "Hoàn thiện chương trình dịch vụ và hoạt động của chuyến.", actor, completed);
         }
         return false;
+    }
+
+    @Transactional
+    public void returnAsmFromStaffing(UUID cruiseId, CasmsPrincipal actor, String reason) {
+        lock(cruiseId);
+        if (!assignedShip(cruiseId, actor)) throw denied();
+        requireEditable(cruiseId);
+        sendTask(cruiseId, Group.ASM, reason, actor, true);
     }
 
     private void sendTask(UUID cruiseId, Group group, String request, CasmsPrincipal actor, boolean reopen) {
@@ -204,6 +217,14 @@ public class CruiseWorkHandoffService {
                     INSERT INTO "StaffingDecision" (request_id,revision,action,actor_id)
                     SELECT request_id,revision,'ASM_COMPLETED',? FROM promoted
                     """, cruiseId, actor.getUserId());
+            jdbc.update("""
+                    INSERT INTO "Notification" (notification_id,recipient_user_id,notification_type,title,content,created_at)
+                    SELECT gen_random_uuid(), cs.user_id, 'STAFFING_WORKFLOW', 'Chương trình chuyến đã hoàn tất',
+                        'Kiểm tra tàu và chuẩn bị nhu cầu nhân sự. Mã yêu cầu: ' || req.request_id, now()
+                    FROM "StaffingRequest" req JOIN "CruiseStaff" cs USING(cruise_id)
+                    WHERE req.cruise_id=? AND req.workflow_version='V2' AND req.status='PENDING_SHIP_REVIEW'
+                        AND cs.status='ACTIVE' AND cs.role_in_cruise='SHIP_MANAGER'
+                    """, cruiseId);
         }
         return select(SELECT_TASKS + " WHERE c.cruise_id=? AND w.work_group=?", actor, true, cruiseId, group.name()).getFirst();
     }
