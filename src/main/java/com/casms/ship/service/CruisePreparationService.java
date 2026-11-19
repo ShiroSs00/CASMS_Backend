@@ -530,7 +530,7 @@ public class CruisePreparationService {
                             .sectionCode(section.getSectionCode())
                             .sectionName(section.getSectionName())
                             .ownerRole(section.getOwnerRole())
-                            .submitterRole("CRUISE_MANAGER")
+                            .submitterRole(section.getOwnerRole())
                             .allowedActions(allowedActions(section, checkItems))
                             .status(section.getStatus())
                             .evidence(section.getEvidence())

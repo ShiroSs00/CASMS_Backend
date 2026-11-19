@@ -42,6 +42,12 @@ public class StaffingWorkflowController {
         return ApiResponse.success(workflow.inbox(actor));
     }
 
+    @GetMapping("/staffing-requests/ship-manager-needed")
+    public ApiResponse<List<StaffingWorkflowService.ShipManagerNeeded>> cruisesWithoutShipManager(
+            @AuthenticationPrincipal CasmsPrincipal actor) {
+        return ApiResponse.success(workflow.cruisesWithoutShipManager(actor));
+    }
+
     @GetMapping("/staffing-requests/{requestId}")
     public ApiResponse<StaffingWorkflowService.Snapshot> detail(
             @PathVariable UUID requestId, @AuthenticationPrincipal CasmsPrincipal actor) {

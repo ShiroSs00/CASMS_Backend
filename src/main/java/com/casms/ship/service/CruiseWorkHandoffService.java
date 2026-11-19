@@ -29,7 +29,8 @@ public class CruiseWorkHandoffService {
                        boolean canAccept, boolean canRespond,
                        UUID shipId, String shipName, Integer shipCapacity,
                        Instant departureAt, Instant returnAt, Integer expectedPassengerCount,
-                       String sourceTripCode, String sourceTripName, Integer sourceVersionNumber) {}
+                       String sourceTripCode, String sourceTripName, Integer sourceVersionNumber,
+                       String staffingStatus, boolean shipAssigned) {}
     public record Panel(boolean canDispatch, boolean shipAssigned, List<Task> tasks, UUID staffingRequestId) {}
     public record ProgramContext(String planStatus, boolean unifiedPackageReview, Windows windows,
                                  boolean mayConfigure) {}
@@ -40,7 +41,11 @@ public class CruiseWorkHandoffService {
                    u.username,c.operating_budget_vnd::text,w.revision,w.assignee_id,w.requested_by,
                    s.ship_id,s.ship_name,s.total_capacity,
                    c.departure_datetime,c.return_datetime,c.expected_passenger_count,
-                   t.trip_code,t.name,tv.version_number
+                   t.trip_code,t.name,tv.version_number,
+                   (SELECT req.status FROM "StaffingRequest" req WHERE req.cruise_id=c.cruise_id
+                       AND req.asm_program_workflow AND req.status NOT IN ('CANCELLED','RETURNED')),
+                   EXISTS (SELECT 1 FROM "CruiseStaff" crew WHERE crew.cruise_id=c.cruise_id
+                       AND crew.status='ACTIVE' AND crew.role_in_cruise='SHIP_MANAGER')
             FROM "CruiseWorkHandoff" w
             JOIN "Cruise" c USING(cruise_id)
             LEFT JOIN "User" u ON u.user_id=w.assignee_id
@@ -325,7 +330,7 @@ public class CruiseWorkHandoffService {
         if (!coordinator(id, actor)) throw denied();
     }
 
-    private boolean canChange(UUID id) {
+    public boolean canChange(UUID id) {
         return Boolean.TRUE.equals(jdbc.queryForObject("""
                 SELECT EXISTS(SELECT 1 FROM "Cruise" c LEFT JOIN "CruisePlanReview" p USING(cruise_id)
                     WHERE c.cruise_id=? AND c.status='DRAFT'
@@ -358,7 +363,8 @@ public class CruiseWorkHandoffService {
                     depTs == null ? null : depTs.toInstant(),
                     retTs == null ? null : retTs.toInstant(),
                     (Integer) rs.getObject(18),
-                    rs.getString(19), rs.getString(20), (Integer) rs.getObject(21));
+                    rs.getString(19), rs.getString(20), (Integer) rs.getObject(21),
+                    rs.getString(22), rs.getBoolean(23));
         }, args);
     }
 
