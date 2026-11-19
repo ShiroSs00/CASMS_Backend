@@ -214,6 +214,7 @@ public class RolePermissionInitializer implements CommandLineRunner {
                 Role.OPERATIONS_MANAGER,
                 EnumSet.of(
                         Permission.POS_ACCESS,
+                        Permission.CHECKIN_BOARDING,
                         Permission.POS_MANAGE,
                         Permission.PASSENGER_BLE_ASSIGN,
                         Permission.PASSENGER_BLE_READ,

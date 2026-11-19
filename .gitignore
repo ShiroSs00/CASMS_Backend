@@ -32,6 +32,11 @@ Thumbs.db
 !/docs/ship-redesign/
 !/docs/sequence-diagrams/
 /docs/sequence-diagrams/*
+!/docs/sequence-diagrams/ONLINE-CHECKIN-NFC-CARD.md
+!/docs/sequence-diagrams/checkin/
+/docs/sequence-diagrams/checkin/*
+!/docs/sequence-diagrams/checkin/post-checkin-passenger-passengerid-start.md
+!/docs/sequence-diagrams/checkin/post-checkin-passenger-passengerid-complete.md
 !/docs/sequence-diagrams/identity/
 /docs/sequence-diagrams/identity/*
 !/docs/sequence-diagrams/identity/post-auth-login.md
