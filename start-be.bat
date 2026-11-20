@@ -36,7 +36,17 @@ try {
         Join-Path $env:JAVA_HOME 'bin/java.exe'
     } else { (Get-Command java.exe -ErrorAction Stop).Source }
     $env:JAVA_HOME = Split-Path (Split-Path $java -Parent) -Parent
-    $maven = (Get-Command mvn.cmd -ErrorAction Stop).Source
+    $maven = if ($env:MAVEN_HOME -and (Test-Path -LiteralPath (Join-Path $env:MAVEN_HOME 'bin/mvn.cmd'))) {
+        Join-Path $env:MAVEN_HOME 'bin/mvn.cmd'
+    } elseif ($env:M2_HOME -and (Test-Path -LiteralPath (Join-Path $env:M2_HOME 'bin/mvn.cmd'))) {
+        Join-Path $env:M2_HOME 'bin/mvn.cmd'
+    } elseif (Get-Command mvn.cmd -ErrorAction SilentlyContinue) {
+        (Get-Command mvn.cmd).Source
+    } elseif (Test-Path -LiteralPath "$env:USERPROFILE\apache-maven-3.9.6\bin\mvn.cmd") {
+        "$env:USERPROFILE\apache-maven-3.9.6\bin\mvn.cmd"
+    } else {
+        (Get-Command mvn.cmd -ErrorAction Stop).Source
+    }
     $git = (Get-Command git.exe -ErrorAction Stop).Source
     $versionProcess = New-Object Diagnostics.Process
     $versionProcess.StartInfo.FileName = $java
