@@ -98,10 +98,7 @@ public class ActivityService {
                 || input.getCapacity() == null || input.getCapacity() < 1) {
             throw new IllegalArgumentException("Activity name and positive capacity are required");
         }
-        if (input.getCurrencyCode() == null) {
-            input.setCurrencyCode("USD");
-        }
-        com.casms.common.util.NewWriteCurrency.requireUsd(input.getCurrencyCode());
+        String currency = activityCurrency(input.getCurrencyCode(), a.getCurrencyCode());
         if (input.getPrice() != null && input.getPrice().signum() < 0) {
             throw new IllegalArgumentException("Price must be non-negative");
         }
@@ -111,7 +108,7 @@ public class ActivityService {
         a.setCategory(input.getCategory());
         a.setCapacity(input.getCapacity());
         a.setPrice(input.getPrice() == null ? BigDecimal.ZERO : input.getPrice());
-        a.setCurrencyCode(input.getCurrencyCode() == null ? "USD" : input.getCurrencyCode());
+        a.setCurrencyCode(currency);
         a.setStatus(OnboardActivityStatus.PLANNED);
         return activities.save(a);
     }
@@ -129,7 +126,7 @@ public class ActivityService {
         a.setDescription(source.getDescription());
         a.setCategory(source.getCategory());
         a.setPrice(source.getPrice() == null ? BigDecimal.ZERO : source.getPrice());
-        a.setCurrencyCode(source.getCurrencyCode() == null || source.getCurrencyCode().isBlank() ? "USD" : source.getCurrencyCode());
+        a.setCurrencyCode(source.getCurrencyCode());
         a.setCapacity(input.capacity() == null ? source.getCapacity() : input.capacity());
         a.setStartTime(input.startTime());
         a.setEndTime(input.endTime());
@@ -161,12 +158,9 @@ public class ActivityService {
 
     private OnboardActivity doCreateActivity(
             OnboardActivity a, UUID cruiseId, UUID deckId, UUID cabinId) {
-        com.casms.common.util.NewWriteCurrency.requireUsd(a.getCurrencyCode());
+        a.setCurrencyCode(activityCurrency(a.getCurrencyCode(), null));
         a.setCruise(cruises.findById(cruiseId).orElseThrow(() -> missing("Cruise", cruiseId)));
         a.setActivityCode(businessCodeGenerator.next("AC"));
-        if (a.getCurrencyCode() == null || a.getCurrencyCode().isBlank()) {
-            a.setCurrencyCode("USD");
-        }
         if (a.getPrice() == null) {
             a.setPrice(BigDecimal.ZERO);
         }
@@ -195,7 +189,9 @@ public class ActivityService {
 
     private OnboardActivity doUpdateActivity(
             UUID id, OnboardActivity input, UUID deckId, UUID cabinId) {
-        com.casms.common.util.NewWriteCurrency.requireUsd(input.getCurrencyCode());
+        String requestedCurrency = input.getCurrencyCode();
+        String currency = requestedCurrency == null || requestedCurrency.isBlank()
+                ? null : activityCurrency(requestedCurrency, null);
         OnboardActivity a = activities.lockActivity(id).orElseThrow(() -> missing(ENTITY_ACTIVITY, id));
         if (a.isCatalogEntry()) {
             throw new IllegalArgumentException("Use PUT /activities/catalog/{id} to edit catalog metadata");
@@ -203,6 +199,7 @@ public class ActivityService {
         if (a.getStatus() != OnboardActivityStatus.PLANNED) {
             throw new IllegalStateException("Only planned activities can be edited");
         }
+        if (currency == null) currency = activityCurrency(null, a.getCurrencyCode());
         long allocated = occupied(id);
         if (input.getCapacity() != null && input.getCapacity() < allocated) {
             throw new com.casms.common.exception.BusinessException(
@@ -226,12 +223,22 @@ public class ActivityService {
         }
         a.setCapacity(input.getCapacity());
         a.setPrice(input.getPrice());
-        a.setCurrencyCode(input.getCurrencyCode());
+        a.setCurrencyCode(currency);
         a.setDeck(venue.getDeck());
         a.setCabin(venue.getCabin());
         validateActivity(a, id);
         if (timeChanged) requireActivitySlot(a);
         return a;
+    }
+
+    private static String activityCurrency(String requested, String existing) {
+        String currency = requested == null || requested.isBlank() ? existing : requested;
+        if (currency == null || currency.isBlank()) return "USD";
+        if ("USD".equals(currency) || "VND".equals(currency)) return currency;
+        throw new com.casms.common.exception.BusinessException(
+                org.springframework.http.HttpStatus.UNPROCESSABLE_ENTITY,
+                "ACTIVITY_CURRENCY_UNSUPPORTED",
+                "Onboard activity currency must be VND or USD");
     }
 
     private static void requireActivitySlot(OnboardActivity activity) {

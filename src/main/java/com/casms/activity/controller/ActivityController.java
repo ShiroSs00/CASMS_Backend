@@ -76,7 +76,7 @@ public class ActivityController {
                     Integer capacity,
             @Schema(description = "Giá tham gia (mặc định 0.0)") @DecimalMin("0.0")
                     BigDecimal price,
-            @Schema(description = "Mã tiền tệ gồm 3 ký tự (mặc định USD)", example = "USD")
+            @Schema(description = "Đơn vị tiền tệ của hoạt động (VND hoặc USD, mặc định USD khi tạo)", example = "VND")
                     @Size(min = 3, max = 3)
                     String currencyCode,
             @Schema(description = "ID chuyến du thuyền") @NotNull UUID cruiseId) {}
