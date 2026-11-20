@@ -1651,6 +1651,7 @@ public class BookingService {
         res.setCurrency(booking.getCurrency());
         res.setRequiredDepositAmount(booking.getRequiredDepositAmount());
         res.setFinalPaymentDueAt(booking.getFinalPaymentDueAt());
+        res.setHoldExpiresAt(booking.getHoldExpiresAt());
         BigDecimal netPaid = verifiedNetPaid(booking);
         res.setTotalPaidAmount(netPaid);
         res.setOutstandingBalance(booking.getAgreedFareAmount().subtract(netPaid).max(BigDecimal.ZERO));

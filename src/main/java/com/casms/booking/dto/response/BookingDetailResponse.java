@@ -72,6 +72,9 @@ public class BookingDetailResponse {
     @Schema(description = "Hạn thanh toán số tiền còn lại")
     private Instant finalPaymentDueAt;
 
+    @Schema(description = "Hạn giữ chỗ cho đơn Draft (nếu có)")
+    private Instant holdExpiresAt;
+
     // Hợp đồng
     @Schema(description = "Mã hợp đồng đặt chỗ", example = "CTR-BK-20261019-9B3E")
     private String contractReference;

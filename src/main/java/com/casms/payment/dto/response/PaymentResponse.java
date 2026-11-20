@@ -31,4 +31,5 @@ public class PaymentResponse {
     private PaymentStatus status;
     private String failureReason;
     private String idempotencyKey;
+    private String provider;
 }

@@ -1,6 +1,8 @@
 package com.casms.payment.entity;
 
 import com.casms.booking.entity.Booking;
+import com.casms.payment.enums.SepayReconciliationAction;
+import com.casms.payment.enums.SepayReconciliationStatus;
 import com.casms.payment.enums.SepayTransactionStatus;
 
 import jakarta.persistence.*;
@@ -41,6 +43,12 @@ public class SepayTransaction {
     @Column(name = "transfer_amount", nullable = false, precision = 19, scale = 4)
     private BigDecimal transferAmount;
 
+    @Column(name = "currency", length = 10)
+    private String currency = "VND";
+
+    @Column(name = "expected_amount", precision = 19, scale = 4)
+    private BigDecimal expectedAmount;
+
     @Column(name = "accumulated", precision = 19, scale = 4)
     private BigDecimal accumulated;
 
@@ -68,8 +76,49 @@ public class SepayTransaction {
     @Column(name = "status", nullable = false, length = 50)
     private SepayTransactionStatus status;
 
+    @Column(name = "exception_code", length = 64)
+    private String exceptionCode;
+
+    @Column(name = "exception_reason", columnDefinition = "text")
+    private String exceptionReason;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "reconciliation_status", nullable = false, length = 40)
+    private SepayReconciliationStatus reconciliationStatus = SepayReconciliationStatus.NONE;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "reconciliation_action", length = 40)
+    private SepayReconciliationAction reconciliationAction;
+
+    @Column(name = "reconciliation_reason", columnDefinition = "text")
+    private String reconciliationReason;
+
+    @Column(name = "reconciliation_evidence_ref", length = 255)
+    private String reconciliationEvidenceRef;
+
+    @Column(name = "reconciled_by_user_id")
+    private UUID reconciledByUserId;
+
+    @Column(name = "reconciled_by_username", length = 100)
+    private String reconciledByUsername;
+
+    @Column(name = "reconciled_at")
+    private Instant reconciledAt;
+
     @Column(name = "matched_at")
     private Instant matchedAt;
+
+    @Column(name = "posted_at")
+    private Instant postedAt;
+
+    @Column(name = "retry_count", nullable = false)
+    private Integer retryCount = 0;
+
+    @Column(name = "last_error", columnDefinition = "text")
+    private String lastError;
+
+    @Column(name = "last_attempt_at")
+    private Instant lastAttemptAt;
 
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
@@ -78,6 +127,15 @@ public class SepayTransaction {
     protected void onCreate() {
         if (createdAt == null) {
             createdAt = Instant.now();
+        }
+        if (reconciliationStatus == null) {
+            reconciliationStatus = SepayReconciliationStatus.NONE;
+        }
+        if (retryCount == null) {
+            retryCount = 0;
+        }
+        if (currency == null || currency.isBlank()) {
+            currency = "VND";
         }
     }
 }

@@ -1,5 +1,7 @@
 package com.casms.payment.dto.response;
 
+import com.casms.booking.enums.BookingContractStatus;
+import com.casms.booking.enums.BookingStatus;
 import com.casms.payment.enums.PaymentStatus;
 import com.casms.payment.enums.PaymentType;
 
@@ -112,6 +114,27 @@ public class SepayCheckoutResponse {
 
     @Schema(description = "Thời gian tạo yêu cầu")
     private Instant createdAt;
+
+    @Schema(description = "Khóa idempotency gắn với lệnh thanh toán")
+    private String idempotencyKey;
+
+    @Schema(description = "Hạn thanh toán của đợt theo lịch hợp đồng (nếu có)")
+    private Instant installmentDueAt;
+
+    @Schema(description = "Hạn giữ chỗ của đặt chỗ Draft (nếu có)")
+    private Instant bookingHoldExpiresAt;
+
+    @Schema(description = "Hạn hiệu lực riêng của lệnh QR nếu hệ thống cấu hình")
+    private Instant expiresAt;
+
+    @Schema(description = "Đánh dấu lệnh đang chờ đã lệch với số dư hiện tại của đặt chỗ")
+    private Boolean stale;
+
+    @Schema(description = "Trạng thái hiện tại của đặt chỗ")
+    private BookingStatus bookingStatus;
+
+    @Schema(description = "Trạng thái hiện tại của hợp đồng")
+    private BookingContractStatus contractStatus;
 
     @Schema(description = "Hướng dẫn thanh toán chi tiết cho khách")
     private String instructions;

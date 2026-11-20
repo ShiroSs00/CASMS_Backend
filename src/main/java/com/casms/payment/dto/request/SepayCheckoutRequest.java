@@ -87,4 +87,16 @@ public class SepayCheckoutRequest {
                         + " định: true)",
             example = "true")
     private Boolean autoCapture;
+
+    @Schema(
+            description =
+                    "Số dư còn lại khách thấy trên trang trước khi bấm tạo QR (dùng phát hiện số dư"
+                        + " đã thay đổi để yêu cầu FE tải lại)")
+    private BigDecimal expectedOutstandingBalance;
+
+    @Schema(
+            description =
+                    "Số tiền VNĐ của khoản chọn mà khách thấy trên trang (dùng phát hiện lệch số"
+                        + " tiền trước khi tạo QR; BE vẫn tự tính số tiền chính thức)")
+    private BigDecimal expectedAmountVnd;
 }
