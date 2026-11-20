@@ -1,10 +1,46 @@
 spring:
   datasource:
-    url: ${DB_URL:jdbc:postgresql://localhost:5432/casms?stringtype=unspecified}
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/casms_demo?stringtype=unspecified}
     username: ${DB_USERNAME:postgres}
     password: ${DB_PASSWORD:12345}
+    hikari:
+      data-source-properties:
+        stringtype: unspecified
   jpa:
+    show-sql: false
     hibernate:
       ddl-auto: validate
   flyway:
     enabled: true
+    validate-on-migrate: true
+  mail:
+    host: 127.0.0.1
+    port: 1025
+    username: ""
+    password: ""
+    properties:
+      mail.smtp.auth: false
+      mail.smtp.starttls.enable: false
+      mail.smtp.starttls.required: false
+
+casms:
+  booking-email:
+    enabled: false
+    from: demo-noreply@casms.local
+    portal-url: ${CASMS_BOOKING_EMAIL_PORTAL_URL:http://localhost:5173}
+  employee-activation-email:
+    enabled: false
+  staff-assignment-email:
+    enabled: false
+  payment:
+    sepay:
+      enabled: true
+      api-key: ${SEPAY_API_KEY:casms-demo-sepay-key-2026}
+      bank-name: ${SEPAY_BANK_NAME:MBBank}
+      account-number: ${SEPAY_ACCOUNT_NUMBER:0901452366}
+      account-name: ${SEPAY_ACCOUNT_NAME:CONG TY DU THUYEN CASMS DEMO}
+
+logging:
+  level:
+    com.casms: INFO
+    org.hibernate.SQL: WARN
