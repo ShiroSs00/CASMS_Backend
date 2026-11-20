@@ -47,4 +47,13 @@ public interface PaymentRepository extends JpaRepository<Payment, UUID> {
     List<Payment> findByOnboardAccount_OnboardAccountIdOrderByRequestedAtDesc(UUID onboardAccountId);
 
     List<Payment> findByStatusAndPaymentMethod(PaymentStatus status, PaymentMethod paymentMethod);
+
+    List<Payment> findByPaymentMethod(PaymentMethod paymentMethod);
+
+    @Query(
+            "select p from Payment p where p.booking.bookingId = :bookingId and p.status ="
+                + " com.casms.payment.enums.PaymentStatus.Pending and p.paymentMethod ="
+                + " com.casms.payment.enums.PaymentMethod.Sepay and (p.provider = 'SEPAY_VIETQR'"
+                + " or p.provider is null) order by p.requestedAt desc")
+    List<Payment> findActivePendingSepayVietQrForBooking(@Param("bookingId") UUID bookingId);
 }

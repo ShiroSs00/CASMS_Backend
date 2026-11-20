@@ -528,6 +528,7 @@ public class PaymentService {
                 .status(p.getStatus())
                 .failureReason(p.getFailureReason())
                 .idempotencyKey(p.getIdempotencyKey())
+                .provider(p.getProvider())
                 .build();
     }
 }

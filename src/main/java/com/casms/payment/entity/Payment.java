@@ -4,6 +4,7 @@ import com.casms.booking.entity.Booking;
 import com.casms.payment.enums.PaymentMethod;
 import com.casms.payment.enums.PaymentOperationType;
 import com.casms.payment.enums.PaymentStatus;
+import com.casms.payment.enums.PaymentType;
 
 import jakarta.persistence.*;
 
@@ -139,6 +140,25 @@ public class Payment {
 
     @Column(name = "captured_at")
     private Instant capturedAt;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "checkout_payment_type", length = 30)
+    private PaymentType checkoutPaymentType;
+
+    @Column(name = "qr_code_url", columnDefinition = "text")
+    private String qrCodeUrl;
+
+    @Column(name = "qr_bank_name", length = 100)
+    private String qrBankName;
+
+    @Column(name = "qr_account_number", length = 100)
+    private String qrAccountNumber;
+
+    @Column(name = "qr_account_holder_name", length = 255)
+    private String qrAccountHolderName;
+
+    @Column(name = "qr_expires_at")
+    private Instant qrExpiresAt;
 
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt = Instant.now();

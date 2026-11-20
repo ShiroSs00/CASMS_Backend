@@ -92,12 +92,15 @@ public class SecurityConfig {
                                                 "/booking/lookup",
                                                 "/booking/lookup/**",
                                                 "/booking/recovery",
-                                                "/payment/sepay/**",
+                                                "/payment/sepay/webhook",
+                                                "/payment/sepay/quick-checkout",
                                                 "/payment/guest/**",
                                                 "/api/v1/payments/webhooks/**")
                                         .permitAll()
                                         .requestMatchers(
                                                 HttpMethod.GET,
+                                                "/payment/sepay/config",
+                                                "/payment/sepay/config/surcharge",
                                                 "/api/v1/currencies",
                                                 "/api/v1/exchange-rates",
                                                 "/api/v1/currency-conversion",
