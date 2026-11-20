@@ -20,7 +20,8 @@ import static org.mockito.Mockito.*;
 @EnabledIfEnvironmentVariable(named = "CASMS_TEST_POSTGRES_URL", matches = ".+")
 @SpringBootTest(properties = {
         "spring.datasource.url=${CASMS_TEST_POSTGRES_URL}",
-        "spring.datasource.username=postgres", "spring.datasource.password=",
+        "spring.datasource.username=${CASMS_TEST_POSTGRES_USERNAME:postgres}",
+        "spring.datasource.password=${CASMS_TEST_POSTGRES_PASSWORD:}",
         "casms.booking-email.enabled=false"})
 class BookingAtomicPostgresTest {
     @Autowired IdempotencyService service;

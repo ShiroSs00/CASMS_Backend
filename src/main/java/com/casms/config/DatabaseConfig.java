@@ -3,6 +3,7 @@ package com.casms.config;
 import com.casms.config.flyway.LegacyChecksumRealigner;
 import lombok.extern.slf4j.Slf4j;
 import org.flywaydb.core.Flyway;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.flyway.FlywayMigrationStrategy;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -19,20 +20,38 @@ import java.sql.Statement;
 @EnableJpaRepositories(basePackages = "com.casms")
 public class DatabaseConfig {
 
-    /**
-     * Realigns legacy checksums, reconciles pre-V100/V101 schema state on upgraded environments,
-     * repairs schema history table if checksums drifted across environments,
-     * then executes database migrations.
-     */
+    // Recognize the renumbered staff script only when it matches the checksum locked for V101.
+    static final int LEGACY_V96_STAFF_CHECKSUM = 1065177894;
+    static final int V96_SALE_TERMS_CHECKSUM = -299593305;
+
     @Bean
-    public FlywayMigrationStrategy flywayMigrationStrategy() {
-        LegacyChecksumRealigner realigner = new LegacyChecksumRealigner();
+    public FlywayMigrationStrategy flywayMigrationStrategy(
+            @Value("${casms.flyway.legacy-upgrade-jdbc-url:}") String legacyUpgradeJdbcUrl) {
         return flyway -> {
-            realigner.realign(flyway);
-            reconcilePreMigrationState(flyway);
-            flyway.repair();
+            if (!legacyUpgradeJdbcUrl.isBlank()) {
+                verifyLegacyUpgradeTarget(flyway, legacyUpgradeJdbcUrl);
+                log.warn("Explicit Flyway legacy reconciliation enabled for the verified JDBC target");
+                new LegacyChecksumRealigner().realign(flyway);
+                reconcilePreMigrationState(flyway);
+            }
             flyway.migrate();
         };
+    }
+
+    private void verifyLegacyUpgradeTarget(Flyway flyway, String expectedJdbcUrl) {
+        var config = flyway.getConfiguration();
+        try (Connection connection = config.getDataSource().getConnection()) {
+            if (!expectedJdbcUrl.equals(connection.getMetaData().getURL())
+                    || !"public".equals(connection.getSchema())
+                    || (config.getDefaultSchema() != null && !"public".equals(config.getDefaultSchema()))
+                    || (config.getSchemas().length != 0
+                            && (config.getSchemas().length != 1 || !"public".equals(config.getSchemas()[0])))
+                    || !"flyway_schema_history".equals(config.getTable())) {
+                throw new IllegalStateException("Flyway legacy upgrade target or schema does not match");
+            }
+        } catch (SQLException ex) {
+            throw new IllegalStateException("Unable to verify the Flyway legacy upgrade target", ex);
+        }
     }
 
     /**
@@ -83,8 +102,8 @@ public class DatabaseConfig {
                     }
                 }
 
-                // Ensure V96 CruiseSaleTermsRequest exists if V96 was previously applied as V96__cruise_staff_work_assignments.sql
-                if (migrationApplied(connection, "96") && !tableExists(connection, "CruiseSaleTermsRequest")) {
+                // Reconcile only the known renumbered V96, in the same transaction as the schema change.
+                if (hasRenumberedV96(connection)) {
                     stmt.execute("""
                             CREATE TABLE IF NOT EXISTS "CruiseSaleTermsRequest" (
                                 cruise_id UUID PRIMARY KEY REFERENCES "Cruise"(cruise_id) ON DELETE CASCADE,
@@ -93,18 +112,33 @@ public class DatabaseConfig {
                                 completed_at TIMESTAMPTZ
                             )
                             """);
-                    stmt.executeUpdate("""
-                            UPDATE flyway_schema_history
+                    try (PreparedStatement history = connection.prepareStatement("""
+                            UPDATE public.flyway_schema_history
                             SET script = 'V96__cruise_sale_terms_requests.sql',
-                                description = 'cruise sale terms requests'
-                            WHERE version = '96'
-                            """);
+                                description = 'cruise sale terms requests', checksum = ?
+                            WHERE version = '96' AND success
+                              AND script = 'V96__cruise_staff_work_assignments.sql' AND checksum = ?
+                            """)) {
+                        history.setInt(1, V96_SALE_TERMS_CHECKSUM);
+                        history.setInt(2, LEGACY_V96_STAFF_CHECKSUM);
+                        if (history.executeUpdate() != 1) {
+                            throw new IllegalStateException("Legacy V96 changed during reconciliation");
+                        }
+                    }
                     log.info("Reconciled V96 CruiseSaleTermsRequest table from renumbered migration history");
                 }
 
                 // If V101 has not been recorded yet but empty StaffActivityQualification/CruiseStaffDuty exist from old V96,
                 // drop the empty pre-V101 objects so V101__cruise_staff_work_assignments.sql applies cleanly.
                 if (!migrationApplied(connection, "101") && tableExists(connection, "StaffActivityQualification")) {
+                    stmt.execute("LOCK TABLE public.\"StaffActivityQualification\" IN ACCESS EXCLUSIVE MODE");
+                    boolean hasDuty = tableExists(connection, "CruiseStaffDuty");
+                    if (hasDuty) {
+                        stmt.execute("LOCK TABLE public.\"CruiseStaffDuty\" IN ACCESS EXCLUSIVE MODE");
+                    }
+                    if (hasRows(stmt, "StaffActivityQualification") || (hasDuty && hasRows(stmt, "CruiseStaffDuty"))) {
+                        throw new IllegalStateException("Legacy V101 objects contain staff data; review before migrating");
+                    }
                     stmt.execute("DROP TRIGGER IF EXISTS check_service_staff_work_window ON \"ServiceSchedule\"");
                     stmt.execute("DROP TRIGGER IF EXISTS check_onboard_staff_work_window ON \"OnboardActivity\"");
                     stmt.execute("DROP TRIGGER IF EXISTS check_shore_staff_work_window ON \"ShoreExcursion\"");
@@ -117,14 +151,37 @@ public class DatabaseConfig {
                 }
 
                 connection.commit();
-            } catch (SQLException ex) {
+            } catch (SQLException | RuntimeException ex) {
                 connection.rollback();
-                log.warn("Pre-migration state reconciliation skipped: {}", ex.getMessage());
+                throw ex;
             } finally {
                 connection.setAutoCommit(autoCommit);
             }
         } catch (SQLException ex) {
-            log.warn("Unable to inspect database before migration: {}", ex.getMessage());
+            throw new IllegalStateException("Unable to reconcile legacy state before migration", ex);
+        }
+    }
+
+    private boolean hasRenumberedV96(Connection connection) throws SQLException {
+        if (!tableExists(connection, "flyway_schema_history")) {
+            return false;
+        }
+        try (PreparedStatement history = connection.prepareStatement("""
+                SELECT 1 FROM public.flyway_schema_history
+                WHERE version = '96' AND success
+                  AND script = 'V96__cruise_staff_work_assignments.sql' AND checksum = ?
+                """)) {
+            history.setInt(1, LEGACY_V96_STAFF_CHECKSUM);
+            try (ResultSet row = history.executeQuery()) {
+                return row.next();
+            }
+        }
+    }
+
+    // Only called with the fixed legacy table identifiers above.
+    private boolean hasRows(Statement statement, String legacyTable) throws SQLException {
+        try (ResultSet rows = statement.executeQuery("SELECT 1 FROM public.\"" + legacyTable + "\" LIMIT 1")) {
+            return rows.next();
         }
     }
 

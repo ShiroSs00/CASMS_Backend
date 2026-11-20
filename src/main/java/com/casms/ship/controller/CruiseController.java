@@ -791,7 +791,9 @@ public class CruiseController {
             @PathVariable UUID cruiseId,
             @RequestParam(defaultValue = "WHOLE_CRUISE") String saleScope,
             @RequestParam(required = false) java.util.Set<UUID> selectedPackageIds,
-            @RequestParam(required = false) java.util.Set<UUID> selectedCruisePackageOfferIds) {
+            @RequestParam(required = false) java.util.Set<UUID> selectedCruisePackageOfferIds,
+            Authentication auth) {
+        service.requireBookingAgentAssignment(cruiseId, BookingAgentCruiseScope.assignee(auth));
         return ApiResponse.success(
                 service.validateSaleReadiness(cruiseId, saleScope, selectedPackageIds, selectedCruisePackageOfferIds));
     }

@@ -1,0 +1,235 @@
+{
+  "http": [
+    {
+      "check": "SALES login",
+      "method": "POST",
+      "path": "/auth/login",
+      "http": 200
+    },
+    {
+      "check": "SALES permissions",
+      "method": "GET",
+      "path": "/auth/me",
+      "http": 200
+    },
+    {
+      "check": "CRM login",
+      "method": "POST",
+      "path": "/auth/login",
+      "http": 200
+    },
+    {
+      "check": "CRM permissions",
+      "method": "GET",
+      "path": "/auth/me",
+      "http": 200
+    },
+    {
+      "check": "sale readiness",
+      "method": "GET",
+      "path": "/cruise/aead04c1-de3d-4a87-bf7e-fa1d73db8e87/sale-readiness",
+      "http": 200
+    },
+    {
+      "check": "review prepared QA plan",
+      "method": "GET",
+      "path": "/cruise-plans/aead04c1-de3d-4a87-bf7e-fa1d73db8e87",
+      "http": 200
+    },
+    {
+      "check": "return stale QA approval for re-review",
+      "method": "POST",
+      "path": "/cruise-plans/aead04c1-de3d-4a87-bf7e-fa1d73db8e87/request-revision",
+      "http": 200
+    },
+    {
+      "check": "plan readback after request-revision",
+      "method": "GET",
+      "path": "/cruise-plans/aead04c1-de3d-4a87-bf7e-fa1d73db8e87",
+      "http": 200
+    },
+    {
+      "check": "read preparation revisions",
+      "method": "GET",
+      "path": "/cruise/aead04c1-de3d-4a87-bf7e-fa1d73db8e87/preparation",
+      "http": 200
+    },
+    {
+      "check": "advance prepared QA plan: submit",
+      "method": "POST",
+      "path": "/cruise-plans/aead04c1-de3d-4a87-bf7e-fa1d73db8e87/submit",
+      "http": 200
+    },
+    {
+      "check": "plan readback after submit",
+      "method": "GET",
+      "path": "/cruise-plans/aead04c1-de3d-4a87-bf7e-fa1d73db8e87",
+      "http": 200
+    },
+    {
+      "check": "advance prepared QA plan: approve",
+      "method": "POST",
+      "path": "/cruise-plans/aead04c1-de3d-4a87-bf7e-fa1d73db8e87/approve",
+      "http": 200
+    },
+    {
+      "check": "plan readback after approve",
+      "method": "GET",
+      "path": "/cruise-plans/aead04c1-de3d-4a87-bf7e-fa1d73db8e87",
+      "http": 200
+    },
+    {
+      "check": "advance prepared QA plan: ready",
+      "method": "POST",
+      "path": "/cruise-plans/aead04c1-de3d-4a87-bf7e-fa1d73db8e87/ready",
+      "http": 200
+    },
+    {
+      "check": "plan readback after ready",
+      "method": "GET",
+      "path": "/cruise-plans/aead04c1-de3d-4a87-bf7e-fa1d73db8e87",
+      "http": 200
+    },
+    {
+      "check": "sale readiness",
+      "method": "GET",
+      "path": "/cruise/aead04c1-de3d-4a87-bf7e-fa1d73db8e87/sale-readiness",
+      "http": 200
+    },
+    {
+      "check": "open approved QA fare",
+      "method": "POST",
+      "path": "/cruise/aead04c1-de3d-4a87-bf7e-fa1d73db8e87/open-sale",
+      "http": 200
+    },
+    {
+      "check": "sellability after open",
+      "method": "GET",
+      "path": "/cruise/aead04c1-de3d-4a87-bf7e-fa1d73db8e87/sellability",
+      "http": 200
+    },
+    {
+      "check": "sale readiness",
+      "method": "GET",
+      "path": "/cruise/5056ebc5-e351-4e85-9070-ff2f0b943dfb/sale-readiness",
+      "http": 200
+    },
+    {
+      "check": "review prepared QA plan",
+      "method": "GET",
+      "path": "/cruise-plans/5056ebc5-e351-4e85-9070-ff2f0b943dfb",
+      "http": 200
+    },
+    {
+      "check": "return stale QA approval for re-review",
+      "method": "POST",
+      "path": "/cruise-plans/5056ebc5-e351-4e85-9070-ff2f0b943dfb/request-revision",
+      "http": 200
+    },
+    {
+      "check": "plan readback after request-revision",
+      "method": "GET",
+      "path": "/cruise-plans/5056ebc5-e351-4e85-9070-ff2f0b943dfb",
+      "http": 200
+    },
+    {
+      "check": "read preparation revisions",
+      "method": "GET",
+      "path": "/cruise/5056ebc5-e351-4e85-9070-ff2f0b943dfb/preparation",
+      "http": 200
+    },
+    {
+      "check": "advance prepared QA plan: submit",
+      "method": "POST",
+      "path": "/cruise-plans/5056ebc5-e351-4e85-9070-ff2f0b943dfb/submit",
+      "http": 200
+    },
+    {
+      "check": "plan readback after submit",
+      "method": "GET",
+      "path": "/cruise-plans/5056ebc5-e351-4e85-9070-ff2f0b943dfb",
+      "http": 200
+    },
+    {
+      "check": "advance prepared QA plan: approve",
+      "method": "POST",
+      "path": "/cruise-plans/5056ebc5-e351-4e85-9070-ff2f0b943dfb/approve",
+      "http": 200
+    },
+    {
+      "check": "plan readback after approve",
+      "method": "GET",
+      "path": "/cruise-plans/5056ebc5-e351-4e85-9070-ff2f0b943dfb",
+      "http": 200
+    },
+    {
+      "check": "advance prepared QA plan: ready",
+      "method": "POST",
+      "path": "/cruise-plans/5056ebc5-e351-4e85-9070-ff2f0b943dfb/ready",
+      "http": 200
+    },
+    {
+      "check": "plan readback after ready",
+      "method": "GET",
+      "path": "/cruise-plans/5056ebc5-e351-4e85-9070-ff2f0b943dfb",
+      "http": 200
+    },
+    {
+      "check": "sale readiness",
+      "method": "GET",
+      "path": "/cruise/5056ebc5-e351-4e85-9070-ff2f0b943dfb/sale-readiness",
+      "http": 200
+    },
+    {
+      "check": "open approved QA fare",
+      "method": "POST",
+      "path": "/cruise/5056ebc5-e351-4e85-9070-ff2f0b943dfb/open-sale",
+      "http": 200
+    },
+    {
+      "check": "sellability after open",
+      "method": "GET",
+      "path": "/cruise/5056ebc5-e351-4e85-9070-ff2f0b943dfb/sellability",
+      "http": 200
+    }
+  ],
+  "trips": [
+    {
+      "cruiseId": "aead04c1-de3d-4a87-bf7e-fa1d73db8e87",
+      "offerId": "19e19cd3-3286-4816-880c-78c884d77481",
+      "before": [
+        "READY_CONFIRMATION_REQUIRED",
+        "PLAN_APPROVAL_REQUIRED",
+        "FARE_SALE_SCOPE_INELIGIBLE"
+      ],
+      "preparationSections": {
+        "ENTERTAINMENT_SHORE": "SUBMITTED",
+        "HOTEL_CABIN": "SUBMITTED"
+      },
+      "planStatus": "APPROVED",
+      "readyStatus": "READY",
+      "after": [],
+      "sellable": true
+    },
+    {
+      "cruiseId": "5056ebc5-e351-4e85-9070-ff2f0b943dfb",
+      "offerId": "317df7bc-f6dd-4071-af98-c48582fdebd6",
+      "before": [
+        "READY_CONFIRMATION_REQUIRED",
+        "PLAN_APPROVAL_REQUIRED",
+        "FARE_SALE_SCOPE_INELIGIBLE"
+      ],
+      "preparationSections": {
+        "ENTERTAINMENT_SHORE": "SUBMITTED",
+        "HOTEL_CABIN": "SUBMITTED"
+      },
+      "planStatus": "APPROVED",
+      "readyStatus": "READY",
+      "after": [],
+      "sellable": true
+    }
+  ],
+  "status": "BLOCKED",
+  "clone": "casms_ba_qa_e6b6be63108946",
+  "cleanup": "isolated clone dropped after JVM shutdown"
+}
