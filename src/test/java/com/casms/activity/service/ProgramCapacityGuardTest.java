@@ -25,14 +25,14 @@ import java.util.*;
 @ExtendWith(MockitoExtension.class)
 class ProgramCapacityGuardTest {
     @Test
-    void newActivityAndTourWritesRejectHistoricalCurrencyBeforeLookingUpRecords() {
+    void newActivityAndTourWritesRejectUnsupportedCurrenciesBeforeLookingUpRecords() {
         var input = activity(10);
-        input.setCurrencyCode("VND");
+        input.setCurrencyCode("EUR");
         var activityError =
                 assertThrows(
                         BusinessException.class,
                         () -> onboard.updateActivity(UUID.randomUUID(), input, null, null));
-        assertEquals("CURRENCY_USD_REQUIRED", activityError.getCode());
+        assertEquals("ACTIVITY_CURRENCY_UNSUPPORTED", activityError.getCode());
         var tourError =
                 assertThrows(
                         BusinessException.class,

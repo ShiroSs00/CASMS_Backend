@@ -14,6 +14,8 @@ import com.casms.ship.repository.CruiseRepository;
 import jakarta.validation.Validation;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -30,10 +32,12 @@ class ActivityCatalogScheduleTest {
     @Mock com.casms.ship.service.PortCallBookingPolicy portCallBooking;
     @InjectMocks ActivityService service;
 
-    @Test void schedulingCopiesMetadataWithoutMutatingReusableSource() {
+    @ParameterizedTest
+    @CsvSource({"USD,10.25", "VND,350000"})
+    void schedulingCopiesMetadataWithoutMutatingReusableSource(String currency, BigDecimal price) {
         var source = new OnboardActivity(); source.setOnboardActivityId(UUID.randomUUID());
         source.setCatalogEntry(true); source.setStatus(OnboardActivityStatus.PLANNED);
-        source.setActivityName("Yoga"); source.setCapacity(20); source.setCurrencyCode("USD"); source.setPrice(BigDecimal.TEN);
+        source.setActivityName("Yoga"); source.setCapacity(20); source.setCurrencyCode(currency); source.setPrice(price);
         var cruise = new Cruise(); cruise.setCruiseId(UUID.randomUUID());
         cruise.setDepartureDatetime(Instant.parse("2030-01-01T00:00:00Z"));
         cruise.setReturnDatetime(Instant.parse("2030-01-02T00:00:00Z"));
@@ -46,7 +50,10 @@ class ActivityCatalogScheduleTest {
         var occurrence = service.scheduleCatalog(cruise.getCruiseId(), input);
         assertFalse(occurrence.isCatalogEntry()); assertEquals(source.getOnboardActivityId(), occurrence.getSourceActivityId());
         assertSame(cruise, occurrence.getCruise()); assertEquals(15, occurrence.getCapacity());
-        assertEquals(BigDecimal.TEN, occurrence.getPrice());
+        assertEquals(price, occurrence.getPrice());
+        assertEquals(currency, occurrence.getCurrencyCode());
+        assertEquals(currency, source.getCurrencyCode());
+        assertEquals(price, source.getPrice());
         assertNull(source.getCruise()); assertNull(source.getStartTime()); assertEquals(20, source.getCapacity());
     }
 
@@ -56,5 +63,36 @@ class ActivityCatalogScheduleTest {
                     Instant.now(), null, null, null, null, null, null);
             assertTrue(factory.getValidator().validate(input).stream().anyMatch(v -> v.getPropertyPath().toString().equals("startTime")));
         }
+    }
+
+    @Test void catalogEditsKeepStoredCurrencyWhenCurrencyIsOmitted() {
+        var id = UUID.randomUUID();
+        var saved = new OnboardActivity();
+        saved.setCatalogEntry(true);
+        saved.setCurrencyCode("VND");
+        when(activities.lockActivity(id)).thenReturn(Optional.of(saved));
+        when(activities.save(any())).thenAnswer(i -> i.getArgument(0));
+        var input = new OnboardActivity();
+        input.setActivityName("Thưởng trà Việt");
+        input.setCapacity(25);
+        input.setPrice(new BigDecimal("350000"));
+
+        var updated = service.saveCatalog(id, input);
+
+        assertEquals("VND", updated.getCurrencyCode());
+        assertEquals(new BigDecimal("350000"), updated.getPrice());
+    }
+
+    @Test void catalogRejectsUnsupportedCurrency() {
+        var input = new OnboardActivity();
+        input.setActivityName("Yoga");
+        input.setCapacity(20);
+        input.setCurrencyCode("EUR");
+
+        var error = assertThrows(com.casms.common.exception.BusinessException.class,
+                () -> service.saveCatalog(null, input));
+
+        assertEquals("ACTIVITY_CURRENCY_UNSUPPORTED", error.getCode());
+        verify(activities, never()).save(any());
     }
 }
