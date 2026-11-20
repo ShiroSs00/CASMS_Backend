@@ -29,6 +29,12 @@ Thumbs.db
 
 # Local documentation is ignored by default.
 /docs/*
+!/docs/reports/
+/docs/reports/*
+!/docs/reports/CASMS_BA_*.md
+!/docs/reports/booking-agent-qa-evidence/
+/docs/reports/booking-agent-qa-evidence/*
+!/docs/reports/booking-agent-qa-evidence/booking-agent-v*-http.json
 !/docs/ship-redesign/
 !/docs/sequence-diagrams/
 /docs/sequence-diagrams/*

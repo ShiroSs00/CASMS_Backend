@@ -47,17 +47,17 @@ class UxQuoteSnapshotTest {
     @InjectMocks BookingService service;
 
     @Test
-    void newQuoteAndBookingRejectForeignRequestCurrencyBeforeAnyWrite() {
+    void newQuoteAndBookingRejectUnsupportedCurrencyBeforeAnyWrite() {
         var quote = new BookingQuoteRequest();
-        quote.setCurrency("VND");
+        quote.setCurrency("EUR");
         assertEquals(
-                "CURRENCY_USD_REQUIRED",
+                "BOOKING_CURRENCY_UNSUPPORTED",
                 assertThrows(BusinessException.class, () -> service.createQuote(quote, null))
                         .getCode());
         var booking = new BookingCreateRequest();
-        booking.setCurrency("VND");
+        booking.setCurrency("EUR");
         assertEquals(
-                "CURRENCY_USD_REQUIRED",
+                "BOOKING_CURRENCY_UNSUPPORTED",
                 assertThrows(BusinessException.class, () -> service.createBooking(booking, null))
                         .getCode());
         verifyNoInteractions(
@@ -68,7 +68,7 @@ class UxQuoteSnapshotTest {
     }
 
     @Test
-    void legacyPolicyCannotIssueNewQuoteInForeignCurrency() {
+    void legacyPolicyCannotIssueNewQuoteInMismatchedCurrency() {
         var cruise = new Cruise();
         cruise.setCruiseId(UUID.randomUUID());
         cruise.setStatus(CruiseStatus.PUBLISHED);
@@ -89,9 +89,10 @@ class UxQuoteSnapshotTest {
         person.setCabinId(UUID.randomUUID());
         var request = new BookingQuoteRequest();
         request.setCruiseId(cruise.getCruiseId());
+        request.setCurrency("USD");
         request.setPassengers(List.of(person));
         assertEquals(
-                "CURRENCY_USD_REQUIRED",
+                "CURRENCY_MISMATCH",
                 assertThrows(BusinessException.class, () -> service.createQuote(request, null))
                         .getCode());
         verify(bookingQuoteRepository, never()).save(any());

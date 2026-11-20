@@ -149,7 +149,7 @@ public class LegacyChecksumRealigner {
             String sql =
                     "UPDATE "
                             + historyTable
-                            + " SET checksum = ?, script = ? WHERE version = ? AND success AND"
+                            + " SET checksum = ?, script = ?, description = ? WHERE version = ? AND success AND"
                             + " checksum = ANY (?)";
             for (AcceptedDrift drift : drifts) {
                 Integer resolved = configuredChecksum(configuration, drift.script());
@@ -163,11 +163,16 @@ public class LegacyChecksumRealigner {
                     continue;
                 }
                 try (PreparedStatement statement = connection.prepareStatement(sql)) {
+                    // Some accepted drifts also changed the migration name (for example V11).
+                    String script = drift.script();
+                    String description = script.substring(script.indexOf("__") + 2, script.length() - ".sql".length())
+                            .replace('_', ' ');
                     statement.setInt(1, drift.currentChecksum());
-                    statement.setString(2, drift.script());
-                    statement.setString(3, drift.version());
+                    statement.setString(2, script);
+                    statement.setString(3, description);
+                    statement.setString(4, drift.version());
                     statement.setArray(
-                            4,
+                            5,
                             connection.createArrayOf("integer", drift.legacyChecksums().toArray()));
                     int updated = statement.executeUpdate();
                     if (updated > 0) {

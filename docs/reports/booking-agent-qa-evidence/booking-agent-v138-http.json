@@ -1,0 +1,268 @@
+{
+  "http": [
+    {
+      "check": "AGENT_A login",
+      "method": "POST",
+      "path": "/auth/login",
+      "http": 200
+    },
+    {
+      "check": "AGENT_A permissions",
+      "method": "GET",
+      "path": "/auth/me",
+      "http": 200
+    },
+    {
+      "check": "AGENT_A scoped list",
+      "method": "GET",
+      "path": "/booking",
+      "http": 200
+    },
+    {
+      "check": "AGENT_A scoped list",
+      "method": "GET",
+      "path": "/cruise",
+      "http": 200
+    },
+    {
+      "check": "AGENT_A unassigned cruise",
+      "method": "GET",
+      "path": "/cruise/aead04c1-de3d-4a87-bf7e-fa1d73db8e87/sale-readiness",
+      "http": 403,
+      "code": "ACCESS_DENIED"
+    },
+    {
+      "check": "AGENT_A unassigned cruise",
+      "method": "GET",
+      "path": "/cruise/aead04c1-de3d-4a87-bf7e-fa1d73db8e87/sellability",
+      "http": 403,
+      "code": "ACCESS_DENIED"
+    },
+    {
+      "check": "AGENT_A unassigned cruise",
+      "method": "GET",
+      "path": "/booking/available-cabins",
+      "http": 403,
+      "code": "ACCESS_DENIED"
+    },
+    {
+      "check": "AGENT_A quote rejected outside assignment",
+      "method": "POST",
+      "path": "/booking/quotes",
+      "http": 403,
+      "code": "ACCESS_DENIED"
+    },
+    {
+      "check": "unknown booking",
+      "method": "GET",
+      "path": "/booking/91e15ee1-cbbb-45fa-a93d-b798dc53b1bf",
+      "http": 404,
+      "code": "RESOURCE_NOT_FOUND"
+    },
+    {
+      "check": "unknown contract",
+      "method": "POST",
+      "path": "/booking/91e15ee1-cbbb-45fa-a93d-b798dc53b1bf/contract/accept",
+      "http": 404,
+      "code": "RESOURCE_NOT_FOUND"
+    },
+    {
+      "check": "unknown booking confirmation",
+      "method": "POST",
+      "path": "/booking/91e15ee1-cbbb-45fa-a93d-b798dc53b1bf/confirm",
+      "http": 404,
+      "code": "RESOURCE_NOT_FOUND"
+    },
+    {
+      "check": "unknown cancellation history",
+      "method": "GET",
+      "path": "/booking/91e15ee1-cbbb-45fa-a93d-b798dc53b1bf/cancellations",
+      "http": 404,
+      "code": "RESOURCE_NOT_FOUND"
+    },
+    {
+      "check": "workflow blocks direct cancel",
+      "method": "POST",
+      "path": "/booking/91e15ee1-cbbb-45fa-a93d-b798dc53b1bf/cancel",
+      "http": 409,
+      "code": "CANCELLATION_CASE_REQUIRED"
+    },
+    {
+      "check": "unknown passenger cabin change",
+      "method": "POST",
+      "path": "/booking/change-cabin",
+      "http": 404,
+      "code": "RESOURCE_NOT_FOUND"
+    },
+    {
+      "check": "agent cannot record a payment",
+      "method": "POST",
+      "path": "/payment/process",
+      "http": 403,
+      "code": "ACCESS_DENIED"
+    },
+    {
+      "check": "unknown recovery",
+      "method": "GET",
+      "path": "/booking/recovery",
+      "http": 404,
+      "code": "RECOVERY_NOT_FOUND"
+    },
+    {
+      "check": "unknown lookup",
+      "method": "GET",
+      "path": "/booking/lookup",
+      "http": 404,
+      "code": "RESOURCE_NOT_FOUND"
+    },
+    {
+      "check": "SALES login",
+      "method": "POST",
+      "path": "/auth/login",
+      "http": 200
+    },
+    {
+      "check": "SALES permissions",
+      "method": "GET",
+      "path": "/auth/me",
+      "http": 200
+    },
+    {
+      "check": "public sellability",
+      "method": "GET",
+      "path": "/cruise/aead04c1-de3d-4a87-bf7e-fa1d73db8e87/sellability",
+      "http": 200
+    },
+    {
+      "check": "sale readiness",
+      "method": "GET",
+      "path": "/cruise/aead04c1-de3d-4a87-bf7e-fa1d73db8e87/sale-readiness",
+      "http": 200
+    },
+    {
+      "check": "observe plan prerequisites",
+      "method": "GET",
+      "path": "/cruise-plans/aead04c1-de3d-4a87-bf7e-fa1d73db8e87",
+      "http": 200
+    },
+    {
+      "check": "open sale refused without readiness confirmation",
+      "method": "POST",
+      "path": "/cruise/aead04c1-de3d-4a87-bf7e-fa1d73db8e87/open-sale",
+      "http": 422,
+      "code": "READY_CONFIRMATION_REQUIRED"
+    },
+    {
+      "check": "sale readiness",
+      "method": "GET",
+      "path": "/cruise/e416ab97-b4de-476e-987f-d2cc62c4444d/sale-readiness",
+      "http": 200
+    },
+    {
+      "check": "sale readiness",
+      "method": "GET",
+      "path": "/cruise/668a29d3-c6c0-4d6a-8e8d-d6d432c32a7e/sale-readiness",
+      "http": 200
+    },
+    {
+      "check": "sale readiness",
+      "method": "GET",
+      "path": "/cruise/5056ebc5-e351-4e85-9070-ff2f0b943dfb/sale-readiness",
+      "http": 200
+    }
+  ],
+  "trips": [],
+  "observed": [
+    {
+      "saleState": "NOT_YET_OPEN",
+      "sellable": false,
+      "transactionReady": false,
+      "remainingCapacity": 1678,
+      "cruiseId": "aead04c1-de3d-4a87-bf7e-fa1d73db8e87",
+      "readinessBlockers": [
+        "READY_CONFIRMATION_REQUIRED",
+        "PLAN_APPROVAL_REQUIRED",
+        "FARE_SALE_SCOPE_INELIGIBLE"
+      ],
+      "plan": {
+        "planStatus": "APPROVED",
+        "planBlockers": [],
+        "readyStatus": "INVALIDATED",
+        "readyBlockers": [
+          "PLAN_APPROVAL_REQUIRED"
+        ]
+      }
+    }
+  ],
+  "blocked": [
+    "AGENT_B QA credentials are required",
+    "Positive transaction tests require two candidate cruises and two active QA agents"
+  ],
+  "source": {
+    "database": "casms_ba_final_20261120101033",
+    "version": 137,
+    "published": 1,
+    "agents": 1,
+    "assignments": 0,
+    "bookings": 0,
+    "confirmedPayments": 0,
+    "preparedDrafts": [
+      "e416ab97-b4de-476e-987f-d2cc62c4444d",
+      "668a29d3-c6c0-4d6a-8e8d-d6d432c32a7e",
+      "5056ebc5-e351-4e85-9070-ff2f0b943dfb"
+    ],
+    "candidates": [
+      "aead04c1-de3d-4a87-bf7e-fa1d73db8e87"
+    ]
+  },
+  "clone": "casms_ba_qa_b317ab93ca874f",
+  "database": {
+    "database": "casms_ba_qa_b317ab93ca874f",
+    "version": 138,
+    "published": 1,
+    "agents": 1,
+    "assignments": 0,
+    "bookings": 0,
+    "confirmedPayments": 0,
+    "preparedDrafts": [
+      "e416ab97-b4de-476e-987f-d2cc62c4444d",
+      "668a29d3-c6c0-4d6a-8e8d-d6d432c32a7e",
+      "5056ebc5-e351-4e85-9070-ff2f0b943dfb"
+    ],
+    "candidates": [
+      "aead04c1-de3d-4a87-bf7e-fa1d73db8e87"
+    ]
+  },
+  "migration": "PASS",
+  "draftPlans": [
+    {
+      "cruiseId": "e416ab97-b4de-476e-987f-d2cc62c4444d",
+      "saleReady": false,
+      "blockers": [
+        "READY_CONFIRMATION_REQUIRED",
+        "PLAN_APPROVAL_REQUIRED",
+        "FARE_SALE_SCOPE_REQUIRED"
+      ]
+    },
+    {
+      "cruiseId": "668a29d3-c6c0-4d6a-8e8d-d6d432c32a7e",
+      "saleReady": false,
+      "blockers": [
+        "READY_CONFIRMATION_REQUIRED",
+        "PLAN_APPROVAL_REQUIRED",
+        "FARE_SALE_SCOPE_REQUIRED"
+      ]
+    },
+    {
+      "cruiseId": "5056ebc5-e351-4e85-9070-ff2f0b943dfb",
+      "saleReady": false,
+      "blockers": [
+        "READY_CONFIRMATION_REQUIRED",
+        "PLAN_APPROVAL_REQUIRED",
+        "FARE_SALE_SCOPE_REQUIRED"
+      ]
+    }
+  ],
+  "cleanup": "isolated clone dropped after JVM shutdown",
+  "status": "BLOCKED"
+}
