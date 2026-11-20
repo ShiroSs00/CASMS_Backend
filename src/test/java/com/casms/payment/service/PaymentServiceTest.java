@@ -98,17 +98,23 @@ class PaymentServiceTest {
     }
 
     @Test
-    void createPayment_rejectsNewForeignCurrencyWithoutSaving() {
+    void createPayment_rejectsCurrencyMismatchWithBooking() {
+        Booking booking = new Booking();
+        booking.setBookingId(bookingId);
+        booking.setBookingStatus(BookingStatus.Draft);
+        booking.setCurrency("USD");
+        when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(booking));
+
         PaymentCreateRequest req = new PaymentCreateRequest();
         req.setBookingId(bookingId);
         req.setRequestedAmount(new BigDecimal("10"));
         req.setPaymentMethod(PaymentMethod.Cash);
-        req.setIdempotencyKey("USD-ONLY-TEST");
-        req.setCurrency("VND");
-        when(paymentRepository.findByIdempotencyKey("USD-ONLY-TEST")).thenReturn(Optional.empty());
+        req.setIdempotencyKey("CURRENCY-MISMATCH-TEST");
+        req.setCurrency("EUR");
+        when(paymentRepository.findByIdempotencyKey("CURRENCY-MISMATCH-TEST")).thenReturn(Optional.empty());
         BusinessException error =
                 assertThrows(BusinessException.class, () -> paymentService.createPayment(req));
-        assertEquals("CURRENCY_USD_REQUIRED", error.getCode());
+        assertEquals("PAYMENT_CURRENCY_MISMATCH", error.getCode());
         verify(paymentRepository, never()).save(any());
     }
 

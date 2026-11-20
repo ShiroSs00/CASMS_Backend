@@ -10,6 +10,7 @@ import com.casms.identity.repository.UserRepository;
 import com.casms.payment.dto.request.RefundApproveRequest;
 import com.casms.payment.dto.request.RefundCompleteRequest;
 import com.casms.payment.dto.request.RefundCreateRequest;
+import com.casms.payment.dto.response.InvoiceResponse;
 import com.casms.payment.dto.response.RefundResponse;
 import com.casms.payment.entity.*;
 import com.casms.payment.enums.PaymentStatus;
@@ -73,7 +74,7 @@ class RefundServiceTest {
         req.setIdempotencyKey("KEY-REF-1");
 
         when(refundRepository.findByIdempotencyKey("KEY-REF-1")).thenReturn(Optional.empty());
-        when(paymentRepository.findById(paymentId)).thenReturn(Optional.of(payment));
+        when(paymentRepository.findByIdForUpdate(paymentId)).thenReturn(Optional.of(payment));
         when(refundRepository.findByOriginalPayment_PaymentIdOrderByRequestedAtDesc(paymentId))
                 .thenReturn(List.of());
 
@@ -108,7 +109,7 @@ class RefundServiceTest {
         req.setIdempotencyKey("KEY-REF-2");
 
         when(refundRepository.findByIdempotencyKey("KEY-REF-2")).thenReturn(Optional.empty());
-        when(paymentRepository.findById(paymentId)).thenReturn(Optional.of(payment));
+        when(paymentRepository.findByIdForUpdate(paymentId)).thenReturn(Optional.of(payment));
         when(refundRepository.findByOriginalPayment_PaymentIdOrderByRequestedAtDesc(paymentId))
                 .thenReturn(List.of(existingRef));
 
@@ -126,7 +127,7 @@ class RefundServiceTest {
         refund.setStatus(RefundStatus.Requested);
         refund.setRequestedAmount(new BigDecimal("300.00"));
 
-        when(refundRepository.findById(refId)).thenReturn(Optional.of(refund));
+        when(refundRepository.findByIdForUpdate(refId)).thenReturn(Optional.of(refund));
         when(refundRepository.save(any(Refund.class))).thenAnswer(inv -> inv.getArgument(0));
         when(refundLineRepository.findByRefund_RefundId(refId)).thenReturn(List.of());
 
@@ -149,7 +150,7 @@ class RefundServiceTest {
         refund.setStatus(RefundStatus.Requested);
         refund.setRequestedAmount(new BigDecimal("300.00"));
 
-        when(refundRepository.findById(refId)).thenReturn(Optional.of(refund));
+        when(refundRepository.findByIdForUpdate(refId)).thenReturn(Optional.of(refund));
 
         RefundApproveRequest approveReq = new RefundApproveRequest();
         approveReq.setApprovedAmount(new BigDecimal("350.00")); // > 300
@@ -173,14 +174,20 @@ class RefundServiceTest {
         refund.setApprovedAmount(new BigDecimal("300.00"));
         refund.setRefundReason("Hoàn cọc hủy phòng");
 
-        when(refundRepository.findById(refId)).thenReturn(Optional.of(refund));
+        when(refundRepository.findByIdForUpdate(refId)).thenReturn(Optional.of(refund));
         when(refundRepository.save(any(Refund.class))).thenAnswer(inv -> inv.getArgument(0));
         when(refundLineRepository.findByRefund_RefundId(refId)).thenReturn(List.of());
 
         Invoice inv = new Invoice();
         inv.setInvoiceId(UUID.randomUUID());
+        inv.setBooking(booking);
+        inv.setCurrency("USD");
         when(invoiceRepository.findFirstByBooking_BookingIdOrderByVersionNoDesc(booking.getBookingId()))
                 .thenReturn(Optional.of(inv));
+
+        InvoiceResponse adj = InvoiceResponse.builder().invoiceId(UUID.randomUUID()).build();
+        when(invoiceService.generateAdjustmentInvoice(eq(inv.getInvoiceId()), eq(new BigDecimal("300.00")), anyString()))
+                .thenReturn(adj);
 
         RefundCompleteRequest compReq = new RefundCompleteRequest();
         compReq.setProcessorOrReceiptReference("BANK-REFUND-123");
