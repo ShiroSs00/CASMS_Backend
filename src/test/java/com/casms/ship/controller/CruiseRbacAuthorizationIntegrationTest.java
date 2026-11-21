@@ -118,6 +118,7 @@ public class CruiseRbacAuthorizationIntegrationTest {
             tripRepository.deleteById(sourceTrip.getTripId());
         }
         for (UUID shipId : createdShipIds) {
+            jdbc.update("DELETE FROM \"ShipCruiseUsage\" WHERE ship_id=?", shipId);
             shipRepository.findById(shipId).ifPresent(shipRepository::delete);
         }
         for (UUID portId : createdPortIds) {
@@ -150,7 +151,7 @@ public class CruiseRbacAuthorizationIntegrationTest {
                 .content(body);
     }
 
-    private void submitPlanFixture() {
+    private User submitPlanFixture() {
         User crm = createActor(Role.CRUISE_MANAGER);
         Trip trip = new Trip();
         trip.setTripCode("TR-" + UUID.randomUUID().toString().substring(0, 8));
@@ -179,6 +180,7 @@ public class CruiseRbacAuthorizationIntegrationTest {
                 INSERT INTO "CruisePlanReview" (cruise_id, status, submitted_by, submitted_at)
                 VALUES (?, 'SUBMITTED', ?, now())
                 """, testCruise.getCruiseId(), crm.getUserId());
+        return crm;
     }
 
     @Test
@@ -186,7 +188,10 @@ public class CruiseRbacAuthorizationIntegrationTest {
             "BE-01: CRUISE_MANAGER có quyền gán/đổi/gỡ tàu nhưng gọi"
                 + " open-sale/stop-sale/resume-sale bị 403 Forbidden")
     void cruiseManager_canAssignShip_butCannotOpenSale() throws Exception {
-        String crmToken = createJwtToken(Role.CRUISE_MANAGER);
+        User coordinator = createActor(Role.CRUISE_MANAGER);
+        testCruise.setPreparationCoordinator(coordinator);
+        testCruise = cruiseRepository.save(testCruise);
+        String crmToken = jwtService.generateToken(coordinator.getUsername(), coordinator.getUserId());
 
         // 1. CRM calling assign-ship: not 403 (authorized!)
         mockMvc.perform(
@@ -308,7 +313,7 @@ public class CruiseRbacAuthorizationIntegrationTest {
 
     @Test
     void openSaleBindingRejectsMissingFieldsAndMalformedJsonForInScopeActor() throws Exception {
-        submitPlanFixture();
+        User coordinator = submitPlanFixture();
         String opsToken = createJwtToken(Role.OPERATIONS_MANAGER);
         mockMvc.perform(openSale("{}").header("Authorization", "Bearer " + opsToken))
                 .andExpect(status().isBadRequest())
@@ -318,7 +323,8 @@ public class CruiseRbacAuthorizationIntegrationTest {
         mockMvc.perform(openSale("{").header("Authorization", "Bearer " + opsToken))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("INVALID_REQUEST_BODY"));
-        mockMvc.perform(openSale("{}").header("Authorization", "Bearer " + createJwtToken(Role.CRUISE_MANAGER)))
+        mockMvc.perform(openSale("{}").header("Authorization", "Bearer "
+                        + jwtService.generateToken(coordinator.getUsername(), coordinator.getUserId())))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("BAD_REQUEST"))
                 .andExpect(result -> assertInstanceOf(

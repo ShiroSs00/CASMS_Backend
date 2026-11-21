@@ -201,7 +201,7 @@ class BaselineRoleAuthorizationTest {
     @Test
     void crmCanStillReadDraftsWhilePublicCatalogUsesSaleFilter() throws Exception {
         authenticate(Role.CRUISE_MANAGER);
-        when(service.list(any(), any(), any(), any(), any(), any(), any()))
+        when(service.listVisibleForStaff(any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(
                         org.springframework.data.domain.Page.empty(
                                 org.springframework.data.domain.PageRequest.of(0, 20)));
@@ -212,7 +212,8 @@ class BaselineRoleAuthorizationTest {
         var auth = SecurityContextHolder.getContext().getAuthentication();
         mvc.perform(get("/cruise").param("status", "DRAFT").principal(auth))
                 .andExpect(status().isOk());
-        verify(service).list(eq(CruiseStatus.DRAFT), any(), any(), any(), any(), any(), any());
+        verify(service).listVisibleForStaff(eq(CruiseStatus.DRAFT), any(), any(), any(), any(), any(), any(),
+                same((CasmsPrincipal) auth.getPrincipal()));
         mvc.perform(get("/cruise").param("saleState", "OPEN_FOR_SALE").principal(auth))
                 .andExpect(status().isOk());
         verify(service).listOpenForSale(any(), any(), any(), any(), any(), any());

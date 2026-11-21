@@ -151,6 +151,10 @@ class ItineraryChangeHistoryPostgresIntegrationTest {
         adminUser.setStatus(UserStatus.ACTIVE);
         adminUser.setRoles(Set.of(Role.CRUISE_MANAGER));
         adminUser = userRepository.save(adminUser);
+        cruise1.setPreparationCoordinator(adminUser);
+        cruise2.setPreparationCoordinator(adminUser);
+        cruise1 = cruiseRepository.save(cruise1);
+        cruise2 = cruiseRepository.save(cruise2);
 
         staffUser = new User();
         staffUser.setUsername("staff-hist-" + UUID.randomUUID().toString().substring(0, 6));

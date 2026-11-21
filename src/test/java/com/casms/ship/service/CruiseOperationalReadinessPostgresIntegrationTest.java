@@ -24,7 +24,6 @@ import com.casms.ship.dto.response.CruiseChangeImpactResponse;
 import com.casms.ship.dto.response.CruiseImpactTaskResponse;
 import com.casms.ship.dto.response.CruiseReadinessResponse;
 import com.casms.ship.dto.response.CruiseResponse;
-import com.casms.ship.dto.response.OperationalProgramSyncResponse;
 import com.casms.ship.dto.response.ShipChangeImpactResponse;
 import com.casms.ship.dto.response.ShipCompatibilityResponse;
 import com.casms.ship.entity.*;
@@ -66,6 +65,7 @@ public class CruiseOperationalReadinessPostgresIntegrationTest {
     @Autowired private DeckRepository deckRepository;
     @Autowired private CabinRepository cabinRepository;
     @Autowired private PortRepository portRepository;
+    @Autowired private DestinationRepository destinations;
     @Autowired private ItineraryRepository itineraryRepository;
     @Autowired private TripRepository tripRepository;
     @Autowired private TripScheduleVersionRepository versionRepository;
@@ -339,7 +339,7 @@ public class CruiseOperationalReadinessPostgresIntegrationTest {
         trip.setPlannedScope("DOMESTIC");
         trip.setDurationDays(3);
         trip.setDurationNights(2);
-        trip.setDurationGroup(TripDurationGroup.SHORT);
+        trip.setDurationGroup(TripDurationGroup.LONG);
         trip = tripRepository.save(trip);
 
         TripScheduleVersion version = new TripScheduleVersion();
@@ -364,9 +364,18 @@ public class CruiseOperationalReadinessPostgresIntegrationTest {
             }
         }
 
+        Destination destination = new Destination();
+        destination.setDestinationName("Program fixture Da Nang " + UUID.randomUUID());
+        destination.setCountryCode("VN");
+        destination.setStatus(DestinationStatus.ACTIVE);
+        destination = destinations.save(destination);
+        jdbc.update("INSERT INTO \"PortDestinationAccess\" (port_id, destination_id) VALUES (?, ?)",
+                portDan.getPortId(), destination.getDestinationId());
+
         TripPlanStop stop1 = new TripPlanStop();
         stop1.setVersion(version);
         stop1.setPort(portDan);
+        stop1.setDestination(destination);
         stop1.setStopOrder(1);
         stop1.setClientKey("stop-1-dan");
         stop1.setArrivalDayNumber(2);
@@ -374,6 +383,18 @@ public class CruiseOperationalReadinessPostgresIntegrationTest {
         stop1.setPlannedArrivalTime(LocalTime.of(8, 0));
         stop1.setPlannedDepartureTime(LocalTime.of(18, 0));
         stop1 = planStopRepository.save(stop1);
+
+        TripPlanStop finalStop = new TripPlanStop();
+        finalStop.setVersion(version);
+        finalStop.setPort(portHph);
+        finalStop.setStopOrder(2);
+        finalStop.setClientKey("stop-2-disembarkation");
+        finalStop.setArrivalDayNumber(3);
+        finalStop.setDepartureDayNumber(3);
+        finalStop.setPlannedArrivalTime(LocalTime.of(8, 0));
+        finalStop.setPlannedDepartureTime(LocalTime.of(10, 0));
+        finalStop.setIsDisembarkation(true);
+        planStopRepository.save(finalStop);
 
         // Entry 1: Onboard Activity
         TripPlanEntry entryAct = new TripPlanEntry();
@@ -402,6 +423,7 @@ public class CruiseOperationalReadinessPostgresIntegrationTest {
         templateExc.setExcursionCode("TPL-EXC-" + UUID.randomUUID().toString().substring(0, 8));
         templateExc.setExcursionName("Tour Mẫu Ngũ Hành Sơn");
         templateExc.setSupplier(supplier);
+        templateExc.setDestination(destination);
         templateExc.setStartTime(Instant.now());
         templateExc.setPlannedReturnTime(Instant.now().plus(6, ChronoUnit.HOURS));
         templateExc.setMeetingPoint("Cổng Cảng Tiên Sa");
@@ -415,6 +437,7 @@ public class CruiseOperationalReadinessPostgresIntegrationTest {
         entryExc.setVersion(version);
         entryExc.setDay(day1);
         entryExc.setStop(stop1);
+        entryExc.setDestination(destination);
         entryExc.setClientKey("exc-danang-tour");
         entryExc.setKind(TripPlanEntryKind.SHORE_EXCURSION);
         entryExc.setTitle("Tour Khám Phá Ngũ Hành Sơn");
@@ -428,22 +451,17 @@ public class CruiseOperationalReadinessPostgresIntegrationTest {
 
         // 2. Create Cruise from version
         Instant dep = Instant.now().plus(50, ChronoUnit.DAYS);
-        Instant ret = dep.plus(3, ChronoUnit.DAYS);
+        Instant ret = dep.plus(2, ChronoUnit.DAYS);
 
         CruiseCreateRequest createReq =
                 buildCreateRequest(
                         "Cruise Operational Program Test", dep, ret, testShip.getShipId());
+        createReq.setReturnPortId(portHph.getPortId());
         createReq.setSourceVersionId(version.getVersionId());
         createReq.setExpectedSourceVersionRevision(version.getRevision());
         CruiseResponse cruise = cruiseService.create(createReq);
 
-        // 3. Verify programs are synced
-        OperationalProgramSyncResponse syncRes =
-                operationalProgramMappingService.syncProgramsForCruise(cruise.getCruiseId());
-        assertEquals(1, syncRes.getOnboardActivitiesCount());
-        assertEquals(1, syncRes.getShoreExcursionsCount());
-
-        // Verify OnboardActivity record in database
+        // Materialization already owns the cruise's program records.
         List<OnboardActivity> activities =
                 onboardActivityRepository.findByCruise_CruiseId(cruise.getCruiseId());
         assertEquals(1, activities.size());
@@ -455,13 +473,12 @@ public class CruiseOperationalReadinessPostgresIntegrationTest {
 
         // Verify ShoreExcursion record in database
         long excCount = shoreExcursionRepository.countByCruiseId(cruise.getCruiseId());
-        assertTrue(excCount >= 1);
+        assertEquals(1L, excCount);
 
-        // 4. Retry / Idempotency check: syncing again must not duplicate activities or excursions
-        OperationalProgramSyncResponse retrySync =
-                operationalProgramMappingService.syncProgramsForCruise(cruise.getCruiseId());
-        assertEquals(1, retrySync.getOnboardActivitiesCount());
-        assertEquals(1, retrySync.getShoreExcursionsCount());
+        var rejected = assertThrows(BusinessException.class,
+                () -> operationalProgramMappingService.syncProgramsForCruise(cruise.getCruiseId()));
+        assertEquals("PROGRAMS_ALREADY_MATERIALIZED", rejected.getCode());
+        assertEquals(1L, shoreExcursionRepository.countByCruiseId(cruise.getCruiseId()));
 
         List<OnboardActivity> activitiesAfterRetry =
                 onboardActivityRepository.findByCruise_CruiseId(cruise.getCruiseId());

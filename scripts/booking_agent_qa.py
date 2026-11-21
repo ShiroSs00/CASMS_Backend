@@ -20,6 +20,7 @@ from urllib.parse import urlencode
 from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
 from uuid import UUID, uuid4
 
+from phase_a_qa_budget import seed_operating_budget, validate_budget
 from booking_agent_activation import ActivationInbox
 
 QA_HOST = "127.0.0.1"
@@ -255,6 +256,8 @@ def plans_from(path):
         raise Blocked("Provisioning requires exactly two candidate cruises")
     for plan in plans:
         plan["cruiseId"] = str(UUID(plan["cruiseId"]))
+        if "operatingBudgetVnd" in plan:
+            validate_budget(plan["operatingBudgetVnd"])
         scope = plan["scope"]
         if scope not in ("CABIN_ONLY", "SELECTED_PACKAGES", "WHOLE_CRUISE"):
             raise Blocked("Invalid sale scope")
@@ -330,10 +333,16 @@ def advance_prepared_plan(api, plan, crm, ops, result):
     result["readyStatus"] = view["readyStatus"]
 
 
-def provision(api, plan, sales, staff, owner, other, event, result):
+def provision(api, plan, sales, staff, owner, other, event, result, database):
     cruise = "/cruise/" + plan["cruiseId"]
     crm = None
-    if plan.get("attachLegacyPackages") or plan.get("advancePreparedPlan"):
+    if "operatingBudgetVnd" in plan:
+        crm, _ = api.login("CRM", role="CRUISE_MANAGER", permissions=("CRUISE_PREPARATION_SUBMIT",))
+        budget = seed_operating_budget(api, database, plan["cruiseId"], crm, plan["operatingBudgetVnd"])
+        if budget == "BLOCKED":
+            raise Blocked("The QA cruise has no projected budget and its CRM edit gate is closed")
+        result["operatingBudgetFixture"] = budget
+    if not crm and (plan.get("attachLegacyPackages") or plan.get("advancePreparedPlan")):
         crm, _ = api.login("CRM", role="CRUISE_MANAGER", permissions=("CRUISE_UPDATE_DRAFT",))
     if plan.get("attachLegacyPackages"):
         packages = api.call("legacy package assignments", "GET", cruise + "/packages", crm)
@@ -768,7 +777,7 @@ def run(args, report):
                 report["trips"].append(result)
                 key = "baqa-" + hashlib.sha256((database + actor).encode()).hexdigest()[:16]
                 try:
-                    provision(api, plan, sales, staff, uid, other_id, key, result)
+                    provision(api, plan, sales, staff, uid, other_id, key, result, database)
                     fixtures.append((plan, actor, token, other_token, key, result))
                 except Blocked as blocker:
                     result["blocker"] = str(blocker)

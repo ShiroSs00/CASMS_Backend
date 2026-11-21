@@ -14,6 +14,7 @@ import com.casms.identity.entity.User;
 import com.casms.security.principal.CasmsPrincipal;
 import com.casms.ship.entity.Destination;
 import com.casms.ship.repository.DestinationRepository;
+import com.casms.trip.service.TripGeographyCatalog;
 import com.casms.trip.controller.TripCatalogController;
 import com.casms.trip.controller.TripController;
 import com.casms.trip.controller.TripScheduleVersionController;
@@ -74,6 +75,8 @@ public class TripPlanningContractTest {
     @Mock private TripScheduleVersionService versionService;
 
     @Mock private DestinationRepository destinationRepository;
+
+    @Mock private TripGeographyCatalog geographyCatalog;
 
     @InjectMocks private TripController tripController;
 
@@ -292,6 +295,19 @@ public class TripPlanningContractTest {
         dest.setDestinationName("Vịnh Hạ Long");
 
         when(destinationRepository.findAllActiveDestinations()).thenReturn(List.of(dest));
+        catalogController.setGeographyCatalog(geographyCatalog);
+        var region = TripGeographyCatalog.Kind.REGION;
+        var country = TripGeographyCatalog.Kind.COUNTRY;
+        var active = TripGeographyCatalog.Status.ACTIVE;
+        when(geographyCatalog.list(true)).thenReturn(List.of(
+                new TripGeographyCatalog.Item(region, "BAC_BO", "Bắc Bộ", null, active),
+                new TripGeographyCatalog.Item(region, "TRUNG_BO", "Trung Bộ", null, active),
+                new TripGeographyCatalog.Item(region, "NAM_BO", "Nam Bộ", null, active),
+                new TripGeographyCatalog.Item(country, "VN", "Việt Nam", null, active),
+                new TripGeographyCatalog.Item(country, "SG", "Singapore", null, active),
+                new TripGeographyCatalog.Item(country, "TH", "Thái Lan", null, active),
+                new TripGeographyCatalog.Item(country, "MY", "Malaysia", null, active),
+                new TripGeographyCatalog.Item(country, "JP", "Nhật Bản", null, active)));
 
         mockMvcCatalog
                 .perform(get("/trip-planning/catalogs"))

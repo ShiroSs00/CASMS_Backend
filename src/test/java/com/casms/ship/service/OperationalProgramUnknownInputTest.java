@@ -217,8 +217,14 @@ class OperationalProgramUnknownInputTest {
         supplier.setStatus(com.casms.activity.enums.SupplierStatus.ACTIVE);
         supplier.setVerificationStatus(
                 com.casms.activity.enums.SupplierVerificationStatus.VERIFIED);
+        var destination = new com.casms.ship.entity.Destination();
+        destination.setDestinationId(UUID.randomUUID());
+        stop.setDestination(destination);
+        sourceStop.setDestination(destination);
         var template = new com.casms.activity.entity.ShoreExcursion();
         template.setShoreExcursionId(UUID.randomUUID());
+        template.setStatus(com.casms.activity.enums.ShoreExcursionStatus.PLANNED);
+        template.setDestination(destination);
         template.setSupplier(supplier);
         template.setMaximumCapacity(10);
         template.setMinimumParticipants(1);
@@ -230,6 +236,7 @@ class OperationalProgramUnknownInputTest {
         entry.setEntryId(UUID.randomUUID());
         entry.setKind(TripPlanEntryKind.SHORE_EXCURSION);
         entry.setStop(sourceStop);
+        entry.setDestination(destination);
         entry.setSourceExcursionId(template.getShoreExcursionId());
         entry.setTitle("Overnight shore program");
         entry.setStartDayNumber(1);

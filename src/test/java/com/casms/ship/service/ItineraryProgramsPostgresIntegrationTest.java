@@ -4,6 +4,13 @@ import com.casms.common.exception.BusinessException;
 import com.casms.identity.entity.User;
 import com.casms.identity.enums.Role;
 import com.casms.identity.enums.UserStatus;
+import com.casms.identity.repository.RolePermissionRepository;
+import com.casms.security.principal.CasmsPrincipal;
+import com.casms.ship.dto.request.CruisePreparationConfirmRequest;
+import com.casms.ship.dto.request.CruisePreparationSubmitRequest;
+import com.casms.ship.dto.request.CruiseStaffRequest;
+import com.casms.staffing.StaffingWorkflowService;
+import com.casms.staffing.StaffingWorkflowService.*;
 import com.casms.ship.entity.*;
 import com.casms.ship.enums.*;
 import jakarta.persistence.EntityManager;
@@ -16,6 +23,8 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.transaction.TestTransaction;
@@ -26,6 +35,7 @@ import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.*;
+import java.util.function.Supplier;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -49,6 +59,11 @@ class ItineraryProgramsPostgresIntegrationTest {
     @Autowired ItineraryProgramService programs;
     @Autowired ItineraryProgramPolicy policy;
     @Autowired CruiseMainflowService plans;
+    @Autowired StaffingWorkflowService staffing;
+    @Autowired CruiseWorkHandoffService handoffs;
+    @Autowired CruiseStaffService cruiseStaff;
+    @Autowired CruisePreparationService preparation;
+    @Autowired RolePermissionRepository roles;
     @Autowired MockMvc mvc;
     @Autowired com.casms.security.jwt.JwtService jwt;
     private UUID cruiseId, itineraryId, stopId, areaId, serviceAreaId, sourceActivity, sourceExcursion, destinationId, shipId;
@@ -64,7 +79,7 @@ class ItineraryProgramsPostgresIntegrationTest {
         Deck deck = new Deck(); deck.setShip(ship); deck.setDeckNumber(1); deck.setDeckName("Open deck");
         deck.setPriceMultiplier(BigDecimal.ONE); em.persist(deck);
         ShipModel model = new ShipModel(); model.setShip(ship); model.setVersion(code);
-        model.setFileUri("/fixture.glb"); model.setFileFormat("glb"); em.persist(model);
+        model.setFileUri("/fixture.glb"); model.setFileFormat("glb"); model.setStatus(ShipModelStatus.READY); em.persist(model);
         areaId=area(model,deck,"Event space"); serviceAreaId=area(model,deck,"Service space");
         Port port = new Port(); port.setPortCode("VN-"+code); port.setPortName("Test port");
         port.setCountryCode("VN"); port.setTimeZoneId("Asia/Ho_Chi_Minh"); port.setStatus(PortStatus.ACTIVE); em.persist(port);
@@ -133,17 +148,324 @@ class ItineraryProgramsPostgresIntegrationTest {
     }
     private long revision() { return jdbc.queryForObject("SELECT revision FROM \"Cruise\" WHERE cruise_id=?",Long.class,cruiseId); }
     private ItineraryProgramService.ActivitySchedule activitySchedule(UUID area) {
-        return new ItineraryProgramService.ActivitySchedule(arrival,arrival.plusSeconds(3600),area,"Event deck",20,BigDecimal.ZERO);
+        return new ItineraryProgramService.ActivitySchedule(arrival,arrival.plusSeconds(7200),area,"Event deck",20,BigDecimal.ZERO);
     }
     private void assertCode(String expected, Executable action) {
         assertEquals(expected,assertThrows(BusinessException.class,action).getCode());
     }
-    private String token(Role role) {
+    private User createUser(Role... roles) {
         var user=new User();
         user.setUsername("casms75-"+UUID.randomUUID()); user.setPasswordHash("unused-synthetic-password-hash");
-        user.setStatus(UserStatus.ACTIVE); user.setRoles(Set.of(role));
+        user.setStatus(UserStatus.ACTIVE); user.setRoles(Set.of(roles));
         em.persist(user); em.flush();
-        return "Bearer "+jwt.generateToken(user.getUsername(),user.getUserId());
+        return user;
+    }
+
+    private String token(Role role) {
+        var user = createUser(role);
+        return "Bearer " + jwt.generateToken(user.getUsername(), user.getUserId());
+    }
+
+    private String coordinatorToken() {
+        var user = createUser(Role.CRUISE_MANAGER);
+        jdbc.update("UPDATE \"Cruise\" SET preparation_coordinator_id=? WHERE cruise_id=?", user.getUserId(), cruiseId);
+        return "Bearer " + jwt.generateToken(user.getUsername(), user.getUserId());
+    }
+
+    private String token(CasmsPrincipal actor) {
+        return "Bearer " + jwt.generateToken(actor.getUsername(), actor.getUserId());
+    }
+
+    private CasmsPrincipal actor(Role... role) {
+        return new CasmsPrincipal(createUser(role), roles);
+    }
+
+    private void staffingFixture(CasmsPrincipal crm, CasmsPrincipal ship, CasmsPrincipal hr) {
+        var cabin = new Cabin();
+        cabin.setShip(em.getReference(Ship.class, shipId));
+        cabin.setDeck(em.getReference(Deck.class, serviceDeck()));
+        cabin.setCabinNumber("101");
+        cabin.setCabinType(CabinType.INTERIOR);
+        cabin.setCapacity(2);
+        cabin.setStatus(CabinStatus.AVAILABLE);
+        em.persist(cabin);
+        em.flush();
+        jdbc.update("UPDATE \"Cruise\" SET preparation_coordinator_id=? WHERE cruise_id=?", crm.getUserId(), cruiseId);
+        em.clear();
+        preparation.saveOperatingBudget(cruiseId, revision(), BigDecimal.valueOf(1000), crm);
+        var membership = new CruiseStaffRequest();
+        membership.setUserId(ship.getUserId());
+        membership.setRoleInCruise("SHIP_MANAGER");
+        cruiseStaff.assignStaff(cruiseId, membership, hr);
+    }
+
+    private UUID serviceDeck() {
+        return jdbc.queryForObject("SELECT deck_id FROM \"ShipModelObject\" WHERE ship_model_object_id=?",
+                UUID.class, serviceAreaId);
+    }
+
+    private Snapshot completeAsm(Snapshot request, CasmsPrincipal asm, CasmsPrincipal crm) {
+        var pending = handoffs.inbox(asm).stream()
+                .filter(task -> task.cruiseId().equals(cruiseId)).findFirst().orElseThrow();
+        var task = handoffs.respond(cruiseId, CruiseWorkHandoffService.Group.ASM,
+                CruiseWorkHandoffService.Action.ACCEPT, pending.revision(), null, asm);
+        handoffs.respond(cruiseId, CruiseWorkHandoffService.Group.ASM,
+                CruiseWorkHandoffService.Action.COMPLETE, task.revision(), "QA program complete", asm);
+        var promoted = staffing.detail(request.id(), crm);
+        assertEquals("PENDING_SHIP_REVIEW", promoted.status());
+        return promoted;
+    }
+
+    @Test void activitySelectionUsesOnlyTheEffectiveReadyModel() throws Exception {
+        String crm = coordinatorToken();
+        var readyArea = em.find(ShipModelObject.class, areaId);
+        UUID readyModel = readyArea.getShipModel().getShipModelId();
+        var draft = new ShipModel();
+        draft.setShip(em.getReference(Ship.class, shipId));
+        draft.setVersion("new-draft");
+        draft.setFileUri("/draft.glb");
+        draft.setFileFormat("glb");
+        em.persist(draft);
+        UUID draftArea = area(draft, readyArea.getDeck(), "New activity space");
+        em.flush();
+        jdbc.update("UPDATE \"ShipModelObject\" SET area_usage='ACTIVITY_SPACE' WHERE ship_model_object_id=?", draftArea);
+        assertEquals(serviceDeck(), policy.requireActivityArea(areaId, cruiseId, false));
+        assertCode("ACTIVITY_AREA_REQUIRED", () -> policy.requireActivityArea(draftArea, cruiseId, false));
+        mvc.perform(get("/cruise-plans/{id}/program-options", cruiseId).header("Authorization", crm))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.ship.modelId").value(readyModel.toString()))
+                .andExpect(jsonPath("$.data.activityAreas.length()").value(1))
+                .andExpect(jsonPath("$.data.activityAreas[0].id").value(areaId.toString()));
+        jdbc.update("UPDATE \"ShipModel\" SET status='READY' WHERE ship_model_id=?", draft.getShipModelId());
+        assertEquals(serviceDeck(), policy.requireActivityArea(draftArea, cruiseId, false));
+        assertCode("ACTIVITY_AREA_REQUIRED", () -> policy.requireActivityArea(areaId, cruiseId, false));
+        mvc.perform(get("/cruise-plans/{id}/program-options", cruiseId).header("Authorization", crm))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.ship.modelId").value(draft.getShipModelId().toString()))
+                .andExpect(jsonPath("$.data.activityAreas.length()").value(1))
+                .andExpect(jsonPath("$.data.activityAreas[0].id").value(draftArea.toString()));
+    }
+
+    @Test void budgetGateAndDeckBlockersUseThePublishedHttpContract() throws Exception {
+        String crm = coordinatorToken();
+        var asm = actor(Role.ACTIVITY_SERVICE_MANAGER);
+        String budget = "/cruise/{id}/preparation/operating-budget";
+        String request = "/cruises/{id}/staffing-requests";
+        mvc.perform(post(request, cruiseId).header("Authorization", crm)
+                        .contentType("application/json").content("{\"scheduleRevision\":" + revision() + ",\"requirements\":[]}"))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.code").value("PREPARATION_BUDGET_REQUIRED"));
+        mvc.perform(get(budget, cruiseId).header("Authorization", crm))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.canEdit").value(true));
+        mvc.perform(put(budget, cruiseId).header("Authorization", crm).contentType("application/json")
+                        .content("{\"expectedRevision\":" + revision() + ",\"amountVnd\":\"1000\"}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.amountVnd").value("1000"));
+        mvc.perform(post(request, cruiseId).header("Authorization", crm)
+                        .contentType("application/json").content("{\"scheduleRevision\":" + revision() + ",\"requirements\":[]}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.status").value("PENDING_ASM"));
+        var task = handoffs.inbox(asm).stream().filter(row -> cruiseId.equals(row.cruiseId())).findFirst().orElseThrow();
+        handoffs.respond(cruiseId, CruiseWorkHandoffService.Group.ASM,
+                CruiseWorkHandoffService.Action.ACCEPT, task.revision(), null, asm);
+
+        String locations = "/cruise/{id}/service-locations";
+        mvc.perform(get(locations, cruiseId).header("Authorization", token(asm)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.shipId").value(shipId.toString()))
+                .andExpect(jsonPath("$.data.deckBlocker").doesNotExist())
+                .andExpect(jsonPath("$.data.canPropose").value(true));
+
+        Ship emptyShip = new Ship();
+        emptyShip.setShipCode("EMPTY-" + UUID.randomUUID().toString().substring(0, 8));
+        emptyShip.setShipName("Test ship without decks");
+        emptyShip.setStatus(ShipStatus.DRAFT);
+        emptyShip.setTotalCapacity(100);
+        emptyShip.setTotalDecks(1);
+        em.persist(emptyShip);
+        em.flush();
+        jdbc.update("UPDATE \"Cruise\" SET ship_id=? WHERE cruise_id=?", emptyShip.getShipId(), cruiseId);
+        em.clear();
+        mvc.perform(get(locations, cruiseId).header("Authorization", token(asm)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.deckBlocker").value("SHIP_DECK_REQUIRED"))
+                .andExpect(jsonPath("$.data.canPropose").value(false));
+        jdbc.update("UPDATE \"Cruise\" SET ship_id=NULL WHERE cruise_id=?", cruiseId);
+        em.clear();
+        mvc.perform(get(locations, cruiseId).header("Authorization", token(asm)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.deckBlocker").value("SHIP_REQUIRED"));
+    }
+
+    @Test void staffingV2ShipsWithoutServiceAreasAndTechnicalApprovalHasItsOwnRevision() throws Exception {
+        var crm = actor(Role.CRUISE_MANAGER);
+        var asm = actor(Role.ACTIVITY_SERVICE_MANAGER);
+        var ship = actor(Role.SHIP_MANAGER, Role.OPERATIONS_MANAGER);
+        var hr = actor(Role.HR_MANAGER);
+        var ops = actor(Role.OPERATIONS_MANAGER);
+        staffingFixture(crm, ship, hr);
+        var pending = staffing.submit(cruiseId, new CreateRequest(revision(), List.of()), crm);
+        assertEquals("PENDING_ASM", pending.status());
+        var shipReview = completeAsm(pending, asm, crm);
+        var empty = staffing.saveShipPlan(pending.id(), new ShipPlanInput(shipReview.revision(), List.of(), List.of()), ship);
+        assertTrue(empty.shipPlanReady());
+        assertTrue(empty.plannedServices().isEmpty());
+        mvc.perform(get("/cruises/staffing-requests/{id}/review-details", pending.id())
+                        .header("Authorization", token(ship)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.shipPlanReady").value(true))
+                .andExpect(jsonPath("$.data.request.planResetImpact.assignmentsToClear").value(0));
+        var checked = advance(empty.request(), "SHIP_CHECKED", ship);
+        assertEquals("SHIP_REVIEWED", checked.status());
+
+        var technical = preparation.getPreparationDashboard(cruiseId).getSections().stream()
+                .filter(section -> "TECHNICAL_NAUTICAL".equals(section.getSectionCode())).findFirst().orElseThrow();
+        assertEquals("READY", technical.getDataReadiness());
+        assertEquals("NOT_SUBMITTED", technical.getSubmissionStatus());
+        var submit = new CruisePreparationSubmitRequest();
+        submit.setExpectedRevision(technical.getRevision());
+        submit.setEvidence("QA technical inspection");
+        var submitted = asActor(ship, () -> preparation.submitSection(
+                cruiseId, technical.getSectionCode(), submit, ship.getUserId(), Set.of("SHIP_MANAGER")));
+        assertEquals("PENDING", submitted.getApprovalStatus());
+        assertEquals(submitted.getRevision(), submitted.getSubmittedRevision());
+        var confirm = new CruisePreparationConfirmRequest();
+        confirm.setExpectedRevision(submitted.getSubmittedRevision());
+        assertCode("SELF_APPROVAL_FORBIDDEN",
+                () -> asActor(ship, () -> preparation.confirmSection(
+                        cruiseId, technical.getSectionCode(), confirm, ship.getUserId(), ship.getUsername())));
+        var confirmed = asActor(ops, () -> preparation.confirmSection(
+                cruiseId, technical.getSectionCode(), confirm, ops.getUserId(), ops.getUsername()));
+        assertEquals("CONFIRMED", confirmed.getApprovalStatus());
+        assertEquals(submitted.getRevision(), confirmed.getSubmittedRevision());
+        assertEquals(ops.getUserId(), confirmed.getConfirmedByUserId());
+        mvc.perform(get("/cruise/{id}/preparation", cruiseId).header("Authorization", token(ship)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.sections[?(@.sectionCode == 'TECHNICAL_NAUTICAL')].approvalStatus",
+                        org.hamcrest.Matchers.contains("CONFIRMED")))
+                .andExpect(jsonPath("$.data.sections[?(@.sectionCode == 'TECHNICAL_NAUTICAL')].submittedRevision",
+                        org.hamcrest.Matchers.contains(submitted.getSubmittedRevision().intValue())));
+
+        assertCode("STAFFING_ROLE_REQUIRED", () -> advance(checked, "SEND_TO_HR", ship));
+        assertCode("STAFFING_PLANNER_SCOPE_FORBIDDEN", () -> advance(checked, "SEND_TO_HR", actor(Role.CRUISE_MANAGER)));
+        assertCode("STAFFING_REVISION_CONFLICT", () -> staffing.transition(checked.id(), "SEND_TO_HR",
+                new ReviewRequest(checked.revision() - 1, null), crm));
+        var dispatched = advance(checked, "SEND_TO_HR", crm);
+        assertEquals("SENT_TO_HR", dispatched.status());
+        var staffed = advance(dispatched, "HR_SUBMITTED", hr);
+        assertEquals("HR_SUBMITTED", staffed.status());
+        var reviewed = advance(staffed, "PLANNER_CONFIRMED", crm);
+        assertEquals("PLANNER_CONFIRMED", reviewed.status());
+        var approved = advance(reviewed, "OPS_APPROVED", ops);
+        assertEquals("OPS_APPROVED", approved.status());
+        assertTrue(staffing.ready(cruiseId));
+
+        programs.assign(itineraryId, revision(), List.of(sourceActivity), List.of());
+        assertTrue(staffing.detail(pending.id(), crm).shipPlanStale());
+        assertFalse(staffing.ready(cruiseId));
+    }
+
+    private <T> T asActor(CasmsPrincipal actor, Supplier<T> action) {
+        var original = SecurityContextHolder.getContext();
+        var context = SecurityContextHolder.createEmptyContext();
+        context.setAuthentication(UsernamePasswordAuthenticationToken.authenticated(actor, null, actor.getAuthorities()));
+        SecurityContextHolder.setContext(context);
+        try {
+            return action.get();
+        } finally {
+            SecurityContextHolder.setContext(original);
+        }
+    }
+
+    private Snapshot advance(Snapshot base, String action, CasmsPrincipal actor) {
+        return staffing.transition(base.id(), action, new ReviewRequest(base.revision(), null), actor);
+    }
+
+    @Test void staffingEligibilityAndReturnUseLiveShipConfigurationWithoutGrantingPosAccess() throws Exception {
+        var crm = actor(Role.CRUISE_MANAGER);
+        var asm = actor(Role.ACTIVITY_SERVICE_MANAGER);
+        var ship = actor(Role.SHIP_MANAGER);
+        var hr = actor(Role.HR_MANAGER);
+        var worker = actor(Role.ONBOARD_STAFF);
+        var replacement = actor(Role.ONBOARD_STAFF);
+        staffingFixture(crm, ship, hr);
+        UUID service = UUID.randomUUID(), terminal = UUID.randomUUID(), deck = serviceDeck();
+        jdbc.update("""
+                INSERT INTO "Service" (service_id,service_code,service_name,service_type,status,
+                    requires_schedule,created_at,updated_at)
+                VALUES (?,?,'QA onboard service','FOOD','ACTIVE',true,now(),now())
+                """, service, "QA-" + service);
+        jdbc.update("""
+                INSERT INTO "ServiceSchedule" (schedule_code,service_id,cruise_id,starts_at,ends_at,location,capacity)
+                VALUES (?,?,?,?,?,'Fixture location',10)
+                """, "QA-" + service, service, cruiseId, Timestamp.from(arrival), Timestamp.from(arrival.plusSeconds(900)));
+        var pending = staffing.submit(cruiseId, new CreateRequest(revision(), List.of()), crm);
+        var shipReview = completeAsm(pending, asm, crm);
+        assertCode("STAFFING_SHIP_SCOPE_FORBIDDEN", () -> staffing.saveShipPlan(pending.id(),
+                new ShipPlanInput(shipReview.revision(), List.of(), List.of()), actor(Role.SHIP_MANAGER)));
+        var needs = List.of(new NeedInput(serviceAreaId, "ONBOARD_STAFF", 1));
+        var plan = staffing.saveShipPlan(pending.id(),
+                new ShipPlanInput(shipReview.revision(), List.of(serviceAreaId), needs), ship);
+        assertEquals("DECK_SERVICE_REQUIRED", plan.plannedServices().getFirst().placementBlocker());
+        jdbc.update("""
+                INSERT INTO "DeckServiceAssignment" (assignment_id,deck_id,service_id,created_at)
+                VALUES (gen_random_uuid(),?,?,now())
+                """, deck, service);
+        assertEquals("AREA_SERVICE_REQUIRED", staffing.reviewDetails(pending.id(), ship).plannedServices().getFirst().placementBlocker());
+        jdbc.update("""
+                INSERT INTO "AreaServiceAssignment" (assignment_id,area_object_id,service_id,inherit_permissions)
+                VALUES (gen_random_uuid(),?,?,true)
+                """, serviceAreaId, service);
+        assertEquals("SERVICE_AREA_POS_REQUIRED", staffing.reviewDetails(pending.id(), ship).plannedServices().getFirst().placementBlocker());
+        jdbc.update("""
+                INSERT INTO "PosTerminal" (terminal_id,ship_id,area_object_id,terminal_code,terminal_name,secret_hash)
+                VALUES (?,?,?,?,'QA terminal','unused')
+                """, terminal, shipId, serviceAreaId, "QA-" + terminal);
+        jdbc.update("""
+                INSERT INTO "PosTerminalArea" (terminal_id,area_object_id,enabled) VALUES (?,?,true)
+                ON CONFLICT DO NOTHING
+                """, terminal, serviceAreaId);
+        jdbc.update("""
+                INSERT INTO "ServiceOperationPolicy" (service_id,permissions) VALUES (?,ARRAY['SERVICE_READ'])
+                ON CONFLICT (service_id) DO UPDATE SET permissions=excluded.permissions
+                """, service);
+        assertEquals("SERVICE_POS_PERMISSION_REQUIRED", staffing.reviewDetails(pending.id(), ship).plannedServices().getFirst().placementBlocker());
+        jdbc.update("UPDATE \"PosTerminal\" SET permissions=ARRAY['SERVICE_READ'] WHERE terminal_id=?", terminal);
+        var configured = staffing.reviewDetails(pending.id(), ship).plannedServices().getFirst();
+        assertEquals(List.of(new Placement(serviceAreaId, terminal)), configured.configuredPlacements());
+        assertTrue(configured.eligiblePlacements().isEmpty());
+        var withTerminal = staffing.placeAreaPos(pending.id(), serviceAreaId, new AreaPosInput(terminal, plan.request().revision()), ship);
+        assertEquals(configured.configuredPlacements(), withTerminal.plannedServices().getFirst().eligiblePlacements());
+        mvc.perform(get("/cruises/staffing-requests/{id}/review-details", pending.id())
+                        .header("Authorization", token(ship)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.plannedServices[0].eligiblePlacements[0].areaId").value(serviceAreaId.toString()))
+                .andExpect(jsonPath("$.data.plannedServices[0].eligiblePlacements[0].terminalId").value(terminal.toString()));
+        var withPlacement = staffing.placeService(pending.id(), service,
+                new ServicePlacementInput(serviceAreaId, terminal, withTerminal.request().revision()), ship);
+        var dispatched = advance(advance(withPlacement.request(), "SHIP_CHECKED", ship), "SEND_TO_HR", crm);
+        UUID need = dispatched.needs().getFirst().needId();
+        var assigned = staffing.assignNeed(pending.id(), need, worker.getUserId(), new NeedAssignmentInput(dispatched.revision(), true), hr);
+        var unassigned = staffing.assignNeed(pending.id(), need, worker.getUserId(), new NeedAssignmentInput(assigned.revision(), false), hr);
+        var replaced = staffing.assignNeed(pending.id(), need, replacement.getUserId(), new NeedAssignmentInput(unassigned.revision(), true), hr);
+        assertEquals(List.of(replacement.getUserId()), replaced.needs().getFirst().assignedUserIds());
+        assertEquals(0L, jdbc.queryForObject("""
+                SELECT count(*) FROM "AreaStaffAssignment" a JOIN "CruiseStaff" cs USING (cruise_staff_id)
+                WHERE cs.cruise_id=?
+                """, Long.class, cruiseId));
+        assertEquals(new PlanResetImpact(1, 1), replaced.planResetImpact());
+        jdbc.update("UPDATE \"PosTerminal\" SET permissions='{}' WHERE terminal_id=?", terminal);
+        var stale = staffing.detail(pending.id(), hr);
+        assertTrue(stale.shipPlanStale());
+        assertTrue(stale.needs().getFirst().assignedUserIds().isEmpty());
+        assertEquals(1, stale.planResetImpact().assignmentsToClear());
+        var returned = staffing.transition(pending.id(), "HR_RETURN_SHIP", new ReviewRequest(stale.revision(), "QA correction"), hr);
+        assertEquals("PENDING_SHIP_REVIEW", returned.status());
+        assertEquals(0, returned.planResetImpact().assignmentsToClear());
+        var saved = staffing.saveShipPlan(pending.id(), new ShipPlanInput(returned.revision(), List.of(serviceAreaId), needs), ship);
+        assertNotEquals(need, saved.request().needs().getFirst().needId());
+        assertTrue(saved.request().needs().getFirst().assignedUserIds().isEmpty());
+        assertEquals(2L, jdbc.queryForObject("""
+                SELECT count(*) FROM "CruiseStaff" WHERE cruise_id=? AND role_in_cruise='ONBOARD_STAFF' AND status='ACTIVE'
+                """, Long.class, cruiseId));
+        var toAsm = staffing.transition(pending.id(), "SHIP_RETURN_ASM",
+                new ReviewRequest(saved.request().revision(), "QA program correction"), ship);
+        assertEquals("PENDING_ASM", toAsm.status());
     }
 
     @Test void stagedAssignmentCompletesOnlyAfterBothSchedulesAndAllowsConcurrentAreaActivities() {
@@ -292,7 +614,7 @@ class ItineraryProgramsPostgresIntegrationTest {
 
     @Test
     void httpAssignmentReturnsOccurrenceAndReadUsesTextStatus() throws Exception {
-        String authorization=token(com.casms.identity.enums.Role.CRUISE_MANAGER);
+        String authorization=coordinatorToken();
         mvc.perform(post("/itineraries/{id}/programs/assignments",itineraryId).header("Authorization",authorization).header("If-Match",revision())
                 .contentType("application/json").content("{\"activityIds\":[\""+sourceActivity+"\"],\"excursions\":[]}"))
                 .andExpect(status().isCreated()).andExpect(jsonPath("$.data.activityIds.length()").value(1));
@@ -304,7 +626,7 @@ class ItineraryProgramsPostgresIntegrationTest {
     }
 
     @Test void httpOperationsSubmissionAndDirectItinerarySubmissionRejectIncompletePrograms() throws Exception {
-        assignBoth(); String authorization=token(com.casms.identity.enums.Role.CRUISE_MANAGER);
+        assignBoth(); String authorization=coordinatorToken();
         mvc.perform(post("/cruise-plans/{id}/submit",cruiseId).header("Authorization",authorization)
                 .contentType("application/json").content("{\"expectedRevision\":0,\"fingerprint\":\""
                         + plans.get(cruiseId).fingerprint() + "\"}"))
@@ -334,6 +656,9 @@ class ItineraryProgramsPostgresIntegrationTest {
     }
 
     @Test void readPermissionCannotMutatePrograms() throws Exception {
+        jdbc.update("""
+                INSERT INTO "CruisePlanReview" (cruise_id,status,submitted_at) VALUES (?,'SUBMITTED',now())
+                """, cruiseId);
         String authorization=token(com.casms.identity.enums.Role.OPERATIONS_MANAGER);
         mvc.perform(post("/itineraries/{id}/programs/assignments",itineraryId).header("Authorization",authorization).header("If-Match",revision())
                 .contentType("application/json").content("{\"activityIds\":[\""+sourceActivity+"\"],\"excursions\":[]}"))
