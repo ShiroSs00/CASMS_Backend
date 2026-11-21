@@ -26,7 +26,8 @@ public class CruiseServiceLocationService {
     public record Request(UUID serviceId, String serviceName, String deckName,
                           String status, String note, String reviewNote, long revision) {}
     public record View(boolean canPropose, boolean canReview, List<Option> services,
-                       List<Option> decks, List<Request> requests, String operatingBudgetVnd, boolean shipAssigned) {}
+                       List<Option> decks, List<Request> requests, String operatingBudgetVnd, boolean shipAssigned,
+                       UUID shipId, String deckBlocker) {}
     public record InboxItem(UUID cruiseId, String name, String code, long pending) {}
 
     @Transactional(readOnly = true)
@@ -81,7 +82,7 @@ public class CruiseServiceLocationService {
         var services = proposer && editable ? jdbc.query("""
                 SELECT service_id, service_name FROM "Service" WHERE status='ACTIVE' ORDER BY service_name,service_id
                 """, (rs, i) -> new Option(rs.getObject(1, UUID.class), rs.getString(2))) : List.<Option>of();
-        var decks = proposer && editable ? jdbc.query("""
+        var decks = cruise.getShip() != null ? jdbc.query("""
                 SELECT deck_id,coalesce(deck_name,'Boong ' || deck_number) FROM "Deck"
                 WHERE ship_id=? ORDER BY deck_number
                 """, (rs, i) -> new Option(rs.getObject(1, UUID.class), rs.getString(2)),
@@ -91,8 +92,10 @@ public class CruiseServiceLocationService {
                 SELECT EXISTS (SELECT 1 FROM "CruiseStaff" WHERE cruise_id=?
                       AND role_in_cruise='SHIP_MANAGER' AND status='ACTIVE')
                 """, Boolean.class, id));
-        return new View(proposer && editable, reviewer && editable, services, decks, requests,
-                budget == null ? null : budget.toPlainString(), shipAssigned);
+        UUID shipId = cruise.getShip() == null ? null : cruise.getShip().getShipId();
+        String deckBlocker = shipId == null ? "SHIP_REQUIRED" : decks.isEmpty() ? "SHIP_DECK_REQUIRED" : null;
+        return new View(proposer && editable && !decks.isEmpty(), reviewer && editable, services, decks, requests,
+                budget == null ? null : budget.toPlainString(), shipAssigned, shipId, deckBlocker);
     }
 
     @Transactional

@@ -71,9 +71,10 @@ public class StaffingWorkflowService {
                            OffsetDateTime departure, OffsetDateTime returning, String operatingBudgetVnd,
                            String returnReason, boolean shipReviewWorkflow, boolean asmProgramWorkflow,
                            String workflowVersion, List<UUID> activeAreaIds, List<NeedProgress> needs,
-                           boolean shipPlanStale) {
+                           boolean shipPlanStale, PlanResetImpact planResetImpact) {
         boolean v2() { return "V2".equals(workflowVersion); }
     }
+    public record PlanResetImpact(long needsToReplaceOnSave, long assignmentsToClear) {}
     public record RequirementProgress(UUID serviceId, int required, long assigned, String serviceName) {}
     public record ShipReview(UUID shipId, UUID modelId, String name, String status, List<CabinReview> cabins) {}
     public record CabinReview(UUID cabinId, String number, String status) {}
@@ -86,11 +87,13 @@ public class StaffingWorkflowService {
     public record Placement(UUID areaId, UUID terminalId) {}
     public record ServiceProposal(String deckName, String note, String status) {}
     public record PlannedService(UUID serviceId, String name, List<UUID> eligibleAreaIds,
-                                 List<Placement> placements, ServiceProposal proposal) {}
+                                 List<Placement> placements, ServiceProposal proposal,
+                                 List<Placement> eligiblePlacements, List<Placement> configuredPlacements,
+                                 String placementBlocker) {}
     public record ReviewDetails(Snapshot request, ShipReview ship, List<AreaReview> areas,
                                 List<ActivityReview> activities, List<StaffReview> staff,
                                 List<PosReview> terminalOptions, List<PlannedService> plannedServices,
-                                List<String> positionOptions, boolean canReturnToAsm) {}
+                                List<String> positionOptions, boolean canReturnToAsm, Boolean shipPlanReady) {}
     public record ServiceOption(UUID id, String name) {}
     public record Preparation(long scheduleRevision, Snapshot request, List<ServiceOption> services,
                               boolean hasOperatingBudget) {}
@@ -240,10 +243,14 @@ public class StaffingWorkflowService {
         List<UUID> activeAreas = v2 ? jdbc.queryForList("""
                 SELECT area_id FROM "StaffingActiveArea" WHERE request_id=? ORDER BY area_id
                 """, UUID.class, id) : List.of();
-        List<NeedProgress> needs = v2 ? readNeeds(id) : List.of();
+        long assignments = v2 ? jdbc.queryForObject("""
+                SELECT count(*) FROM "StaffingNeedAssignment" WHERE request_id=?
+                """, Long.class, id) : 0;
         boolean shipPlanStale = v2 && Set.of("SHIP_REVIEWED", "SENT_TO_HR", "HR_SUBMITTED",
                 "PLANNER_CONFIRMED", "OPS_APPROVED").contains(request.status())
                 && !isCurrentShipPlan(id);
+        List<NeedProgress> needs = v2 ? readNeeds(id, !shipPlanStale) : List.of();
+        var resetImpact = v2 ? new PlanResetImpact(needs.size(), assignments) : null;
         return jdbc.queryForObject("""
                 SELECT cruise_name,cruise_code,departure_datetime,return_datetime,operating_budget_vnd::text
                 FROM "Cruise" WHERE cruise_id=?
@@ -251,7 +258,7 @@ public class StaffingWorkflowService {
                 request.revision(), request.scheduleRevision(), progress, rs.getString(1), rs.getString(2),
                 rs.getObject(3, OffsetDateTime.class), rs.getObject(4, OffsetDateTime.class),
                 rs.getString(5), reason, request.shipReview(), request.asmProgram(),
-                request.workflowVersion(), activeAreas, needs, shipPlanStale), request.cruiseId());
+                request.workflowVersion(), activeAreas, needs, shipPlanStale, resetImpact), request.cruiseId());
     }
 
     @Transactional(readOnly = true)
@@ -477,16 +484,16 @@ public class StaffingWorkflowService {
                 """, Boolean.class, cruiseId, actor.getUserId()));
     }
 
-    private List<NeedProgress> readNeeds(UUID requestId) {
+    private List<NeedProgress> readNeeds(UUID requestId, boolean includeAssignments) {
         return jdbc.query("""
                 SELECT n.need_id, n.area_id, o.display_name, n.position_code, n.required_count,
                     n.plan_revision, ARRAY(SELECT a.user_id FROM "StaffingV2QualifiedAssignment" a
-                        WHERE a.need_id=n.need_id ORDER BY a.user_id)
+                        WHERE ? AND a.need_id=n.need_id ORDER BY a.user_id)
                 FROM "StaffingNeed" n JOIN "ShipModelObject" o ON o.ship_model_object_id=n.area_id
                 WHERE n.request_id=? ORDER BY o.display_name,n.area_id,n.position_code
                 """, (rs, i) -> new NeedProgress(rs.getObject(1, UUID.class), rs.getObject(2, UUID.class),
                 rs.getString(3), rs.getString(4), rs.getInt(5), rs.getLong(6),
-                Arrays.asList((UUID[]) rs.getArray(7).getArray())), requestId);
+                Arrays.asList((UUID[]) rs.getArray(7).getArray())), includeAssignments, requestId);
     }
 
     @Transactional
@@ -622,9 +629,19 @@ public class StaffingWorkflowService {
                 JOIN "StaffingProgramInspection" program USING(cruise_id)
                 WHERE req.request_id=? AND inspection.ship_ready AND inspection.ship_model_id IS NOT NULL
                   AND program.asm_completed AND NOT EXISTS (
+                    SELECT 1 FROM "OnboardActivity" activity
+                    WHERE activity.cruise_id=c.cruise_id AND activity.status<>'CANCELLED'
+                      AND NOT EXISTS (
+                        SELECT 1 FROM "ShipModelObject" o JOIN "Deck" d USING (deck_id)
+                        WHERE o.ship_model_object_id=activity.area_object_id AND d.ship_id=c.ship_id
+                          AND o.ship_model_id=inspection.ship_model_id AND o.object_type='FACILITY'
+                          AND o.area_usage='ACTIVITY_SPACE' AND o.cabin_id IS NULL
+                          AND NOT EXISTS (SELECT 1 FROM "AreaServiceAssignment" ass
+                              WHERE ass.area_object_id=o.ship_model_object_id AND ass.enabled)))
+                  AND NOT EXISTS (
                     SELECT 1 FROM "StaffingActiveArea" a WHERE a.request_id=req.request_id AND (
-                        NOT EXISTS (SELECT 1 FROM "StaffingAreaPos" p
-                            WHERE p.cruise_id=c.cruise_id AND p.area_id=a.area_id AND p.terminal_id=a.terminal_id)
+                        NOT EXISTS (SELECT 1 FROM "StaffingAreaPos" p JOIN "PosTerminal" t USING (terminal_id)
+                            WHERE 'SERVICE_READ'=ANY(t.permissions) AND p.cruise_id=c.cruise_id AND p.area_id=a.area_id AND p.terminal_id=a.terminal_id)
                         OR NOT EXISTS (SELECT 1 FROM "StaffingV2EligibleArea" e
                             WHERE e.cruise_id=c.cruise_id AND e.area_id=a.area_id)
                         OR NOT EXISTS (SELECT 1 FROM "StaffingNeed" n
@@ -662,7 +679,7 @@ public class StaffingWorkflowService {
     }
 
     private boolean needsCovered(UUID id, UUID cruise) {
-        return readNeeds(id).stream().allMatch(need -> need.assignedUserIds().size() >= need.requiredCount())
+        return readNeeds(id, true).stream().allMatch(need -> need.assignedUserIds().size() >= need.requiredCount())
                 && activitiesCovered(cruise);
     }
 
@@ -871,7 +888,9 @@ public class StaffingWorkflowService {
     private void placeV2(UUID id, UUID cruise, UUID area, UUID terminal, UUID service) {
         if (!Boolean.TRUE.equals(jdbc.queryForObject("""
                 SELECT EXISTS (SELECT 1 FROM "StaffingActiveArea" a
-                JOIN "StaffingAreaPos" p ON p.area_id=a.area_id AND p.cruise_id=?
+                JOIN "StaffingV2EligibleArea" eligible ON eligible.area_id=a.area_id AND eligible.cruise_id=?
+                JOIN "StaffingAreaPos" p ON p.area_id=a.area_id AND p.cruise_id=eligible.cruise_id
+                JOIN "PosTerminal" t ON t.terminal_id=p.terminal_id AND 'SERVICE_READ'=ANY(t.permissions)
                 WHERE a.request_id=? AND a.area_id=? AND p.terminal_id=?)
                 """, Boolean.class, cruise, id, area, terminal))) {
             throw conflict("STAFFING_POS_PLACEMENT_OUT_OF_SCOPE");
@@ -889,13 +908,16 @@ public class StaffingWorkflowService {
         if (!Boolean.TRUE.equals(jdbc.queryForObject("""
                 SELECT EXISTS (SELECT 1 FROM "StaffingPlannedOnboardService" WHERE cruise_id=? AND service_id=?)
                 """, Boolean.class, cruise, service))) throw conflict("STAFFING_SERVICE_PLACEMENT_OUT_OF_SCOPE");
+        if (!Boolean.TRUE.equals(jdbc.queryForObject("""
+                SELECT EXISTS (SELECT 1 FROM "StaffingPlannedServicePlacement"
+                    WHERE cruise_id=? AND service_id=? AND area_id=? AND terminal_id=?)
+                """, Boolean.class, cruise, service, area, terminal))) {
+            throw conflict("STAFFING_SERVICE_POS_PERMISSION_REQUIRED");
+        }
         jdbc.update("""
                 INSERT INTO "StaffingServicePlacement" (request_id,service_id,area_id) VALUES (?,?,?)
                 ON CONFLICT (request_id,service_id) DO UPDATE SET area_id=excluded.area_id
                 """, id, service, area);
-        if (!Boolean.TRUE.equals(jdbc.queryForObject("""
-                SELECT EXISTS (SELECT 1 FROM "StaffingV2ServicePlacement" WHERE request_id=? AND service_id=?)
-                """, Boolean.class, id, service))) throw conflict("STAFFING_SERVICE_POS_PERMISSION_REQUIRED");
     }
 
     private record ApprovedRequest(boolean shipReview, String fingerprint, boolean asmProgram, String serviceFingerprint,
@@ -955,8 +977,10 @@ public class StaffingWorkflowService {
         Map<UUID, List<PosReview>> terminals = new LinkedHashMap<>();
         Map<UUID, List<PosReview>> eligibleTerminals = new LinkedHashMap<>();
         if (request.v2()) jdbc.query("""
-                SELECT area_id,terminal_id,terminal_name FROM "StaffingAreaPos"
-                WHERE cruise_id=? ORDER BY terminal_name,terminal_id
+                SELECT p.area_id,p.terminal_id,p.terminal_name FROM "StaffingAreaPos" p
+                JOIN "PosTerminal" t USING (terminal_id)
+                WHERE p.cruise_id=? AND 'SERVICE_READ'=ANY(t.permissions)
+                ORDER BY p.terminal_name,p.terminal_id
                 """, rs -> {
                     eligibleTerminals.computeIfAbsent(rs.getObject(1, UUID.class), ignored -> new ArrayList<>())
                             .add(new PosReview(rs.getObject(2, UUID.class), rs.getString(3)));
@@ -977,7 +1001,7 @@ public class StaffingWorkflowService {
                 SELECT a.area_id,a.area_name,ARRAY(
                     SELECT DISTINCT q.user_id FROM "StaffingV2QualifiedAssignment" q
                         JOIN "StaffingNeed" n USING(request_id,need_id)
-                        WHERE q.request_id=? AND n.area_id=a.area_id ORDER BY q.user_id
+                        WHERE q.request_id=? AND ? AND n.area_id=a.area_id ORDER BY q.user_id
                 ) FROM "StaffingV2EligibleArea" a WHERE a.cruise_id=? ORDER BY a.area_name,a.area_id
                 """ : """
                 SELECT a.area_id, a.area_name, ARRAY(
@@ -989,7 +1013,7 @@ public class StaffingWorkflowService {
                 terminals.getOrDefault(rs.getObject(1, UUID.class), List.of()),
                 Arrays.asList((UUID[]) rs.getArray(3).getArray()),
                 eligibleTerminals.getOrDefault(rs.getObject(1, UUID.class), List.of())),
-                request.v2() ? new Object[]{id, cruiseId} : new Object[]{cruiseId});
+                request.v2() ? new Object[]{id, !request.shipPlanStale(), cruiseId} : new Object[]{cruiseId});
         var activities = jdbc.query("""
                 SELECT w.window_id, w.kind, w.name, ARRAY(
                     SELECT DISTINCT d.user_id FROM "CruiseStaffDutyWindow" d
@@ -1006,14 +1030,18 @@ public class StaffingWorkflowService {
         return new ReviewDetails(request, ship, areas, activities, staffRoster(cruiseId, areas, activities),
                 terminalOptions, request.asmProgramWorkflow() ? plannedServices(cruiseId, request) : List.of(),
                 request.v2() ? AREA_POSITIONS.stream().sorted().toList() : List.of(),
-                request.v2() && "PENDING_SHIP_REVIEW".equals(request.status()) && handoffs.canChange(cruiseId));
+                request.v2() && "PENDING_SHIP_REVIEW".equals(request.status()) && handoffs.canChange(cruiseId),
+                request.v2() ? validShipPlanFingerprint(id) != null : null);
     }
 
     private List<PlannedService> plannedServices(UUID cruiseId, Snapshot request) {
         Map<UUID, List<Placement>> placements = new LinkedHashMap<>();
         String query = request.v2() ? """
-                SELECT service_id,area_id,terminal_id FROM "StaffingV2ServicePlacement"
-                WHERE request_id=? ORDER BY area_id,terminal_id
+                SELECT v.service_id,v.area_id,v.terminal_id FROM "StaffingV2ServicePlacement" v
+                JOIN "StaffingRequest" r USING (request_id)
+                JOIN "StaffingPlannedServicePlacement" p ON p.cruise_id=r.cruise_id
+                    AND p.service_id=v.service_id AND p.area_id=v.area_id AND p.terminal_id=v.terminal_id
+                WHERE v.request_id=? ORDER BY v.area_id,v.terminal_id
                 """ : """
                 SELECT service_id,area_id,terminal_id FROM "StaffingPlannedServicePlacement"
                 WHERE cruise_id=? ORDER BY area_id,terminal_id
@@ -1022,6 +1050,20 @@ public class StaffingWorkflowService {
                     placements.computeIfAbsent(rs.getObject(1, UUID.class), ignored -> new ArrayList<>())
                             .add(new Placement(rs.getObject(2, UUID.class), rs.getObject(3, UUID.class)));
                 }, request.v2() ? request.id() : cruiseId);
+        Map<UUID, List<Placement>> configured = new LinkedHashMap<>();
+        Map<UUID, List<Placement>> eligible = new LinkedHashMap<>();
+        if (request.v2()) jdbc.query("""
+                SELECT p.service_id,p.area_id,p.terminal_id,a.terminal_id IS NOT NULL
+                FROM "StaffingPlannedServicePlacement" p
+                LEFT JOIN "StaffingActiveArea" a
+                  ON a.request_id=? AND a.area_id=p.area_id AND a.terminal_id=p.terminal_id
+                WHERE p.cruise_id=? ORDER BY p.area_id,p.terminal_id
+                """, rs -> {
+                    UUID service = rs.getObject(1, UUID.class);
+                    var candidate = new Placement(rs.getObject(2, UUID.class), rs.getObject(3, UUID.class));
+                    configured.computeIfAbsent(service, ignored -> new ArrayList<>()).add(candidate);
+                    if (rs.getBoolean(4)) eligible.computeIfAbsent(service, ignored -> new ArrayList<>()).add(candidate);
+                }, request.id(), cruiseId);
         return jdbc.query("""
                 SELECT service.service_id,service.service_name,ARRAY(
                     SELECT a.area_id FROM "StaffingServingArea" a
@@ -1029,8 +1071,33 @@ public class StaffingWorkflowService {
                     JOIN "Deck" d ON d.deck_id=o.deck_id AND d.ship_id=a.ship_id
                     WHERE a.cruise_id=service.cruise_id
                     ORDER BY a.area_id
-                ), coalesce(d.deck_name,'Boong ' || d.deck_number), proposal.note, proposal.status
+                ), coalesce(d.deck_name,'Boong ' || d.deck_number), proposal.note, proposal.status,
+                CASE
+                    WHEN s.status<>'ACTIVE' THEN 'SERVICE_INACTIVE'
+                    WHEN NOT EXISTS (SELECT 1 FROM "StaffingShipModel" m WHERE m.cruise_id=c.cruise_id)
+                        THEN 'SHIP_MODEL_REQUIRED'
+                    WHEN NOT EXISTS (SELECT 1 FROM "DeckServiceAssignment" ds JOIN "Deck" deck USING (deck_id)
+                        WHERE deck.ship_id=c.ship_id AND ds.service_id=s.service_id)
+                        THEN 'DECK_SERVICE_REQUIRED'
+                    WHEN NOT EXISTS (
+                        SELECT 1 FROM "StaffingV2EligibleArea" a
+                        JOIN "DeckServiceAssignment" ds USING (deck_id)
+                        JOIN "AreaServiceAssignment" ass ON ass.area_object_id=a.area_id
+                            AND ass.service_id=ds.service_id AND ass.enabled
+                        WHERE a.cruise_id=c.cruise_id AND ds.service_id=s.service_id)
+                        THEN 'AREA_SERVICE_REQUIRED'
+                    WHEN NOT EXISTS (
+                        SELECT 1 FROM "StaffingV2EligibleArea" a
+                        JOIN "DeckServiceAssignment" ds USING (deck_id)
+                        JOIN "AreaServiceAssignment" ass ON ass.area_object_id=a.area_id
+                            AND ass.service_id=ds.service_id AND ass.enabled
+                        JOIN "StaffingAreaPos" pos ON pos.cruise_id=a.cruise_id AND pos.area_id=a.area_id
+                        WHERE a.cruise_id=c.cruise_id AND ds.service_id=s.service_id)
+                        THEN 'SERVICE_AREA_POS_REQUIRED'
+                    ELSE 'SERVICE_POS_PERMISSION_REQUIRED'
+                END AS configuration_blocker
                 FROM "StaffingPlannedOnboardService" service
+                JOIN "Service" s USING (service_id)
                 JOIN "Cruise" c ON c.cruise_id=service.cruise_id
                 LEFT JOIN ("CruiseServiceLocationRequest" proposal JOIN "Deck" d USING (deck_id))
                     ON proposal.cruise_id=service.cruise_id AND proposal.service_id=service.service_id
@@ -1039,10 +1106,17 @@ public class StaffingWorkflowService {
                 ORDER BY service.service_name,service.service_id
                 """, (rs, row) -> {
                     UUID service = rs.getObject(1, UUID.class);
-                    return new PlannedService(service, rs.getString(2), Arrays.asList((UUID[]) rs.getArray(3).getArray()),
+                    var pairs = eligible.getOrDefault(service, List.of());
+                    var configuredPairs = configured.getOrDefault(service, List.of());
+                    var areas = request.v2() ? pairs.stream().map(Placement::areaId).distinct().toList()
+                            : Arrays.asList((UUID[]) rs.getArray(3).getArray());
+                    String blocker = !request.v2() || !pairs.isEmpty() ? null
+                            : configuredPairs.isEmpty() ? rs.getString(7) : "ACTIVE_AREA_POS_SELECTION_REQUIRED";
+                    return new PlannedService(service, rs.getString(2), areas,
                             placements.getOrDefault(service, List.of()),
                             rs.getString(6) == null ? null
-                                    : new ServiceProposal(rs.getString(4), rs.getString(5), rs.getString(6)));
+                                    : new ServiceProposal(rs.getString(4), rs.getString(5), rs.getString(6)),
+                            pairs, configuredPairs, blocker);
                 }, cruiseId);
     }
 

@@ -525,27 +525,7 @@ public class CruisePreparationService {
             if (checkItems.stream()
                     .anyMatch(i -> Boolean.TRUE.equals(i.getRequired()) && !i.isReady()))
                 allConfirmed = false;
-            sectionResponses.add(
-                    CruisePreparationSectionResponse.builder()
-                            .sectionCode(section.getSectionCode())
-                            .sectionName(section.getSectionName())
-                            .ownerRole(section.getOwnerRole())
-                            .submitterRole(section.getOwnerRole())
-                            .allowedActions(allowedActions(section, checkItems))
-                            .status(section.getStatus())
-                            .evidence(section.getEvidence())
-                            .notes(section.getNotes())
-                            .submittedByUserId(section.getSubmittedByUserId())
-                            .submittedAt(section.getSubmittedAt())
-                            .confirmedByUserId(section.getConfirmedByUserId())
-                            .confirmedByUsername(section.getConfirmedByUsername())
-                            .confirmedAt(section.getConfirmedAt())
-                            .returnReason(section.getReturnReason())
-                            .returnedAt(section.getReturnedAt())
-                            .returnedByUserId(section.getReturnedByUserId())
-                            .revision(section.getRevision())
-                            .checkItems(checkItems)
-                            .build());
+            sectionResponses.add(mapToResponse(section, checkItems));
         }
 
         String overallStatus =
@@ -824,6 +804,7 @@ public class CruisePreparationService {
         }
 
         section = preparationSectionRepository.saveAndFlush(section);
+        var response = mapToResponse(section, checkItems, previousRevision);
         event(
                 section.getCruise(),
                 sectionCode,
@@ -831,14 +812,14 @@ public class CruisePreparationService {
                 "CONFIRM",
                 actorId,
                 request.getNotes(),
-                mapToResponse(section, checkItems),
+                response,
                 previousStatus, previousRevision);
         log.info(
                 "Confirmed preparation section {} for cruise {} by user {}",
                 sectionCode,
                 cruiseId,
                 actorUsername);
-        return mapToResponse(section, computeCheckItems(section.getCruise(), sectionCode));
+        return response;
     }
 
     @Transactional
@@ -903,6 +884,7 @@ public class CruisePreparationService {
 
         String previousStatus = section.getStatus();
         Long previousRevision = section.getRevision();
+        Long submittedRevision = submittedRevision(section);
         section.setStatus(reject ? "REJECTED" : "RETURNED");
         section.setReturnedByUserId(actorId);
         section.setReturnReason(request.getReason());
@@ -912,6 +894,7 @@ public class CruisePreparationService {
         }
 
         section = preparationSectionRepository.saveAndFlush(section);
+        var response = mapToResponse(section, computeCheckItems(section.getCruise(), sectionCode), submittedRevision);
         event(
                 section.getCruise(),
                 sectionCode,
@@ -919,14 +902,14 @@ public class CruisePreparationService {
                 reject ? "REJECT" : "RETURN",
                 actorId,
                 request.getReason(),
-                mapToResponse(section, computeCheckItems(section.getCruise(), sectionCode)),
+                response,
                 previousStatus, previousRevision);
         log.info(
                 "Reviewed preparation section {} for cruise {} by user {}",
                 sectionCode,
                 cruiseId,
                 actorId);
-        return mapToResponse(section, computeCheckItems(section.getCruise(), sectionCode));
+        return response;
     }
 
     @Transactional
@@ -1153,8 +1136,32 @@ public class CruisePreparationService {
         };
     }
 
+    private Long submittedRevision(CruisePreparationSection section) {
+        if (section.getSubmittedByUserId() == null) return null;
+        if ("SUBMITTED".equals(section.getStatus())) return section.getRevision();
+        return jdbc.queryForList("""
+                SELECT revision FROM "CruisePreparationEvent"
+                WHERE cruise_id=? AND section_code=? AND action='SUBMIT' AND revision<=?
+                ORDER BY revision DESC LIMIT 1
+                """, Long.class, section.getCruise().getCruiseId(), section.getSectionCode(), section.getRevision())
+                .stream().findFirst().orElse(null);
+    }
+
     private CruisePreparationSectionResponse mapToResponse(
             CruisePreparationSection section, List<PreparationCheckItemDto> checkItems) {
+        return mapToResponse(section, checkItems, submittedRevision(section));
+    }
+
+    private CruisePreparationSectionResponse mapToResponse(
+            CruisePreparationSection section, List<PreparationCheckItemDto> checkItems, Long submittedRevision) {
+        var missing = checkItems.stream()
+                .filter(item -> Boolean.TRUE.equals(item.getRequired()) && !item.isReady())
+                .map(PreparationCheckItemDto::getItemCode).toList();
+        String approval = switch (section.getStatus()) {
+            case "SUBMITTED" -> "PENDING";
+            case "CONFIRMED", "RETURNED", "REJECTED", "STALE" -> section.getStatus();
+            default -> "NOT_REVIEWED";
+        };
         return CruisePreparationSectionResponse.builder()
                 .sectionCode(section.getSectionCode())
                 .sectionName(section.getSectionName())
@@ -1162,6 +1169,11 @@ public class CruisePreparationService {
                 .submitterRole(section.getOwnerRole())
                 .allowedActions(allowedActions(section, checkItems))
                 .status(section.getStatus())
+                .dataReadiness(missing.isEmpty() ? "READY" : "INCOMPLETE")
+                .submissionStatus(section.getSubmittedByUserId() == null ? "NOT_SUBMITTED" : "SUBMITTED")
+                .approvalStatus(approval)
+                .submittedRevision(submittedRevision)
+                .missingRequiredCheckCodes(missing)
                 .evidence(section.getEvidence())
                 .notes(section.getNotes())
                 .submittedByUserId(section.getSubmittedByUserId())

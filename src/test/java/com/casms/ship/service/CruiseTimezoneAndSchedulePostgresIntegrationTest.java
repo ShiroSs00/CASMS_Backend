@@ -238,6 +238,7 @@ public class CruiseTimezoneAndSchedulePostgresIntegrationTest {
         tpl.setExcursionCode("TPL-" + UUID.randomUUID().toString().substring(0, 8));
         tpl.setExcursionName("Tour Bà Nà Hills Template");
         tpl.setSupplier(testSupplier);
+        tpl.setDestination(portDan.getDestination());
         tpl.setStartTime(Instant.now());
         tpl.setPlannedReturnTime(Instant.now().plus(4, java.time.temporal.ChronoUnit.HOURS));
         tpl.setMaximumCapacity(50);

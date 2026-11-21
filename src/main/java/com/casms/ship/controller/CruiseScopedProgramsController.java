@@ -60,8 +60,7 @@ public class CruiseScopedProgramsController {
 
     private void setActivityArea(OnboardActivity activity, UUID areaId) {
         if (areaId == null) return;
-        UUID deckId = programPolicy.prepareActivityArea(areaId, activity.getCruise().getShip() == null
-                ? null : activity.getCruise().getShip().getShipId());
+        UUID deckId = programPolicy.prepareActivityArea(areaId, activity.getCruise().getCruiseId());
         if (activity.getDeck() != null && !deckId.equals(activity.getDeck().getDeckId())) {
             throw new BusinessException(HttpStatus.UNPROCESSABLE_ENTITY, "ACTIVITY_AREA_DECK_MISMATCH",
                     "Khu vực hoạt động phải thuộc boong đã chọn.");
@@ -142,8 +141,9 @@ public class CruiseScopedProgramsController {
                 Map.of(
                         "ship",
                                 jdbc.queryForMap(
-                                        "SELECT c.ship_id AS id,s.ship_name AS name FROM \"Cruise\""
-                                                + " c LEFT JOIN \"Ship\" s USING(ship_id) WHERE"
+                                        "SELECT c.ship_id AS id,s.ship_name AS name,m.ship_model_id AS \"modelId\" FROM \"Cruise\""
+                                                + " c LEFT JOIN \"Ship\" s USING(ship_id)"
+                                                + " LEFT JOIN \"StaffingShipModel\" m USING(cruise_id) WHERE"
                                                 + " c.cruise_id=?",
                                         cruiseId),
                         "decks",
@@ -166,10 +166,10 @@ public class CruiseScopedProgramsController {
                         "activityAreas",
                                 jdbc.queryForList("""
                                         SELECT o.ship_model_object_id AS id, o.display_name AS name, o.deck_id AS "deckId", o.area_usage AS usage
-                                        FROM "Cruise" c JOIN "ShipModel" m ON m.ship_id=c.ship_id
+                                        FROM "StaffingShipModel" m
                                         JOIN "ShipModelObject" o USING(ship_model_id)
-                                        JOIN "Deck" d ON d.deck_id=o.deck_id AND d.ship_id=c.ship_id
-                                        WHERE c.cruise_id=? AND m.status IN ('DRAFT','READY')
+                                        JOIN "Deck" d ON d.deck_id=o.deck_id AND d.ship_id=m.ship_id
+                                        WHERE m.cruise_id=?
                                           AND o.object_type='FACILITY' AND o.area_usage IN ('ACTIVITY_SPACE','OTHER')
                                           AND o.cabin_id IS NULL AND NOT EXISTS(
                                             SELECT 1 FROM "AreaServiceAssignment" a
@@ -177,15 +177,17 @@ public class CruiseScopedProgramsController {
                                         ORDER BY d.deck_number,o.display_name,o.ship_model_object_id
                                         """, cruiseId),
                         "services",
-                                jdbc.queryForList(
-                                        "SELECT s.service_id AS id,s.service_name AS"
-                                            + " name,s.requires_schedule AS scheduled FROM"
-                                            + " \"Service\" s WHERE s.status='ACTIVE' AND"
-                                            + " ((? AND s.requires_schedule) OR EXISTS(SELECT 1"
-                                            + " FROM \"DeckServiceAssignment\" a JOIN \"Deck\" d USING(deck_id)"
-                                            + " JOIN \"Cruise\" c ON c.ship_id=d.ship_id WHERE c.cruise_id=? AND"
-                                            + " a.service_id=s.service_id)) ORDER BY s.service_name",
-                                        handoffs.hasPendingStaffingProgram(cruiseId), cruiseId),
+                                jdbc.queryForList("""
+                                        SELECT s.service_id AS id,s.service_name AS name,
+                                            s.requires_schedule AS scheduled, config.on_ship AS "configuredOnShip"
+                                        FROM "Service" s
+                                        CROSS JOIN LATERAL (SELECT EXISTS (
+                                            SELECT 1 FROM "DeckServiceAssignment" a JOIN "Deck" d USING (deck_id)
+                                            JOIN "Cruise" c ON c.ship_id=d.ship_id
+                                            WHERE c.cruise_id=? AND a.service_id=s.service_id) AS on_ship) config
+                                        WHERE s.status='ACTIVE' AND ((? AND s.requires_schedule) OR config.on_ship)
+                                        ORDER BY s.service_name,s.service_id
+                                        """, cruiseId, handoffs.hasPendingStaffingProgram(cruiseId)),
                         "suppliers",
                                 jdbc.queryForList(
                                         "SELECT supplier_id AS id,supplier_name AS name FROM"

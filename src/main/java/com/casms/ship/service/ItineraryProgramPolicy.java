@@ -40,24 +40,24 @@ public class ItineraryProgramPolicy {
                     "Provide ordered times fully inside the cruise/port-call window");
     }
 
-    public UUID requireActivityArea(UUID area, UUID ship, boolean lock) {
-        return activityAreaDeck(area, ship, lock, false);
+    public UUID requireActivityArea(UUID area, UUID cruiseId, boolean lock) {
+        return activityAreaDeck(area, cruiseId, lock, false);
     }
 
     @Transactional
-    public UUID prepareActivityArea(UUID area, UUID ship) {
-        return activityAreaDeck(area, ship, true, true);
+    public UUID prepareActivityArea(UUID area, UUID cruiseId) {
+        return activityAreaDeck(area, cruiseId, true, true);
     }
 
-    private UUID activityAreaDeck(UUID area, UUID ship, boolean lock, boolean allowUnclassified) {
+    private UUID activityAreaDeck(UUID area, UUID cruiseId, boolean lock, boolean allowUnclassified) {
         var rows = jdbc.queryForList("""
                 SELECT o.area_usage, o.object_type, o.cabin_id, d.deck_id, d.ship_id,
                        EXISTS(SELECT 1 FROM "AreaServiceAssignment" s
                               WHERE s.area_object_id=o.ship_model_object_id AND s.enabled) AS service_assigned
-                FROM "ShipModelObject" o JOIN "ShipModel" m USING(ship_model_id)
+                FROM "ShipModelObject" o JOIN "StaffingShipModel" m USING(ship_model_id)
                 JOIN "Deck" d ON d.deck_id=o.deck_id AND d.ship_id=m.ship_id
-                WHERE o.ship_model_object_id=? AND m.ship_id=? AND m.status IN ('DRAFT','READY')
-                """ + (lock ? " FOR UPDATE OF o" : ""), area, ship);
+                WHERE o.ship_model_object_id=? AND m.cruise_id=?
+                """ + (lock ? " FOR UPDATE OF o" : ""), area, cruiseId);
         boolean unclassified = rows.size() == 1 && "OTHER".equals(rows.getFirst().get("area_usage"));
         if (rows.size() != 1 || !"FACILITY".equals(rows.getFirst().get("object_type"))
                 || (!"ACTIVITY_SPACE".equals(rows.getFirst().get("area_usage")) && !(allowUnclassified && unclassified))
@@ -110,7 +110,7 @@ public class ItineraryProgramPolicy {
             try {
                 requireWindow(instant(a.get("start_time")), instant(a.get("end_time")),
                         instant(cruise.get("departure_datetime")), instant(cruise.get("return_datetime")), "ACTIVITY_OUTSIDE_CRUISE");
-                requireActivityArea((UUID) a.get("area_object_id"), (UUID) cruise.get("ship_id"), false);
+                requireActivityArea((UUID) a.get("area_object_id"), cruiseId, false);
                 requireDetails(a.get("capacity"), a.get("price"), a.get("currency_code"), a.get("location"));
             } catch (BusinessException ex) { issues.add(issue(ex, "ACTIVITY", id)); }
         }

@@ -45,7 +45,7 @@ class FlywayMigrationPostgresIntegrationTest {
     private static final String[] PROD_LOCATIONS = {
         "classpath:db/migration", "classpath:db/prod-migration"
     };
-    private static final String LATEST = "135";
+    private static final String LATEST = "139";
 
     private final List<String> createdDatabases = new ArrayList<>();
 
@@ -100,7 +100,7 @@ class FlywayMigrationPostgresIntegrationTest {
             assertEquals(1L, count(c, "SELECT count(*) FROM pg_indexes WHERE indexname='uq_ship_imported_yard_hull_code'"));
         }
         Flyway upgraded = flyway(db, null, APP_LOCATIONS);
-        assertEquals(5, upgraded.migrate().migrationsExecuted);
+        assertEquals(11, upgraded.migrate().migrationsExecuted);
         assertTrue(upgraded.validateWithResult().validationSuccessful);
         try (Connection c = connect(db)) {
             assertEquals(0L, count(c, "SELECT count(*) FROM pg_indexes WHERE indexname='uq_ship_imported_yard_hull_code'"));
@@ -127,7 +127,7 @@ class FlywayMigrationPostgresIntegrationTest {
                     """);
         }
         Flyway upgraded = flyway(db, null, APP_LOCATIONS);
-        assertEquals(4, upgraded.migrate().migrationsExecuted);
+        assertEquals(10, upgraded.migrate().migrationsExecuted);
         assertTrue(upgraded.validateWithResult().validationSuccessful);
         try (Connection c = connect(db)) {
             assertEquals(1L, count(c, """

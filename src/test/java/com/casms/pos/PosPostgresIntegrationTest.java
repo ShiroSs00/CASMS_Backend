@@ -61,7 +61,7 @@ class PosPostgresIntegrationTest {
     @Autowired org.springframework.security.crypto.password.PasswordEncoder encoder;
     UUID ship, deck, model, area, port, cruise, booking, bp, bp2, service, account, terminal;
     String manager, hrManager, catalogManager, staff, buyer, secret, session;
-    UUID sourceTrip, sourceVersion;
+    UUID sourceTrip, sourceVersion, staffingRequester;
     final List<UUID> userIds = new ArrayList<>();
     final List<UUID> passengerIds = new ArrayList<>();
 
@@ -170,6 +170,7 @@ class PosPostgresIntegrationTest {
                             a2.setParticipationStatus(BookingPassengerParticipationStatus.Active);
                             bookingPassengers.saveAndFlush(a2);
                             bp2 = a2.getBookingPassengerId();
+                            staffingRequester = user(Role.CRUISE_MANAGER).getUserId();
                             manager = token(user(Role.OPERATIONS_MANAGER));
                             hrManager = token(user(Role.HR_MANAGER));
                             catalogManager = token(user(Role.ACTIVITY_SERVICE_MANAGER));
@@ -215,6 +216,10 @@ class PosPostgresIntegrationTest {
                 VALUES (?, 1, 'PUBLISHED') RETURNING version_id
                 """, UUID.class, sourceTrip);
         linkToSourceVersion(cruise);
+        jdbc.update("""
+                INSERT INTO "CruiseWorkHandoff" (cruise_id, work_group, requested_by, assignee_id, request_text, status)
+                VALUES (?, 'ASM', ?, ?, 'Plan the POS activity program', 'COMPLETED')
+                """, cruise, staffingRequester, jwt.extractUserId(catalogManager));
         assignEmployee(staff, area, cruise);
         assignEmployee(manager, area, cruise);
         configurePolicy(
@@ -560,6 +565,9 @@ class PosPostgresIntegrationTest {
 
     @Test
     void passengerCanCompleteOwnOnlineCheckinWithoutAStaffRole() throws Exception {
+        jdbc.update("""
+                UPDATE "Cruise" SET departure_datetime=now()+interval '1 hour' WHERE cruise_id=?
+                """, cruise);
         jdbc.update(
                 "INSERT INTO \"BookingContract\""
                     + " (booking_contract_id,booking_id,contract_reference,document_reference,status)"
@@ -1770,7 +1778,7 @@ class PosPostgresIntegrationTest {
                 put("/activities/{id}/permissions", UUID.randomUUID()),
                 catalogManager,
                 Map.of("permissions", List.of("ACTIVITY_READ")),
-                404);
+                403);
         linkActivity(activity);
         assertEquals(
                 0,
@@ -2138,6 +2146,11 @@ class PosPostgresIntegrationTest {
         jdbc.update("""
                 UPDATE "Cruise" SET source_trip_id=?, source_version_id=? WHERE cruise_id=?
                 """, sourceTrip, sourceVersion, targetCruise);
+        // POS tests start after CRM has sent the staffing request to HR.
+        jdbc.update("""
+                INSERT INTO "StaffingRequest" (cruise_id, schedule_revision, requested_by, status)
+                SELECT cruise_id, revision, ?, 'SENT_TO_HR' FROM "Cruise" WHERE cruise_id=?
+                """, staffingRequester, targetCruise);
     }
 
     private void assignEmployee(String auth, UUID targetArea, UUID targetCruise) throws Exception {
@@ -2397,7 +2410,11 @@ class PosPostgresIntegrationTest {
             jdbc.update("DELETE FROM \"ShipModel\" WHERE ship_id=?", ship);
             jdbc.update("DELETE FROM \"DeckServiceAssignment\" WHERE deck_id=?", deck);
             jdbc.update("DELETE FROM \"Deck\" WHERE ship_id=?", ship);
+            jdbc.update("""
+                    DELETE FROM "StaffingRequest" WHERE cruise_id IN (SELECT cruise_id FROM "Cruise" WHERE ship_id=?)
+                    """, ship);
             jdbc.update("DELETE FROM \"Cruise\" WHERE ship_id=?", ship);
+            jdbc.update("DELETE FROM \"ShipCruiseUsage\" WHERE ship_id=?", ship);
             jdbc.update("DELETE FROM \"Ship\" WHERE ship_id=?", ship);
         }
         if (sourceVersion != null) {

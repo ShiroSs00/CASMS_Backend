@@ -27,7 +27,7 @@ public class CruisePreparationSectionResponse {
     @Schema(description = "Vai trò phụ trách phân hệ", example = "SHIP_MANAGER")
     private String ownerRole;
 
-    @Schema(description = "Vai trò tổng hợp và gửi hồ sơ; khác ownerRole chuyên môn")
+    @Schema(description = "Vai trò được phép gửi phân hệ")
     private String submitterRole;
 
     @Schema(description = "Thao tác được phép cho actor và phạm vi Cruise hiện tại")
@@ -38,6 +38,12 @@ public class CruisePreparationSectionResponse {
                     "Trạng thái phân hệ (NOT_STARTED, IN_PROGRESS, SUBMITTED, CONFIRMED, RETURNED)",
             example = "IN_PROGRESS")
     private String status;
+
+    private String dataReadiness;
+    private String submissionStatus;
+    private String approvalStatus;
+    private Long submittedRevision;
+    private List<String> missingRequiredCheckCodes;
 
     @Schema(description = "Bằng chứng/kết quả chuẩn bị đã nộp")
     private String evidence;

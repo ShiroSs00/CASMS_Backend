@@ -33,6 +33,12 @@ Thumbs.db
 !/docs/reports/
 /docs/reports/*
 !/docs/reports/CASMS_BA_*.md
+!/docs/reports/CASMS_PHASE_A_BE_IMPLEMENTATION.md
+!/docs/reports/CASMS_PHASE_A_BE_API_HANDOFF.md
+!/docs/reports/CASMS_PHASE_A_BE_REGRESSION.md
+!/docs/reports/CASMS_PHASE_A_BE_E2E.md
+!/docs/reports/CASMS_PHASE_A_BE_FINAL_ACCEPTANCE.md
+!/docs/reports/CASMS_PHASE_A_BE_TEST_FAILURE_TRIAGE.md
 !/docs/reports/booking-agent-qa-evidence/
 /docs/reports/booking-agent-qa-evidence/*
 !/docs/reports/booking-agent-qa-evidence/booking-agent-v*-http.json

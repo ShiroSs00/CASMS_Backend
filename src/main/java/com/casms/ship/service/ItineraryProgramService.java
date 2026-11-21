@@ -121,7 +121,7 @@ public class ItineraryProgramService {
                 ItineraryProgramPolicy.instant(cruise.get("return_datetime")), "ACTIVITY_OUTSIDE_CRUISE");
         ActivityTimingPolicy.requireNewSlot(input.startsAt(), input.endsAt(),
                 ItineraryProgramPolicy.instant(cruise.get("return_datetime")), Instant.now());
-        policy.requireActivityArea(input.areaId(), (UUID) cruise.get("ship_id"), true);
+        policy.requireActivityArea(input.areaId(), cruiseId, true);
         ItineraryProgramPolicy.requireDetails(input.capacity(), input.price(), "USD", input.location());
         requireAllocatedCapacity("onboard_activity_id", activityId, input.capacity());
         jdbc.update("""
