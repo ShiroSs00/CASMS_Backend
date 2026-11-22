@@ -869,9 +869,20 @@ public class GuestPaymentExperienceService {
         FinalSettlement settlement = new FinalSettlement();
         settlement.setOnboardAccount(account);
         settlement.setFinalInvoice(savedFinalInvoice);
+        settlement.setBaseCurrency(account.getBaseCurrency() != null && account.getBaseCurrency().length() == 3
+                ? account.getBaseCurrency()
+                : "USD");
         settlement.setSourceCutoffAt(Instant.now());
-        settlement.setAmountDueSnapshot(additionalPaid);
-        settlement.setRefundDueSnapshot(refundDue);
+        settlement.setTotalChargesSnapshot(totalChargesWithGratuity != null ? totalChargesWithGratuity : BigDecimal.ZERO);
+        settlement.setTotalPaymentsSnapshot((depositOffset != null ? depositOffset : BigDecimal.ZERO).add(additionalPaid != null ? additionalPaid : BigDecimal.ZERO));
+        settlement.setPaidAmount((depositOffset != null ? depositOffset : BigDecimal.ZERO).add(additionalPaid != null ? additionalPaid : BigDecimal.ZERO));
+        settlement.setOutstandingBalanceSnapshot(BigDecimal.ZERO);
+        settlement.setAmountDueSnapshot(additionalPaid != null ? additionalPaid : BigDecimal.ZERO);
+        settlement.setRefundDueSnapshot(refundDue != null ? refundDue : BigDecimal.ZERO);
+        settlement.setStatus(FinalSettlementStatus.Completed);
+        if (principal != null) {
+            settlement.setHandledByUserId(principal.getUserId());
+        }
         settlement.setStatementConfirmedAt(Instant.now());
         settlement.setStartedAt(Instant.now());
         settlement.setCompletedAt(Instant.now());
