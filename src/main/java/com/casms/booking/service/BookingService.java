@@ -370,7 +370,7 @@ public class BookingService {
                     paymentRepository.findForBooking(b.getBookingId()).stream()
                             .anyMatch(
                                     p ->
-                                            p.getStatus() == PaymentStatus.Confirmed
+                                            (p.getStatus() == PaymentStatus.Confirmed || p.getStatus() == PaymentStatus.Captured)
                                                     && p.getOperationType()
                                                             == PaymentOperationType.Collect);
             if (hasConfirmedPayments) {
@@ -1263,7 +1263,7 @@ public class BookingService {
                 paymentRepository.findForBooking(bookingId).stream()
                         .filter(
                                 payment ->
-                                        payment.getStatus() == PaymentStatus.Confirmed
+                                        (payment.getStatus() == PaymentStatus.Confirmed || payment.getStatus() == PaymentStatus.Captured)
                                                 && payment.getConfirmedAt() != null
                                                 && payment.getConfirmedAmount() != null
                                                 && payment.getConfirmedAmount().signum() > 0
@@ -1413,7 +1413,7 @@ public class BookingService {
                 paymentRepository.findForBooking(booking.getBookingId()).stream()
                         .filter(
                                 payment ->
-                                        payment.getStatus() == PaymentStatus.Confirmed
+                                        (payment.getStatus() == PaymentStatus.Confirmed || payment.getStatus() == PaymentStatus.Captured)
                                                 && payment.getConfirmedAt() != null
                                                 && payment.getConfirmedAmount() != null
                                                 && payment.getConfirmedAmount().signum() > 0
@@ -2943,7 +2943,7 @@ public class BookingService {
 
     private BigDecimal verifiedNetPaid(Booking booking) {
         BigDecimal paid = paymentRepository.findForBookingReadOnly(booking.getBookingId()).stream()
-                .filter(p -> p.getStatus() == PaymentStatus.Confirmed && p.getConfirmedAt() != null
+                .filter(p -> (p.getStatus() == PaymentStatus.Confirmed || p.getStatus() == PaymentStatus.Captured) && p.getConfirmedAt() != null
                         && p.getConfirmedAmount() != null && p.getConfirmedAmount().signum() > 0
                         && p.getOperationType() == PaymentOperationType.Collect
                         && paymentBelongsToBooking(p, booking.getBookingId()) && paymentHasSettlementEvidence(p)

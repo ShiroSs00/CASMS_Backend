@@ -148,7 +148,7 @@ public class PaymentService {
                 paymentRepository.findForBooking(booking.getBookingId()).stream()
                         .filter(
                                 p ->
-                                        p.getStatus() == PaymentStatus.Confirmed
+                                        (p.getStatus() == PaymentStatus.Confirmed || p.getStatus() == PaymentStatus.Captured)
                                                 && p.getOperationType()
                                                         == PaymentOperationType.Collect
                                                 && p.getConfirmedAmount() != null)
@@ -198,7 +198,7 @@ public class PaymentService {
                     paymentRepository.findForBooking(booking.getBookingId()).stream()
                             .filter(
                                     p ->
-                                            p.getStatus() == PaymentStatus.Confirmed
+                                            (p.getStatus() == PaymentStatus.Confirmed || p.getStatus() == PaymentStatus.Captured)
                                                     && p.getOperationType()
                                                             == PaymentOperationType.Collect
                                                     && p.getInstallment() != null
@@ -232,7 +232,7 @@ public class PaymentService {
                         paymentRepository.findForBooking(booking.getBookingId()).stream()
                                 .filter(
                                         p ->
-                                                p.getStatus() == PaymentStatus.Confirmed
+                                                (p.getStatus() == PaymentStatus.Confirmed || p.getStatus() == PaymentStatus.Captured)
                                                         && p.getOperationType()
                                                                 == PaymentOperationType.Collect
                                                         && p.getInstallment() != null
@@ -406,7 +406,7 @@ public class PaymentService {
                 paymentRepository.findForBooking(booking.getBookingId()).stream()
                         .filter(
                                 p ->
-                                        p.getStatus() == PaymentStatus.Confirmed
+                                        (p.getStatus() == PaymentStatus.Confirmed || p.getStatus() == PaymentStatus.Captured)
                                                 && p.getOperationType()
                                                         == PaymentOperationType.Collect
                                                 && p.getConfirmedAmount() != null
@@ -453,6 +453,7 @@ public class PaymentService {
         // Auto-confirm booking if deposit requirement is satisfied and contract is Accepted!
         boolean autoConfirmed = bookingService.tryAutoConfirm(booking);
         if (!autoConfirmed
+                && !confirmedPayments.isEmpty()
                 && booking.getBookingStatus() == BookingStatus.Draft
                 && booking.getHoldExpiresAt() != null) {
             // Khách đã thanh toán nhưng chưa ký hợp đồng: gia hạn giữ chỗ 24h để hoàn tất hợp đồng

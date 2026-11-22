@@ -66,7 +66,8 @@ public class GuestPaymentExperienceService {
     public CreditCardPaymentResponse processCreditCardPayment(CreditCardPaymentRequest request, CasmsPrincipal principal) {
         log.info("Processing Credit Card payment for booking: {}, amount: {}", request.getBookingId(), request.getAmount());
 
-        Booking booking = bookingRepository.findById(request.getBookingId())
+        Booking booking = bookingRepository.findByIdForUpdate(request.getBookingId())
+                .or(() -> bookingRepository.findById(request.getBookingId()))
                 .orElseThrow(() -> new ResourceNotFoundException("Booking not found with id: " + request.getBookingId()));
 
         // 1. Kiểm tra quyền sở hữu đơn đặt tour (Bảo mật chống IDOR)
@@ -85,7 +86,7 @@ public class GuestPaymentExperienceService {
         // 3. Kiểm tra số tiền còn lại của đơn hàng (Không cho thanh toán quá số dư)
         BigDecimal agreedFare = booking.getAgreedFareAmount() != null ? booking.getAgreedFareAmount() : BigDecimal.ZERO;
         BigDecimal totalPaid = paymentRepository.findForBooking(booking.getBookingId()).stream()
-                .filter(p -> p.getStatus() == PaymentStatus.Confirmed
+                .filter(p -> (p.getStatus() == PaymentStatus.Confirmed || p.getStatus() == PaymentStatus.Captured)
                         && p.getOperationType() == PaymentOperationType.Collect
                         && p.getConfirmedAmount() != null)
                 .map(Payment::getConfirmedAmount)
@@ -160,10 +161,22 @@ public class GuestPaymentExperienceService {
                     request.getAmount(), amountInBookingCurrency.toPlainString(), exchangeRate);
         }
 
+        // Kiểm tra số tiền sau quy đổi không vượt quá số dư còn lại (Outstanding balance)
+        if (amountInBookingCurrency.compareTo(outstanding) > 0) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "AMOUNT_EXCEEDS_OUTSTANDING_BALANCE",
+                    String.format("Số tiền thanh toán (%s %s) vượt quá số dư còn lại của đơn hàng (%s %s)",
+                            amountInBookingCurrency.toPlainString(), bookingCurrency, outstanding.toPlainString(), bookingCurrency));
+        }
+
         // 9. Tìm installment mục tiêu (nếu có)
         Installment targetInstallment = null;
         if (request.getInstallmentId() != null) {
-            targetInstallment = installmentRepository.findById(request.getInstallmentId()).orElse(null);
+            targetInstallment = installmentRepository.findById(request.getInstallmentId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Installment not found with id: " + request.getInstallmentId()));
+            if (targetInstallment.getBooking() != null && !targetInstallment.getBooking().getBookingId().equals(booking.getBookingId())) {
+                throw new BusinessException(HttpStatus.BAD_REQUEST, "INSTALLMENT_BOOKING_MISMATCH",
+                        "Đợt thanh toán không thuộc về đơn đặt tour này");
+            }
         } else {
             List<Installment> installments = installmentRepository.findByBookingBookingIdOrderBySequenceNoAsc(booking.getBookingId());
             for (Installment inst : installments) {
@@ -181,14 +194,39 @@ public class GuestPaymentExperienceService {
 
         // Kiểm tra Idempotency
         Optional<Payment> existingPaymentOpt = paymentRepository.findByIdempotencyKey(idempotencyKey);
+        Payment payment;
         if (existingPaymentOpt.isPresent()) {
             Payment existing = existingPaymentOpt.get();
-            if (existing.getStatus() == PaymentStatus.Confirmed) {
-                throw new BusinessException(HttpStatus.BAD_REQUEST, "PAYMENT_ALREADY_CONFIRMED", "Giao dịch thanh toán này đã được xác nhận thành công trước đó!");
+            if (existing.getStatus() == PaymentStatus.Confirmed || existing.getStatus() == PaymentStatus.Captured) {
+                if (existing.getBooking() != null && existing.getBooking().getBookingId().equals(booking.getBookingId())) {
+                    log.info("Returning existing confirmed payment for idempotency key: {}", idempotencyKey);
+                    return CreditCardPaymentResponse.builder()
+                            .paymentId(existing.getPaymentId())
+                            .bookingId(booking.getBookingId())
+                            .bookingReference(booking.getBookingReference())
+                            .amount(existing.getOriginalAmount() != null ? existing.getOriginalAmount() : existing.getRequestedAmount())
+                            .baseAmount(existing.getOriginalAmount() != null ? existing.getOriginalAmount() : existing.getRequestedAmount())
+                            .surchargePercent(BigDecimal.ZERO)
+                            .surchargeAmount(BigDecimal.ZERO)
+                            .totalAmountWithSurcharge(existing.getOriginalAmount() != null ? existing.getOriginalAmount() : existing.getRequestedAmount())
+                            .currency(existing.getOriginalCurrency() != null ? existing.getOriginalCurrency() : existing.getCurrency())
+                            .paymentStatus(existing.getStatus())
+                            .authorizationCode(existing.getProcessorReference())
+                            .cardLast4(cardLast4)
+                            .cardBrand(cardBrand)
+                            .bookingStatus(booking.getBookingStatus())
+                            .paidAt(existing.getConfirmedAt())
+                            .message("Thanh toán thành công qua thẻ " + cardBrand + conversionNotice)
+                            .vatInvoiceReference(null)
+                            .build();
+                }
+                throw new BusinessException(HttpStatus.CONFLICT, "IDEMPOTENCY_KEY_CONFLICT",
+                        "Khóa idempotency đã được dùng cho giao dịch khác");
             }
+            payment = existing;
+        } else {
+            payment = new Payment();
         }
-
-        Payment payment = new Payment();
         payment.setBooking(booking);
         payment.setInstallment(targetInstallment);
         payment.setOperationType(PaymentOperationType.Collect);

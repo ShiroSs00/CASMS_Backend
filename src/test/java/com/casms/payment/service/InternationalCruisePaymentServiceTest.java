@@ -53,6 +53,7 @@ class InternationalCruisePaymentServiceTest {
     @Mock private CruiseRepository cruiseRepository;
     @Mock private PassengerRepository passengerRepository;
     @Mock private BookingRepository bookingRepository;
+    @Mock private PaymentService paymentService;
     @Mock private UserRepository userRepository;
     @Mock private CurrencyExchangeRateRepository currencyExchangeRateRepository;
 
@@ -100,6 +101,7 @@ class InternationalCruisePaymentServiceTest {
                 cruiseRepository,
                 passengerRepository,
                 bookingRepository,
+                paymentService,
                 userRepository,
                 currencyExchangeService,
                 paymentGateway,

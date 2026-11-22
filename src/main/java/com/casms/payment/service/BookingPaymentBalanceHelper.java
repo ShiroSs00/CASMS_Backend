@@ -42,7 +42,8 @@ public final class BookingPaymentBalanceHelper {
                         .filter(
                                 p ->
                                         p != null
-                                                && p.getStatus() == PaymentStatus.Confirmed
+                                                && (p.getStatus() == PaymentStatus.Confirmed
+                                                        || p.getStatus() == PaymentStatus.Captured)
                                                 && p.getConfirmedAt() != null
                                                 && p.getConfirmedAmount() != null
                                                 && p.getConfirmedAmount().signum() > 0

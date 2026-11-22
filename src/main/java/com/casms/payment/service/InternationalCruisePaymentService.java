@@ -55,6 +55,7 @@ public class InternationalCruisePaymentService {
     private final CruiseRepository cruiseRepository;
     private final PassengerRepository passengerRepository;
     private final BookingRepository bookingRepository;
+    private final PaymentService paymentService;
     private final UserRepository userRepository;
     private final CurrencyExchangeService currencyExchangeService;
     private final PaymentGateway paymentGateway;
@@ -672,7 +673,11 @@ public class InternationalCruisePaymentService {
             payment.setFailureReason(gwResult.errorMessage());
         }
 
-        return toGatewayPaymentResponse(paymentRepository.save(payment));
+        Payment saved = paymentRepository.save(payment);
+        if (gwResult.successful() && saved.getBooking() != null) {
+            paymentService.allocateInstallmentsAndSync(saved.getBooking());
+        }
+        return toGatewayPaymentResponse(saved);
     }
 
     @Transactional
@@ -747,7 +752,11 @@ public class InternationalCruisePaymentService {
             payment.setFailureReason(gwResult.errorMessage());
         }
 
-        return toGatewayPaymentResponse(paymentRepository.save(payment));
+        Payment saved = paymentRepository.save(payment);
+        if (gwResult.successful() && saved.getBooking() != null) {
+            paymentService.allocateInstallmentsAndSync(saved.getBooking());
+        }
+        return toGatewayPaymentResponse(saved);
     }
 
     @Transactional
@@ -821,7 +830,11 @@ public class InternationalCruisePaymentService {
             payment.setStatus(PaymentStatus.PartiallyRefunded);
         }
 
-        return toGatewayPaymentResponse(paymentRepository.save(payment));
+        Payment saved = paymentRepository.save(payment);
+        if (gwResult.successful() && saved.getBooking() != null) {
+            paymentService.allocateInstallmentsAndSync(saved.getBooking());
+        }
+        return toGatewayPaymentResponse(saved);
     }
 
     @Transactional(readOnly = true)
