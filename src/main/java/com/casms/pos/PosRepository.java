@@ -159,6 +159,11 @@ public class PosRepository {
                 csv(input.permissions()),
                 input.enabled(),
                 input.permissions() == null);
+        if (input.enabled()) {
+            jdbc.update(
+                    "UPDATE \"ShipModelObject\" SET area_usage='SERVICE' WHERE ship_model_object_id=? AND object_type='FACILITY' AND area_usage='OTHER'",
+                    area);
+        }
     }
 
     int insertAreaServiceForPlacement(UUID area, UUID service) {

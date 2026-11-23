@@ -24,6 +24,8 @@ public class DepartureCruisePackageController {
     public ApiResponse<OfferView> create(@PathVariable UUID cruiseId,@RequestBody @Valid OfferInput input) { return ApiResponse.success(service.createOffer(cruiseId,input)); }
     @PostMapping("/{offerId}/upgrade-version") @PreAuthorize("hasRole('ACTIVITY_SERVICE_MANAGER') and hasAuthority('TOUR_PACKAGE_MANAGE')")
     public ApiResponse<OfferView> upgrade(@PathVariable UUID cruiseId,@PathVariable UUID offerId,@RequestBody @Valid UpgradeOffer input) { return ApiResponse.success(service.upgradeOffer(cruiseId,offerId,input)); }
+    @PatchMapping("/{offerId}/sales-window") @PreAuthorize("hasAnyRole('ACTIVITY_SERVICE_MANAGER','CRUISE_MANAGER') and hasAnyAuthority('TOUR_PACKAGE_MANAGE','CRUISE_UPDATE_DRAFT')")
+    public ApiResponse<OfferView> updateSalesWindow(@PathVariable UUID cruiseId,@PathVariable UUID offerId,@RequestBody @Valid UpdateSalesWindow input) { return ApiResponse.success(service.updateSalesWindow(cruiseId,offerId,input)); }
     @PostMapping("/{offerId}/publish") @PreAuthorize("hasRole('ACTIVITY_SERVICE_MANAGER') and hasAuthority('TOUR_PACKAGE_MANAGE')")
     public ApiResponse<OfferView> publish(@PathVariable UUID cruiseId,@PathVariable UUID offerId,@RequestBody @Valid Revision input) { return ApiResponse.success(service.publishOffer(cruiseId,offerId,input)); }
     @PostMapping("/{offerId}/prices") @PreAuthorize("hasRole('ACTIVITY_SERVICE_MANAGER') and hasAuthority('TOUR_PACKAGE_MANAGE')")

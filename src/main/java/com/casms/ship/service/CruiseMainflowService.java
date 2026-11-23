@@ -210,7 +210,13 @@ public class CruiseMainflowService {
             Windows windows,
             List<ProgramIssue> programIssues,
             List<com.casms.ship.dto.PortWindowContract.Check> portWindowChecks,
-            boolean cruisePackagePricing, boolean unifiedPackageReview, boolean readyNeedsRefresh) {}
+            boolean cruisePackagePricing,
+            boolean unifiedPackageReview,
+            boolean readyNeedsRefresh,
+            String cruiseName,
+            UUID shipId,
+            String shipName,
+            Instant departureDatetime) {}
 
     public record ProgramIssue(
             String code,
@@ -761,7 +767,8 @@ SELECT EXISTS(SELECT 1 FROM "CruisePricingPolicy" p JOIN "Cruise" c USING(cruise
                                 "MISSING_ONBOARD_STAFF",
                                 "MISSING_CAPTAIN",
                                 "STAFF_SCHEDULE_CONFLICT",
-                                "GUIDANCE_PUBLICATION_REQUIRED"
+                                "GUIDANCE_PUBLICATION_REQUIRED",
+                                "GUIDANCE_ATTENDANCE_REQUIRED"
                         ).contains(code))
                         .filter(code -> !b.contains(code))
                         .forEach(b::add);
@@ -801,6 +808,17 @@ SELECT EXISTS(SELECT 1 FROM "CruisePricingPolicy" p JOIN "Cruise" c USING(cruise
                                 "SELECT username FROM \"User\" WHERE user_id=?",
                                 String.class,
                                 r.get("submitted_by"));
+        UUID shipId = (UUID) c.get("ship_id");
+        String shipName =
+                shipId == null
+                        ? null
+                        : jdbc.queryForList(
+                                        "SELECT ship_name FROM \"Ship\" WHERE ship_id=?",
+                                        String.class,
+                                        shipId)
+                                .stream()
+                                .findFirst()
+                                .orElse(null);
         return new View(
                 id,
                 revision(r),
@@ -826,7 +844,11 @@ SELECT EXISTS(SELECT 1 FROM "CruisePricingPolicy" p JOIN "Cruise" c USING(cruise
                 portWindowEvaluator.cruise(id),
                 usesUnifiedPackages(id),
                 usesUnifiedPackages(id),
-                commerciallyReady && !Objects.equals(savedFingerprint, fingerprint));
+                commerciallyReady && !Objects.equals(savedFingerprint, fingerprint),
+                (String) c.get("cruise_name"),
+                shipId,
+                shipName,
+                time(c.get("departure_datetime")));
     }
 
     public List<View> queue() {

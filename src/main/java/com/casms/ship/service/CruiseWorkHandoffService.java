@@ -31,9 +31,10 @@ public class CruiseWorkHandoffService {
                        Instant departureAt, Instant returnAt, Integer expectedPassengerCount,
                        String sourceTripCode, String sourceTripName, Integer sourceVersionNumber,
                        String staffingStatus, boolean shipAssigned) {}
-    public record Panel(boolean canDispatch, boolean shipAssigned, List<Task> tasks, UUID staffingRequestId) {}
+    public record Panel(boolean canDispatch, boolean shipAssigned, List<Task> tasks, UUID staffingRequestId,
+                        boolean canReopenAsm) {}
     public record ProgramContext(String planStatus, boolean unifiedPackageReview, Windows windows,
-                                 boolean mayConfigure) {}
+                                 boolean mayConfigure, List<ItineraryProgramPolicy.Issue> completionIssues) {}
     public record Windows(long expectedRevision) {}
 
     private static final String SELECT_TASKS = """
@@ -83,7 +84,8 @@ public class CruiseWorkHandoffService {
                 """, UUID.class, cruiseId).stream().findFirst().orElse(null);
         return new Panel(canChange(cruiseId), hasShipReviewer(cruiseId),
                 select(SELECT_TASKS + " WHERE c.cruise_id=? ORDER BY w.work_group", actor, false, cruiseId),
-                staffingRequestId);
+                staffingRequestId, staffingRequestId == null && canChange(cruiseId)
+                    && "COMPLETED".equals(currentRevision(cruiseId, Group.ASM).status()));
     }
 
     @Transactional(readOnly = true)
@@ -139,6 +141,24 @@ public class CruiseWorkHandoffService {
         if (!assignedShip(cruiseId, actor)) throw denied();
         requireEditable(cruiseId);
         sendTask(cruiseId, Group.ASM, reason, actor, true);
+    }
+
+    /** Recovery for standalone/legacy handoffs; V2 must return through its staffing workflow. */
+    @Transactional
+    public Panel reopenAsm(UUID cruiseId, long expectedRevision, String reason, CasmsPrincipal actor) {
+        lock(cruiseId);
+        requireCoordinator(cruiseId, actor);
+        requireEditable(cruiseId);
+        var panel = forCoordinator(cruiseId, actor);
+        if (panel.staffingRequestId() != null)
+            throw conflict("HANDOFF_MANAGED_BY_STAFFING", "Trả chương trình qua yêu cầu bố trí để các bộ phận cùng nhận đúng phiên bản.");
+        var previous = currentRevision(cruiseId, Group.ASM);
+        if (!"COMPLETED".equals(previous.status()) || previous.revision() != expectedRevision)
+            throw conflict("HANDOFF_CHANGED", "Yêu cầu đã thay đổi. Tải lại trước khi trả bổ sung.");
+        if (reason == null || reason.isBlank())
+            throw conflict("HANDOFF_RESPONSE_REQUIRED", "Nhập nội dung cần Quản lý dịch vụ bổ sung.");
+        sendTask(cruiseId, Group.ASM, reason.strip(), actor, true);
+        return forCoordinator(cruiseId, actor);
     }
 
     private void sendTask(UUID cruiseId, Group group, String request, CasmsPrincipal actor, boolean reopen) {
@@ -206,7 +226,7 @@ public class CruiseWorkHandoffService {
                 """.formatted(assignment), status, text, actor.getUserId(), cruiseId, group.name(), expectedStatus, revision);
         if (changed != 1) throw conflict("HANDOFF_CHANGED", "Yêu cầu đã thay đổi hoặc do chính bạn gửi. Tải lại để kiểm tra.");
         recordEvent(cruiseId, group, actor, action.name(), previous);
-        if (group == Group.ASM && action == Action.COMPLETE && hasPendingStaffingProgram(cruiseId)) {
+        if (group == Group.ASM && action == Action.COMPLETE) {
             var issues = asmIssues(cruiseId);
             if (!issues.isEmpty()) {
                 throw new BusinessException(HttpStatus.UNPROCESSABLE_ENTITY, "ITINERARY_PROGRAMS_INCOMPLETE",
@@ -243,6 +263,23 @@ public class CruiseWorkHandoffService {
 
     private List<ItineraryProgramPolicy.Issue> asmIssues(UUID cruiseId) {
         var issues = new ArrayList<>(programPolicy.issues(cruiseId));
+        issues.addAll(jdbc.query("""
+                SELECT DISTINCT s.service_id,s.service_name
+                FROM "DepartureFarePackage" o
+                JOIN "FarePackageBenefit" b ON b.template_version_id=o.template_version_id
+                JOIN "Service" s ON s.service_id=b.service_id
+                WHERE o.cruise_id=? AND o.status<>'RETIRED'
+                  AND b.inclusion IN ('INCLUDED','LIMITED_INCLUDED') AND s.requires_schedule
+                  AND NOT EXISTS (SELECT 1 FROM "ServiceSchedule" w
+                    LEFT JOIN "CruiseStop" stop USING(cruise_stop_id)
+                    LEFT JOIN "Itinerary" i USING(itinerary_id)
+                    WHERE w.service_id=s.service_id AND (w.cruise_id=o.cruise_id OR i.cruise_id=o.cruise_id)
+                      AND w.status='OPEN' AND w.ends_at>now()
+                      AND w.capacity>coalesce((SELECT sum(r.quantity) FROM "ServiceRequest" r
+                        WHERE r.service_schedule_id=w.service_schedule_id
+                          AND r.status IN ('REQUESTED','ACCEPTED','IN_PROGRESS')),0))
+                """, (rs, row) -> new ItineraryProgramPolicy.Issue("INCLUDED_BENEFIT_UNAVAILABLE", "SERVICE_WINDOW",
+                    rs.getObject(1, UUID.class), "Bổ sung khung giờ phục vụ còn chỗ cho quyền lợi trong gói: " + rs.getString(2)), cruiseId));
         issues.addAll(jdbc.query("""
                 SELECT w.service_schedule_id
                 FROM "ServiceSchedule" w
@@ -286,7 +323,7 @@ public class CruiseWorkHandoffService {
                         SELECT 1 FROM "DepartureFarePackage" f WHERE f.cruise_id=c.cruise_id)
                 FROM "Cruise" c LEFT JOIN "CruisePlanReview" p USING(cruise_id) WHERE c.cruise_id=?
                 """, (rs, i) -> new ProgramContext(rs.getString(1), rs.getBoolean(3), new Windows(rs.getLong(2)),
-                        editable), id);
+                        editable, asmIssues(id)), id);
     }
 
     public boolean asmAssigned(UUID id, CasmsPrincipal actor, boolean editing) {

@@ -399,12 +399,15 @@ public class SepayService {
                     "BOOKING_HOLD_EXPIRED",
                     "Thời gian giữ chỗ của đơn đã hết hạn. Vui lòng tạo đơn mới.");
         }
+        if (!sepayProperties.isEnabled()) {
+            throw new BusinessException(
+                    HttpStatus.SERVICE_UNAVAILABLE,
+                    "SEPAY_DISABLED",
+                    "Cổng thanh toán VietQR hiện đang tạm ngưng.");
+        }
 
-        BigDecimal exchangeRate =
-                request.getCustomExchangeRate() != null
-                                && request.getCustomExchangeRate().compareTo(BigDecimal.ZERO) > 0
-                        ? request.getCustomExchangeRate()
-                        : resolveDefaultExchangeRate();
+        // PAY-03: Server-authoritative exchange rate only; never trust client customExchangeRate.
+        BigDecimal exchangeRate = resolveDefaultExchangeRate();
         String paymentCurrency =
                 normalizeSupportedCurrency(request.getCurrency(), resolveDefaultCurrency());
         String paymentChannel =
@@ -413,6 +416,13 @@ public class SepayService {
                         request.getCardBrand(),
                         request.getCardNumber(),
                         request.getCardToken());
+        if ("VIETQR".equalsIgnoreCase(paymentChannel)
+                && !"VND".equalsIgnoreCase(booking.getCurrency())) {
+            throw new BusinessException(
+                    HttpStatus.BAD_REQUEST,
+                    "NON_VND_BOOKING",
+                    "Thanh toán VietQR trực tuyến hiện áp dụng cho đặt chỗ có đơn vị tiền tệ VND.");
+        }
 
         BigDecimal totalPaid = calculateVerifiedNetPaidReadOnly(booking);
         BigDecimal outstanding = BookingPaymentBalanceHelper.outstandingBalance(booking, totalPaid);
@@ -585,13 +595,21 @@ public class SepayService {
         }
 
         // Xác thực số dư chưa bị thay đổi kể từ lúc khách mở trang (BE-01)
-        if (request.getExpectedOutstandingBalance() != null
-                && request.getExpectedOutstandingBalance().compareTo(outstanding) != 0) {
-            throw new BusinessException(
-                    HttpStatus.CONFLICT,
-                    "PAYMENT_BALANCE_CHANGED",
-                    "Số dư đặt chỗ đã thay đổi kể từ lúc tải trang. Vui lòng tải lại thông tin"
-                            + " thanh toán trước khi tạo mã VietQR.");
+        BigDecimal expectedOutstanding = request.getExpectedOutstandingBalance();
+        if (expectedOutstanding != null) {
+            boolean matchesBookingCurrency = expectedOutstanding.compareTo(outstanding) == 0;
+            boolean matchesVndOptionsUsd =
+                    isBookingVnd
+                            && expectedOutstanding.compareTo(
+                                            toUsdAmount(outstanding, true, exchangeRate))
+                                    == 0;
+            if (!matchesBookingCurrency && !matchesVndOptionsUsd) {
+                throw new BusinessException(
+                        HttpStatus.CONFLICT,
+                        "PAYMENT_BALANCE_CHANGED",
+                        "Số dư đặt chỗ đã thay đổi kể từ lúc tải trang. Vui lòng tải lại thông tin"
+                                + " thanh toán trước khi tạo mã VietQR.");
+            }
         }
         if (request.getExpectedAmountVnd() != null
                 && request.getExpectedAmountVnd()
@@ -783,11 +801,38 @@ public class SepayService {
      */
     @Transactional
     public SepayCheckoutResponse createQuickCheckout(SepayQuickCheckoutRequest request) {
-        BigDecimal exchangeRate =
-                request.getCustomExchangeRate() != null
-                                && request.getCustomExchangeRate().compareTo(BigDecimal.ZERO) > 0
-                        ? request.getCustomExchangeRate()
-                        : resolveDefaultExchangeRate();
+        return createQuickCheckout(request, null, false);
+    }
+
+    public SepayCheckoutResponse createQuickCheckout(
+            SepayQuickCheckoutRequest request, UUID userId, boolean canReadAll) {
+        if (!sepayProperties.isEnabled()) {
+            throw new BusinessException(
+                    HttpStatus.SERVICE_UNAVAILABLE,
+                    "SEPAY_DISABLED",
+                    "Cổng thanh toán SePay hiện đang tạm ngưng.");
+        }
+
+        // PAY-02: Any booking-scoped quick checkout must authenticate & verify booking ownership.
+        Booking linkedBooking = null;
+        if (request.getBookingId() != null) {
+            if (userId == null) {
+                throw new org.springframework.security.access.AccessDeniedException(
+                        "Cần đăng nhập để tạo thanh toán cho đặt chỗ.");
+            }
+            linkedBooking =
+                    bookingRepository
+                            .findById(request.getBookingId())
+                            .orElseThrow(
+                                    () ->
+                                            new ResourceNotFoundException(
+                                                    "Booking not found with id: "
+                                                            + request.getBookingId()));
+            assertAccess(linkedBooking, userId, canReadAll);
+        }
+
+        // PAY-03: Server-authoritative exchange rate only.
+        BigDecimal exchangeRate = resolveDefaultExchangeRate();
 
         // Xác định loại tiền tệ (VND hoặc USD) và số tiền tương ứng
         String paymentCurrency;
@@ -873,9 +918,9 @@ public class SepayService {
                             .customExchangeRate(exchangeRate)
                             .description(request.getDescription())
                             .idempotencyKey(request.getIdempotencyKey())
-                            .autoCapture(request.getAutoCapture())
+                            .autoCapture(false)
                             .build();
-            return createCardCheckout(cardReq, null, true);
+            return createCardCheckout(cardReq, userId, canReadAll);
         }
 
         log.info(
@@ -884,10 +929,7 @@ public class SepayService {
                 amountVnd,
                 amountUsd);
 
-        Booking booking = null;
-        if (request.getBookingId() != null) {
-            booking = bookingRepository.findById(request.getBookingId()).orElse(null);
-        }
+        Booking booking = linkedBooking;
 
         // Tạo hoặc chuẩn hóa nội dung chuyển khoản
         String transferContent;
@@ -1041,11 +1083,8 @@ public class SepayService {
                     "Tính năng thanh toán thẻ quốc tế Visa/Mastercard qua SePay đang tạm khóa");
         }
 
-        BigDecimal exchangeRate =
-                request.getCustomExchangeRate() != null
-                                && request.getCustomExchangeRate().compareTo(BigDecimal.ZERO) > 0
-                        ? request.getCustomExchangeRate()
-                        : resolveDefaultExchangeRate();
+        // PAY-03: Server-authoritative exchange rate only; never trust client customExchangeRate.
+        BigDecimal exchangeRate = resolveDefaultExchangeRate();
 
         // 1. Xác định đơn vị tiền tệ thanh toán: VND (Tiền Việt) hoặc USD
         String rawCurrency = request.getCurrency();
@@ -1433,11 +1472,8 @@ public class SepayService {
         payment.setInternalReceiptReference(transferContent);
         payment = paymentRepository.save(payment);
 
-        boolean hasCardCredentials =
-                (request.getCardNumber() != null && !request.getCardNumber().isBlank())
-                        || (request.getCardToken() != null && !request.getCardToken().isBlank());
-        boolean shouldAutoCapture =
-                request.getAutoCapture() != null ? request.getAutoCapture() : hasCardCredentials;
+        // PAY-01: Never self-confirm card payments from client request/autoCapture without verified provider capture.
+        boolean shouldAutoCapture = false;
 
         String processorRef =
                 "SEPAY-"

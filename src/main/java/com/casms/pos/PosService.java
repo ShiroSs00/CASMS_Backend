@@ -17,6 +17,7 @@ import com.casms.servicepackage.repository.*;
 import com.casms.servicepackage.service.ServiceRequestService;
 import com.casms.ship.enums.CruiseStatus;
 import com.casms.ship.repository.DeckServiceAssignmentRepository;
+import com.casms.ship.service.DeckServiceAssignmentService;
 
 import lombok.RequiredArgsConstructor;
 
@@ -46,6 +47,7 @@ public class PosService {
     private final ResourceOperationService operationPolicies;
     private final ServiceRepository services;
     private final DeckServiceAssignmentRepository deckServices;
+    private final DeckServiceAssignmentService deckServiceAssignments;
     private final ServiceRequestService serviceRequests;
     private final ServiceRequestRepository requests;
     private final ServiceScheduleRepository schedules;
@@ -75,6 +77,9 @@ public class PosService {
     public PosDtos.AreaService assign(
             UUID ship, UUID id, UUID service, PosDtos.AssignmentInput input) {
         var area = area(ship, id, true);
+        if (deckServices.findByDeckDeckIdAndServiceServiceId(area.deckId(), service).isEmpty()) {
+            deckServiceAssignments.assign(area.deckId(), service, ship);
+        }
         validateAreaServiceAssignment(area, service, input.permissions());
         repository.assign(id, service, input);
         return repository.assignments(id).stream()

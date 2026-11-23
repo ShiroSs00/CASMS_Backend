@@ -1956,6 +1956,121 @@ public class BookingService {
         return secondDue;
     }
 
+    private List<BookingQuoteResponse.QuoteInstallmentPreview> buildQuoteInstallmentPreviews(
+            PaymentPlan plan,
+            BigDecimal totalAmount,
+            BigDecimal depositAmount,
+            String currency,
+            Instant scheduleCreatedAt,
+            Instant finalDue,
+            Instant departure) {
+        if (plan == null || totalAmount == null || scheduleCreatedAt == null) {
+            return List.of();
+        }
+        Instant firstDue = scheduleCreatedAt.plus(Duration.ofDays(2));
+        return switch (plan) {
+            case FULL ->
+                    List.of(
+                            BookingQuoteResponse.QuoteInstallmentPreview.builder()
+                                    .sequenceNo(1)
+                                    .installmentType(InstallmentType.FinalFare.name())
+                                    .label("Thanh toán toàn bộ")
+                                    .percentage(100)
+                                    .amount(totalAmount)
+                                    .dueAt(firstDue)
+                                    .build());
+            case DEPOSIT -> {
+                BigDecimal dep = depositAmount != null ? depositAmount : totalAmount;
+                BigDecimal rem = totalAmount.subtract(dep).max(BigDecimal.ZERO);
+                int depPct =
+                        totalAmount.signum() > 0
+                                ? dep.multiply(BigDecimal.valueOf(100))
+                                        .divide(totalAmount, 0, RoundingMode.HALF_UP)
+                                        .intValue()
+                                : 0;
+                yield List.of(
+                        BookingQuoteResponse.QuoteInstallmentPreview.builder()
+                                .sequenceNo(1)
+                                .installmentType(InstallmentType.Deposit.name())
+                                .label("Đặt cọc giữ chỗ")
+                                .percentage(depPct)
+                                .amount(dep)
+                                .dueAt(firstDue)
+                                .build(),
+                        BookingQuoteResponse.QuoteInstallmentPreview.builder()
+                                .sequenceNo(2)
+                                .installmentType(InstallmentType.FinalFare.name())
+                                .label("Thanh toán phần còn lại")
+                                .percentage(Math.max(0, 100 - depPct))
+                                .amount(rem)
+                                .dueAt(finalDue)
+                                .build());
+            }
+            case STAGES -> {
+                BigDecimal s1 =
+                        totalAmount
+                                .multiply(BigDecimal.valueOf(0.30))
+                                .setScale(currencyScale(currency, 4), RoundingMode.HALF_UP);
+                BigDecimal s2 =
+                        totalAmount
+                                .multiply(BigDecimal.valueOf(0.40))
+                                .setScale(currencyScale(currency, 4), RoundingMode.HALF_UP);
+                BigDecimal s3 = totalAmount.subtract(s1).subtract(s2);
+                Instant s2Due =
+                        departure != null
+                                ? resolveSecondStageDue(scheduleCreatedAt, departure)
+                                : finalDue;
+                yield List.of(
+                        BookingQuoteResponse.QuoteInstallmentPreview.builder()
+                                .sequenceNo(1)
+                                .installmentType(InstallmentType.Deposit.name())
+                                .label("Đợt 1 · Đặt cọc giữ chỗ")
+                                .percentage(30)
+                                .amount(s1)
+                                .dueAt(firstDue)
+                                .build(),
+                        BookingQuoteResponse.QuoteInstallmentPreview.builder()
+                                .sequenceNo(2)
+                                .installmentType(InstallmentType.Deposit.name())
+                                .label("Đợt 2 · Thanh toán giữa kỳ")
+                                .percentage(40)
+                                .amount(s2)
+                                .dueAt(s2Due)
+                                .build(),
+                        BookingQuoteResponse.QuoteInstallmentPreview.builder()
+                                .sequenceNo(3)
+                                .installmentType(InstallmentType.FinalFare.name())
+                                .label("Đợt 3 · Tất toán phần còn lại")
+                                .percentage(30)
+                                .amount(s3)
+                                .dueAt(finalDue)
+                                .build());
+            }
+        };
+    }
+
+    private List<PaymentPlan> resolveEligiblePaymentPlans(
+            Instant createdAt, Instant finalDue, Instant departure, int cutoffDays) {
+        if (departure == null || createdAt == null) {
+            return List.of(PaymentPlan.FULL);
+        }
+        List<PaymentPlan> eligible = new ArrayList<>();
+        Instant firstDue = createdAt.plus(Duration.ofDays(2));
+        if (!firstDue.isBefore(departure)) {
+            return eligible;
+        }
+        eligible.add(PaymentPlan.FULL);
+        boolean withinCutoff = departure.isBefore(createdAt.plus(Duration.ofDays(cutoffDays)));
+        if (!withinCutoff && finalDue != null && !firstDue.isAfter(finalDue)) {
+            eligible.add(PaymentPlan.DEPOSIT);
+            Instant secondDue = resolveSecondStageDue(createdAt, departure);
+            if (!secondDue.isAfter(finalDue) && secondDue.isBefore(departure)) {
+                eligible.add(PaymentPlan.STAGES);
+            }
+        }
+        return eligible;
+    }
+
     private boolean paymentHasSettlementEvidence(Payment payment) {
         if (payment.getPaymentMethod() == null) return false;
         return switch (payment.getPaymentMethod()) {
@@ -2446,6 +2561,18 @@ public class BookingService {
 
         quote = bookingQuoteRepository.save(quote);
 
+        List<BookingQuoteResponse.QuoteInstallmentPreview> installmentPreviews =
+                buildQuoteInstallmentPreviews(
+                        plan,
+                        totalAmount,
+                        depositAmount,
+                        currency,
+                        now,
+                        finalPaymentDueAt,
+                        departure);
+        List<PaymentPlan> eligiblePlans =
+                resolveEligiblePaymentPlans(now, finalPaymentDueAt, departure, terms.cutoffDays());
+
         return BookingQuoteResponse.builder()
                 .quoteId(quote.getQuoteId())
                 .quoteCode(quote.getQuoteCode())
@@ -2464,6 +2591,8 @@ public class BookingService {
                 .depositAmount(depositAmount)
                 .remainingAmount(totalAmount.subtract(depositAmount))
                 .finalPaymentDueAt(finalPaymentDueAt)
+                .installments(installmentPreviews)
+                .eligiblePaymentPlans(eligiblePlans)
                 .fingerprint(fingerprint)
                 .issuedAt(now)
                 .expiresAt(expiresAt)
@@ -2568,6 +2697,21 @@ public class BookingService {
                 .depositAmount(quote.getDepositAmount())
                 .remainingAmount(quote.getTotalAmount().subtract(quote.getDepositAmount()))
                 .finalPaymentDueAt(quote.getFinalPaymentDueAt())
+                .installments(
+                        buildQuoteInstallmentPreviews(
+                                quote.getPaymentPlan(),
+                                quote.getTotalAmount(),
+                                quote.getDepositAmount(),
+                                quote.getCurrency(),
+                                quote.getIssuedAt(),
+                                quote.getFinalPaymentDueAt(),
+                                quote.getCruise().getDepartureDatetime()))
+                .eligiblePaymentPlans(
+                        resolveEligiblePaymentPlans(
+                                quote.getIssuedAt(),
+                                quote.getFinalPaymentDueAt(),
+                                quote.getCruise().getDepartureDatetime(),
+                                0))
                 .fingerprint(quote.getFingerprint())
                 .issuedAt(quote.getIssuedAt())
                 .expiresAt(quote.getExpiresAt())

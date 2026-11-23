@@ -745,8 +745,12 @@ public class CruiseScopedProgramsController {
 
     private OnboardActivity activityWithExistingPrice(ActivityRequest r, OnboardActivity existing) {
         OnboardActivity a = activity(r);
-        if (a.getPrice() == null) a.setPrice(existing.getPrice() != null ? existing.getPrice() : BigDecimal.ZERO);
-        if (a.getCurrencyCode() == null || a.getCurrencyCode().isBlank()) a.setCurrencyCode(existing.getCurrencyCode() != null && !existing.getCurrencyCode().isBlank() ? existing.getCurrencyCode() : "USD");
+        if (a.getPrice() == null) a.setPrice(existing.getPrice());
+        if (a.getCurrencyCode() == null || a.getCurrencyCode().isBlank())
+            a.setCurrencyCode(
+                    existing.getCurrencyCode() != null && !existing.getCurrencyCode().isBlank()
+                            ? existing.getCurrencyCode()
+                            : "VND");
         return a;
     }
 

@@ -20,6 +20,7 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class CruiseServiceLocationService {
     private final CruiseRepository cruises;
+    private final DeckServiceAssignmentService deckServices;
     private final JdbcTemplate jdbc;
 
     public record Option(UUID id, String name) {}
@@ -131,14 +132,18 @@ public class CruiseServiceLocationService {
         if (!confirm && (note == null || note.isBlank())) {
             throw conflict("SERVICE_LOCATION_REASON_REQUIRED", "Nhập lý do để ASM biết nội dung cần bổ sung.");
         }
-        if (confirm && !Boolean.TRUE.equals(jdbc.queryForObject("""
-                SELECT EXISTS (SELECT 1 FROM "CruiseServiceLocationRequest" r
-                JOIN "Deck" d USING(deck_id) JOIN "Service" s USING(service_id)
-                JOIN "DeckServiceAssignment" a ON a.deck_id=r.deck_id AND a.service_id=r.service_id
-                WHERE r.cruise_id=? AND r.service_id=? AND d.ship_id=? AND s.status='ACTIVE')
-                """, Boolean.class, cruiseId, serviceId, cruise.getShip().getShipId()))) {
-            throw conflict("SERVICE_LOCATION_NOT_AVAILABLE",
-                    "Cần cấu hình dịch vụ trên đúng boong của tàu trước khi xác nhận.");
+        if (confirm) {
+            List<UUID> deckIds = jdbc.query("""
+                    SELECT r.deck_id FROM "CruiseServiceLocationRequest" r
+                    JOIN "Deck" d USING(deck_id) JOIN "Service" s USING(service_id)
+                    WHERE r.cruise_id=? AND r.service_id=? AND d.ship_id=? AND s.status='ACTIVE'
+                    """, (rs, i) -> rs.getObject(1, UUID.class), cruiseId, serviceId, cruise.getShip().getShipId());
+            if (deckIds.isEmpty()) {
+                throw conflict("SERVICE_LOCATION_NOT_AVAILABLE",
+                        "Boong đề xuất không thuộc tàu hiện tại hoặc dịch vụ đã ngừng hoạt động.");
+            }
+            // Idempotently bind service to the confirmed deck on this ship (same pattern as StaffingWorkflowService)
+            deckServices.assign(deckIds.get(0), serviceId, cruise.getShip().getShipId());
         }
         int changed = jdbc.update("""
                 UPDATE "CruiseServiceLocationRequest"

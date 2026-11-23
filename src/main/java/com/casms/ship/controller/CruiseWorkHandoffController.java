@@ -24,6 +24,16 @@ public class CruiseWorkHandoffController {
     public record Send(@NotBlank @Size(max = 2000) String request) {}
     public record Reply(@NotNull CruiseWorkHandoffService.Action action, @NotNull Long revision,
                         @Size(max = 2000) String response) {}
+    public record Reopen(@NotNull @jakarta.validation.constraints.PositiveOrZero Long expectedRevision,
+                         @NotBlank @Size(max = 2000) String reason) {}
+
+    @PostMapping("/{cruiseId}/ASM/reopen")
+    @PreAuthorize("hasRole('CRUISE_MANAGER') and hasAuthority('CRUISE_PREPARATION_SUBMIT')")
+    public ApiResponse<CruiseWorkHandoffService.Panel> reopenAsm(
+            @PathVariable UUID cruiseId, @RequestBody @Valid Reopen input,
+            @AuthenticationPrincipal CasmsPrincipal actor) {
+        return ApiResponse.success(service.reopenAsm(cruiseId, input.expectedRevision(), input.reason(), actor));
+    }
 
     @GetMapping("/inbox")
     @PreAuthorize("hasAnyRole('ACTIVITY_SERVICE_MANAGER','SHIP_MANAGER')")

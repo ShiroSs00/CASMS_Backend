@@ -33,6 +33,10 @@ public class CruisePlanMutationGuard {
     private final JdbcTemplate jdbc;
     private final PlatformTransactionManager transactions;
     private final EntityManager em;
+    private final CruiseWorkHandoffService handoffs;
+    private static final Set<String> PROGRAM_WRITERS = Set.of(
+            "ActivityService", "ShoreExcursionService", "ServiceScheduleManagementService",
+            "ServicepackageService", "OperationalProgramMappingService");
     private static final Map<String, Set<String>> WRITERS =
             Map.ofEntries(
                     Map.entry(
@@ -128,6 +132,14 @@ public class CruisePlanMutationGuard {
                                 for (UUID id : ids) {
                                     if (operational) plans.lockOperational(id);
                                     else plans.assertEditable(id);
+                                    if (!operational && PROGRAM_WRITERS.contains(type)) {
+                                        var auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+                                        if (auth != null && auth.getPrincipal() instanceof com.casms.security.principal.CasmsPrincipal actor
+                                                && actor.hasRole(com.casms.identity.enums.Role.ACTIVITY_SERVICE_MANAGER)
+                                                && !handoffs.mayConfigurePrograms(id, actor))
+                                            throw new BusinessException(HttpStatus.FORBIDDEN, "PROGRAM_HANDOFF_READ_ONLY",
+                                                    "Chỉ người nhận việc đang xử lý mới được sửa chương trình. Nếu đã bàn giao, liên hệ Quản lý lịch trình để yêu cầu bổ sung và nhận lại việc.");
+                                    }
                                     if (!operational
                                             && structural(type, method, call.getArgs())
                                             && "FIXED"
@@ -260,6 +272,10 @@ public class CruisePlanMutationGuard {
                                                 + " onboard_activity_id=?",
                                             args[0]);
             case "ServiceScheduleManagementService" -> {
+                if (method.equals("remove")) {
+                    id = lookup("SELECT cruise_id FROM \"ServiceSchedule\" WHERE service_schedule_id=?", args[0]);
+                    break;
+                }
                 if (args[1] == null && args[2] == null) return List.of();
                 id =
                         args[1] != null
@@ -315,7 +331,8 @@ public class CruisePlanMutationGuard {
                     "SELECT ship_id IS NOT NULL FROM \"Cruise\" WHERE cruise_id=?",
                     Boolean.class, args[0]));
         }
-        if (type.equals("ShoreExcursionService") && method.equals("updateCommercial")) return false;
+        if (type.equals("ShoreExcursionService")
+                && (method.equals("updateCommercial") || method.equals("create"))) return false;
         if (Set.of("ItineraryService", "ItineraryDayService", "CruiseStopService").contains(type))
             return true;
         if (type.equals("ActivityService") && method.equals("updateActivity")) {

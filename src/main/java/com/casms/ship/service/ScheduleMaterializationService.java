@@ -824,9 +824,13 @@ public class ScheduleMaterializationService {
                                 : firstStop.getPlannedDepartureTime();
             }
         }
+        java.time.LocalTime baselineDepartureTime =
+                departureDay != null && departureDay.getPlannedDepartureTime() != null
+                        ? departureDay.getPlannedDepartureTime()
+                        : trip.getEarliestDeparture();
         Duration departureOffset =
                 PortTimeZoneHelper.departureOffset(
-                        departureDay == null ? null : departureDay.getPlannedDepartureTime(),
+                        baselineDepartureTime,
                         firstStopBaselineTime,
                         firstStopBaselineZone,
                         departureDatetime);

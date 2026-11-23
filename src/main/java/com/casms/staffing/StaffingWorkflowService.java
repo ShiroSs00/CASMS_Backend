@@ -96,7 +96,7 @@ public class StaffingWorkflowService {
                                 List<String> positionOptions, boolean canReturnToAsm, Boolean shipPlanReady) {}
     public record ServiceOption(UUID id, String name) {}
     public record Preparation(long scheduleRevision, Snapshot request, List<ServiceOption> services,
-                              boolean hasOperatingBudget) {}
+                              boolean hasOperatingBudget, boolean requiresReplanning) {}
 
     private record PreparationSource(long revision, boolean hasOperatingBudget) {}
 
@@ -118,7 +118,10 @@ public class StaffingWorkflowService {
                 JOIN "DeckServiceAssignment" a USING(deck_id) JOIN "Service" s USING(service_id)
                 WHERE c.cruise_id=? AND s.status='ACTIVE' ORDER BY s.service_name, s.service_id
                 """, (rs, i) -> new ServiceOption(rs.getObject(1, UUID.class), rs.getString(2)), cruiseId);
-        return new Preparation(source.revision(), request, services, source.hasOperatingBudget());
+        boolean requiresReplanning = request == null && Boolean.TRUE.equals(jdbc.queryForObject("""
+                SELECT EXISTS (SELECT 1 FROM "StaffingRequest" WHERE cruise_id=? AND status='CANCELLED')
+                """, Boolean.class, cruiseId));
+        return new Preparation(source.revision(), request, services, source.hasOperatingBudget(), requiresReplanning);
     }
 
     private boolean allowed(CasmsPrincipal actor, Role role) {
@@ -428,6 +431,8 @@ public class StaffingWorkflowService {
             }
             if (row.shipReview()) {
                 validateStaffCoverage(cruiseId);
+            } else if (!activitiesCovered(cruiseId)) {
+                throw conflict("STAFFING_ACTIVITY_COVERAGE_REQUIRED");
             }
         }
         String nextStatus = switch (action) {

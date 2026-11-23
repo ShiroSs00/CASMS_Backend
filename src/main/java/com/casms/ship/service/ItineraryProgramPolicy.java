@@ -37,7 +37,7 @@ public class ItineraryProgramPolicy {
         if (start == null || end == null || earliest == null || latest == null
                 || !end.isAfter(start) || start.isBefore(earliest) || end.isAfter(latest))
             throw new BusinessException(HttpStatus.UNPROCESSABLE_ENTITY, code,
-                    "Provide ordered times fully inside the cruise/port-call window");
+                    "Thời gian bắt đầu và kết thúc phải hợp lệ và nằm trọn trong khung giờ chuyến khởi hành hoặc lần ghé cảng.");
     }
 
     public UUID requireActivityArea(UUID area, UUID cruiseId, boolean lock) {
@@ -168,8 +168,9 @@ public class ItineraryProgramPolicy {
     }
 
     public static void requireDetails(Object capacity, Object price, Object currency, Object location) {
+        String curr = Objects.toString(currency, "").trim().toUpperCase(java.util.Locale.ROOT);
         if (!(capacity instanceof Number n) || n.intValue() < 1 || !(price instanceof BigDecimal p)
-                || p.signum() < 0 || !"USD".equals(Objects.toString(currency, "").trim())
+                || p.signum() < 0 || (!"USD".equals(curr) && !"VND".equals(curr))
                 || location == null || location.toString().isBlank())
             throw new BusinessException("PROGRAM_DETAILS_REQUIRED", "Positive capacity, explicit price/currency and location are required");
     }

@@ -37,10 +37,25 @@ public class BookingQuoteResponse {
     private BigDecimal depositAmount;
     private BigDecimal remainingAmount;
     private Instant finalPaymentDueAt;
+    private List<QuoteInstallmentPreview> installments;
+    private List<PaymentPlan> eligiblePaymentPlans;
 
     private String fingerprint;
     private Instant issuedAt;
     private Instant expiresAt;
     private String status;
     private String guestToken;
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class QuoteInstallmentPreview {
+        private Integer sequenceNo;
+        private String installmentType;
+        private String label;
+        private Integer percentage;
+        private BigDecimal amount;
+        private Instant dueAt;
+    }
 }

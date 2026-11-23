@@ -326,6 +326,36 @@ public class PaymentService {
                     "Confirmed amount must be positive and cannot exceed the requested payment"
                         + " amount");
         }
+        // E02: Prevent manual confirmation from exceeding remaining booking balance.
+        if (payment.getBooking() != null && payment.getBooking().getAgreedFareAmount() != null) {
+            BigDecimal alreadyConfirmed =
+                    paymentRepository.findForBooking(payment.getBooking().getBookingId()).stream()
+                            .filter(
+                                    p ->
+                                            p.getStatus() == PaymentStatus.Confirmed
+                                                    && p.getOperationType()
+                                                            == PaymentOperationType.Collect
+                                                    && !paymentId.equals(p.getPaymentId())
+                                                    && p.getConfirmedAmount() != null
+                                                    && p.getConfirmedAmount().signum() > 0)
+                            .map(Payment::getConfirmedAmount)
+                            .reduce(BigDecimal.ZERO, BigDecimal::add);
+            BigDecimal remainingBalance =
+                    payment.getBooking()
+                            .getAgreedFareAmount()
+                            .subtract(alreadyConfirmed)
+                            .max(BigDecimal.ZERO);
+            if (confirmedAmount.compareTo(remainingBalance) > 0) {
+                throw new BusinessException(
+                        HttpStatus.CONFLICT,
+                        "CONFIRMED_AMOUNT_EXCEEDS_OUTSTANDING",
+                        "Số tiền xác nhận vượt quá số dư còn phải thanh toán của đặt chỗ ("
+                                + remainingBalance
+                                + " "
+                                + payment.getCurrency()
+                                + ").");
+            }
+        }
         if (request.getProcessorReference() == null || request.getProcessorReference().isBlank()) {
             throw new BusinessException(
                     "PAYMENT_EVIDENCE_REQUIRED",

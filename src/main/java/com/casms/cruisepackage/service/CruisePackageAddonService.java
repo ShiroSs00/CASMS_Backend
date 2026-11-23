@@ -31,10 +31,11 @@ public class CruisePackageAddonService {
     public record Window(@NotNull Stage stage,@NotNull Instant startsAt,@NotNull Instant endsAt,@NotNull Instant operationalCutoff) {}
     public record Input(@NotNull CruisePackageContracts.ResourceType resourceType,@NotNull UUID resourceId,
             @NotNull @DecimalMin("0") @Digits(integer=15,fraction=4) BigDecimal amount,
+            @NotBlank @Pattern(regexp="VND") String currencyCode,
             @NotEmpty List<@NotNull @Valid Window> windows,@NotBlank @Size(max=4000) String eligibility) {}
     public record Candidate(CruisePackageContracts.ResourceType resourceType, UUID resourceId,
             String name, String unitCode, Instant cutoffLimit, boolean eligible, String blocker, List<Stage> allowedStages) {}
-    public record Configuration(UUID cruiseId, UUID shipId, boolean canCreate, String reason,
+    public record Configuration(UUID cruiseId, UUID shipId, boolean canCreate, String reason, String currencyCode,
             Instant departureAt, Instant returnAt, Instant bookingOpensAt, Instant bookingClosesAt,
             List<Candidate> candidates) {}
     /** Advisory read; writes re-run resource and window validation under the existing voyage lock. */
@@ -63,7 +64,7 @@ public class CruisePackageAddonService {
                 }
             }
         }
-        return new Configuration(cruiseId, shipId, reason == null, reason,
+        return new Configuration(cruiseId, shipId, reason == null, reason, "VND",
                 instant(cruise.get("departure_datetime")), instant(cruise.get("return_datetime")),
                 instant(cruise.get("booking_opens_at")), instant(cruise.get("booking_closes_at")), candidates);
     }
@@ -75,14 +76,16 @@ public class CruisePackageAddonService {
     private UUID maker(){var auth=SecurityContextHolder.getContext().getAuthentication();
         if(auth==null||!(auth.getPrincipal() instanceof CasmsPrincipal actor)||!actor.hasRole(Role.ACTIVITY_SERVICE_MANAGER)||!actor.hasAuthority("TOUR_PACKAGE_MANAGE"))throw new AccessDeniedException("ASM Add-on configuration permission required");return actor.getUserId();}
     @Transactional public CruisePackageAddonOffer create(UUID cruiseId,Input input){
-        UUID actor=maker();plans.lockOperational(cruiseId);
+        UUID actor=maker();
+        if (!"VND".equals(input.currencyCode())) throw error("ADDON_CURRENCY_INVALID", "Giá dịch vụ mua thêm mới phải được khai báo bằng VND. Tải lại biểu mẫu trước khi lưu.");
+        plans.lockOperational(cruiseId);
         UUID shipId=jdbc.queryForObject("SELECT ship_id FROM \"Cruise\" WHERE cruise_id=? AND status IN ('DRAFT','PUBLISHED')",UUID.class,cruiseId);
         if(shipId==null)throw error("CRUISE_SHIP_REQUIRED","Cần phân công tàu trước khi cấu hình Add-on.");
         var resource=resource(input.resourceType(),input.resourceId(),cruiseId,shipId);
         validateWindows(cruiseId,input.windows(),resource);
         var offer=new CruisePackageAddonOffer();offer.setId(UUID.randomUUID());offer.setCruiseId(cruiseId);offer.setShipId(shipId);
         switch(input.resourceType()){case ACTIVITY->offer.setOnboardActivityId(input.resourceId());case EXCURSION->offer.setShoreExcursionId(input.resourceId());case SERVICE->offer.setServiceId(input.resourceId());}
-        offer.setResourceName((String)resource.get("name"));offer.setAmount(input.amount());offer.setCurrencyCode("USD");
+        offer.setResourceName((String)resource.get("name"));offer.setAmount(input.amount());offer.setCurrencyCode("VND");
         offer.setPricingUnit(input.resourceType()==CruisePackageContracts.ResourceType.SERVICE?"SERVICE_UNIT":"PERSON");
         offer.setServiceUnitCode(input.resourceType()==CruisePackageContracts.ResourceType.SERVICE?(String)resource.get("unit_code"):null);
         offer.setSalesWindows(input.windows().stream().map(w->Map.of("stage",w.stage().name(),"startsAt",w.startsAt().toString(),"endsAt",w.endsAt().toString(),"operationalCutoff",w.operationalCutoff().toString())).toList());
@@ -92,6 +95,7 @@ public class CruisePackageAddonService {
         UUID actor=maker();plans.lockOperational(cruiseId);var offer=repository.find(CruisePackageAddonOffer.class,id,true);
         if(offer==null||!offer.getCruiseId().equals(cruiseId))throw error("ADDON_OFFER_NOT_FOUND","Không tìm thấy Add-on của chuyến.");
         if(expected==null||expected!=offer.getRevision())throw error("STALE_REVISION","Revision Add-on đã thay đổi.");
+        if (offer.getPublishedAt()==null&&!"VND".equals(offer.getCurrencyCode())) throw error("ADDON_CURRENCY_INVALID", "Cấu hình USD cũ không thể phát hành mới. Tạo cấu hình VND với giá đã được xác nhận; không tự quy đổi.");
         UUID ship=jdbc.queryForObject("SELECT ship_id FROM \"Cruise\" WHERE cruise_id=?",UUID.class,cruiseId);
         if(!offer.getShipId().equals(ship))throw error("SHIP_CHANGED","Tàu đã đổi; không tự chuyển Add-on.");
         var type=offer.getServiceId()!=null?CruisePackageContracts.ResourceType.SERVICE:offer.getOnboardActivityId()!=null?CruisePackageContracts.ResourceType.ACTIVITY:CruisePackageContracts.ResourceType.EXCURSION;
