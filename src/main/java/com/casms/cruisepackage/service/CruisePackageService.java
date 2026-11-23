@@ -231,6 +231,20 @@ public class CruisePackageService {
     }
 
     @Transactional
+    public OfferView updateSalesWindow(UUID cruiseId, UUID offerId, UpdateSalesWindow input) {
+        lockEditableCruise(cruiseId);
+        var offer = offer(cruiseId, offerId, true);
+        revision(offer.getRevision(), input.expectedRevision());
+        if (!input.salesStart().isBefore(input.salesEnd())) {
+            fail("FARE_SALES_WINDOW_INVALID", "Thời điểm bắt đầu bán phải trước thời điểm kết thúc.");
+        }
+        offer.setSalesStart(input.salesStart());
+        offer.setSalesEnd(input.salesEnd());
+        repository.flush();
+        return offerView(offer);
+    }
+
+    @Transactional
     public OfferView createPrice(UUID cruiseId, UUID offerId, CreatePrice input) {
         UUID actor=maker(); lockPricingCruise(cruiseId); var offer=offer(cruiseId,offerId,true);
         revision(offer.getRevision(),input.expectedOfferRevision());

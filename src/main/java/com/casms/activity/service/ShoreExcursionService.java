@@ -198,7 +198,7 @@ public class ShoreExcursionService {
      */
     public ShoreExcursionResponse updateCommercial(
             UUID id, Integer maximumCapacity, BigDecimal price, String currencyCode) {
-        com.casms.common.util.NewWriteCurrency.requireUsd(currencyCode);
+        String normalizedCurrency = requireSupportedCurrency(currencyCode);
         ShoreExcursion excursion =
                 excursionRepository
                         .lockById(id)
@@ -231,7 +231,7 @@ public class ShoreExcursionService {
                             "fieldPath", "maximumCapacity", "allocatedParticipants", allocated));
         excursion.setMaximumCapacity(maximumCapacity);
         excursion.setPrice(price);
-        excursion.setCurrencyCode(currencyCode);
+        excursion.setCurrencyCode(normalizedCurrency);
         validateExcursion(excursion, id);
         refreshCapacityStatus(excursion);
         return toResponse(excursionRepository.save(excursion));
@@ -324,10 +324,26 @@ public class ShoreExcursionService {
                     "EXCURSION_DESTINATION_NOT_SERVED",
                     "The selected destination is not served from this port call");
         }
-        boolean plannedForStop = stop.getDestination() != null
-                && destinationId.equals(stop.getDestination().getDestinationId())
-                || stop.getVisits().stream().anyMatch(v -> v.getDestination() != null
-                        && destinationId.equals(v.getDestination().getDestinationId()));
+        boolean noExplicitStopDestinations =
+                stop.getDestination() == null
+                        && (stop.getVisits() == null || stop.getVisits().isEmpty());
+        boolean matchesPortPrimaryDestination =
+                noExplicitStopDestinations
+                        && stop.getPort() != null
+                        && stop.getPort().getDestination() != null
+                        && destinationId.equals(stop.getPort().getDestination().getDestinationId());
+        boolean plannedForStop =
+                matchesPortPrimaryDestination
+                        || (stop.getDestination() != null
+                                && destinationId.equals(stop.getDestination().getDestinationId()))
+                        || (stop.getVisits() != null
+                                && stop.getVisits().stream()
+                                        .anyMatch(
+                                                v ->
+                                                        v.getDestination() != null
+                                                                && destinationId.equals(
+                                                                        v.getDestination()
+                                                                                .getDestinationId())));
         if (!plannedForStop) {
             throw new com.casms.common.exception.BusinessException(
                     org.springframework.http.HttpStatus.UNPROCESSABLE_ENTITY,
@@ -572,11 +588,9 @@ public class ShoreExcursionService {
                 supplierRepository
                         .findById(request.supplierId())
                         .orElseThrow(() -> new EntityNotFoundException("Supplier not found."));
-        Destination destination = destinationRepository.findById(request.destinationId())
-                .orElseThrow(() -> new EntityNotFoundException("Destination not found."));
+        Destination destination = resolveExcursionDestination(stop, request.destinationId());
 
-        com.casms.common.util.NewWriteCurrency.requireUsd(
-                request.currencyCode() == null ? "USD" : request.currencyCode());
+        String normalizedCurrency = requireSupportedCurrency(request.currencyCode());
         excursion.setCruiseStop(stop);
         excursion.setPort(stop.getPort());
         excursion.setDestination(destination);
@@ -589,10 +603,46 @@ public class ShoreExcursionService {
                 request.minimumParticipants() == null ? 1 : request.minimumParticipants());
         excursion.setMaximumCapacity(request.maximumCapacity());
         excursion.setPrice(request.price() == null ? BigDecimal.ZERO : request.price());
-        excursion.setCurrencyCode(
-                (request.currencyCode() == null || request.currencyCode().isBlank())
-                        ? "USD"
-                        : request.currencyCode().trim());
+        excursion.setCurrencyCode(normalizedCurrency);
+    }
+
+    private Destination resolveExcursionDestination(CruiseStop stop, UUID requestedDestinationId) {
+        if (requestedDestinationId != null) {
+            return destinationRepository
+                    .findById(requestedDestinationId)
+                    .orElseThrow(() -> new EntityNotFoundException("Destination not found."));
+        }
+        if (stop.getDestination() != null) {
+            return stop.getDestination();
+        }
+        if (stop.getVisits() != null) {
+            for (var visit : stop.getVisits()) {
+                if (visit != null && visit.getDestination() != null) {
+                    return visit.getDestination();
+                }
+            }
+        }
+        if (stop.getPort() != null && stop.getPort().getDestination() != null) {
+            return stop.getPort().getDestination();
+        }
+        throw new com.casms.common.exception.BusinessException(
+                org.springframework.http.HttpStatus.UNPROCESSABLE_ENTITY,
+                "DESTINATION_REQUIRED",
+                "Điểm dừng chưa được gắn điểm đến hoạt động. Vui lòng chọn điểm đến hoặc cập nhật lịch trình.");
+    }
+
+    private String requireSupportedCurrency(String currencyCode) {
+        String normalized =
+                (currencyCode == null || currencyCode.isBlank())
+                        ? "VND"
+                        : currencyCode.trim().toUpperCase(java.util.Locale.ROOT);
+        if (!"VND".equals(normalized) && !"USD".equals(normalized)) {
+            throw new com.casms.common.exception.BusinessException(
+                    org.springframework.http.HttpStatus.UNPROCESSABLE_ENTITY,
+                    "UNSUPPORTED_CURRENCY",
+                    "Chỉ hỗ trợ đơn vị tiền tệ VND hoặc USD cho chuyến tham quan.");
+        }
+        return normalized;
     }
 
     private ShoreExcursion getById(UUID id) {

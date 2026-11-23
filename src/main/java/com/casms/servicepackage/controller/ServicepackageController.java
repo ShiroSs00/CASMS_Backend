@@ -385,7 +385,7 @@ public class ServicepackageController {
     // SERVICES ENDPOINTS
     // ==========================================
 
-    @PreAuthorize("hasAuthority('SERVICE_READ')")
+    @PreAuthorize("hasAnyAuthority('SERVICE_READ', 'POS_MANAGE')")
     @GetMapping("/services")
     public ApiResponse<List<ServiceView>> services() {
         return ApiResponse.success(service.services().stream().map(ServiceView::of).toList());

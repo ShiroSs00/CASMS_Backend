@@ -33,6 +33,9 @@ public class CruisePreparationSectionResponse {
     @Schema(description = "Thao tác được phép cho actor và phạm vi Cruise hiện tại")
     private List<String> allowedActions;
 
+    @Schema(description = "Lý do không được gửi nhóm hồ sơ ở phiên hiện tại; null khi không bị chặn")
+    private String submissionBlockReason;
+
     @Schema(
             description =
                     "Trạng thái phân hệ (NOT_STARTED, IN_PROGRESS, SUBMITTED, CONFIRMED, RETURNED)",

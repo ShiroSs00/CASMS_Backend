@@ -45,6 +45,7 @@ public final class CruisePackageContracts {
             @NotBlank @Size(max=100) String logicalCategory, @NotNull UUID logicalCategoryId, @NotNull CabinType proposedCabinType,
             @NotNull Instant salesStart, @NotNull Instant salesEnd) {}
     public record UpgradeOffer(@NotNull @PositiveOrZero Long expectedRevision, @NotNull @Valid OfferInput offer) {}
+    public record UpdateSalesWindow(@NotNull @PositiveOrZero Long expectedRevision, @NotNull Instant salesStart, @NotNull Instant salesEnd) {}
     public record BindBenefit(@NotNull @PositiveOrZero Long expectedOfferRevision,
             @NotNull UUID benefitId, @NotNull UUID occurrenceId) {}
     public record CreatePrice(@NotNull @PositiveOrZero Long expectedOfferRevision,

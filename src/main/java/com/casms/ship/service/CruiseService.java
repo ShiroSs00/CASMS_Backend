@@ -3372,8 +3372,49 @@ public class CruiseService {
             response.setStatus(ReadinessStatus.NOT_READY);
         }
 
+        // Commercial Ready never depends on bookings or attendance. At departure, check
+        // every active confirmed passenger, including passengers not yet auto-populated
+        // into a session. A published session alone is not completion evidence.
+        Long missingGuidance = jdbc.queryForObject(MISSING_GUIDANCE_ATTENDANCE_SQL, Long.class, cruiseId);
+        if (missingGuidance == null || missingGuidance > 0) {
+            String message = missingGuidance == null
+                    ? "Chưa xác định được kết quả hướng dẫn an toàn của hành khách."
+                    : "Còn " + missingGuidance + " hành khách có đặt chỗ đã xác nhận chưa hoàn thành hướng dẫn an toàn.";
+            response.getBlockers().add("GUIDANCE_ATTENDANCE_REQUIRED");
+            response.getIssues().add(message);
+            response.getDetails().add(ReadinessIssueDetail.builder()
+                    .code("GUIDANCE_ATTENDANCE_REQUIRED")
+                    .targetType("CRUISE").targetId(cruiseId).scope("CRUISE")
+                    .severity(ReadinessSeverity.BLOCKER).message(message)
+                    .evidence("Active confirmed passengers missing completed guidance: " + missingGuidance)
+                    .ownerRole("OPERATIONS_MANAGER")
+                    .allowedAction("Đối chiếu danh sách hành khách, ghi nhận tham dự và hoàn tất buổi hướng dẫn an toàn")
+                    .requiredPermission(Permission.CHECKIN_UPDATE.name())
+                    .remediationUrl("/api/checkin/guidance-sessions/cruise/" + cruiseId)
+                    .remediationOperation("GET").build());
+            response.setReady(false);
+            response.setStatus(ReadinessStatus.NOT_READY);
+        }
         return response;
     }
+
+    static final String MISSING_GUIDANCE_ATTENDANCE_SQL = """
+            SELECT count(*) FROM "BookingPassenger" bp
+            JOIN "Booking" b ON b.booking_id = bp.booking_id
+            WHERE b.cruise_id = ? AND b.booking_status = 'Confirmed'
+              AND bp.participation_status = 'Active'
+              AND NOT EXISTS (
+                SELECT 1 FROM "GuidanceSessionParticipant" p
+                JOIN "GuidanceSession" s ON s.guidance_session_id = p.guidance_session_id
+                WHERE p.booking_passenger_id = bp.booking_passenger_id
+                  AND s.cruise_id = b.cruise_id AND s.status = 'Completed'
+                  AND s.published_at IS NOT NULL AND s.content IS NOT NULL
+                  AND length(trim(s.content)) > 0 AND s.instructor_user_id IS NOT NULL
+                  AND s.start_at < s.end_at AND s.end_at <= CURRENT_TIMESTAMP
+                  AND p.attendance_status = 'Attended' AND p.attended_at IS NOT NULL
+                  AND p.attended_at >= s.start_at AND p.attended_at <= CURRENT_TIMESTAMP
+              )
+            """;
 
     private String generateFingerprint(String input) {
         try {

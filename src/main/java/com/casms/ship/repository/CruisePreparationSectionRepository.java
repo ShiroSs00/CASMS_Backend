@@ -25,7 +25,7 @@ public interface CruisePreparationSectionRepository
             UUID cruiseId, String sectionCode);
 
     @Query("""
-            SELECT s FROM CruisePreparationSection s JOIN FETCH s.cruise
+            SELECT s FROM CruisePreparationSection s JOIN FETCH s.cruise c LEFT JOIN FETCH c.ship
             WHERE s.sectionCode IN :codes AND s.submittedAt IS NOT NULL AND s.status IN :statuses
             ORDER BY s.submittedAt DESC, s.preparationId
             """)

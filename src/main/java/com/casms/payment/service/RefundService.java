@@ -72,6 +72,8 @@ public class RefundService {
             throw new BusinessException(HttpStatus.BAD_REQUEST, "REFUND_CURRENCY_MISMATCH",
                     "Kiểm tra đơn vị tiền tệ theo giao dịch thanh toán gốc.");
         }
+        validateRefundMoneyPrecision(
+                request.getRequestedAmount(), paymentCurrency, "INVALID_REQUESTED_AMOUNT");
 
         var existing = refundRepository.findByIdempotencyKey(key);
         if (existing.isPresent()) {
@@ -150,6 +152,17 @@ public class RefundService {
         return toRefundResponse(savedRefund, savedLines);
     }
 
+    private void validateRefundMoneyPrecision(
+            BigDecimal amount, String currency, String errorCode) {
+        if (amount == null || currency == null) return;
+        if ("VND".equalsIgnoreCase(currency.strip()) && amount.stripTrailingZeros().scale() > 0) {
+            throw new BusinessException(
+                    HttpStatus.BAD_REQUEST,
+                    errorCode,
+                    "Số tiền hoàn bằng VND phải là số nguyên (không chứa phần thập phân).");
+        }
+    }
+
     private List<RefundLine> validateRequestedLines(Payment payment, FinalSettlement settlement,
             RefundCreateRequest request) {
         if (request.getLines() == null || request.getLines().isEmpty()) return List.of();
@@ -180,6 +193,8 @@ public class RefundService {
                     || base.add(tax).signum() <= 0) {
                 throw new BusinessException("REFUND_INVALID_LINE_AMOUNT", "Số tiền hoàn trên dòng hóa đơn không hợp lệ.");
             }
+            validateRefundMoneyPrecision(base, payment.getCurrency(), "REFUND_INVALID_LINE_AMOUNT");
+            validateRefundMoneyPrecision(tax, payment.getCurrency(), "REFUND_INVALID_LINE_AMOUNT");
             BigDecimal reservedBase = BigDecimal.ZERO;
             BigDecimal reservedTax = BigDecimal.ZERO;
             for (var allocation : refundLineRepository.findAllocationsForLine(lineId)) {
@@ -240,6 +255,8 @@ public class RefundService {
                     "INVALID_APPROVED_AMOUNT",
                     "Approved amount must be strictly greater than 0");
         }
+        validateRefundMoneyPrecision(
+                request.getApprovedAmount(), refund.getCurrency(), "INVALID_APPROVED_AMOUNT");
 
         if (request.getApprovedAmount().compareTo(refund.getRequestedAmount()) > 0) {
             throw new BusinessException(

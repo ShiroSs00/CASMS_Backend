@@ -95,6 +95,24 @@ public class CruisePreparationService {
 
     private static final Set<String> SUBMITTABLE = Set.of("NOT_STARTED", "IN_PROGRESS", "RETURNED", "REJECTED", "STALE");
 
+    private String submissionBlockReason(CruisePreparationSection section) {
+        if (!SUBMITTABLE.contains(section.getStatus())) return null;
+        var actor = currentActor();
+        if (actor == null || !actor.hasAuthority("CRUISE_PREPARATION_SUBMIT")) return "SUBMIT_PERMISSION_REQUIRED";
+        String role = switch (section.getSectionCode()) {
+            case "TECHNICAL_NAUTICAL" -> "SHIP_MANAGER";
+            case "SAFETY_CREW" -> "OPERATIONS_MANAGER";
+            default -> "CRUISE_MANAGER";
+        };
+        if (!actor.hasRole(Role.valueOf(role))) return "SECTION_SUBMITTER_ROLE_REQUIRED";
+        if (sectionSubmissionScope(section.getCruise(), section.getSectionCode(), actor)) return null;
+        return switch (section.getSectionCode()) {
+            case "TECHNICAL_NAUTICAL" -> "ASSIGNED_SHIP_MANAGER_REQUIRED";
+            case "SAFETY_CREW" -> "PLAN_RECEIPT_REQUIRED";
+            default -> "PREPARATION_COORDINATOR_REQUIRED";
+        };
+    }
+
     private List<String> allowedActions(
             CruisePreparationSection section, List<PreparationCheckItemDto> checks) {
         var actor = currentActor();
@@ -422,7 +440,8 @@ public class CruisePreparationService {
     private static final Set<String> REVIEW_STATES = Set.of("SUBMITTED", "CONFIRMED", "RETURNED", "REJECTED", "STALE");
 
     public record GroupReviewSummary(UUID cruiseId, String cruiseCode, String cruiseName,
-            String sectionCode, String sectionName, String status, Instant submittedAt) {}
+            String sectionCode, String sectionName, String status, Instant submittedAt,
+            UUID shipId, String shipName, Instant departureDatetime) {}
 
     public record SubmittedCheck(String name, boolean ready, boolean required) {}
 
@@ -472,8 +491,11 @@ public class CruisePreparationService {
 
     private GroupReviewSummary reviewSummary(CruisePreparationSection section) {
         var cruise = section.getCruise();
+        var ship = cruise.getShip();
         return new GroupReviewSummary(cruise.getCruiseId(), cruise.getCruiseCode(), cruise.getCruiseName(),
-                section.getSectionCode(), section.getSectionName(), section.getStatus(), section.getSubmittedAt());
+                section.getSectionCode(), section.getSectionName(), section.getStatus(), section.getSubmittedAt(),
+                ship != null ? ship.getShipId() : null, ship != null ? ship.getShipName() : null,
+                cruise.getDepartureDatetime());
     }
 
     @Transactional(readOnly = true)
@@ -1168,6 +1190,7 @@ public class CruisePreparationService {
                 .ownerRole(section.getOwnerRole())
                 .submitterRole(section.getOwnerRole())
                 .allowedActions(allowedActions(section, checkItems))
+                .submissionBlockReason(submissionBlockReason(section))
                 .status(section.getStatus())
                 .dataReadiness(missing.isEmpty() ? "READY" : "INCOMPLETE")
                 .submissionStatus(section.getSubmittedByUserId() == null ? "NOT_SUBMITTED" : "SUBMITTED")

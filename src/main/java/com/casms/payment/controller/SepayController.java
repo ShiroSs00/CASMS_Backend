@@ -150,10 +150,13 @@ public class SepayController {
     @PostMapping("/quick-checkout")
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<SepayCheckoutResponse> createQuickCheckout(
-            @RequestBody @Valid SepayQuickCheckoutRequest request) {
+            @RequestBody @Valid SepayQuickCheckoutRequest request,
+            @AuthenticationPrincipal CasmsPrincipal principal) {
+        UUID userId = principal != null ? principal.getUserId() : null;
+        boolean canManageAll = principal != null && hasPermSafe(principal, Permission.PAYMENT_PROCESS);
         return ApiResponse.success(
                 "Tạo yêu cầu thanh toán nhanh thành công",
-                sepayService.createQuickCheckout(request));
+                sepayService.createQuickCheckout(request, userId, canManageAll));
     }
 
     @Operation(

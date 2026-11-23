@@ -149,6 +149,9 @@ public class OperationalProgramMappingService {
         LocalTime templateDeparture = sourceVersion.getDays() == null ? null : sourceVersion.getDays().stream()
                 .filter(day -> Integer.valueOf(1).equals(day.getDayNumber()))
                 .findFirst().map(day -> day.getPlannedDepartureTime()).orElse(null);
+        if (templateDeparture == null && sourceVersion.getTrip() != null) {
+            templateDeparture = sourceVersion.getTrip().getEarliestDeparture();
+        }
         var departureOffset = PortTimeZoneHelper.departureOffset(templateDeparture, cruise.getDepartureDatetime());
 
         // Resolve ship info safely to avoid LazyInitializationException on detached proxies

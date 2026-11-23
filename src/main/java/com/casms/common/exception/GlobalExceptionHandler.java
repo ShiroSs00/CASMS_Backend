@@ -327,8 +327,12 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponse<Void>> handleGeneral(Exception ex) {
         String traceId = UUID.randomUUID().toString();
         StackTraceElement[] stack = ex.getStackTrace();
-        log.error("Unhandled exception [traceId: {}, type: {}, location: {}]",
-                traceId, ex.getClass().getName(), stack.length == 0 ? "unknown" : stack[0]);
+        Throwable cause = ex;
+        while (cause.getCause() != null && cause.getCause() != cause) cause = cause.getCause();
+        StackTraceElement[] causeStack = cause.getStackTrace();
+        log.error("Unhandled exception [traceId: {}, type: {}, location: {}, rootType: {}, rootLocation: {}]",
+                traceId, ex.getClass().getName(), stack.length == 0 ? "unknown" : stack[0],
+                cause.getClass().getName(), causeStack.length == 0 ? "unknown" : causeStack[0]);
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(ApiResponse.error("Đã xảy ra lỗi nội bộ.", "INTERNAL_ERROR", traceId));
     }

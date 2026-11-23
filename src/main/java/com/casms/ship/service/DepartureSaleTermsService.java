@@ -43,7 +43,8 @@ public class DepartureSaleTermsService {
                        UUID submittedBy, OffsetDateTime submittedAt, UUID reviewedBy, OffsetDateTime reviewedAt,
                        String planStatus, String currency) {}
     public record SetupRequest(UUID cruiseId, String cruiseCode, String cruiseName,
-                               String departurePort, String returnPort, java.util.List<String> ports) {}
+                               String departurePort, String returnPort, java.util.List<String> ports,
+                               UUID shipId, String shipName, java.time.Instant departureDatetime) {}
 
     @Transactional
     public boolean requestSetup(UUID id, UUID actor) {
@@ -75,15 +76,22 @@ public class DepartureSaleTermsService {
                 SELECT c.cruise_id, c.cruise_code, c.cruise_name, departure.port_name, return_port.port_name,
                     ARRAY(SELECT DISTINCT p.port_name FROM "Itinerary" i
                           JOIN "CruiseStop" s USING(itinerary_id) JOIN "Port" p ON p.port_id=s.port_id
-                          WHERE i.cruise_id=c.cruise_id ORDER BY p.port_name)
+                          WHERE i.cruise_id=c.cruise_id ORDER BY p.port_name),
+                    sh.ship_id, sh.ship_name, c.departure_datetime
                 FROM "CruiseSaleTermsRequest" r JOIN "Cruise" c USING(cruise_id)
                 JOIN "Port" departure ON departure.port_id=c.departure_port_id
                 JOIN "Port" return_port ON return_port.port_id=c.return_port_id
+                LEFT JOIN "Ship" sh ON sh.ship_id=c.ship_id
                 WHERE r.completed_at IS NULL AND c.status IN ('DRAFT','PUBLISHED')
-                ORDER BY r.requested_at
-                """, (row, index) -> new SetupRequest(row.getObject(1, UUID.class), row.getString(2),
-                    row.getString(3), row.getString(4), row.getString(5),
-                    java.util.Arrays.asList((String[]) row.getArray(6).getArray())));
+                ORDER BY r.requested_at DESC
+                """, (row, index) -> {
+                    var depTs = row.getTimestamp(9);
+                    return new SetupRequest(row.getObject(1, UUID.class), row.getString(2),
+                        row.getString(3), row.getString(4), row.getString(5),
+                        java.util.Arrays.asList((String[]) row.getArray(6).getArray()),
+                        row.getObject(7, UUID.class), row.getString(8),
+                        depTs != null ? depTs.toInstant() : null);
+                });
     }
 
     public View read(UUID id) {

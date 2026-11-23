@@ -627,13 +627,17 @@ public class TripScheduleVersionService {
 
         // BE-12b: Chronological sequence between Day 1 Departure (Cảng khởi hành) and stops
         TripPlanDay depDay = dayMap.get(1);
-        if (depDay != null && depDay.getDeparturePort() != null && depDay.getPlannedDepartureTime() != null
+        LocalTime saveEffectiveDepTime =
+                depDay != null && depDay.getPlannedDepartureTime() != null
+                        ? depDay.getPlannedDepartureTime()
+                        : (version.getTrip() != null ? version.getTrip().getEarliestDeparture() : null);
+        if (depDay != null && depDay.getDeparturePort() != null && saveEffectiveDepTime != null
                 && stopDtos.stream().noneMatch(s -> Boolean.TRUE.equals(s.getIsEmbarkation()))) {
             String day1Zone = depDay.getShipTimeZoneId() != null ? depDay.getShipTimeZoneId() : "Asia/Ho_Chi_Minh";
             for (TripPlanStopDraftDto stopDto : stopDtos) {
                 Port stopPort = portCache.get(stopDto.getPortId());
                 DepartureConflict conflict = checkDepartureStopSequence(
-                        depDay.getPlannedDepartureTime(),
+                        saveEffectiveDepTime,
                         day1Zone,
                         stopDto.getArrivalDayNumber(),
                         stopDto.getPlannedArrivalTime(),
@@ -1812,7 +1816,11 @@ public class TripScheduleVersionService {
                                     .build());
                 }
             }
-            if (departureDay.getPlannedDepartureTime() == null) {
+            boolean hasTripDepartureWindow =
+                    version.getTrip() != null
+                            && version.getTrip().getEarliestDeparture() != null
+                            && version.getTrip().getLatestDeparture() != null;
+            if (departureDay.getPlannedDepartureTime() == null && !hasTripDepartureWindow) {
                 violations.add(
                         PlanViolation.builder()
                                 .code("DEPARTURE_TIME_REQUIRED")
@@ -2194,14 +2202,18 @@ public class TripScheduleVersionService {
         }
 
         // Validate Day 1 Departure Time against first stops in compatible clock
+        LocalTime validateEffectiveDepTime =
+                departureDay != null && departureDay.getPlannedDepartureTime() != null
+                        ? departureDay.getPlannedDepartureTime()
+                        : (version.getTrip() != null ? version.getTrip().getEarliestDeparture() : null);
         if (departureDay != null && departureDay.getDeparturePort() != null
-                && departureDay.getPlannedDepartureTime() != null && !hasEmbarkation) {
+                && validateEffectiveDepTime != null && !hasEmbarkation) {
             String day1Zone = departureDay.getShipTimeZoneId() != null
                     ? departureDay.getShipTimeZoneId() : "Asia/Ho_Chi_Minh";
             for (TripPlanStop stop : stops) {
                 Port stopPort = stop.getPort();
                 DepartureConflict conflict = checkDepartureStopSequence(
-                        departureDay.getPlannedDepartureTime(),
+                        validateEffectiveDepTime,
                         day1Zone,
                         stop.getArrivalDayNumber(),
                         stop.getPlannedArrivalTime(),
