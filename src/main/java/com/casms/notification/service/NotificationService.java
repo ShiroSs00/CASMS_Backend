@@ -44,6 +44,7 @@ public class NotificationService {
     private final CruiseRepository cruiseRepository;
     private final CruiseImpactTaskRepository cruiseImpactTaskRepository;
     private final UserRepository userRepository;
+    private final NotificationSseHub sseHub;
 
     @Transactional(readOnly = true)
     public List<NotificationResponse> listMine(CasmsPrincipal principal) {
@@ -51,6 +52,18 @@ public class NotificationService {
         return notificationRepository.findByRecipientUserUserIdOrderByCreatedAtDesc(userId).stream()
                 .map(this::toResponse)
                 .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public long countUnread(CasmsPrincipal principal) {
+        UUID userId = requireUserId(principal);
+        return notificationRepository.countByRecipientUserUserIdAndReadAtIsNull(userId);
+    }
+
+    public org.springframework.web.servlet.mvc.method.annotation.SseEmitter subscribe(CasmsPrincipal principal) {
+        UUID userId = requireUserId(principal);
+        // Never touch JPA/DB inside the SSE controller request thread so OSIV does not hold a Hikari connection open.
+        return sseHub.subscribe(userId);
     }
 
     @Transactional
@@ -66,7 +79,66 @@ public class NotificationService {
         if (notification.getReadAt() == null) {
             notification.setReadAt(Instant.now());
         }
-        return toResponse(notificationRepository.save(notification));
+        NotificationResponse response = toResponse(notificationRepository.save(notification));
+        long unread = notificationRepository.countByRecipientUserUserIdAndReadAtIsNull(userId);
+        afterCommit(() -> sseHub.publishUnreadCount(userId, unread));
+        return response;
+    }
+
+    @Transactional
+    public long markAllRead(CasmsPrincipal principal) {
+        UUID userId = requireUserId(principal);
+        List<Notification> unreadItems = notificationRepository.findByRecipientUserUserIdAndReadAtIsNull(userId);
+        if (!unreadItems.isEmpty()) {
+            Instant now = Instant.now();
+            for (Notification item : unreadItems) {
+                item.setReadAt(now);
+            }
+            notificationRepository.saveAll(unreadItems);
+        }
+        afterCommit(() -> sseHub.publishUnreadCount(userId, 0L));
+        return unreadItems.size();
+    }
+
+    @Transactional
+    public NotificationResponse notifyUser(
+            User recipient, String type, String title, String content, UUID bookingPassengerId) {
+        if (recipient == null || recipient.getUserId() == null) return null;
+        Notification n = new Notification();
+        n.setRecipientUser(recipient);
+        n.setBookingPassengerId(bookingPassengerId);
+        n.setNotificationType(type);
+        n.setTitle(title);
+        n.setContent(content);
+        Notification saved = notificationRepository.save(n);
+        NotificationResponse response = toResponse(saved);
+        UUID userId = recipient.getUserId();
+        long unread = notificationRepository.countByRecipientUserUserIdAndReadAtIsNull(userId);
+        afterCommit(() -> sseHub.publishNotification(userId, response, unread));
+        return response;
+    }
+
+    @Transactional
+    public void notifyRole(
+            com.casms.identity.enums.Role role, String type, String title, String content) {
+        if (role == null) return;
+        userRepository.findByStatus(com.casms.identity.enums.UserStatus.ACTIVE).stream()
+                .filter(u -> u.hasRole(role))
+                .forEach(u -> notifyUser(u, type, title, content, null));
+    }
+
+    private void afterCommit(Runnable task) {
+        if (org.springframework.transaction.support.TransactionSynchronizationManager.isSynchronizationActive()) {
+            org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(
+                    new org.springframework.transaction.support.TransactionSynchronization() {
+                        @Override
+                        public void afterCommit() {
+                            task.run();
+                        }
+                    });
+        } else {
+            task.run();
+        }
     }
 
     /**

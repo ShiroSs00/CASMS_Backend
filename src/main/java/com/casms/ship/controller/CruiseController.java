@@ -200,8 +200,11 @@ public class CruiseController {
         boolean bookingView = !onboardScoped && (!hasCruiseRead || bookingOnly(auth) || saleState != null);
         Page<CruiseResponse> page =
                 bookingAgentId != null
-                        ? service.listOpenForSale(shipId, unassigned, cruiseType, sourceTripId,
-                                sourceVersionId, pageable, bookingAgentId)
+                        ? (saleState != null
+                                ? service.listOpenForSale(shipId, unassigned, cruiseType, sourceTripId,
+                                        sourceVersionId, pageable, bookingAgentId)
+                                : service.listAssignedPublished(shipId, unassigned, cruiseType,
+                                        sourceTripId, sourceVersionId, pageable, bookingAgentId))
                         : bookingView
                         ? service.listOpenForSale(
                                 shipId,
@@ -824,7 +827,18 @@ public class CruiseController {
                     CruiseOpenSaleRequest request,
             @AuthenticationPrincipal CasmsPrincipal principal) {
         UUID actorId = principal != null ? principal.getUserId() : null;
-        return ApiResponse.success(service.openSale(cruiseId, request, actorId));
+        CruiseResponse opened = service.openSale(cruiseId, request, actorId);
+        notificationService.notifyRole(
+                com.casms.identity.enums.Role.CRUISE_MANAGER,
+                "CRUISE_OPENED_FOR_SALE",
+                "Chuyến " + opened.getCruiseCode() + " đã mở bán",
+                "Chuyến " + opened.getCruiseName() + " đã chính thức mở bán công khai.");
+        notificationService.notifyRole(
+                com.casms.identity.enums.Role.BOOKING_AGENT,
+                "CRUISE_OPENED_FOR_SALE",
+                "Chuyến " + opened.getCruiseCode() + " đã mở bán",
+                "Chuyến " + opened.getCruiseName() + " đã sẵn sàng tiếp nhận đặt chỗ.");
+        return ApiResponse.success(opened);
     }
 
     @Operation(

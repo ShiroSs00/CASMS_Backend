@@ -8,6 +8,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Builder;
 import lombok.Data;
 
+import java.time.LocalDate;
 import java.util.Set;
 import java.util.UUID;
 
@@ -53,4 +54,11 @@ public class UserMeResponse {
             description = "ID hồ sơ hành khách nếu tài khoản đã liên kết hồ sơ Passenger",
             example = "3fa85f64-5717-4562-b3fc-2c963f66afa6")
     private UUID passengerId;
+
+    private String fullName;
+    private String phoneNumber;
+    private LocalDate dateOfBirth;
+    private String nationality;
+    private String documentType;
+    private String documentNumber;
 }
