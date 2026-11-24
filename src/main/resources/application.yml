@@ -84,10 +84,13 @@ springdoc:
     try-it-out-enabled: true
 
 casms:
+  booking:
+    cancellation-workflow:
+      enabled: ${CASMS_CANCELLATION_WORKFLOW_ENABLED:true}
   booking-email:
     enabled: ${CASMS_BOOKING_EMAIL_ENABLED:false}
     from: ${CASMS_BOOKING_EMAIL_FROM:}
-    portal-url: ${CASMS_BOOKING_EMAIL_PORTAL_URL:http://localhost:3000}
+    portal-url: ${CASMS_BOOKING_EMAIL_PORTAL_URL:http://localhost:5173}
   payment:
     sepay:
       enabled: ${SEPAY_ENABLED:true}

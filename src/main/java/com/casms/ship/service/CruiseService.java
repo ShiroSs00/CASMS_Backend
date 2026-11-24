@@ -511,6 +511,27 @@ public class CruiseService {
                 open.subList(start, end), pageable, open.size());
     }
 
+    @Transactional(readOnly = true)
+    public Page<CruiseResponse> listAssignedPublished(
+            UUID shipId,
+            Boolean unassigned,
+            CruiseCruiseType cruiseType,
+            UUID sourceTripId,
+            UUID sourceVersionId,
+            Pageable pageable,
+            UUID bookingAgentId) {
+        return list(
+                CruiseStatus.PUBLISHED,
+                shipId,
+                unassigned,
+                cruiseType,
+                sourceTripId,
+                sourceVersionId,
+                pageable,
+                bookingAgentId,
+                null);
+    }
+
     public void requireBookingAgentAssignment(UUID cruiseId, UUID bookingAgentId) {
         com.casms.ship.repository.BookingAgentCruiseScope.requireAssigned(cruiseRepository, cruiseId, bookingAgentId);
     }

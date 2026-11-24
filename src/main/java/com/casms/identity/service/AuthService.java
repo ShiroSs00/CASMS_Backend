@@ -161,11 +161,10 @@ public class AuthService {
                                         HttpStatus.UNAUTHORIZED,
                                         "AUTH_REQUIRED",
                                         "Yêu cầu đăng nhập để truy cập thông tin phiên"));
-        UUID passengerId =
+        Passenger linkedPassenger =
                 (passengerRepository != null)
                         ? passengerRepository
                                 .findByUser_UserId(freshUser.getUserId())
-                                .map(Passenger::getPassengerId)
                                 .orElse(null)
                         : null;
         return UserMeResponse.builder()
@@ -175,7 +174,17 @@ public class AuthService {
                 .status(freshUser.getStatus())
                 .roles(freshUser.getRoles())
                 .effectivePermissions(getEffectivePermissions(freshUser))
-                .passengerId(passengerId)
+                .passengerId(linkedPassenger != null ? linkedPassenger.getPassengerId() : null)
+                .fullName(linkedPassenger != null ? linkedPassenger.getFullName() : null)
+                .phoneNumber(linkedPassenger != null ? linkedPassenger.getPhoneNumber() : null)
+                .dateOfBirth(linkedPassenger != null ? linkedPassenger.getDateOfBirth() : null)
+                .nationality(linkedPassenger != null ? linkedPassenger.getNationality() : null)
+                .documentType(
+                        linkedPassenger != null && linkedPassenger.getDocumentType() != null
+                                ? linkedPassenger.getDocumentType().name()
+                                : null)
+                .documentNumber(
+                        linkedPassenger != null ? linkedPassenger.getDocumentNumberProtected() : null)
                 .build();
     }
 }

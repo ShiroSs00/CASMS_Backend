@@ -145,6 +145,7 @@ public class BookingService {
     private final IdempotencyRecordRepository idempotencyRecordRepository;
     private final ObjectMapper objectMapper;
     private final BookingEmailService bookingEmailService;
+    private final com.casms.notification.service.NotificationService notificationService;
 
     private final CruiseMainflowService mainflow;
     private final org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
@@ -279,6 +280,9 @@ public class BookingService {
         List<AvailableCabinResponse> results = new ArrayList<>();
 
         for (Cabin cabin : cabins) {
+            if (cabin.getCapacity() != null && cabin.getCapacity() > 20) {
+                continue;
+            }
             long currentOccupied =
                     cabinAssignmentRepository.countActiveAssignmentsByCabinAndCruise(
                             cabin.getCabinId(), cruiseId);
@@ -467,7 +471,8 @@ public class BookingService {
                 throw new BusinessException(HttpStatus.FORBIDDEN, "PASSENGER_ACCOUNT_REQUIRED",
                         "Booking requires a passenger account or authorized booking staff");
             }
-            if (primaryPassenger.getEmail() != null && !primaryPassenger.getEmail().isBlank()
+            if (!Boolean.TRUE.equals(request.getBookForOthers())
+                    && primaryPassenger.getEmail() != null && !primaryPassenger.getEmail().isBlank()
                     && !primaryPassenger.getEmail().trim().equalsIgnoreCase(bookedByUser.getEmail())) {
                 throw new BusinessException(HttpStatus.CONFLICT, "PASSENGER_IDENTITY_MISMATCH",
                         "Primary passenger contact must match the authenticated passenger account");
@@ -891,7 +896,7 @@ public class BookingService {
             // Lưu hồ sơ Passenger (nếu là hành khách đại diện đầu tiên và có bookedByUser thì liên
             // kết user)
             Passenger passenger;
-            if (representative == null && bookedByUser != null) {
+            if (representative == null && bookedByUser != null && !Boolean.TRUE.equals(request.getBookForOthers())) {
                 passenger =
                         passengerRepository
                                 .findByUser_UserId(bookedByUser.getUserId())
@@ -1011,6 +1016,19 @@ public class BookingService {
 
         // 9. Tạo thông báo liên lạc mời hành khách tới văn phòng ký hợp đồng bản cứng
         createContractSigningNotification(booking, contract, representative, paymentPlan, cruise);
+        bookingRepository.flush();
+        bookingEmailService.enqueueBookingCreated(booking);
+        notificationService.notifyUser(
+                booking.getBookedByUser(),
+                "BOOKING_CREATED",
+                "Đã tạo đặt chỗ " + booking.getBookingReference(),
+                "Hành trình: " + cruise.getCruiseName() + ". Vui lòng hoàn tất thanh toán đúng hạn để giữ cabin.",
+                representative != null ? representative.getBookingPassengerId() : null);
+        notificationService.notifyRole(
+                Role.BOOKING_AGENT,
+                "NEW_BOOKING",
+                "Đơn đặt chỗ mới " + booking.getBookingReference(),
+                "Chuyến " + cruise.getCruiseName() + " vừa có đơn mới (" + request.getPassengers().size() + " hành khách).");
 
         log.info(
                 "Booking created successfully with reference: {}, PaymentPlan: {}",
@@ -1392,6 +1410,17 @@ public class BookingService {
 
         log.info("Confirmed booking reference: {}", booking.getBookingReference());
         bookingEmailService.enqueueConfirmation(booking, verifiedNetPaid(booking));
+        notificationService.notifyUser(
+                booking.getBookedByUser(),
+                "BOOKING_CONFIRMED",
+                "Đặt chỗ " + booking.getBookingReference() + " đã được xác nhận",
+                "Thanh toán và hợp đồng cho chuyến " + booking.getCruise().getCruiseName() + " đã được ghi nhận.",
+                null);
+        notificationService.notifyRole(
+                Role.FINANCE_OFFICER,
+                "PAYMENT_CONFIRMED",
+                "Đã xác nhận thanh toán đơn " + booking.getBookingReference(),
+                "Đơn đặt chỗ trên chuyến " + booking.getCruise().getCruiseName() + " đã chuyển sang Đã xác nhận.");
         return mapToDetailResponse(booking);
     }
 

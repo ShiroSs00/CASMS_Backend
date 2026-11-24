@@ -28,23 +28,47 @@ public class NotificationController {
 
     @Operation(summary = "Danh sách thông báo của người dùng hiện tại")
     @GetMapping
-    @PreAuthorize("hasAuthority('NOTIFICATION_READ')")
+    @PreAuthorize("isAuthenticated()")
     public ApiResponse<List<NotificationResponse>> listMine(
             @AuthenticationPrincipal CasmsPrincipal principal) {
         return ApiResponse.success(service.listMine(principal));
     }
 
+    @Operation(summary = "Số lượng thông báo chưa đọc của người dùng hiện tại")
+    @GetMapping("/unread-count")
+    @PreAuthorize("isAuthenticated()")
+    public ApiResponse<java.util.Map<String, Long>> unreadCount(
+            @AuthenticationPrincipal CasmsPrincipal principal) {
+        return ApiResponse.success(java.util.Map.of("unreadCount", service.countUnread(principal)));
+    }
+
+    @Operation(summary = "Luồng thông báo thời gian thực (SSE)")
+    @GetMapping(value = "/stream", produces = org.springframework.http.MediaType.TEXT_EVENT_STREAM_VALUE)
+    @PreAuthorize("isAuthenticated()")
+    public org.springframework.web.servlet.mvc.method.annotation.SseEmitter stream(
+            @AuthenticationPrincipal CasmsPrincipal principal) {
+        return service.subscribe(principal);
+    }
+
     @Operation(summary = "Đánh dấu đã đọc thông báo")
     @PatchMapping("/{notificationId}/read")
-    @PreAuthorize("hasAuthority('NOTIFICATION_READ')")
+    @PreAuthorize("isAuthenticated()")
     public ApiResponse<NotificationResponse> markRead(
             @PathVariable UUID notificationId, @AuthenticationPrincipal CasmsPrincipal principal) {
         return ApiResponse.success(service.markRead(notificationId, principal));
     }
 
+    @Operation(summary = "Đánh dấu tất cả thông báo là đã đọc")
+    @PatchMapping("/read-all")
+    @PreAuthorize("isAuthenticated()")
+    public ApiResponse<java.util.Map<String, Long>> markAllRead(
+            @AuthenticationPrincipal CasmsPrincipal principal) {
+        return ApiResponse.success(java.util.Map.of("updatedCount", service.markAllRead(principal)));
+    }
+
     @Operation(summary = "Xác nhận đã nhận/đọc thông báo tác động (ACK - BE-19)")
     @PostMapping("/{notificationId}/ack")
-    @PreAuthorize("hasAuthority('NOTIFICATION_READ')")
+    @PreAuthorize("isAuthenticated()")
     public ApiResponse<NotificationResponse> acknowledgeNotification(
             @PathVariable UUID notificationId, @AuthenticationPrincipal CasmsPrincipal principal) {
         return ApiResponse.success(service.acknowledgeNotification(notificationId, principal));

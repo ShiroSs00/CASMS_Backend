@@ -62,4 +62,7 @@ public class BookingCreateRequest {
     @Schema(description = "Ghi chú thêm về đơn đặt chỗ", example = "Yêu cầu bữa ăn chay nếu có")
     @Size(max = 500, message = "Notes must not exceed 500 characters")
     private String notes;
+
+    @Schema(description = "Đặt hộ người khác (tài khoản đăng nhập không phải hành khách đầu tiên)")
+    private Boolean bookForOthers;
 }

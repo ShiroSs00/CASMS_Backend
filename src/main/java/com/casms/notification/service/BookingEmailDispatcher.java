@@ -1,12 +1,13 @@
 package com.casms.notification.service;
 
+import jakarta.mail.internet.MimeMessage;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -39,14 +40,17 @@ public class BookingEmailDispatcher {
         for (var row : rows) {
             String key = (String) row.get("event_key");
             try {
-                SimpleMailMessage message = new SimpleMailMessage();
-                message.setFrom(from);
-                message.setTo((String) row.get("recipient"));
-                message.setSubject((String) row.get("subject"));
-                message.setText((String) row.get("body"));
-                sender.send(message);
+                String body = (String) row.get("body");
+                boolean isHtml = body != null && body.trim().startsWith("<");
+                MimeMessage mime = sender.createMimeMessage();
+                MimeMessageHelper helper = new MimeMessageHelper(mime, "UTF-8");
+                helper.setFrom(from);
+                helper.setTo((String) row.get("recipient"));
+                helper.setSubject((String) row.get("subject"));
+                helper.setText(body != null ? body : "", isHtml);
+                sender.send(mime);
                 jdbc.update("UPDATE \"BookingEmailOutbox\" SET sent_at = now(), attempts = attempts + 1 WHERE event_key = ?", key);
-            } catch (org.springframework.mail.MailException ex) {
+            } catch (Exception ex) {
                 jdbc.update("UPDATE \"BookingEmailOutbox\" SET attempts = attempts + 1, next_attempt_at = now() + interval '5 minutes' WHERE event_key = ?", key);
             }
         }
