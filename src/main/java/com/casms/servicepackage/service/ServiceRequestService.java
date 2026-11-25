@@ -194,7 +194,7 @@ public class ServiceRequestService {
         if (s.getStatus() != ServiceStatus.ACTIVE)
             throw new IllegalStateException("Service is not available");
         if (s.getCurrencyCode() != null && !s.getCurrencyCode().isBlank())
-            com.casms.common.util.NewWriteCurrency.requireUsd(s.getCurrencyCode());
+            com.casms.common.util.NewWriteCurrency.requireSupportedCurrency(s.getCurrencyCode());
         int effectiveQuantity = quantity == null ? 1 : quantity;
         if (effectiveQuantity < 1) throw new IllegalArgumentException("Quantity must be positive");
         if (scheduleId == null) assertCapacity(s, effectiveQuantity, 0);

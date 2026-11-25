@@ -79,12 +79,13 @@ public class ServicepackageService {
         catch (RuntimeException e) { throw new IllegalArgumentException("Invalid usage time zone"); }
         if (s.getServiceId() == null) s.setServiceCode(businessCodeGenerator.next("SV"));
         if (s.getServiceName() == null || s.getServiceName().isBlank())
-            throw new IllegalArgumentException("Service code and name are required");
-        if (s.getCurrencyCode() == null || s.getCurrencyCode().isBlank()) s.setCurrencyCode("USD");
-        com.casms.common.util.NewWriteCurrency.requireUsd(s.getCurrencyCode());
+            throw new IllegalArgumentException("Tên dịch vụ không được để trống.");
+        s.setCurrencyCode(com.casms.common.util.NewWriteCurrency.normalizeOrDefaultVnd(s.getCurrencyCode()));
         if (s.getPrice() == null) s.setPrice(BigDecimal.ZERO);
         if (s.getPrice().signum() < 0)
-            throw new IllegalArgumentException("Non-negative service price requires currency");
+            throw new IllegalArgumentException("Giá dịch vụ phải từ 0 trở lên.");
+        if (s.getPrice().compareTo(new BigDecimal("999999999999")) > 0)
+            throw new IllegalArgumentException("Giá dịch vụ vượt quá giới hạn cho phép.");
         if (s.getCapacity() != null && s.getCapacity() < 1)
             throw new IllegalArgumentException("Capacity must be positive");
         if (serviceRepo.existsByServiceCodeAndServiceIdNot(
@@ -149,12 +150,12 @@ public class ServicepackageService {
     public Product saveProduct(Product p) {
         if (p.getProductId() == null) p.setProductCode(businessCodeGenerator.next("PR"));
         if (p.getProductName() == null || p.getProductName().isBlank())
-            throw new IllegalArgumentException("Product code and name are required");
-        if (p.getCurrencyCode() == null || p.getCurrencyCode().isBlank()) p.setCurrencyCode("USD");
-        com.casms.common.util.NewWriteCurrency.requireUsd(p.getCurrencyCode());
+            throw new IllegalArgumentException("Tên mặt hàng không được để trống.");
+        p.setCurrencyCode(com.casms.common.util.NewWriteCurrency.normalizeOrDefaultVnd(p.getCurrencyCode()));
         if (p.getUnitPrice() == null || p.getUnitPrice().signum() < 0)
-            throw new IllegalArgumentException(
-                    "Product requires a non-negative price and currency");
+            throw new IllegalArgumentException("Giá mặt hàng phải từ 0 trở lên.");
+        if (p.getUnitPrice().compareTo(new BigDecimal("999999999999")) > 0)
+            throw new IllegalArgumentException("Giá mặt hàng vượt quá giới hạn cho phép.");
         if (productRepo.existsByProductCodeAndProductIdNot(
                 p.getProductCode(), p.getProductId() == null ? new UUID(0, 0) : p.getProductId()))
             throw new IllegalArgumentException("Product code already exists");
@@ -203,15 +204,16 @@ public class ServicepackageService {
     public TourPackage savePackage(TourPackage p) {
         if (p.getTourPackageId() == null) p.setPackageCode(businessCodeGenerator.next("PK"));
         if (p.getPackageName() == null || p.getPackageName().isBlank())
-            throw new IllegalArgumentException("Package code and name are required");
-        if (p.getCurrencyCode() == null || p.getCurrencyCode().isBlank()) p.setCurrencyCode("USD");
-        com.casms.common.util.NewWriteCurrency.requireUsd(p.getCurrencyCode());
+            throw new IllegalArgumentException("Tên gói dịch vụ không được để trống.");
+        p.setCurrencyCode(com.casms.common.util.NewWriteCurrency.normalizeOrDefaultVnd(p.getCurrencyCode()));
         if (p.getPrice() == null || p.getPrice().signum() < 0)
-            throw new IllegalArgumentException("Package requires non-negative price and currency");
+            throw new IllegalArgumentException("Giá gói dịch vụ phải từ 0 trở lên.");
+        if (p.getPrice().compareTo(new BigDecimal("999999999999")) > 0)
+            throw new IllegalArgumentException("Giá gói dịch vụ vượt quá giới hạn cho phép.");
         if (p.getStartDate() != null
                 && p.getEndDate() != null
                 && p.getEndDate().isBefore(p.getStartDate()))
-            throw new IllegalArgumentException("Package end date precedes start date");
+            throw new IllegalArgumentException("Ngày hết hạn phải từ ngày bắt đầu trở đi.");
         if (packageRepo.existsByPackageCodeAndTourPackageIdNot(
                 p.getPackageCode(),
                 p.getTourPackageId() == null ? new UUID(0, 0) : p.getTourPackageId()))

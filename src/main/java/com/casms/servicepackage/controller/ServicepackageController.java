@@ -60,7 +60,7 @@ public class ServicepackageController {
             @NotBlank @Size(max = 200) String serviceName,
             @Size(max = 1000) String description,
             @NotBlank @Size(max = 50) String serviceType,
-            @DecimalMin("0.0") BigDecimal price,
+            @DecimalMin("0.0") @Digits(integer = 12, fraction = 4) BigDecimal price,
             @Size(min = 3, max = 3) String currencyCode,
             @Positive Integer capacity,
             Boolean requiresSchedule,
@@ -89,15 +89,15 @@ public class ServicepackageController {
             @NotBlank @Size(max = 200) String productName,
             @Size(max = 1000) String description,
             @NotBlank @Size(max = 50) String productType,
-            @NotNull @DecimalMin("0.0") BigDecimal unitPrice,
-            @NotBlank @Size(min = 3, max = 3) String currencyCode) {}
+            @NotNull @DecimalMin("0.0") @Digits(integer = 12, fraction = 4) BigDecimal unitPrice,
+            @Size(min = 3, max = 3) String currencyCode) {}
 
     public record PackageDto(
             @NotBlank @Size(max = 200) String packageName,
             @Size(max = 1000) String description,
             @NotNull TourPackageType packageType,
-            @NotNull @DecimalMin("0.0") BigDecimal price,
-            @NotBlank @Size(min = 3, max = 3) String currencyCode,
+            @NotNull @DecimalMin("0.0") @Digits(integer = 12, fraction = 4) BigDecimal price,
+            @Size(min = 3, max = 3) String currencyCode,
             LocalDate startDate,
             LocalDate endDate) {}
 
