@@ -287,16 +287,23 @@ class ScheduleMaterializationServiceTest {
         assertEquals("TRIP_ARCHIVED", ex.getCode());
     }
 
-    @Test
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
     @DisplayName("E03: materializeSchedule - tạo Itinerary, Days và CruiseStops thực tế trong DB")
-    void materializeSchedule_success() {
+    void materializeSchedule_success(boolean startsAtSea) {
+        if (startsAtSea) {
+            testVersion.getDays().get(0).setDayType(ItineraryDayType.SEA_DAY);
+            testVersion.getDays().get(1).setDayType(ItineraryDayType.PORT_DAY);
+            testVersion.getStops().get(0).setArrivalDayNumber(2);
+            testVersion.getStops().get(0).setDepartureDayNumber(2);
+        }
         Cruise cruise = new Cruise();
         cruise.setCruiseId(UUID.randomUUID());
         cruise.setCruiseCode("CR-001");
         cruise.setCruiseName("Chuyến đi 001");
         cruise.setDepartureDatetime(departureTime);
         cruise.setReturnDatetime(departureTime.plusSeconds(86400 * 3));
-        cruise.setDeparturePort(portHph);
+        cruise.setDeparturePort(startsAtSea ? portDan : portHph);
         cruise.setReturnPort(portDan);
         cruise.setSourceTrip(testTrip);
         cruise.setSourceVersion(testVersion);
@@ -334,6 +341,7 @@ class ScheduleMaterializationServiceTest {
         Itinerary result = materializationService.materializeSchedule(cruise, testVersion);
 
         assertNotNull(result);
+        assertEquals(cruise.getDeparturePort().getPortId(), result.getDeparturePortFacts().portId());
         assertEquals(ItineraryStatus.DRAFT, result.getStatus());
         verify(itineraryRepository).save(any(Itinerary.class));
         verify(itineraryDayRepository, times(3)).save(any(ItineraryDay.class));

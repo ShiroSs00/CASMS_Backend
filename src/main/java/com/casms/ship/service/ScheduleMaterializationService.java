@@ -195,7 +195,9 @@ public class ScheduleMaterializationService {
 
         Itinerary itinerary = new Itinerary();
         itinerary.setDeparturePortFacts(
-                version.getDays().stream()
+                projection.getDeparturePortId() == null
+                        ? com.casms.ship.dto.PortFacts.capture(cruise.getDeparturePort())
+                        : version.getDays().stream()
                         .filter(d -> d.getDayNumber() == 1)
                         .map(
                                 d ->

@@ -59,3 +59,5 @@ sequenceDiagram
 ## CASMS-92 changed behavior review
 
 See [booking end-to-end flows](../CASMS-92-BOOKING-FLOWS.md) for reviewed ownership, identity mapping, financial projection, physical contract and transaction changes. Unchanged branches retain their earlier review status.
+
+When reusing a representative passenger profile, omitted birth date and document fields retain their saved values. A conflicting supplied field returns 409 PASSENGER_IDENTITY_MISMATCH and rolls back creation. See [CASMS-92 booking flow](../CASMS-92-BOOKING-FLOWS.md).
