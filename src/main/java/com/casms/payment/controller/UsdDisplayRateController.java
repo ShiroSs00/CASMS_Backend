@@ -1,55 +1,68 @@
 package com.casms.payment.controller;
 
-import com.casms.common.exception.BusinessException;
 import com.casms.common.response.ApiResponse;
+import com.casms.payment.service.ExchangeRateSyncService;
 import com.casms.security.principal.CasmsPrincipal;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.*;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.HttpStatus;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
-import java.time.ZoneId;
 
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/usd-display-rate")
 public class UsdDisplayRateController {
-    private static final ZoneId VIETNAM = ZoneId.of("Asia/Ho_Chi_Minh");
-    private final JdbcTemplate jdbc;
+    private final ExchangeRateSyncService exchangeRateSyncService;
 
-    public record Input(@NotNull LocalDate effectiveOn,
-                        @NotNull @DecimalMin("0.0001") @Digits(integer=8, fraction=4) BigDecimal vndPerUsd,
-                        @NotBlank @Size(max=160) String source) {}
-    public record Rate(LocalDate effectiveOn, BigDecimal vndPerUsd, String source) {}
+    public record Input(
+            @NotNull(message = "Ngày hiệu lực không được để trống.")
+            LocalDate effectiveOn,
+            @NotNull(message = "Tỷ giá không được để trống.")
+            @DecimalMin(value = "1000", message = "Tỷ giá USD/VND tối thiểu là 1.000 VND.")
+            @DecimalMax(value = "1000000", message = "Tỷ giá USD/VND tối đa là 1.000.000 VND.")
+            @Digits(integer = 8, fraction = 4, message = "Tỷ giá chỉ hỗ trợ tối đa 8 chữ số nguyên và 4 chữ số thập phân.")
+            BigDecimal vndPerUsd,
+            @NotBlank(message = "Nguồn tỷ giá không được để trống.")
+            @Size(max = 160, message = "Nguồn tỷ giá tối đa 160 ký tự.")
+            String source) {}
+
+    public record Rate(
+            LocalDate effectiveOn,
+            BigDecimal vndPerUsd,
+            String source,
+            Instant publishedAt,
+            boolean autoSynced) {
+        static Rate of(ExchangeRateSyncService.RateView view) {
+            return view == null
+                    ? null
+                    : new Rate(view.effectiveOn(), view.vndPerUsd(), view.source(), view.publishedAt(), view.autoSynced());
+        }
+    }
 
     @GetMapping
     public ApiResponse<Rate> current() {
-        return ApiResponse.success(jdbc.query("""
-                SELECT effective_on, vnd_per_usd, source FROM "UsdDisplayRate"
-                WHERE effective_on<=? ORDER BY effective_on DESC LIMIT 1
-                """, (rs, i) -> new Rate(rs.getObject(1, LocalDate.class), rs.getBigDecimal(2), rs.getString(3)),
-                LocalDate.now(VIETNAM)).stream().findFirst().orElse(null));
+        return ApiResponse.success(Rate.of(exchangeRateSyncService.getCurrentRate()));
     }
 
     @PutMapping
     @PreAuthorize("hasRole('FINANCE_OFFICER') and hasAuthority('PAYMENT_REPORT')")
     public ApiResponse<Rate> save(@Valid @RequestBody Input input, @AuthenticationPrincipal CasmsPrincipal actor) {
-        if (input.effectiveOn().isAfter(LocalDate.now(VIETNAM))) {
-            throw new BusinessException(HttpStatus.UNPROCESSABLE_ENTITY, "REFERENCE_RATE_FUTURE_DATE",
-                    "Ngày hiệu lực của tỷ giá phải là hôm nay hoặc trước đó.");
-        }
-        jdbc.update("""
-                INSERT INTO "UsdDisplayRate"(effective_on,vnd_per_usd,source,published_by)
-                VALUES(?,?,?,?)
-                ON CONFLICT (effective_on) DO UPDATE SET vnd_per_usd=excluded.vnd_per_usd,
-                    source=excluded.source,published_by=excluded.published_by,published_at=now()
-                """, input.effectiveOn(),input.vndPerUsd(),input.source().strip(),actor.getUserId());
-        return current();
+        ExchangeRateSyncService.RateView saved = exchangeRateSyncService.saveManualRate(
+                input.effectiveOn(), input.vndPerUsd(), input.source(), actor.getUserId());
+        return ApiResponse.success(Rate.of(saved));
+    }
+
+    @PostMapping("/sync")
+    @PreAuthorize("hasRole('FINANCE_OFFICER') and hasAuthority('PAYMENT_REPORT')")
+    public ApiResponse<ExchangeRateSyncService.SyncResult> syncNow(
+            @RequestParam(defaultValue = "false") boolean force,
+            @AuthenticationPrincipal CasmsPrincipal actor) {
+        return ApiResponse.success(exchangeRateSyncService.syncNow(actor.getUserId(), force));
     }
 }

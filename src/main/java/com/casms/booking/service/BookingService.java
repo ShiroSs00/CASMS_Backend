@@ -2135,38 +2135,52 @@ public class BookingService {
                         ? representative.getPassenger().getFullName()
                         : "Quý khách";
 
-        Notification notif = new Notification();
-        notif.setRecipientUser(booking.getBookedByUser());
-        notif.setBookingPassengerId(
-                representative != null ? representative.getBookingPassengerId() : null);
-        notif.setNotificationType("CONTRACT_SIGNING_INVITATION");
-        notif.setTitle(
-                "Thư mời ký hợp đồng & Xác nhận đặt chỗ chuyến khởi hành "
-                        + booking.getBookingReference());
-        notif.setContent(
+        String planLabel =
+                plan == null
+                        ? "Theo thỏa thuận"
+                        : switch (plan) {
+                            case FULL -> "Thanh toán toàn bộ 1 lần";
+                            case DEPOSIT -> "Đặt cọc 2 đợt";
+                            case STAGES -> "Thanh toán theo đợt";
+                        };
+        java.text.DecimalFormatSymbols viSymbols =
+                new java.text.DecimalFormatSymbols(java.util.Locale.forLanguageTag("vi-VN"));
+        viSymbols.setGroupingSeparator('.');
+        java.text.DecimalFormat amountFmt = new java.text.DecimalFormat("#,##0", viSymbols);
+        String agreedStr =
+                booking.getAgreedFareAmount() != null
+                        ? amountFmt.format(booking.getAgreedFareAmount())
+                        : "0";
+        String depositStr =
+                booking.getRequiredDepositAmount() != null
+                        ? amountFmt.format(booking.getRequiredDepositAmount())
+                        : "0";
+        String currency = booking.getCurrency() != null ? booking.getCurrency() : "VND";
+
+        notificationService.notifyUser(
+                booking.getBookedByUser(),
+                "CONTRACT_SIGNING_INVITATION",
+                "Xác nhận đặt chỗ & hướng dẫn hợp đồng " + booking.getBookingReference(),
                 String.format(
-                        "Kính gửi %s,\n\n"
-                            + "Đơn đặt chỗ mã [%s] cho chuyến du thuyền '%s' đã được tạo thành"
-                            + " công.\n"
-                            + "- Mã hợp đồng đối chiếu: %s\n"
-                            + "- Hình thức thanh toán đã chọn: %s\n"
-                            + "- Tổng giá trị: %s %s (Cọc tối thiểu: %s %s)\n\n"
-                            + "**LƯU Ý BẢO MẬT:** Để bảo mật tuyệt đối thông tin định danh cá nhân"
-                            + " của quý khách, hợp đồng pháp lý KHÔNG lưu trữ văn bản thô trên hệ"
-                            + " thống trực tuyến.\n"
-                            + "Vui lòng liên hệ OceVie để xác nhận địa điểm, thời hạn ký hợp đồng"
-                            + " bản cứng và hướng dẫn thanh toán theo hình thức đã chọn.\n\n"
-                            + "Trân trọng cảm ơn quý khách đã đồng hành cùng CASMS!",
+                        "Kính gửi %s,\n"
+                            + "Đơn đặt chỗ %s cho chuyến %s đã được tạo thành công.\n"
+                            + "• Mã hợp đồng đối chiếu: %s\n"
+                            + "• Hình thức thanh toán: %s\n"
+                            + "• Tổng giá trị: %s %s (Cọc tối thiểu: %s %s)\n"
+                            + "Lưu ý bảo mật: Để bảo vệ thông tin định danh cá nhân, hợp đồng pháp"
+                            + " lý không lưu văn bản thô trực tuyến. Vui lòng liên hệ OceVie khi"
+                            + " cần hỗ trợ ký hợp đồng bản cứng.\n"
+                            + "Trân trọng cảm ơn quý khách đã đồng hành cùng OceVie.",
                         repName,
                         booking.getBookingReference(),
                         cruise.getCruiseName(),
                         contract.getContractReference(),
-                        plan,
-                        booking.getAgreedFareAmount(),
-                        booking.getCurrency(),
-                        booking.getRequiredDepositAmount(),
-                        booking.getCurrency()));
-        notificationRepository.save(notif);
+                        planLabel,
+                        agreedStr,
+                        currency,
+                        depositStr,
+                        currency),
+                representative != null ? representative.getBookingPassengerId() : null);
     }
 
     private BookingSummaryResponse mapToSummaryResponse(Booking booking) {

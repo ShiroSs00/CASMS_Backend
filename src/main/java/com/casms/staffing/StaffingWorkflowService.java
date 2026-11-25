@@ -11,6 +11,8 @@ import com.casms.ship.service.DeckServiceAssignmentService;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.PositiveOrZero;
 import com.casms.security.principal.CasmsPrincipal;
+import com.casms.notification.service.NotificationService;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -37,6 +39,8 @@ public class StaffingWorkflowService {
     private final PosService pos;
     private final DeckServiceAssignmentService deckServices;
     private final CruiseStaffService cruiseStaff;
+    @Autowired(required = false)
+    private NotificationService notificationService;
 
     public StaffingWorkflowService(JdbcTemplate jdbc, CruiseWorkHandoffService handoffs, PosAccessService posAccess,
                                    PosService pos, DeckServiceAssignmentService deckServices,
@@ -359,6 +363,31 @@ public class StaffingWorkflowService {
                 .stream().map(this::read).toList();
     }
 
+    @Transactional(readOnly = true)
+    public List<Snapshot> pipeline(CasmsPrincipal actor) {
+        boolean hr = allowed(actor, Role.HR_MANAGER);
+        boolean ship = allowed(actor, Role.SHIP_MANAGER);
+        boolean planner = allowed(actor, Role.CRUISE_MANAGER);
+        boolean ops = allowed(actor, Role.OPERATIONS_MANAGER);
+        if (!(hr || ship || planner || ops)) {
+            throw forbidden("STAFFING_INBOX_FORBIDDEN");
+        }
+        return jdbc.queryForList("""
+                SELECT req.request_id FROM "StaffingRequest" req JOIN "Cruise" c USING (cruise_id)
+                WHERE c.status NOT IN ('COMPLETED', 'CANCELLED')
+                  AND req.status <> 'CANCELLED'
+                  AND (
+                    ? OR ?
+                    OR (? AND c.preparation_coordinator_id=?)
+                    OR (? AND EXISTS (
+                        SELECT 1 FROM "CruiseStaff" cs WHERE cs.cruise_id=req.cruise_id
+                            AND cs.user_id=? AND cs.status='ACTIVE' AND cs.role_in_cruise='SHIP_MANAGER'))
+                  )
+                ORDER BY req.updated_at DESC, req.requested_at DESC, req.request_id DESC
+                """, UUID.class, hr, ops, planner, actor.getUserId(), ship, actor.getUserId())
+                .stream().map(this::read).toList();
+    }
+
     private record ReviewState(String status, long revision, UUID requester, UUID hr, UUID ship, UUID planner,
                                boolean shipReview, UUID hrApprover, String shipFingerprint,
                                boolean asmProgram, String serviceFingerprint, String workflowVersion,
@@ -474,10 +503,12 @@ public class StaffingWorkflowService {
         }
         if ("SHIP_CHECKED".equals(action)) {
             if (row.asmProgram()) handoffs.completeShipForStaffing(cruiseId, actor);
-            jdbc.update("""
-                    INSERT INTO "Notification" (notification_id,recipient_user_id,notification_type,title,content,created_at)
-                    VALUES (gen_random_uuid(),?,'STAFFING_SENT_TO_HR','Yêu cầu đang chờ bố trí nhân sự',?,now())
-                    """, cruise.coordinator(), "Quản lý tàu đã xác nhận. Mã yêu cầu: " + id);
+            String label = cruiseDisplayLabel(cruiseId);
+            sendUserNotice(
+                    cruise.coordinator(),
+                    "STAFFING_SENT_TO_HR",
+                    "Chuyến " + cruiseCodeOf(cruiseId) + " đã xác nhận phương án tàu",
+                    "Quản lý tàu đã xác nhận phương án tàu cho chuyến " + label + " và chuyển bước bố trí nhân sự.");
         }
         return read(id);
     }
@@ -770,10 +801,60 @@ public class StaffingWorkflowService {
         return read(id);
     }
 
+    private String cruiseCodeOf(UUID cruiseId) {
+        return jdbc.queryForList("SELECT cruise_code FROM \"Cruise\" WHERE cruise_id=?", String.class, cruiseId)
+                .stream().findFirst().orElse("chuyến khởi hành");
+    }
+
+    private String cruiseDisplayLabel(UUID cruiseId) {
+        return jdbc.query(
+                "SELECT cruise_code, cruise_name FROM \"Cruise\" WHERE cruise_id=?",
+                (rs, i) -> {
+                    String code = rs.getString(1);
+                    String name = rs.getString(2);
+                    return (name != null && !name.isBlank()) ? code + " — " + name.trim() : code;
+                },
+                cruiseId).stream().findFirst().orElse("chuyến khởi hành");
+    }
+
+    private void sendUserNotice(UUID userId, String type, String title, String content) {
+        if (userId == null) return;
+        if (notificationService != null) {
+            notificationService.notifyUserId(userId, type, title, content);
+        } else {
+            jdbc.update("""
+                    INSERT INTO "Notification" (notification_id,recipient_user_id,notification_type,title,content,created_at)
+                    VALUES (gen_random_uuid(),?,?,?,?,now())
+                    """, userId, type, title, content);
+        }
+    }
+
     private void notifyNext(UUID id, UUID cruise, String status) {
-        jdbc.update("""
-                INSERT INTO "Notification" (notification_id,recipient_user_id,notification_type,title,content,created_at)
-                SELECT gen_random_uuid(), u.user_id, 'STAFFING_WORKFLOW', 'Cập nhật yêu cầu bố trí nhân sự', ?, now()
+        String code = cruiseCodeOf(cruise);
+        String label = cruiseDisplayLabel(cruise);
+        String title = switch (status) {
+            case "PENDING_ASM" -> "Yêu cầu chuẩn bị chương trình chuyến " + code;
+            case "PENDING_SHIP_REVIEW" -> "Chuyến " + code + " chờ lập phương án tàu";
+            case "SHIP_REVIEWED" -> "Chuyến " + code + " đã xong phương án tàu";
+            case "SENT_TO_HR" -> "Chuyến " + code + " chờ phân công nhân sự";
+            case "HR_SUBMITTED" -> "Chuyến " + code + " đã phân công nhân sự";
+            case "PLANNER_CONFIRMED" -> "Chuyến " + code + " chờ duyệt phương án nhân sự";
+            case "OPS_APPROVED" -> "Phương án nhân sự chuyến " + code + " đã được duyệt";
+            default -> "Cập nhật phương án nhân sự chuyến " + code;
+        };
+        String content = switch (status) {
+            case "PENDING_ASM" -> "Quản lý lịch trình đã gửi yêu cầu chuẩn bị chương trình & dịch vụ cho chuyến " + label + ".";
+            case "PENDING_SHIP_REVIEW" -> "Chương trình chuyến " + label + " đã sẵn sàng. Vui lòng mở khu vực, gán máy POS và lập định biên nhân sự.";
+            case "SHIP_REVIEWED" -> "Quản lý tàu đã xác nhận phương án tàu cho chuyến " + label + ". Vui lòng kiểm tra và chuyển Quản lý nhân sự phân công.";
+            case "SENT_TO_HR" -> "Phương án tàu chuyến " + label + " đã sẵn sàng. Vui lòng phân công nhân sự cho các vị trí và ca hoạt động.";
+            case "HR_SUBMITTED" -> "Quản lý nhân sự đã hoàn tất phân công cho chuyến " + label + ". Vui lòng rà soát và trình Quản lý vận hành phê duyệt.";
+            case "PLANNER_CONFIRMED" -> "Quản lý lịch trình đã trình phương án nhân sự chuyến " + label + " để Quản lý vận hành phê duyệt.";
+            case "OPS_APPROVED" -> "Quản lý vận hành đã phê duyệt hoàn tất phương án tàu và nhân sự cho chuyến " + label + ".";
+            default -> "Yêu cầu chuẩn bị nhân sự cho chuyến " + label + " vừa được cập nhật.";
+        };
+
+        List<UUID> recipients = jdbc.queryForList("""
+                SELECT u.user_id
                 FROM "User" u JOIN "Cruise" c ON c.cruise_id=?
                 WHERE u.status='ACTIVE' AND CASE ?
                     WHEN 'PENDING_ASM' THEN EXISTS (
@@ -789,7 +870,24 @@ public class StaffingWorkflowService {
                     WHEN 'PLANNER_CONFIRMED' THEN EXISTS (
                         SELECT 1 FROM "UserRole" ur WHERE ur.user_id=u.user_id AND ur.role='OPERATIONS_MANAGER')
                     ELSE false END
-                """, "Yêu cầu " + id + " · " + status, cruise, status);
+                """, UUID.class, cruise, status);
+
+        if ("PENDING_SHIP_REVIEW".equals(status) && recipients.isEmpty()) {
+            String hrTitle = "Chuyến " + code + " cần phân công Quản lý tàu";
+            String hrContent = "Chuyến " + label
+                    + " đã sẵn sàng lập phương án tàu nhưng chưa có Quản lý tàu phụ trách. Vui lòng phân công tại mục Phân công nhân sự.";
+            if (notificationService != null) {
+                notificationService.notifyRole(Role.HR_MANAGER, "STAFFING_SHIP_MANAGER_NEEDED", hrTitle, hrContent);
+            } else {
+                List<UUID> hrs = jdbc.queryForList("""
+                        SELECT u.user_id FROM "User" u JOIN "UserRole" ur USING(user_id)
+                        WHERE u.status='ACTIVE' AND ur.role='HR_MANAGER'
+                        """, UUID.class);
+                hrs.forEach(hrId -> sendUserNotice(hrId, "STAFFING_SHIP_MANAGER_NEEDED", hrTitle, hrContent));
+            }
+            return;
+        }
+        recipients.forEach(uid -> sendUserNotice(uid, "STAFFING_WORKFLOW", title, content));
     }
 
     private UUID requestCruise(UUID requestId) {

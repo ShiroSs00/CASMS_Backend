@@ -127,6 +127,12 @@ public class NotificationService {
                 .forEach(u -> notifyUser(u, type, title, content, null));
     }
 
+    @Transactional
+    public void notifyUserId(UUID userId, String type, String title, String content) {
+        if (userId == null) return;
+        userRepository.findById(userId).ifPresent(u -> notifyUser(u, type, title, content, null));
+    }
+
     private void afterCommit(Runnable task) {
         if (org.springframework.transaction.support.TransactionSynchronizationManager.isSynchronizationActive()) {
             org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(

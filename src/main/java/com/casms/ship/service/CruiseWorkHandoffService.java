@@ -2,8 +2,10 @@ package com.casms.ship.service;
 
 import com.casms.common.exception.BusinessException;
 import com.casms.identity.enums.Role;
+import com.casms.notification.service.NotificationService;
 import com.casms.security.principal.CasmsPrincipal;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.access.AccessDeniedException;
@@ -21,6 +23,8 @@ import java.util.UUID;
 public class CruiseWorkHandoffService {
     private final JdbcTemplate jdbc;
     private final ItineraryProgramPolicy programPolicy;
+    @Autowired(required = false)
+    private NotificationService notificationService;
 
     public enum Group { ASM, SHIP }
     public enum Action { ACCEPT, COMPLETE, RETURN }
@@ -242,14 +246,52 @@ public class CruiseWorkHandoffService {
                     INSERT INTO "StaffingDecision" (request_id,revision,action,actor_id)
                     SELECT request_id,revision,'ASM_COMPLETED',? FROM promoted
                     """, cruiseId, actor.getUserId());
-            jdbc.update("""
-                    INSERT INTO "Notification" (notification_id,recipient_user_id,notification_type,title,content,created_at)
-                    SELECT gen_random_uuid(), cs.user_id, 'STAFFING_WORKFLOW', 'Chương trình chuyến đã hoàn tất',
-                        'Kiểm tra tàu và chuẩn bị nhu cầu nhân sự. Mã yêu cầu: ' || req.request_id, now()
+            var cruiseMeta = jdbc.queryForList(
+                    "SELECT cruise_code, cruise_name FROM \"Cruise\" WHERE cruise_id=?", cruiseId);
+            String cCode = cruiseMeta.isEmpty() ? "chuyến khởi hành" : String.valueOf(cruiseMeta.getFirst().get("cruise_code"));
+            String cName = cruiseMeta.isEmpty() ? "" : String.valueOf(cruiseMeta.getFirst().get("cruise_name"));
+            String cLabel = (cName != null && !cName.isBlank()) ? cCode + " — " + cName.trim() : cCode;
+            List<UUID> shipManagers = jdbc.queryForList("""
+                    SELECT cs.user_id
                     FROM "StaffingRequest" req JOIN "CruiseStaff" cs USING(cruise_id)
                     WHERE req.cruise_id=? AND req.workflow_version='V2' AND req.status='PENDING_SHIP_REVIEW'
                         AND cs.status='ACTIVE' AND cs.role_in_cruise='SHIP_MANAGER'
-                    """, cruiseId);
+                    """, UUID.class, cruiseId);
+            if (!shipManagers.isEmpty()) {
+                String sTitle = "Chương trình chuyến " + cCode + " đã hoàn tất";
+                String sBody = "Quản lý hoạt động và dịch vụ đã hoàn tất chương trình chuyến "
+                        + cLabel + ". Vui lòng mở khu vực, gán máy POS và lập định biên nhân sự.";
+                for (UUID smId : shipManagers) {
+                    if (notificationService != null) {
+                        notificationService.notifyUserId(smId, "STAFFING_WORKFLOW", sTitle, sBody);
+                    } else {
+                        jdbc.update("""
+                                INSERT INTO "Notification" (notification_id,recipient_user_id,notification_type,title,content,created_at)
+                                VALUES (gen_random_uuid(),?,'STAFFING_WORKFLOW',?,?,now())
+                                """, smId, sTitle, sBody);
+                    }
+                }
+            } else {
+                boolean hasPendingShipReview = Boolean.TRUE.equals(jdbc.queryForObject("""
+                        SELECT EXISTS (SELECT 1 FROM "StaffingRequest"
+                            WHERE cruise_id=? AND workflow_version='V2' AND status='PENDING_SHIP_REVIEW')
+                        """, Boolean.class, cruiseId));
+                if (hasPendingShipReview) {
+                    String hrTitle = "Chuyến " + cCode + " cần phân công Quản lý tàu";
+                    String hrBody = "Chương trình chuyến " + cLabel
+                            + " đã hoàn tất nhưng chưa có Quản lý tàu phụ trách. Vui lòng phân công tại mục Phân công nhân sự.";
+                    if (notificationService != null) {
+                        notificationService.notifyRole(Role.HR_MANAGER, "STAFFING_SHIP_MANAGER_NEEDED", hrTitle, hrBody);
+                    } else {
+                        jdbc.update("""
+                                INSERT INTO "Notification" (notification_id,recipient_user_id,notification_type,title,content,created_at)
+                                SELECT gen_random_uuid(), u.user_id, 'STAFFING_SHIP_MANAGER_NEEDED', ?, ?, now()
+                                FROM "User" u JOIN "UserRole" ur USING(user_id)
+                                WHERE u.status='ACTIVE' AND ur.role='HR_MANAGER'
+                                """, hrTitle, hrBody);
+                    }
+                }
+            }
         }
         return select(SELECT_TASKS + " WHERE c.cruise_id=? AND w.work_group=?", actor, true, cruiseId, group.name()).getFirst();
     }

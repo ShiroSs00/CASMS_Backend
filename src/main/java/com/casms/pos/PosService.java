@@ -329,7 +329,7 @@ public class PosService {
         if (!catalog.isCanSellIndependently() || !catalog.isCanBuyOnboard())
             throw invalid(
                     "SERVICE_NOT_RETAIL_ONBOARD", "Service cannot be sold independently onboard");
-        NewWriteCurrency.requireUsd(catalog.getCurrencyCode());
+        NewWriteCurrency.requireSupportedCurrency(catalog.getCurrencyCode());
         if (catalog.getPrice() == null || catalog.getPrice().signum() <= 0)
             throw invalid("POS_PRICE_REQUIRED", "A positive catalogue price is required");
         if (input.scheduleId() != null) {
