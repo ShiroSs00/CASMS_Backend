@@ -98,6 +98,7 @@ class BookingServiceTest {
     @Mock private PaymentRepository paymentRepository;
     @Mock private RefundRepository refundRepository;
     @Mock private NotificationRepository notificationRepository;
+    @Mock private com.casms.notification.service.NotificationService notificationService;
     @Mock private BookingEmailService bookingEmailService;
     @Mock private IdempotencyRecordRepository idempotencyRecordRepository;
     @Mock private BusinessCodeGenerator businessCodeGenerator;
@@ -173,9 +174,9 @@ class BookingServiceTest {
     }
 
     @org.junit.jupiter.params.ParameterizedTest
-    @org.junit.jupiter.params.provider.ValueSource(booleans = {true, false})
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"same", "omitted", "differentName", "differentDocument"})
     @DisplayName("Đặt tour thành công cho khách vãng lai và tự động cấp tài khoản theo email")
-    void createBooking_guestSuccess(boolean sameIdentityOnNextTrip) {
+    void createBooking_guestSuccess(String nextTripIdentity) {
         when(businessCodeGenerator.next("BK")).thenReturn("BK-0001", "BK-0002");
         BookingCreateRequest request = new BookingCreateRequest();
         request.setCruiseId(cruiseId);
@@ -184,6 +185,8 @@ class BookingServiceTest {
         PassengerBookingItemRequest p = new PassengerBookingItemRequest();
         p.setFullName("Nguyen Van A");
         p.setDateOfBirth(LocalDate.of(1990, 1, 1));
+        p.setDocumentType(PassengerDocumentType.Passport);
+        p.setDocumentNumber("TEST123");
         p.setEmail("nguyenvana@example.com");
         p.setPhoneNumber("+84912345678");
         p.setCabinId(cabinId);
@@ -277,7 +280,7 @@ class BookingServiceTest {
         assertNotNull(response);
         assertEquals(BookingStatus.Draft, response.getBookingStatus());
         assertNotNull(response.getBookingReference());
-        verify(notificationRepository).save(any());
+        verify(notificationService).notifyUser(any(), any(), any(), any(), any());
         verify(bookingContractRepository).save(any());
 
         var profiles = org.mockito.ArgumentCaptor.forClass(Passenger.class);
@@ -292,7 +295,12 @@ class BookingServiceTest {
         nextQuote.setQuoteId(UUID.randomUUID()); nextQuote.setStatus("ACTIVE");
         when(bookingQuoteRepository.findById(nextQuote.getQuoteId())).thenReturn(Optional.of(nextQuote));
         request.setQuoteId(nextQuote.getQuoteId());
-        if (sameIdentityOnNextTrip) {
+        if ("omitted".equals(nextTripIdentity)) {
+            p.setDateOfBirth(null);
+            p.setDocumentType(null);
+            p.setDocumentNumber(null);
+        }
+        if ("same".equals(nextTripIdentity) || "omitted".equals(nextTripIdentity)) {
             BookingDetailResponse second = bookingService.createBooking(request, null);
             assertNotEquals(response.getBookingId(), second.getBookingId());
             var memberships = org.mockito.ArgumentCaptor.forClass(BookingPassenger.class);
@@ -301,8 +309,14 @@ class BookingServiceTest {
             assertNotEquals(memberships.getAllValues().get(0).getBookingPassengerId(),
                     memberships.getAllValues().get(1).getBookingPassengerId());
             assertSame(firstProfile.getUser(), savedUser);
+            assertEquals(LocalDate.of(1990, 1, 1), firstProfile.getDateOfBirth());
+            assertEquals("TEST123", firstProfile.getDocumentNumberProtected());
         } else {
-            p.setFullName("Another Person");
+            if ("differentName".equals(nextTripIdentity)) {
+                p.setFullName("Another Person");
+            } else {
+                p.setDocumentNumber("TEST456");
+            }
             assertEquals("PASSENGER_IDENTITY_MISMATCH", assertThrows(BusinessException.class,
                     () -> bookingService.createBooking(request, null)).getCode());
             assertEquals("Nguyen Van A", firstProfile.getFullName());

@@ -61,3 +61,34 @@ Voyage departure window validation compares the ship-local departure minute agai
 ## Shore excursion destination
 
 When applying a schedule or synchronizing its programs, materialization verifies the destination of the exact port call and checks that referenced tours are planned templates tied to that destination. An unlinked, mismatched or ineligible existing template raises a 422 and rolls back the operation. A missing source or supplier produces a failed mapping without a tour. See [the reviewed flow](../ITINERARY-PROGRAM-FLOWS.md#shore-excursion-template-selection).
+
+### Source port inheritance
+
+```mermaid
+sequenceDiagram
+    actor Planner
+    participant Controller as CruiseController
+    participant Service as CruiseService
+    participant Schedule as ScheduleMaterializationService
+    participant Repo as Cruise / Itinerary repositories
+    participant DB as PostgreSQL
+    Planner->>Controller: POST /cruise with source version and departure date
+    Note over Controller: CRUISE_MANAGER role and CRUISE_CREATE permission
+    Controller->>Service: Create departure
+    Service->>Schedule: Preview and validate source schedule inside create transaction
+    alt Preview defines an endpoint port
+        Service->>Service: Use source port even if request sends a different port
+    else Preview has no departure port (sea day)
+        Service->>Service: Validate the supplied departure port against directory and scope
+    end
+    Service->>Repo: Save departure
+    Repo->>DB: Write cruise with resolved endpoint ports
+    Service->>Schedule: Materialize itinerary in the same transaction
+    Schedule->>Repo: Save itinerary, port facts, days and calls
+    Repo->>DB: Write materialized schedule
+    Note over Schedule,DB: Use the resolved cruise departure port for the sea-day snapshot
+    Service-->>Controller: Created cruise with resolved endpoint ports
+    Controller-->>Planner: Created cruise
+```
+
+Validation or materialization failure aborts creation. Inherited stops stay in their scheduled order. Cruise list/detail use the resolved port IDs, while schedule reads and operational validation use the materialized departure port facts.

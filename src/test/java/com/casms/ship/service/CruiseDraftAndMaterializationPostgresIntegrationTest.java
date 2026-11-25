@@ -551,23 +551,24 @@ public class CruiseDraftAndMaterializationPostgresIntegrationTest {
                 "Itinerary status phải duy trì DRAFT, không được tự ý sang OPEN_FOR_SALE");
     }
 
-    @Test
-    @DisplayName(
-            "BE-02 & BE-03 / G04: Tạo Cruise từ sourceVersion tự động suy luận returnDatetime và"
-                + " cảng, khóa thời lượng")
-    void test_BE02_and_BE03_createCruise_autoDerivesDurationAndPorts_locksDuration() {
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
+    @DisplayName("G04: Tạo chuyến kế thừa thời lượng và cảng từ lịch nguồn")
+    void test_BE02_and_BE03_createCruise_autoDerivesDurationAndPorts_locksDuration(
+            boolean sendsDifferentPorts) {
         TripScheduleVersion version =
                 createPublishedTripVersion(
                         "TR-BE03-" + UUID.randomUUID().toString().substring(0, 4), "DOMESTIC");
         Instant departure = Instant.parse("2026-12-15T01:00:00Z");
 
         CruiseCreateRequest req = new CruiseCreateRequest();
-        req.setExpectedPassengerCount(1);
         req.setCruiseName("Hành Trình Khóa Thời Lượng Tự Động");
         req.setDepartureDatetime(departure);
-        // Không truyền returnDatetime, departurePortId, returnPortId (G04)
+        if (sendsDifferentPorts) {
+            req.setDeparturePortId(portDan.getPortId());
+            req.setReturnPortId(portHph.getPortId());
+        }
         req.setSourceVersionId(version.getVersionId());
-        req.setExpectedSourceVersionRevision(version.getRevision());
         req.setShipId(testShip.getShipId());
 
         CruiseResponse created = cruiseService.create(req);

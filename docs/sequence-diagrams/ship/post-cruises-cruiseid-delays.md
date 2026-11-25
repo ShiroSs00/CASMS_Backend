@@ -38,3 +38,5 @@ See the [reviewed flow](../TRIP-DEPARTURE-WINDOW.md) for authorization, validati
 Khi nhánh xử lý gọi kiểm tra chuẩn bị vận hành, yêu cầu nhân sự mới phải được vận hành duyệt và vẫn đáp ứng điều kiện về tàu, POS, định mức dịch vụ, khu vực và hoạt động. Kết quả còn thiếu được phản ánh qua kiểm tra staffing của bước hiện tại. [Luồng kiểm tra và bàn giao](../SHIP-STAFFING-HANDOFF.md).
 
 Voyage departure window validation compares the ship-local departure minute against the template bounds. See the [departure window flow](../TRIP-DEPARTURE-WINDOW.md).
+
+The departure port facts used here come from [source port inheritance](post-cruise.md#source-port-inheritance) for newly materialized cruises. When the source has no departure port, the facts are captured from the chosen departure port.

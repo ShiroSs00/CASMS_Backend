@@ -31,7 +31,11 @@ sequenceDiagram
         Service->>Repository: Validate quote ownership, expiry, policy, sale and capacity; lock cruise and cabins
         Service->>Repository: Resolve customer account, not staff account
         Service->>DB: Advisory transaction lock on normalized email, unique normalized-email constraint
-        Note over Service,DB: Existing Passenger identity cannot be overwritten by another trip
+        Service->>DB: Load existing representative Passenger by user when reusing their profile
+        alt Name or supplied optional identity field conflicts with saved profile
+            Service-->>Controller: 409 PASSENGER_IDENTITY_MISMATCH, roll back booking creation
+        end
+        Note over Service,DB: Omitted optional identity fields reuse saved birth date and document without changing the profile
         Service->>DB: Persist booking, bookingPassenger IDs, cabin/package assignments, contract references and installments
         Service->>DB: New guest account setup marker, in-app signing invitation
         Service-->>Idem: BookingDetailResponse

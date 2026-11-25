@@ -270,10 +270,10 @@ public class CruiseService {
             if (projection.getReturnDatetime() != null) {
                 request.setReturnDatetime(projection.getReturnDatetime());
             }
-            if (request.getDeparturePortId() == null && projection.getDeparturePortId() != null) {
+            if (projection.getDeparturePortId() != null) {
                 request.setDeparturePortId(projection.getDeparturePortId());
             }
-            if (request.getReturnPortId() == null && projection.getReturnPortId() != null) {
+            if (projection.getReturnPortId() != null) {
                 request.setReturnPortId(projection.getReturnPortId());
             }
         }

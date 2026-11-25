@@ -910,11 +910,15 @@ public class BookingService {
                 passenger = new Passenger();
             }
             if (passenger.getPassengerId() != null) {
+                String documentNumber = pReq.getDocumentNumber();
                 if (!Objects.equals(passenger.getFullName(), pReq.getFullName().trim())
-                        || !Objects.equals(passenger.getDateOfBirth(), pReq.getDateOfBirth())
-                        || !Objects.equals(passenger.getDocumentType(), pReq.getDocumentType())
-                        || !Objects.equals(passenger.getDocumentNumberProtected(),
-                                pReq.getDocumentNumber() == null ? null : pReq.getDocumentNumber().trim().toUpperCase(Locale.ROOT))) {
+                        || (pReq.getDateOfBirth() != null
+                                && !Objects.equals(passenger.getDateOfBirth(), pReq.getDateOfBirth()))
+                        || (pReq.getDocumentType() != null
+                                && !Objects.equals(passenger.getDocumentType(), pReq.getDocumentType()))
+                        || (documentNumber != null && !documentNumber.isBlank()
+                                && !Objects.equals(passenger.getDocumentNumberProtected(),
+                                        documentNumber.trim().toUpperCase(Locale.ROOT)))) {
                     throw new BusinessException(HttpStatus.CONFLICT, "PASSENGER_IDENTITY_MISMATCH",
                             "Existing passenger identity must be verified and updated separately");
                 }
