@@ -80,9 +80,20 @@ public class CruiseMainflowService {
             String reason,
             String fingerprint,
             String preparationEvidence,
-            Map<String, Long> preparationRevisions) {
+            Map<String, Long> preparationRevisions,
+            Boolean recallPackages,
+            Boolean recallSaleTerms) {
         public Action(Long expectedRevision, String reason, String fingerprint) {
-            this(expectedRevision, reason, fingerprint, null, null);
+            this(expectedRevision, reason, fingerprint, null, null, null, null);
+        }
+
+        public Action(
+                Long expectedRevision,
+                String reason,
+                String fingerprint,
+                String preparationEvidence,
+                Map<String, Long> preparationRevisions) {
+            this(expectedRevision, reason, fingerprint, preparationEvidence, preparationRevisions, null, null);
         }
     }
 
@@ -1078,10 +1089,32 @@ SELECT EXISTS(SELECT 1 FROM "CruisePricingPolicy" p JOIN "Cruise" c USING(cruise
                             pricing.review(id, "approve", new CruisePricingPolicyService.Review(policy.getRevision(), null), actor);
                     }
                 } else if (unified) {
-                    saleTermsServices.getObject().recallForPlan(id, actor, request.reason());
-                    packageSelections.getObject().recall(id, actor, request.reason());
+                    boolean isReject = "REJECT".equals(action);
+                    if (isReject || Boolean.TRUE.equals(request.recallSaleTerms())) {
+                        saleTermsServices.getObject().recallForPlan(id, actor, request.reason());
+                    }
+                    if (isReject || Boolean.TRUE.equals(request.recallPackages())) {
+                        packageSelections.getObject().recall(id, actor, request.reason());
+                    }
                 } else {
                     pricingServices.getObject().recallForPlan(id, actor, true);
+                }
+                if (!"APPROVE".equals(action)) {
+                    jdbc.update(
+                            """
+                            UPDATE "CruisePreparationSection"
+                            SET status = 'RETURNED',
+                                returned_by_user_id = ?,
+                                returned_at = now(),
+                                return_reason = ?,
+                                revision = revision + 1,
+                                updated_at = now()
+                            WHERE cruise_id = ?
+                              AND status = 'SUBMITTED'
+                            """,
+                            actor,
+                            request.reason(),
+                            id);
                 }
                 after =
                         action.equals("APPROVE")

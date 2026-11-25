@@ -126,11 +126,14 @@ public class CruiseMainflowController {
                 request,
                 principal.getUserId());
         if ("submit".equalsIgnoreCase(action)) {
+            String cruiseLabel = formatCruiseLabel(view);
             notifications.notifyRole(
                     com.casms.identity.enums.Role.OPERATIONS_MANAGER,
                     "CRUISE_PLAN_SUBMITTED",
-                    "Hồ sơ chuyến mới chờ xét duyệt",
-                    "Quản lý lịch trình vừa nộp hồ sơ chuyến khởi hành để xét duyệt.");
+                    "Hồ sơ chuyến " + view.cruiseCode() + " chờ xét duyệt",
+                    "Quản lý lịch trình vừa nộp hồ sơ chuyến "
+                            + cruiseLabel
+                            + " để Quản lý vận hành xét duyệt.");
         }
         return ApiResponse.success(view);
     }
@@ -147,28 +150,45 @@ public class CruiseMainflowController {
                 action.toUpperCase(java.util.Locale.ROOT).replace('-', '_'),
                 request,
                 principal.getUserId());
+        String cruiseLabel = formatCruiseLabel(view);
         if ("approve".equalsIgnoreCase(action)) {
             notifications.notifyRole(
                     com.casms.identity.enums.Role.CRUISE_MANAGER,
                     "CRUISE_PLAN_APPROVED",
-                    "Hồ sơ chuyến đã được phê duyệt",
-                    "Quản lý vận hành đã phê duyệt hồ sơ chuyến khởi hành.");
+                    "Hồ sơ chuyến " + view.cruiseCode() + " đã được phê duyệt",
+                    "Quản lý vận hành đã phê duyệt hồ sơ chuyến " + cruiseLabel + ".");
             notifications.notifyRole(
                     com.casms.identity.enums.Role.SHIP_MANAGER,
                     "CRUISE_PLAN_APPROVED",
-                    "Chuyến khởi hành đã được phê duyệt",
-                    "Hồ sơ chuyến khởi hành đã được phê duyệt và sẵn sàng phối hợp chuẩn bị tàu.");
+                    "Chuyến " + view.cruiseCode() + " đã được phê duyệt",
+                    "Hồ sơ chuyến "
+                            + cruiseLabel
+                            + " đã được phê duyệt và sẵn sàng phối hợp chuẩn bị tàu.");
             notifications.notifyRole(
                     com.casms.identity.enums.Role.ACTIVITY_SERVICE_MANAGER,
                     "CRUISE_PLAN_APPROVED",
-                    "Chuyến khởi hành đã được phê duyệt",
-                    "Hồ sơ chuyến khởi hành đã được phê duyệt để phối hợp chương trình và dịch vụ.");
+                    "Chuyến " + view.cruiseCode() + " đã được phê duyệt",
+                    "Hồ sơ chuyến "
+                            + cruiseLabel
+                            + " đã được phê duyệt để phối hợp chương trình và dịch vụ.");
         } else {
+            boolean rejected = "reject".equalsIgnoreCase(action);
+            String reasonText =
+                    request.reason() != null && !request.reason().isBlank()
+                            ? " Lý do: " + request.reason().trim()
+                            : "";
             notifications.notifyRole(
                     com.casms.identity.enums.Role.CRUISE_MANAGER,
-                    "CRUISE_PLAN_REVISION_REQUESTED",
-                    "Hồ sơ chuyến cần chỉnh sửa",
-                    "Quản lý vận hành đã yêu cầu chỉnh sửa/từ chối hồ sơ chuyến khởi hành.");
+                    rejected ? "CRUISE_PLAN_REJECTED" : "CRUISE_PLAN_REVISION_REQUESTED",
+                    (rejected ? "Hồ sơ chuyến " : "Hồ sơ chuyến ")
+                            + view.cruiseCode()
+                            + (rejected ? " bị từ chối" : " cần chỉnh sửa"),
+                    "Quản lý vận hành đã "
+                            + (rejected ? "từ chối" : "yêu cầu chỉnh sửa")
+                            + " hồ sơ chuyến "
+                            + cruiseLabel
+                            + "."
+                            + reasonText);
         }
         return ApiResponse.success(view);
     }
@@ -180,11 +200,21 @@ public class CruiseMainflowController {
             @RequestBody CruiseMainflowService.Action request,
             @AuthenticationPrincipal CasmsPrincipal principal) {
         CruiseMainflowService.View view = service.setReady(cruiseId, request, principal.getUserId());
+        String cruiseLabel = formatCruiseLabel(view);
         notifications.notifyRole(
                 com.casms.identity.enums.Role.CRUISE_MANAGER,
                 "CRUISE_READY_FOR_SALE",
-                "Chuyến đã đạt trạng thái Sẵn sàng mở bán",
-                "Quản lý vận hành đã xác nhận chuyến đạt điều kiện sẵn sàng mở bán.");
+                "Chuyến " + view.cruiseCode() + " sẵn sàng mở bán",
+                "Quản lý vận hành đã xác nhận chuyến "
+                        + cruiseLabel
+                        + " đạt điều kiện sẵn sàng mở bán.");
         return ApiResponse.success(view);
+    }
+
+    private String formatCruiseLabel(CruiseMainflowService.View view) {
+        if (view.cruiseName() != null && !view.cruiseName().isBlank()) {
+            return view.cruiseCode() + " — " + view.cruiseName().trim();
+        }
+        return view.cruiseCode();
     }
 }
