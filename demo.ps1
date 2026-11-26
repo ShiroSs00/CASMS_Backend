@@ -147,6 +147,7 @@ function Assert-SafeDemoConfig {
         DbUrl       = $dbUrl
         DbUser      = $Cfg['DB_USERNAME']
         DbPassword  = $Cfg['DB_PASSWORD']
+        JwtSecret   = $Cfg['JWT_SECRET']
         ServerPort  = if ($Cfg.ContainsKey('SERVER_PORT') -and $Cfg['SERVER_PORT']) { [int]$Cfg['SERVER_PORT'] } else { 8080 }
         SepayApiKey = $Cfg['SEPAY_API_KEY']
         WebBooking  = if ($Cfg.ContainsKey('WEB_BOOKING_URL') -and $Cfg['WEB_BOOKING_URL']) { $Cfg['WEB_BOOKING_URL'].TrimEnd('/') } else { 'http://localhost:5173' }
@@ -290,6 +291,14 @@ function Start-DemoBackend {
     $env:DB_URL = $Conf.DbUrl
     $env:DB_USERNAME = $Conf.DbUser
     $env:DB_PASSWORD = $Conf.DbPassword
+    if (-not [string]::IsNullOrWhiteSpace($Conf.JwtSecret)) {
+        $env:JWT_SECRET = $Conf.JwtSecret
+    } elseif ([string]::IsNullOrWhiteSpace($env:JWT_SECRET)) {
+        $signingBytes = New-Object byte[] 32
+        $signingRandom = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+        try { $signingRandom.GetBytes($signingBytes) } finally { $signingRandom.Dispose() }
+        $env:JWT_SECRET = [Convert]::ToBase64String($signingBytes)
+    }
     $env:SPRING_DATASOURCE_URL = $Conf.DbUrl
     $env:SPRING_DATASOURCE_USERNAME = $Conf.DbUser
     $env:SPRING_DATASOURCE_PASSWORD = $Conf.DbPassword

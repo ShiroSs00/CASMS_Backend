@@ -2,6 +2,7 @@ package com.casms.servicepackage.service;
 
 import com.casms.booking.entity.BookingPassenger;
 import com.casms.booking.enums.BookingStatus;
+import com.casms.booking.enums.BookingPassengerParticipationStatus;
 import com.casms.booking.repository.BookingPassengerRepository;
 import com.casms.common.exception.BusinessException;
 import com.casms.cruisepackage.service.CruisePackageEntitlementService;
@@ -229,8 +230,9 @@ public class ServiceRequestService {
                             .findById(bookingPassengerId)
                             .orElseThrow(() -> missing("Booking passenger", bookingPassengerId));
             assertSamePassenger(bp, passenger);
-            if (bp.getBooking().getBookingStatus() != BookingStatus.Confirmed)
-                throw new IllegalStateException("Booking is not confirmed");
+            if (bp.getBooking().getBookingStatus() != BookingStatus.Confirmed
+                || bp.getParticipationStatus() != BookingPassengerParticipationStatus.Active)
+                throw new IllegalStateException("An active passenger on a confirmed booking is required");
         } else {
             var candidates =
                     bookingPassengers
@@ -239,7 +241,8 @@ public class ServiceRequestService {
                             .filter(
                                     b ->
                                             b.getBooking().getBookingStatus()
-                                                    == BookingStatus.Confirmed)
+                                                    == BookingStatus.Confirmed
+                                            && b.getParticipationStatus() == BookingPassengerParticipationStatus.Active)
                             .toList();
             if (candidates.size() == 1) {
                 bp = candidates.get(0);

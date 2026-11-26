@@ -51,6 +51,10 @@ public class ImpactNotificationOutbox {
     @JoinColumn(name = "recipient_user_id", nullable = false)
     private User recipientUser;
 
+    @OneToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "notification_id", unique = true)
+    private Notification notification;
+
     @Column(name = "event_identity", nullable = false, length = 100)
     private String eventIdentity;
 

@@ -4,6 +4,10 @@ import com.casms.common.response.ApiResponse;
 import com.casms.payment.dto.response.InvoiceResponse;
 import com.casms.payment.enums.InvoiceDocumentType;
 import com.casms.payment.service.InvoiceService;
+import com.casms.payment.service.OnboardFinancialAccess;
+import com.casms.identity.enums.Permission;
+import com.casms.security.principal.CasmsPrincipal;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -28,6 +32,7 @@ import java.util.UUID;
 public class InvoiceController {
 
     private final InvoiceService invoiceService;
+    private final OnboardFinancialAccess financialAccess;
 
     @Operation(summary = "Sinh hóa đơn cho đơn đặt tour (Booking Invoice)")
     @PreAuthorize("hasAnyAuthority('INVOICE_GENERATE', 'PAYMENT_PROCESS')")
@@ -35,7 +40,8 @@ public class InvoiceController {
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<InvoiceResponse> generateBookingInvoice(
             @Parameter(description = "ID đơn đặt tour", required = true) @PathVariable
-                    UUID bookingId) {
+                    UUID bookingId, @AuthenticationPrincipal CasmsPrincipal actor) {
+        financialAccess.requireFinance(actor, Permission.INVOICE_GENERATE, Permission.PAYMENT_PROCESS);
         return ApiResponse.success(
                 "Booking invoice generated", invoiceService.generateBookingInvoice(bookingId));
     }
@@ -54,7 +60,9 @@ public class InvoiceController {
                             description = "Loại hóa đơn: PreliminaryFolio hoặc FinalStatement",
                             required = true)
                     @RequestParam(defaultValue = "FinalStatement")
-                    InvoiceDocumentType documentType) {
+                    InvoiceDocumentType documentType,
+            @AuthenticationPrincipal CasmsPrincipal actor) {
+        financialAccess.requireFinance(actor, Permission.INVOICE_GENERATE, Permission.PAYMENT_PROCESS);
         return ApiResponse.success(
                 "Onboard invoice generated",
                 invoiceService.generateOnboardInvoice(onboardAccountId, documentType));
@@ -64,8 +72,17 @@ public class InvoiceController {
     @PreAuthorize("hasAnyAuthority('PAYMENT_READ', 'INVOICE_GENERATE', 'PAYMENT_PROCESS')")
     @GetMapping("/{invoiceId}")
     public ApiResponse<InvoiceResponse> getInvoiceDetail(
-            @Parameter(description = "ID hóa đơn", required = true) @PathVariable UUID invoiceId) {
-        return ApiResponse.success(invoiceService.getInvoiceDetail(invoiceId));
+            @Parameter(description = "ID hóa đơn", required = true) @PathVariable UUID invoiceId,
+            @AuthenticationPrincipal CasmsPrincipal actor) {
+        financialAccess.requireAuthenticated(actor);
+        var invoice = invoiceService.getInvoiceDetail(invoiceId);
+        if (invoice.getOnboardAccountId() != null || invoice.getBookingId() == null) {
+            financialAccess.requireFinance(actor, Permission.PAYMENT_READ,
+                    Permission.INVOICE_GENERATE, Permission.PAYMENT_PROCESS);
+        } else {
+            financialAccess.requireBookingInvoice(actor, financialAccess.booking(invoice.getBookingId()));
+        }
+        return ApiResponse.success(invoice);
     }
 
     @Operation(summary = "Lấy danh sách hóa đơn theo đơn đặt tour")
@@ -73,8 +90,13 @@ public class InvoiceController {
     @GetMapping("/booking/{bookingId}")
     public ApiResponse<List<InvoiceResponse>> getInvoicesForBooking(
             @Parameter(description = "ID đơn đặt tour", required = true) @PathVariable
-                    UUID bookingId) {
-        return ApiResponse.success(invoiceService.getInvoicesForBooking(bookingId));
+                    UUID bookingId, @AuthenticationPrincipal CasmsPrincipal actor) {
+        financialAccess.requireAuthenticated(actor);
+        if (financialAccess.isFinance(actor, Permission.INVOICE_GENERATE, Permission.PAYMENT_PROCESS)) {
+            return ApiResponse.success(invoiceService.getInvoicesForBooking(bookingId));
+        }
+        financialAccess.requireBookingInvoice(actor, financialAccess.booking(bookingId));
+        return ApiResponse.success(invoiceService.readExistingBookingInvoices(bookingId));
     }
 
     @Operation(summary = "Lấy danh sách hóa đơn theo tài khoản phòng trên tàu")
@@ -82,7 +104,8 @@ public class InvoiceController {
     @GetMapping("/onboard/{onboardAccountId}")
     public ApiResponse<List<InvoiceResponse>> getInvoicesForOnboardAccount(
             @Parameter(description = "ID tài khoản phòng trên tàu", required = true) @PathVariable
-                    UUID onboardAccountId) {
+                    UUID onboardAccountId, @AuthenticationPrincipal CasmsPrincipal actor) {
+        financialAccess.requireFinance(actor, Permission.PAYMENT_READ, Permission.INVOICE_GENERATE);
         return ApiResponse.success(invoiceService.getInvoicesForOnboardAccount(onboardAccountId));
     }
 }

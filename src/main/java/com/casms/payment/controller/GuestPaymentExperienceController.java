@@ -90,6 +90,12 @@ public class GuestPaymentExperienceController {
         return ApiResponse.success(guestPaymentExperienceService.getLiveFolioStatement(onboardAccountId, bookingId, principal));
     }
 
+    @GetMapping("/folio/account")
+    public ApiResponse<GuestPaymentExperienceService.OnboardAccountSummary> discoverAccount(
+            @RequestParam UUID bookingId, @AuthenticationPrincipal CasmsPrincipal principal) {
+        return ApiResponse.success(guestPaymentExperienceService.discoverAccount(bookingId, principal));
+    }
+
     @Operation(
             summary = "Làm thủ tục Express Check-out chốt phòng & Nhận thẻ thông hành rời tàu",
             description = "Tự động cấn trừ tiền cọc bảo đảm, thanh toán số dư trực tuyến và phát hành Thẻ Thông Hành Rời Tàu QR số (Gangway Clearance Pass) không cần xếp hàng tại quầy lễ tân")

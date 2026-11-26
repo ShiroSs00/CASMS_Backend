@@ -5,6 +5,7 @@ import com.casms.activity.enums.*;
 import com.casms.activity.repository.*;
 import com.casms.booking.entity.BookingPassenger;
 import com.casms.booking.enums.BookingStatus;
+import com.casms.booking.enums.BookingPassengerParticipationStatus;
 import com.casms.booking.repository.BookingPassengerRepository;
 import com.casms.common.exception.BusinessException;
 import com.casms.common.service.BusinessCodeGenerator;
@@ -525,8 +526,9 @@ public class ActivityService {
                 .orElseThrow(() -> missing("Booking passenger", bookingPassengerId));
         int effectiveQuantity = (quantity == null || quantity < 1) ? 1 : quantity;
         assertBookingPassengerOwner(bp, userId, staff);
-        if (bp.getBooking().getBookingStatus() != BookingStatus.Confirmed) {
-            throw new IllegalStateException("Booking is not confirmed");
+        if (bp.getBooking().getBookingStatus() != BookingStatus.Confirmed
+                || bp.getParticipationStatus() != BookingPassengerParticipationStatus.Active) {
+            throw new IllegalStateException("An active passenger on a confirmed booking is required");
         }
         OnboardActivity a = activities.lockActivity(activityId)
                 .orElseThrow(() -> missing(ENTITY_ACTIVITY, activityId));
@@ -536,6 +538,10 @@ public class ActivityService {
             throw new IllegalStateException("Activity does not belong to the passenger's booking cruise");
         }
         var now = Instant.now();
+        if (a.getCruise().getStatus() == com.casms.ship.enums.CruiseStatus.CANCELLED
+                || a.getCruise().getStatus() == com.casms.ship.enums.CruiseStatus.COMPLETED) {
+            throw new IllegalStateException("Activity booking cruise is no longer active");
+        }
         portCallBooking.requireOnboardBooking(a.getCruise(), now);
         if (a.getStatus() != OnboardActivityStatus.OPEN || !a.getEndTime().isAfter(now)) {
             throw new IllegalStateException("Activity is not open for registration");
@@ -572,8 +578,9 @@ public class ActivityService {
         BookingPassenger bp = bookingPassengers.findById(bookingPassengerId)
                 .orElseThrow(() -> missing("Booking passenger", bookingPassengerId));
         assertBookingPassengerOwner(bp, userId, staff);
-        if (bp.getBooking().getBookingStatus() != BookingStatus.Confirmed) {
-            throw new IllegalStateException("Booking is not confirmed");
+        if (bp.getBooking().getBookingStatus() != BookingStatus.Confirmed
+                || bp.getParticipationStatus() != BookingPassengerParticipationStatus.Active) {
+            throw new IllegalStateException("An active passenger on a confirmed booking is required");
         }
         int effectiveQuantity = (quantity == null || quantity < 1) ? 1 : quantity;
         var e = excursions.lockById(excursionId)
@@ -581,7 +588,14 @@ public class ActivityService {
         if (!bp.getBooking().getCruise().getCruiseId().equals(e.getCruiseStop().getItinerary().getCruise().getCruiseId())) {
             throw new IllegalStateException("Excursion does not belong to the passenger's booking cruise");
         }
-        if (e.getStatus() != ShoreExcursionStatus.OPEN || !e.getPlannedReturnTime().isAfter(Instant.now())) {
+        var now = Instant.now();
+        var cruise = bp.getBooking().getCruise();
+        if (cruise.getStatus() == com.casms.ship.enums.CruiseStatus.CANCELLED
+                || cruise.getStatus() == com.casms.ship.enums.CruiseStatus.COMPLETED
+                || (cruise.getReturnDatetime() != null && !cruise.getReturnDatetime().isAfter(now))) {
+            throw new IllegalStateException("Excursion booking cruise is no longer active");
+        }
+        if (e.getStatus() != ShoreExcursionStatus.OPEN || !e.getPlannedReturnTime().isAfter(now)) {
             throw new IllegalStateException("Excursion is not open for registration");
         }
         if (registrations.existsByBookingPassenger_BookingPassengerIdAndShoreExcursion_ShoreExcursionIdAndStatusIn(

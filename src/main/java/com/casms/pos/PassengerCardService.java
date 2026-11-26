@@ -43,14 +43,31 @@ public class PassengerCardService {
     public record PassengerPreview(UUID bookingPassengerId, String passengerName) {}
     public record CardAssignment(UUID bookingPassengerId, String passengerName, Instant confirmedAt) {}
 
+    public enum AssignmentStatus { NOT_ASSIGNED, ASSIGNED, UNAVAILABLE }
+    public record CardStatus(AssignmentStatus status, Instant confirmedAt) {}
+
+    @Transactional(readOnly = true)
+    public CardStatus status(UUID bookingPassengerId, UUID userId) {
+        var passenger = passengers.findById(bookingPassengerId)
+                .orElseThrow(() -> new ResourceNotFoundException("Booking passenger", bookingPassengerId));
+        requireOwner(passenger, userId);
+        if (passenger.getBooking().getBookingStatus() != BookingStatus.Confirmed
+                || passenger.getParticipationStatus() != BookingPassengerParticipationStatus.Active) {
+            return new CardStatus(AssignmentStatus.UNAVAILABLE, null);
+        }
+        return jdbc.query("""
+                SELECT confirmed_at FROM "PassengerNfcCard"
+                WHERE booking_passenger_id = ? AND cruise_id = ?
+                """, (rs, row) -> new CardStatus(AssignmentStatus.ASSIGNED, rs.getTimestamp(1).toInstant()),
+                bookingPassengerId, passenger.getBooking().getCruise().getCruiseId())
+                .stream().findFirst().orElse(new CardStatus(AssignmentStatus.NOT_ASSIGNED, null));
+    }
+
     @Transactional
     public CardClaim issue(UUID bookingPassengerId, UUID userId) {
         var passenger = passengers.lockById(bookingPassengerId)
                 .orElseThrow(() -> new ResourceNotFoundException("Booking passenger", bookingPassengerId));
-        var owner = passenger.getPassenger().getUser();
-        if (owner == null || !owner.getUserId().equals(userId)) {
-            throw new AccessDeniedException("You can only access your own card claim");
-        }
+        requireOwner(passenger, userId);
         requireEligible(passenger);
         if (Boolean.TRUE.equals(jdbc.queryForObject("""
                 SELECT EXISTS (SELECT 1 FROM "PassengerNfcCard" WHERE booking_passenger_id = ?)
@@ -147,6 +164,13 @@ public class PassengerCardService {
         }
         requireEligible(passenger);
         return passenger;
+    }
+
+    private void requireOwner(BookingPassenger passenger, UUID userId) {
+        var owner = passenger.getPassenger().getUser();
+        if (owner == null || !owner.getUserId().equals(userId)) {
+            throw new AccessDeniedException("You can only access your own card claim");
+        }
     }
 
     private void requireEligible(BookingPassenger passenger) {

@@ -6,6 +6,7 @@ import lombok.extern.slf4j.Slf4j;
 
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
@@ -29,13 +30,14 @@ public class NotificationSseHub {
 
     public SseEmitter subscribe(UUID userId) {
         SseEmitter emitter = new SseEmitter(SSE_TIMEOUT_MS);
-        CopyOnWriteArrayList<SseEmitter> list =
-                emittersByUser.computeIfAbsent(userId, ignored -> new CopyOnWriteArrayList<>());
-        while (list.size() >= MAX_EMITTERS_PER_USER) {
-            SseEmitter oldest = list.remove(0);
-            try { oldest.complete(); } catch (Exception ignored) { /* already closed */ }
-        }
-        list.add(emitter);
+        List<SseEmitter> evicted = new java.util.ArrayList<>(1);
+        emittersByUser.compute(userId, (id, existing) -> {
+            var emitters = existing == null ? new CopyOnWriteArrayList<SseEmitter>() : existing;
+            while (emitters.size() >= MAX_EMITTERS_PER_USER) evicted.add(emitters.remove(0));
+            emitters.add(emitter);
+            return emitters;
+        });
+        evicted.forEach(SseEmitter::complete);
 
         Runnable cleanup = () -> removeEmitter(userId, emitter);
         emitter.onCompletion(cleanup);
@@ -73,12 +75,23 @@ public class NotificationSseHub {
         }
     }
 
+    @Scheduled(fixedDelay = 25000)
+    void heartbeat() {
+        emittersByUser.forEach((userId, emitters) -> {
+            for (SseEmitter emitter : emitters) {
+                try {
+                    emitter.send(SseEmitter.event().comment("keepalive"));
+                } catch (IOException | IllegalStateException ex) {
+                    removeEmitter(userId, emitter);
+                }
+            }
+        });
+    }
+
     private void removeEmitter(UUID userId, SseEmitter emitter) {
-        CopyOnWriteArrayList<SseEmitter> list = emittersByUser.get(userId);
-        if (list == null) return;
-        list.remove(emitter);
-        if (list.isEmpty()) {
-            emittersByUser.remove(userId, list);
-        }
+        emittersByUser.computeIfPresent(userId, (id, emitters) -> {
+            emitters.remove(emitter);
+            return emitters.isEmpty() ? null : emitters;
+        });
     }
 }
