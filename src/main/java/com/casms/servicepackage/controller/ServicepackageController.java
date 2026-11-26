@@ -72,16 +72,26 @@ public class ServicepackageController {
             ServiceUsagePolicy preCruiseUsagePolicy,
             @Positive Integer preCruiseUsageLimit,
             @Size(max=100) String usageTimeZone,
-            Set<@NotNull ServiceOperatingPeriod> operatingPeriods) {
+            Set<@NotNull ServiceOperatingPeriod> operatingPeriods,
+            @Positive Integer defaultRequiredStaff) {
+        public ServiceCatalogDto(String name, String description, String type, BigDecimal price,
+                String currency, Integer capacity, Boolean scheduled, UUID categoryId,
+                Boolean canBuyPreCruise, Boolean canBuyOnboard, Boolean canSellIndependently,
+                String unitCode, ServiceUsagePolicy preCruiseUsagePolicy, Integer preCruiseUsageLimit,
+                String usageTimeZone, Set<ServiceOperatingPeriod> operatingPeriods) {
+            this(name, description, type, price, currency, capacity, scheduled, categoryId,
+                    canBuyPreCruise, canBuyOnboard, canSellIndependently, unitCode,
+                    preCruiseUsagePolicy, preCruiseUsageLimit, usageTimeZone, operatingPeriods, null);
+        }
         public ServiceCatalogDto(String name, String description, String type, BigDecimal price,
                 String currency, Integer capacity, Boolean scheduled, UUID categoryId, String unitCode) {
             this(name, description, type, price, currency, capacity, scheduled, categoryId,
-                    null, null, null, unitCode, null, null, null, null);
+                    null, null, null, unitCode, null, null, null, null, null);
         }
         public ServiceCatalogDto(String name, String description, String type, BigDecimal price,
                 String currency, Integer capacity, Boolean scheduled, UUID categoryId) {
             this(name, description, type, price, currency, capacity, scheduled, categoryId,
-                    null, null, null, null, null, null, null, null);
+                    null, null, null, null, null, null, null, null, null);
         }
     }
 
@@ -123,7 +133,14 @@ public class ServicepackageController {
             @NotNull Instant startsAt,
             @NotNull Instant endsAt,
             @NotBlank @Size(max = 250) String location,
-            @NotNull @Positive Integer capacity) {}
+            @NotNull @Positive Integer capacity,
+            @Positive Integer requiredStaffCount) {
+        public ServiceScheduleCreateDto(
+                UUID serviceId, UUID cruiseId, UUID cruiseStopId, UUID supplierId,
+                Instant startsAt, Instant endsAt, String location, Integer capacity) {
+            this(serviceId, cruiseId, cruiseStopId, supplierId, startsAt, endsAt, location, capacity, null);
+        }
+    }
 
     public record ServiceRequestView(
             UUID id,
@@ -231,7 +248,8 @@ public class ServicepackageController {
             String applicabilityScope,
             boolean canBuyPreCruise, boolean canBuyOnboard, boolean canSellIndependently,
             ServiceUsagePolicy preCruiseUsagePolicy, Integer preCruiseUsageLimit, String usageTimeZone,
-            Set<ServiceOperatingPeriod> operatingPeriods) {
+            Set<ServiceOperatingPeriod> operatingPeriods,
+            Integer defaultRequiredStaff) {
         static ServiceView of(Service s) {
             return new ServiceView(
                     s.getServiceId(),
@@ -249,7 +267,8 @@ public class ServicepackageController {
                     s.getUnitCode(),
                     s.getApplicabilityScope(), s.isCanBuyPreCruise(), s.isCanBuyOnboard(),
                     s.isCanSellIndependently(), s.getPreCruiseUsagePolicy(), s.getPreCruiseUsageLimit(),
-                    s.getUsageTimeZone(), s.getOperatingPeriods());
+                    s.getUsageTimeZone(), s.getOperatingPeriods(),
+                    s.getDefaultRequiredStaff() == null ? 1 : s.getDefaultRequiredStaff());
         }
     }
 
@@ -324,6 +343,7 @@ public class ServicepackageController {
             Instant endsAt,
             String location,
             Integer capacity,
+            Integer requiredStaffCount,
             Integer remainingCapacity,
             String status,
             UUID cruiseId, UUID responsibleUserId,
@@ -340,6 +360,7 @@ public class ServicepackageController {
                     s.getEndsAt(),
                     s.getLocation(),
                     s.getCapacity(),
+                    s.getRequiredStaffCount() == null ? 1 : s.getRequiredStaffCount(),
                     remaining,
                     s.getStatus(),
                     cruise == null ? null : cruise.getCruiseId(),
@@ -435,7 +456,9 @@ public class ServicepackageController {
                         r.startsAt(),
                         r.endsAt(),
                         r.location(),
-                        r.capacity());
+                        r.capacity(),
+                        r.requiredStaffCount(),
+                        false);
         return ApiResponse.success(ServiceScheduleView.of(s, s.getCapacity()));
     }
 
@@ -937,6 +960,11 @@ public class ServicepackageController {
         s.setPrice(r.price());
         s.setCurrencyCode(r.currencyCode());
         s.setCapacity(r.capacity());
+        if (r.defaultRequiredStaff() != null) {
+            s.setDefaultRequiredStaff(r.defaultRequiredStaff());
+        } else if (s.getDefaultRequiredStaff() == null || s.getDefaultRequiredStaff() < 1) {
+            s.setDefaultRequiredStaff(1);
+        }
         if (r.requiresSchedule() != null) {
             s.setRequiresSchedule(r.requiresSchedule());
         }

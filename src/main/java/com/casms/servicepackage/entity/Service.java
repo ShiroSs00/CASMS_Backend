@@ -79,6 +79,9 @@ public class Service {
     @Column(name = "requires_staff", nullable = false)
     private boolean requiresStaff;
 
+    @Column(name = "default_required_staff", nullable = false)
+    private Integer defaultRequiredStaff = 1;
+
     @Column(name = "duration_minutes")
     private Integer durationMinutes;
 

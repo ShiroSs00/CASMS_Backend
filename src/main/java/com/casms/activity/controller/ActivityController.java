@@ -82,7 +82,17 @@ public class ActivityController {
             @Schema(description = "Đơn vị tiền tệ của hoạt động (VND hoặc USD, mặc định USD khi tạo)", example = "VND")
                     @Size(min = 3, max = 3)
                     String currencyCode,
-            @Schema(description = "ID chuyến du thuyền") @NotNull UUID cruiseId) {}
+            @Schema(description = "ID chuyến du thuyền") @NotNull UUID cruiseId,
+            @Schema(description = "Số nhân viên phục vụ cần cho hoạt động", example = "2") @Positive
+                    Integer requiredStaffCount) {
+        public ActivityRequest(
+                String activityName, String description, Instant startTime, Instant endTime,
+                String location, String meetingPoint, UUID deckId, UUID cabinId,
+                Integer capacity, BigDecimal price, String currencyCode, UUID cruiseId) {
+            this(activityName, description, startTime, endTime, location, meetingPoint,
+                    deckId, cabinId, capacity, price, currencyCode, cruiseId, null);
+        }
+    }
 
     @Schema(description="Independent activity catalog; schedule and staff are assigned on the cruise occurrence")
     public record ActivityCatalogRequest(
@@ -95,14 +105,30 @@ public class ActivityController {
             @Null(message="Set startTime on the cruise schedule, not the catalog") Instant startTime,
             @Null(message="Set endTime on the cruise schedule, not the catalog") Instant endTime,
             @Null UUID cruiseId, @Null UUID deckId, @Null UUID cabinId, @Null String location,
-            @Null UUID responsibleUserId) {}
+            @Null UUID responsibleUserId,
+            @Positive Integer requiredStaffCount) {
+        public ActivityCatalogRequest(
+                String activityName, String description, com.casms.activity.enums.OnboardActivityCategory category,
+                Integer capacity, BigDecimal price, String currencyCode, Instant startTime, Instant endTime,
+                UUID cruiseId, UUID deckId, UUID cabinId, String location, UUID responsibleUserId) {
+            this(activityName, description, category, capacity, price, currencyCode, startTime, endTime,
+                    cruiseId, deckId, cabinId, location, responsibleUserId, null);
+        }
+    }
 
     public record ActivityScheduleRequest(
             @NotNull UUID sourceActivityId,
             @NotNull Instant startTime, @NotNull Instant endTime,
             @NotBlank @Size(max=250) String location,
             UUID deckId, UUID cabinId, @Positive Integer capacity,
-            @Size(max=255) String meetingPoint) {}
+            @Size(max=255) String meetingPoint,
+            @Positive Integer requiredStaffCount) {
+        public ActivityScheduleRequest(
+                UUID sourceActivityId, Instant startTime, Instant endTime, String location,
+                UUID deckId, UUID cabinId, Integer capacity, String meetingPoint) {
+            this(sourceActivityId, startTime, endTime, location, deckId, cabinId, capacity, meetingPoint, null);
+        }
+    }
 
     @GetMapping("/catalog")
     @PreAuthorize("hasAuthority('ACTIVITY_READ') or (hasRole('CRUISE_MANAGER') and hasAuthority('CRUISE_UPDATE_DRAFT'))")
@@ -120,6 +146,7 @@ public class ActivityController {
         var a = new OnboardActivity();
         a.setActivityName(r.activityName()); a.setDescription(r.description()); a.setCategory(r.category());
         a.setCapacity(r.capacity()); a.setPrice(r.price()); a.setCurrencyCode(r.currencyCode());
+        if (r.requiredStaffCount() != null) a.setRequiredStaffCount(r.requiredStaffCount());
         return a;
     }
 
@@ -158,7 +185,8 @@ public class ActivityController {
             String currencyCode,
             String status,
             UUID cruiseId, boolean catalogEntry, UUID sourceActivityId, UUID areaId,
-            com.casms.activity.enums.OnboardActivityCategory category, UUID responsibleUserId) {
+            com.casms.activity.enums.OnboardActivityCategory category, UUID responsibleUserId,
+            Integer requiredStaffCount) {
         public static ActivityView of(OnboardActivity a) {
             return new ActivityView(
                     a.getOnboardActivityId(),
@@ -178,7 +206,8 @@ public class ActivityController {
                     a.getPrice(),
                     a.getCurrencyCode(),
                     a.getStatus().name(),
-                    a.getCruise() != null ? a.getCruise().getCruiseId() : null, a.isCatalogEntry(), a.getSourceActivityId(), a.getAreaObjectId(), a.getCategory(), a.getResponsibleUserId());
+                    a.getCruise() != null ? a.getCruise().getCruiseId() : null, a.isCatalogEntry(), a.getSourceActivityId(), a.getAreaObjectId(), a.getCategory(), a.getResponsibleUserId(),
+                    a.getRequiredStaffCount() == null ? 1 : a.getRequiredStaffCount());
         }
     }
 
@@ -487,6 +516,7 @@ public class ActivityController {
         a.setCapacity(r.capacity());
         a.setPrice(r.price());
         a.setCurrencyCode(r.currencyCode());
+        a.setRequiredStaffCount(r.requiredStaffCount());
         // deck/cabin sẽ được resolve trong service — ở đây chỉ ghi nhận ID request
     }
 }

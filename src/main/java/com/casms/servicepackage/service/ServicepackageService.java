@@ -88,6 +88,9 @@ public class ServicepackageService {
             throw new IllegalArgumentException("Giá dịch vụ vượt quá giới hạn cho phép.");
         if (s.getCapacity() != null && s.getCapacity() < 1)
             throw new IllegalArgumentException("Capacity must be positive");
+        if (s.getDefaultRequiredStaff() == null) s.setDefaultRequiredStaff(1);
+        if (s.getDefaultRequiredStaff() < 1)
+            throw new IllegalArgumentException("Số nhân viên phục vụ mặc định phải từ 1 trở lên.");
         if (serviceRepo.existsByServiceCodeAndServiceIdNot(
                 s.getServiceCode(), s.getServiceId() == null ? new UUID(0, 0) : s.getServiceId()))
             throw new IllegalArgumentException("Service code already exists");

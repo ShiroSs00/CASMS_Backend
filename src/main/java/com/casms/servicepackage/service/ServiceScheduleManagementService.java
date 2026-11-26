@@ -43,12 +43,18 @@ public class ServiceScheduleManagementService {
             Instant endsAt,
             String location,
             Integer capacity) {
-        return create(serviceId, cruiseId, cruiseStopId, supplierId, startsAt, endsAt, location, capacity, false);
+        return create(serviceId, cruiseId, cruiseStopId, supplierId, startsAt, endsAt, location, capacity, null, false);
     }
 
     public ServiceSchedule create(
             UUID serviceId, UUID cruiseId, UUID cruiseStopId, UUID supplierId, Instant startsAt,
             Instant endsAt, String location, Integer capacity, boolean stagedProgram) {
+        return create(serviceId, cruiseId, cruiseStopId, supplierId, startsAt, endsAt, location, capacity, null, stagedProgram);
+    }
+
+    public ServiceSchedule create(
+            UUID serviceId, UUID cruiseId, UUID cruiseStopId, UUID supplierId, Instant startsAt,
+            Instant endsAt, String location, Integer capacity, Integer requiredStaffCount, boolean stagedProgram) {
         return configure(
                 new ServiceSchedule(),
                 serviceId,
@@ -59,6 +65,7 @@ public class ServiceScheduleManagementService {
                 endsAt,
                 location,
                 capacity,
+                requiredStaffCount,
                 stagedProgram);
     }
 
@@ -72,12 +79,18 @@ public class ServiceScheduleManagementService {
             String location,
             Integer capacity,
             UUID id) {
-        return update(serviceId, cruiseId, cruiseStopId, supplierId, startsAt, endsAt, location, capacity, id, false);
+        return update(serviceId, cruiseId, cruiseStopId, supplierId, startsAt, endsAt, location, capacity, null, id, false);
     }
 
     public ServiceSchedule update(
             UUID serviceId, UUID cruiseId, UUID cruiseStopId, UUID supplierId, Instant startsAt,
             Instant endsAt, String location, Integer capacity, UUID id, boolean stagedProgram) {
+        return update(serviceId, cruiseId, cruiseStopId, supplierId, startsAt, endsAt, location, capacity, null, id, stagedProgram);
+    }
+
+    public ServiceSchedule update(
+            UUID serviceId, UUID cruiseId, UUID cruiseStopId, UUID supplierId, Instant startsAt,
+            Instant endsAt, String location, Integer capacity, Integer requiredStaffCount, UUID id, boolean stagedProgram) {
         var schedule = editable(id, cruiseId);
         return configure(
                 schedule,
@@ -89,6 +102,7 @@ public class ServiceScheduleManagementService {
                 endsAt,
                 location,
                 capacity,
+                requiredStaffCount,
                 stagedProgram);
     }
 
@@ -126,6 +140,7 @@ public class ServiceScheduleManagementService {
             Instant endsAt,
             String location,
             Integer capacity,
+            Integer requiredStaffCount,
             boolean stagedProgram) {
         if (startsAt == null || endsAt == null || !endsAt.isAfter(startsAt))
             throw new IllegalArgumentException("Schedule end time must be after start time");
@@ -133,6 +148,8 @@ public class ServiceScheduleManagementService {
             throw new IllegalArgumentException("A schedule location is required");
         if (capacity == null || capacity < 1)
             throw new IllegalArgumentException("Schedule capacity must be positive");
+        if (requiredStaffCount != null && requiredStaffCount < 1)
+            throw new IllegalArgumentException("Số nhân viên phục vụ phải từ 1 trở lên.");
 
         var service = services.findById(serviceId).orElseThrow(() -> missing("Service", serviceId));
         if (!service.isRequiresSchedule())
@@ -198,6 +215,12 @@ public class ServiceScheduleManagementService {
         schedule.setEndsAt(endsAt);
         schedule.setLocation(location.trim());
         schedule.setCapacity(capacity);
+        int effectiveStaff = requiredStaffCount != null
+                ? requiredStaffCount
+                : (schedule.getServiceScheduleId() != null && schedule.getRequiredStaffCount() != null && schedule.getRequiredStaffCount() >= 1
+                        ? schedule.getRequiredStaffCount()
+                        : (service.getDefaultRequiredStaff() != null && service.getDefaultRequiredStaff() >= 1 ? service.getDefaultRequiredStaff() : 1));
+        schedule.setRequiredStaffCount(effectiveStaff);
         schedule.setStatus("OPEN");
         if (schedule.getCreatedAt() == null) schedule.setCreatedAt(Instant.now());
         schedule.setUpdatedAt(Instant.now());

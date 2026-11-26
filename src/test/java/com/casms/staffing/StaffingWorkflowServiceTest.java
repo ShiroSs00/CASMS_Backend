@@ -129,8 +129,8 @@ class StaffingWorkflowServiceTest {
         assertEquals("SENT_TO_HR", result.status());
         verify(jdbc).update(contains("ship_review_fingerprint=?"), eq("SENT_TO_HR"), eq("checked"),
                 isNull(), eq(review.request()));
-        verify(jdbc).update(contains("STAFFING_SENT_TO_HR"), eq(review.coordinator()),
-                contains(review.request().toString()));
+        verify(jdbc).update(contains("INSERT INTO \"Notification\""), eq(review.coordinator()),
+                eq("STAFFING_SENT_TO_HR"), anyString(), contains("xác nhận phương án tàu"));
     }
 
     @Test

@@ -97,6 +97,14 @@ public class StaffingWorkflowController {
         return ApiResponse.success(workflow.assignNeed(requestId, needId, userId, input, actor));
     }
 
+    @PutMapping("/staffing-requests/{requestId}/service-assignments/{serviceId}/{userId}")
+    public ApiResponse<StaffingWorkflowService.Snapshot> assignServiceNeed(
+            @PathVariable UUID requestId, @PathVariable UUID serviceId, @PathVariable UUID userId,
+            @Valid @RequestBody StaffingWorkflowService.NeedAssignmentInput input,
+            @AuthenticationPrincipal CasmsPrincipal actor) {
+        return ApiResponse.success(workflow.assignServiceNeed(requestId, serviceId, userId, input, actor));
+    }
+
     @PostMapping("/staffing-requests/{requestId}/{action}")
     public ApiResponse<StaffingWorkflowService.Snapshot> review(
             @PathVariable UUID requestId, @PathVariable String action,

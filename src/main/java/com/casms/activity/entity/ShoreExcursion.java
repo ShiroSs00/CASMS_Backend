@@ -74,6 +74,9 @@ public class ShoreExcursion {
     @Column(name = "maximum_capacity")
     private Integer maximumCapacity;
 
+    @Column(name = "required_staff_count", nullable = false)
+    private Integer requiredStaffCount = 1;
+
     @Column(name = "price", precision = 19, scale = 4)
     private BigDecimal price;
 

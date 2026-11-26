@@ -66,6 +66,9 @@ public class StaffingWorkflowService {
     public record NeedAssignmentInput(@NotNull @PositiveOrZero Long expectedRevision, @NotNull Boolean assigned) {}
     public record NeedProgress(UUID needId, UUID areaId, String areaName, String positionCode,
                                int requiredCount, long planRevision, List<UUID> assignedUserIds) {}
+    public record ServiceNeedProgress(UUID serviceId, String serviceName, UUID areaId, String areaName,
+                                      UUID terminalId, String terminalName, int requiredCount,
+                                      List<UUID> assignedUserIds) {}
     private static final Set<String> AREA_POSITIONS = Set.of("ONBOARD_STAFF", "SHIP_MANAGER", "FINANCE_OFFICER");
     private record RequestState(UUID id, UUID cruiseId, String status, long revision, long scheduleRevision,
                                 boolean shipReview, boolean asmProgram, String workflowVersion) {}
@@ -75,6 +78,7 @@ public class StaffingWorkflowService {
                            OffsetDateTime departure, OffsetDateTime returning, String operatingBudgetVnd,
                            String returnReason, boolean shipReviewWorkflow, boolean asmProgramWorkflow,
                            String workflowVersion, List<UUID> activeAreaIds, List<NeedProgress> needs,
+                           List<ServiceNeedProgress> serviceNeeds,
                            boolean shipPlanStale, PlanResetImpact planResetImpact) {
         boolean v2() { return "V2".equals(workflowVersion); }
     }
@@ -85,7 +89,8 @@ public class StaffingWorkflowService {
     public record AreaReview(UUID areaId, String name, List<PosReview> terminals, List<UUID> staffIds,
                              List<PosReview> eligibleTerminals) {}
     public record PosReview(UUID terminalId, String name) {}
-    public record ActivityReview(UUID activityId, String kind, String name, List<UUID> staffIds) {}
+    public record ActivityReview(UUID activityId, String kind, String name, List<UUID> staffIds,
+                                 int requiredStaffCount) {}
     public record StaffReview(UUID userId, String username, String role, List<ServiceOption> services,
                               List<ServiceOption> areas, List<ActivityReview> activities) {}
     public record Placement(UUID areaId, UUID terminalId) {}
@@ -93,7 +98,7 @@ public class StaffingWorkflowService {
     public record PlannedService(UUID serviceId, String name, List<UUID> eligibleAreaIds,
                                  List<Placement> placements, ServiceProposal proposal,
                                  List<Placement> eligiblePlacements, List<Placement> configuredPlacements,
-                                 String placementBlocker) {}
+                                 String placementBlocker, int requiredStaffCount) {}
     public record ReviewDetails(Snapshot request, ShipReview ship, List<AreaReview> areas,
                                 List<ActivityReview> activities, List<StaffReview> staff,
                                 List<PosReview> terminalOptions, List<PlannedService> plannedServices,
@@ -251,12 +256,14 @@ public class StaffingWorkflowService {
                 SELECT area_id FROM "StaffingActiveArea" WHERE request_id=? ORDER BY area_id
                 """, UUID.class, id) : List.of();
         long assignments = v2 ? jdbc.queryForObject("""
-                SELECT count(*) FROM "StaffingNeedAssignment" WHERE request_id=?
-                """, Long.class, id) : 0;
+                SELECT (SELECT count(*) FROM "StaffingNeedAssignment" WHERE request_id=?)
+                     + (SELECT count(*) FROM "StaffingServiceAssignment" WHERE request_id=?)
+                """, Long.class, id, id) : 0;
         boolean shipPlanStale = v2 && Set.of("SHIP_REVIEWED", "SENT_TO_HR", "HR_SUBMITTED",
                 "PLANNER_CONFIRMED", "OPS_APPROVED").contains(request.status())
                 && !isCurrentShipPlan(id);
         List<NeedProgress> needs = v2 ? readNeeds(id, !shipPlanStale) : List.of();
+        List<ServiceNeedProgress> serviceNeeds = v2 ? readServiceNeeds(id, !shipPlanStale) : List.of();
         var resetImpact = v2 ? new PlanResetImpact(needs.size(), assignments) : null;
         return jdbc.queryForObject("""
                 SELECT cruise_name,cruise_code,departure_datetime,return_datetime,operating_budget_vnd::text
@@ -265,7 +272,7 @@ public class StaffingWorkflowService {
                 request.revision(), request.scheduleRevision(), progress, rs.getString(1), rs.getString(2),
                 rs.getObject(3, OffsetDateTime.class), rs.getObject(4, OffsetDateTime.class),
                 rs.getString(5), reason, request.shipReview(), request.asmProgram(),
-                request.workflowVersion(), activeAreas, needs, shipPlanStale, resetImpact), request.cruiseId());
+                request.workflowVersion(), activeAreas, needs, serviceNeeds, shipPlanStale, resetImpact), request.cruiseId());
     }
 
     @Transactional(readOnly = true)
@@ -532,6 +539,42 @@ public class StaffingWorkflowService {
                 Arrays.asList((UUID[]) rs.getArray(7).getArray())), includeAssignments, requestId);
     }
 
+    private List<ServiceNeedProgress> readServiceNeeds(UUID requestId, boolean includeAssignments) {
+        return jdbc.query("""
+                SELECT sp.service_id, s.service_name, sp.area_id, o.display_name AS area_name,
+                    a.terminal_id, t.terminal_name,
+                    GREATEST(1, COALESCE((
+                        SELECT MAX(w.required_staff_count) FROM "ServiceSchedule" w
+                        WHERE w.cruise_id=req.cruise_id AND w.service_id=sp.service_id
+                          AND w.cruise_stop_id IS NULL AND w.status<>'CANCELLED'
+                    ), s.default_required_staff, 1)) AS required_count,
+                    ARRAY(
+                        SELECT cs.user_id FROM "StaffingServiceAssignment" sa
+                        JOIN "CruiseStaff" cs ON cs.cruise_staff_id=sa.cruise_staff_id
+                            AND cs.cruise_id=req.cruise_id AND cs.status='ACTIVE'
+                            AND cs.role_in_cruise='ONBOARD_STAFF'
+                        JOIN "User" u ON u.user_id=cs.user_id AND u.status='ACTIVE'
+                        WHERE ? AND sa.request_id=sp.request_id AND sa.service_id=sp.service_id
+                          AND EXISTS (SELECT 1 FROM "UserRole" ur WHERE ur.user_id=u.user_id AND ur.role='ONBOARD_STAFF')
+                          AND NOT EXISTS (SELECT 1 FROM "UserRole" ur WHERE ur.user_id=u.user_id AND ur.role='ADMIN')
+                        ORDER BY cs.user_id
+                    )
+                FROM "StaffingServicePlacement" sp
+                JOIN "StaffingRequest" req ON req.request_id=sp.request_id
+                JOIN "Service" s ON s.service_id=sp.service_id
+                JOIN "StaffingActiveArea" a ON a.request_id=sp.request_id AND a.area_id=sp.area_id
+                JOIN "ShipModelObject" o ON o.ship_model_object_id=sp.area_id
+                LEFT JOIN "PosTerminal" t ON t.terminal_id=a.terminal_id
+                WHERE sp.request_id=?
+                ORDER BY s.service_name, sp.service_id
+                """, (rs, i) -> new ServiceNeedProgress(
+                        rs.getObject(1, UUID.class), rs.getString(2),
+                        rs.getObject(3, UUID.class), rs.getString(4),
+                        rs.getObject(5, UUID.class), rs.getString(6),
+                        rs.getInt(7), Arrays.asList((UUID[]) rs.getArray(8).getArray())),
+                includeAssignments, requestId);
+    }
+
     @Transactional
     public ReviewDetails saveShipPlan(UUID id, ShipPlanInput input, CasmsPrincipal actor) {
         authorize(actor, Role.SHIP_MANAGER);
@@ -620,20 +663,234 @@ public class StaffingWorkflowService {
                     WHERE n.request_id=? AND n.need_id=?
                       AND EXISTS (SELECT 1 FROM "UserRole" ur WHERE ur.user_id=u.user_id AND ur.role=n.position_code)
                       AND NOT EXISTS (SELECT 1 FROM "UserRole" ur WHERE ur.user_id=u.user_id AND ur.role='ADMIN')
+                      AND NOT EXISTS (SELECT 1 FROM "StaffingServiceAssignment" sa WHERE sa.request_id=n.request_id AND sa.cruise_staff_id=cs.cruise_staff_id)
                       AND n.required_count > (SELECT count(*) FROM "StaffingV2QualifiedAssignment" a WHERE a.need_id=n.need_id)
                     ON CONFLICT DO NOTHING
                     """, userId, id, needId);
             if (changed != 1) throw conflict("STAFFING_NEED_ASSIGNMENT_INVALID");
-        } else if (jdbc.update("""
-                DELETE FROM "StaffingNeedAssignment" a USING "CruiseStaff" cs
-                WHERE a.request_id=? AND a.need_id=? AND cs.cruise_staff_id=a.cruise_staff_id AND cs.user_id=?
-                """, id, needId, userId) != 1) {
-            throw conflict("STAFFING_NEED_ASSIGNMENT_INVALID");
+            syncAreaAssignmentForNeed(cruise, id, needId, userId, true, actor);
+        } else {
+            if (jdbc.update("""
+                    DELETE FROM "StaffingNeedAssignment" a USING "CruiseStaff" cs
+                    WHERE a.request_id=? AND a.need_id=? AND cs.cruise_staff_id=a.cruise_staff_id AND cs.user_id=?
+                    """, id, needId, userId) != 1) {
+                throw conflict("STAFFING_NEED_ASSIGNMENT_INVALID");
+            }
+            syncAreaAssignmentForNeed(cruise, id, needId, userId, false, actor);
         }
         bump(id);
         decision(id, row.revision() + 1, input.assigned() ? "NEED_ASSIGNED" : "NEED_UNASSIGNED",
                 actor, "Need " + needId + " / User " + userId);
         return read(id);
+    }
+
+    @Transactional
+    public Snapshot assignServiceNeed(UUID id, UUID serviceId, UUID userId, NeedAssignmentInput input, CasmsPrincipal actor) {
+        authorize(actor, Role.HR_MANAGER);
+        UUID cruise = requestCruise(id);
+        lockCruise(cruise);
+        ReviewState row = lockRequest(id);
+        checkRevision(row, input.expectedRevision());
+        if (!row.v2() || !"SENT_TO_HR".equals(row.status())) throw conflict("STAFFING_INVALID_TRANSITION");
+        requireIndependentReviewer(row, actor, Role.HR_MANAGER);
+        requireCurrentShipPlan(id, row);
+        if (input.assigned() == null) throw conflict("STAFFING_NEED_ASSIGNMENT_INVALID");
+
+        UUID areaId = jdbc.queryForList("""
+                SELECT sp.area_id FROM "StaffingServicePlacement" sp
+                WHERE sp.request_id=? AND sp.service_id=?
+                """, UUID.class, id, serviceId).stream().findFirst()
+                .orElseThrow(() -> conflict("STAFFING_NEED_ASSIGNMENT_INVALID"));
+
+        if (input.assigned()) {
+            if (!Boolean.TRUE.equals(jdbc.queryForObject("""
+                    SELECT EXISTS(SELECT 1 FROM "CruiseStaff" WHERE cruise_id=? AND user_id=? AND status='ACTIVE')
+                    """, Boolean.class, cruise, userId))) {
+                var membership = new CruiseStaffRequest();
+                membership.setUserId(userId);
+                membership.setRoleInCruise("ONBOARD_STAFF");
+                cruiseStaff.assignStaff(cruise, membership, actor);
+            }
+            int changed = jdbc.update("""
+                    INSERT INTO "StaffingServiceAssignment" (request_id, service_id, cruise_staff_id)
+                    SELECT sp.request_id, sp.service_id, cs.cruise_staff_id
+                    FROM "StaffingServicePlacement" sp
+                    JOIN "StaffingRequest" req USING (request_id)
+                    JOIN "Service" s USING (service_id)
+                    JOIN "CruiseStaff" cs ON cs.cruise_id=req.cruise_id AND cs.user_id=?
+                        AND cs.status='ACTIVE' AND cs.role_in_cruise='ONBOARD_STAFF'
+                    JOIN "User" u ON u.user_id=cs.user_id AND u.status='ACTIVE'
+                    WHERE sp.request_id=? AND sp.service_id=?
+                      AND EXISTS (SELECT 1 FROM "UserRole" ur WHERE ur.user_id=u.user_id AND ur.role='ONBOARD_STAFF')
+                      AND NOT EXISTS (SELECT 1 FROM "UserRole" ur WHERE ur.user_id=u.user_id AND ur.role='ADMIN')
+                      AND NOT EXISTS (SELECT 1 FROM "StaffingNeedAssignment" na WHERE na.request_id=sp.request_id AND na.cruise_staff_id=cs.cruise_staff_id)
+                      AND GREATEST(1, COALESCE((
+                            SELECT MAX(w.required_staff_count) FROM "ServiceSchedule" w
+                            WHERE w.cruise_id=req.cruise_id AND w.service_id=sp.service_id
+                              AND w.cruise_stop_id IS NULL AND w.status<>'CANCELLED'
+                          ), s.default_required_staff, 1))
+                        > (SELECT count(*) FROM "StaffingServiceAssignment" sa
+                           JOIN "CruiseStaff" cs2 ON cs2.cruise_staff_id=sa.cruise_staff_id AND cs2.status='ACTIVE'
+                           JOIN "User" u2 ON u2.user_id=cs2.user_id AND u2.status='ACTIVE'
+                           WHERE sa.request_id=sp.request_id AND sa.service_id=sp.service_id)
+                    ON CONFLICT DO NOTHING
+                    """, userId, id, serviceId);
+            if (changed != 1) throw conflict("STAFFING_NEED_ASSIGNMENT_INVALID");
+            syncServiceAreaAndDuty(cruise, areaId, serviceId, userId, true, actor);
+        } else {
+            if (jdbc.update("""
+                    DELETE FROM "StaffingServiceAssignment" sa USING "CruiseStaff" cs
+                    WHERE sa.request_id=? AND sa.service_id=? AND cs.cruise_staff_id=sa.cruise_staff_id AND cs.user_id=?
+                    """, id, serviceId, userId) != 1) {
+                throw conflict("STAFFING_NEED_ASSIGNMENT_INVALID");
+            }
+            syncServiceAreaAndDuty(cruise, areaId, serviceId, userId, false, actor);
+        }
+        bump(id);
+        decision(id, row.revision() + 1, input.assigned() ? "SERVICE_STAFF_ASSIGNED" : "SERVICE_STAFF_UNASSIGNED",
+                actor, "Service " + serviceId + " / Area " + areaId + " / User " + userId);
+        return read(id);
+    }
+
+    private void syncAreaAssignmentForNeed(UUID cruiseId, UUID requestId, UUID needId, UUID userId, boolean enabled, CasmsPrincipal actor) {
+        UUID areaId = jdbc.queryForList("""
+                SELECT area_id FROM "StaffingNeed" WHERE request_id=? AND need_id=?
+                """, UUID.class, requestId, needId).stream().findFirst().orElse(null);
+        if (areaId == null) return;
+        syncAreaAssignment(cruiseId, areaId, userId, enabled, actor);
+    }
+
+    private void syncServiceAreaAndDuty(UUID cruiseId, UUID areaId, UUID serviceId, UUID userId, boolean enabled, CasmsPrincipal actor) {
+        UUID assignmentId = syncAreaAssignment(cruiseId, areaId, userId, enabled, actor);
+        UUID csId = jdbc.queryForList("""
+                SELECT cruise_staff_id FROM "CruiseStaff"
+                WHERE cruise_id=? AND user_id=? AND status='ACTIVE'
+                ORDER BY assigned_at DESC LIMIT 1
+                """, UUID.class, cruiseId, userId).stream().findFirst().orElse(null);
+        if (csId == null) return;
+        if (enabled) {
+            jdbc.update("""
+                    UPDATE "CruiseStaffDuty" SET ended_at=now(), ended_by=?
+                    WHERE cruise_staff_id=? AND service_id IS NOT NULL AND service_id<>? AND ended_at IS NULL
+                    """, actor.getUserId(), csId, serviceId);
+            if (!Boolean.TRUE.equals(jdbc.queryForObject("""
+                    SELECT EXISTS (SELECT 1 FROM "CruiseStaffDuty"
+                        WHERE cruise_staff_id=? AND service_id=? AND ended_at IS NULL)
+                    """, Boolean.class, csId, serviceId))) {
+                jdbc.update("""
+                        INSERT INTO "CruiseStaffDuty" (cruise_staff_id, service_id, assigned_by)
+                        VALUES (?, ?, ?)
+                        """, csId, serviceId, actor.getUserId());
+            }
+            if (assignmentId != null) {
+                jdbc.update("""
+                        UPDATE "StaffServiceAssignment" SET enabled=false
+                        WHERE assignment_id=? AND service_id<>? AND enabled
+                        """, assignmentId, serviceId);
+                jdbc.update("""
+                        INSERT INTO "StaffServiceAssignment" (assignment_id, service_id, permissions, inherit_permissions, enabled)
+                        VALUES (?, ?, '{}', true, true)
+                        ON CONFLICT (assignment_id, service_id) DO UPDATE SET
+                            inherit_permissions=true, enabled=true
+                        """, assignmentId, serviceId);
+            }
+        } else {
+            if (assignmentId != null) {
+                jdbc.update("""
+                        UPDATE "StaffServiceAssignment" SET enabled=false
+                        WHERE assignment_id=? AND service_id=? AND enabled
+                        """, assignmentId, serviceId);
+            }
+            jdbc.update("""
+                    UPDATE "CruiseStaffDuty" SET ended_at=now(), ended_by=?
+                    WHERE cruise_staff_id=? AND service_id=? AND ended_at IS NULL
+                    """, actor.getUserId(), csId, serviceId);
+        }
+    }
+
+    private UUID syncAreaAssignment(UUID cruiseId, UUID areaId, UUID userId, boolean enabled, CasmsPrincipal actor) {
+        UUID csId = jdbc.queryForList("""
+                SELECT cruise_staff_id FROM "CruiseStaff"
+                WHERE cruise_id=? AND user_id=? AND status='ACTIVE'
+                ORDER BY assigned_at DESC LIMIT 1
+                """, UUID.class, cruiseId, userId).stream().findFirst().orElse(null);
+        if (csId == null) return null;
+        if (enabled) {
+            jdbc.update("""
+                    INSERT INTO "AreaStaffAssignment"
+                        (assignment_id, area_object_id, cruise_staff_id, enabled, starts_at, ends_at, assigned_by_user_id, assigned_at, updated_at)
+                    SELECT gen_random_uuid(), ?, ?, true, c.departure_datetime, c.return_datetime, ?, now(), now()
+                    FROM "Cruise" c WHERE c.cruise_id=?
+                    ON CONFLICT (area_object_id, cruise_staff_id) DO UPDATE SET
+                        enabled=true, starts_at=excluded.starts_at, ends_at=excluded.ends_at,
+                        assigned_by_user_id=excluded.assigned_by_user_id, updated_at=now()
+                    """, areaId, csId, actor.getUserId(), cruiseId);
+            return jdbc.queryForList("""
+                    SELECT assignment_id FROM "AreaStaffAssignment"
+                    WHERE area_object_id=? AND cruise_staff_id=?
+                    """, UUID.class, areaId, csId).stream().findFirst().orElse(null);
+        } else {
+            UUID assignmentId = jdbc.queryForList("""
+                    SELECT assignment_id FROM "AreaStaffAssignment"
+                    WHERE area_object_id=? AND cruise_staff_id=?
+                    """, UUID.class, areaId, csId).stream().findFirst().orElse(null);
+            jdbc.update("""
+                    UPDATE "AreaStaffAssignment" SET enabled=false, updated_at=now()
+                    WHERE area_object_id=? AND cruise_staff_id=? AND enabled
+                    """, areaId, csId);
+            if (assignmentId != null) {
+                jdbc.update("""
+                        UPDATE "PosSession" SET revoked_at=now()
+                        WHERE area_staff_assignment_id=? AND revoked_at IS NULL
+                        """, assignmentId);
+            }
+            return assignmentId;
+        }
+    }
+
+    private void clearSyncedAssignmentsOnReturn(UUID requestId, CasmsPrincipal actor) {
+        jdbc.update("""
+                UPDATE "StaffServiceAssignment" ssa SET enabled=false
+                FROM "AreaStaffAssignment" asa
+                JOIN "StaffingServiceAssignment" sa ON sa.cruise_staff_id=asa.cruise_staff_id
+                JOIN "StaffingServicePlacement" sp ON sp.request_id=sa.request_id AND sp.service_id=sa.service_id
+                    AND sp.area_id=asa.area_object_id
+                WHERE ssa.assignment_id=asa.assignment_id AND ssa.service_id=sa.service_id
+                  AND sa.request_id=? AND ssa.enabled
+                """, requestId);
+        jdbc.update("""
+                UPDATE "CruiseStaffDuty" d SET ended_at=now(), ended_by=?
+                FROM "StaffingServiceAssignment" sa
+                WHERE d.cruise_staff_id=sa.cruise_staff_id AND d.service_id=sa.service_id
+                  AND sa.request_id=? AND d.ended_at IS NULL
+                """, actor.getUserId(), requestId);
+        jdbc.update("""
+                UPDATE "PosSession" ps SET revoked_at=now()
+                FROM "AreaStaffAssignment" asa
+                WHERE ps.area_staff_assignment_id=asa.assignment_id AND ps.revoked_at IS NULL
+                  AND (EXISTS (
+                        SELECT 1 FROM "StaffingServiceAssignment" sa
+                        JOIN "StaffingServicePlacement" sp ON sp.request_id=sa.request_id AND sp.service_id=sa.service_id
+                        WHERE sa.request_id=? AND sa.cruise_staff_id=asa.cruise_staff_id AND sp.area_id=asa.area_object_id
+                      ) OR EXISTS (
+                        SELECT 1 FROM "StaffingNeedAssignment" na
+                        JOIN "StaffingNeed" n ON n.request_id=na.request_id AND n.need_id=na.need_id
+                        WHERE na.request_id=? AND na.cruise_staff_id=asa.cruise_staff_id AND n.area_id=asa.area_object_id
+                      ))
+                """, requestId, requestId);
+        jdbc.update("""
+                UPDATE "AreaStaffAssignment" asa SET enabled=false, updated_at=now()
+                WHERE asa.enabled
+                  AND (EXISTS (
+                        SELECT 1 FROM "StaffingServiceAssignment" sa
+                        JOIN "StaffingServicePlacement" sp ON sp.request_id=sa.request_id AND sp.service_id=sa.service_id
+                        WHERE sa.request_id=? AND sa.cruise_staff_id=asa.cruise_staff_id AND sp.area_id=asa.area_object_id
+                      ) OR EXISTS (
+                        SELECT 1 FROM "StaffingNeedAssignment" na
+                        JOIN "StaffingNeed" n ON n.request_id=na.request_id AND n.need_id=na.need_id
+                        WHERE na.request_id=? AND na.cruise_staff_id=asa.cruise_staff_id AND n.area_id=asa.area_object_id
+                      ))
+                """, requestId, requestId);
     }
 
     private void bump(UUID id) {
@@ -646,11 +903,15 @@ public class StaffingWorkflowService {
                     c.return_datetime, (SELECT w.revision FROM "CruiseWorkHandoff" w
                         WHERE w.cruise_id=c.cruise_id AND w.work_group='ASM'),
                     ARRAY(SELECT jsonb_build_array(w.service_schedule_id,w.service_id,w.cruise_stop_id,
-                        w.starts_at,w.ends_at,w.location,w.supplier_id,w.status)
+                        w.starts_at,w.ends_at,w.location,w.supplier_id,w.status,w.required_staff_count)
                         FROM "ServiceSchedule" w WHERE w.cruise_id=c.cruise_id AND w.status<>'CANCELLED'
                         ORDER BY w.service_schedule_id),
-                    ARRAY(SELECT jsonb_build_array(w.kind,w.window_id,w.starts_at,w.ends_at)
-                        FROM "CruiseStaffWorkWindow" w WHERE w.cruise_id=c.cruise_id
+                    ARRAY(SELECT jsonb_build_array(w.kind,w.window_id,w.starts_at,w.ends_at,
+                        COALESCE(oa.required_staff_count, se.required_staff_count, 1))
+                        FROM "CruiseStaffWorkWindow" w
+                        LEFT JOIN "OnboardActivity" oa ON w.kind='ONBOARD' AND oa.onboard_activity_id=w.window_id
+                        LEFT JOIN "ShoreExcursion" se ON w.kind='SHORE' AND se.shore_excursion_id=w.window_id
+                        WHERE w.cruise_id=c.cruise_id
                             AND w.kind IN ('ONBOARD','SHORE') ORDER BY w.kind,w.window_id),
                     ARRAY(SELECT jsonb_build_array(a.area_id,t.terminal_id,t.permissions)
                         FROM "StaffingActiveArea" a JOIN "PosTerminal" t USING (terminal_id)
@@ -680,12 +941,43 @@ public class StaffingWorkflowService {
                             WHERE 'SERVICE_READ'=ANY(t.permissions) AND p.cruise_id=c.cruise_id AND p.area_id=a.area_id AND p.terminal_id=a.terminal_id)
                         OR NOT EXISTS (SELECT 1 FROM "StaffingV2EligibleArea" e
                             WHERE e.cruise_id=c.cruise_id AND e.area_id=a.area_id)
-                        OR NOT EXISTS (SELECT 1 FROM "StaffingNeed" n
-                            WHERE n.request_id=req.request_id AND n.area_id=a.area_id)))
+                        OR (NOT EXISTS (SELECT 1 FROM "StaffingNeed" n
+                                WHERE n.request_id=req.request_id AND n.area_id=a.area_id)
+                            AND NOT EXISTS (SELECT 1 FROM "StaffingServicePlacement" sp
+                                WHERE sp.request_id=req.request_id AND sp.area_id=a.area_id))))
                   AND NOT EXISTS (
                     SELECT 1 FROM "StaffingPlannedOnboardService" s WHERE s.cruise_id=c.cruise_id AND NOT EXISTS (
                         SELECT 1 FROM "StaffingV2ServicePlacement" p
                         WHERE p.request_id=req.request_id AND p.service_id=s.service_id))
+                """, String.class, id).stream().findFirst().orElse(null);
+    }
+
+    private String legacyV2ShipPlanFingerprint(UUID id) {
+        return jdbc.queryForList("""
+                SELECT md5(jsonb_build_array(c.ship_id, inspection.ship_model_id, c.departure_datetime,
+                    c.return_datetime, (SELECT w.revision FROM "CruiseWorkHandoff" w
+                        WHERE w.cruise_id=c.cruise_id AND w.work_group='ASM'),
+                    ARRAY(SELECT jsonb_build_array(w.service_schedule_id,w.service_id,w.cruise_stop_id,
+                        w.starts_at,w.ends_at,w.location,w.supplier_id,w.status)
+                        FROM "ServiceSchedule" w WHERE w.cruise_id=c.cruise_id AND w.status<>'CANCELLED'
+                        ORDER BY w.service_schedule_id),
+                    ARRAY(SELECT jsonb_build_array(w.kind,w.window_id,w.starts_at,w.ends_at)
+                        FROM "CruiseStaffWorkWindow" w WHERE w.cruise_id=c.cruise_id
+                            AND w.kind IN ('ONBOARD','SHORE') ORDER BY w.kind,w.window_id),
+                    ARRAY(SELECT jsonb_build_array(a.area_id,t.terminal_id,t.permissions)
+                        FROM "StaffingActiveArea" a JOIN "PosTerminal" t USING (terminal_id)
+                        WHERE a.request_id=req.request_id ORDER BY a.area_id),
+                    ARRAY(SELECT jsonb_build_array(p.service_id,p.area_id,p.terminal_id,p.permissions_snapshot)
+                        FROM "StaffingV2ServicePlacement" p WHERE p.request_id=req.request_id ORDER BY p.service_id),
+                    ARRAY(SELECT jsonb_build_array(n.area_id,n.position_code,n.required_count,n.plan_revision)
+                        FROM "StaffingNeed" n WHERE n.request_id=req.request_id ORDER BY n.area_id,n.position_code)
+                )::text)
+                FROM "StaffingRequest" req JOIN "Cruise" c USING(cruise_id)
+                JOIN "StaffingShipInspection" inspection USING(cruise_id)
+                JOIN "StaffingProgramInspection" program USING(cruise_id)
+                WHERE req.request_id=? AND req.status='OPS_APPROVED'
+                  AND inspection.ship_ready AND inspection.ship_model_id IS NOT NULL
+                  AND program.asm_completed
                 """, String.class, id).stream().findFirst().orElse(null);
     }
 
@@ -697,10 +989,15 @@ public class StaffingWorkflowService {
     }
 
     private boolean isCurrentShipPlan(UUID id) {
-        String current = validShipPlanFingerprint(id);
-        return current != null && currentShipReviewer(id) && jdbc.queryForList("""
+        if (!currentShipReviewer(id)) return false;
+        String stored = jdbc.queryForList("""
                 SELECT ship_review_fingerprint FROM "StaffingRequest" WHERE request_id=?
-                """, String.class, id).stream().anyMatch(current::equals);
+                """, String.class, id).stream().findFirst().orElse(null);
+        if (stored == null) return false;
+        String current = validShipPlanFingerprint(id);
+        if (current != null && current.equals(stored)) return true;
+        String legacy = legacyV2ShipPlanFingerprint(id);
+        return legacy != null && legacy.equals(stored);
     }
 
     private boolean currentShipReviewer(UUID id) {
@@ -715,7 +1012,8 @@ public class StaffingWorkflowService {
     }
 
     private boolean needsCovered(UUID id, UUID cruise) {
-        return readNeeds(id, true).stream().allMatch(need -> need.assignedUserIds().size() >= need.requiredCount())
+        return readServiceNeeds(id, true).stream().allMatch(need -> need.assignedUserIds().size() >= need.requiredCount())
+                && readNeeds(id, true).stream().allMatch(need -> need.assignedUserIds().size() >= need.requiredCount())
                 && activitiesCovered(cruise);
     }
 
@@ -736,7 +1034,7 @@ public class StaffingWorkflowService {
         Set<String> from = switch (action) {
             case "SHIP_CHECKED", "SHIP_RETURN_ASM" -> Set.of("PENDING_SHIP_REVIEW");
             case "SEND_TO_HR" -> Set.of("SHIP_REVIEWED");
-            case "CRM_RETURN_SHIP" -> Set.of("SHIP_REVIEWED", "HR_SUBMITTED", "PLANNER_CONFIRMED", "OPS_APPROVED");
+            case "CRM_RETURN_SHIP" -> Set.of("SHIP_REVIEWED", "SENT_TO_HR", "HR_SUBMITTED", "PLANNER_CONFIRMED", "OPS_APPROVED");
             case "HR_SUBMITTED", "HR_RETURN_SHIP" -> Set.of("SENT_TO_HR");
             case "PLANNER_CONFIRMED", "CRM_RETURN_HR" -> Set.of("HR_SUBMITTED");
             case "OPS_APPROVED", "OPS_RETURN_CRM" -> Set.of("PLANNER_CONFIRMED");
@@ -761,15 +1059,14 @@ public class StaffingWorkflowService {
             }
         }
         String next = switch (action) {
-            case "SHIP_CHECKED" -> "SHIP_REVIEWED";
-            case "SEND_TO_HR", "CRM_RETURN_HR" -> "SENT_TO_HR";
+            case "SHIP_CHECKED", "SEND_TO_HR", "CRM_RETURN_HR" -> "SENT_TO_HR";
             case "HR_RETURN_SHIP", "CRM_RETURN_SHIP" -> "PENDING_SHIP_REVIEW";
             case "SHIP_RETURN_ASM" -> "PENDING_ASM";
             case "OPS_RETURN_CRM" -> "HR_SUBMITTED";
             default -> action;
         };
-        if (Set.of("PENDING_ASM", "PENDING_SHIP_REVIEW").contains(next)) {
-            jdbc.update("DELETE FROM \"StaffingNeedAssignment\" WHERE request_id=?", id);
+        boolean clearingAssignments = Set.of("PENDING_ASM", "PENDING_SHIP_REVIEW").contains(next);
+        if (clearingAssignments) {
             fingerprint = null;
         }
         if ("SHIP_RETURN_ASM".equals(action)) {
@@ -782,7 +1079,7 @@ public class StaffingWorkflowService {
                 UPDATE "StaffingRequest" SET status=?, revision=revision+1, updated_at=now(),
                     ship_review_fingerprint=?,
                     ship_reviewed_by=CASE WHEN ?='SHIP_CHECKED' THEN ? WHEN ? THEN NULL ELSE ship_reviewed_by END,
-                    dispatched_by=CASE WHEN ?='SEND_TO_HR' THEN ? WHEN ? THEN NULL ELSE dispatched_by END,
+                    dispatched_by=CASE WHEN ? IN ('SEND_TO_HR','SHIP_CHECKED') THEN ? WHEN ? THEN NULL ELSE dispatched_by END,
                     hr_submitted_by=CASE WHEN ?='HR_SUBMITTED' THEN ? WHEN ? IN ('SENT_TO_HR','PENDING_ASM','PENDING_SHIP_REVIEW') THEN NULL ELSE hr_submitted_by END,
                     planner_confirmed_by=CASE WHEN ?='PLANNER_CONFIRMED' THEN ?
                         WHEN ?<>'OPS_APPROVED' THEN NULL ELSE planner_confirmed_by END,
@@ -793,6 +1090,13 @@ public class StaffingWorkflowService {
                 action, actor.getUserId(), fingerprint == null,
                 action, actor.getUserId(), next, action, actor.getUserId(), next,
                 action, actor.getUserId(), action, id);
+        if (clearingAssignments) {
+            // Run after status moves to PENDING_ASM / PENDING_SHIP_REVIEW so the V134
+            // AreaStaffAssignment trigger does not double-bump revision.
+            clearSyncedAssignmentsOnReturn(id, actor);
+            jdbc.update("DELETE FROM \"StaffingNeedAssignment\" WHERE request_id=?", id);
+            jdbc.update("DELETE FROM \"StaffingServiceAssignment\" WHERE request_id=?", id);
+        }
         decision(id, row.revision() + 1, action, actor, input.comment());
         if ("OPS_APPROVED".equals(row.status())) {
             jdbc.queryForList("SELECT invalidate_staffing_preparation(?)", cruise);
@@ -844,7 +1148,7 @@ public class StaffingWorkflowService {
         };
         String content = switch (status) {
             case "PENDING_ASM" -> "Quản lý lịch trình đã gửi yêu cầu chuẩn bị chương trình & dịch vụ cho chuyến " + label + ".";
-            case "PENDING_SHIP_REVIEW" -> "Chương trình chuyến " + label + " đã sẵn sàng. Vui lòng mở khu vực, gán máy POS và lập định biên nhân sự.";
+            case "PENDING_SHIP_REVIEW" -> "Chương trình và định biên dịch vụ chuyến " + label + " đã sẵn sàng. Vui lòng mở khu vực, gán máy POS và bố trí dịch vụ.";
             case "SHIP_REVIEWED" -> "Quản lý tàu đã xác nhận phương án tàu cho chuyến " + label + ". Vui lòng kiểm tra và chuyển Quản lý nhân sự phân công.";
             case "SENT_TO_HR" -> "Phương án tàu chuyến " + label + " đã sẵn sàng. Vui lòng phân công nhân sự cho các vị trí và ca hoạt động.";
             case "HR_SUBMITTED" -> "Quản lý nhân sự đã hoàn tất phân công cho chuyến " + label + ". Vui lòng rà soát và trình Quản lý vận hành phê duyệt.";
@@ -1052,9 +1356,15 @@ public class StaffingWorkflowService {
                     rs.getString(4), rs.getString(5), rs.getObject(6, UUID.class)), cruiseId)
                 .stream().findFirst().orElse(null);
         if (approved != null && "V2".equals(approved.workflowVersion())) {
+            if (!currentShipReviewer(approved.id())) return false;
             String current = validShipPlanFingerprint(approved.id());
-            return current != null && current.equals(approved.fingerprint()) && currentShipReviewer(approved.id())
-                    && needsCovered(approved.id(), cruiseId);
+            if (current != null && current.equals(approved.fingerprint())) {
+                return needsCovered(approved.id(), cruiseId);
+            }
+            String legacy = legacyV2ShipPlanFingerprint(approved.id());
+            return legacy != null && legacy.equals(approved.fingerprint())
+                    && readNeeds(approved.id(), true).stream().allMatch(need -> need.assignedUserIds().size() >= need.requiredCount())
+                    && activitiesCovered(cruiseId);
         }
         return approved != null && (!approved.shipReview()
                 || inspectShip(cruiseId).matches(approved.fingerprint(), approved.asmProgram(), approved.serviceFingerprint())
@@ -1102,9 +1412,17 @@ public class StaffingWorkflowService {
                 }, request.v2() ? id : cruiseId);
         String areaQuery = request.v2() ? """
                 SELECT a.area_id,a.area_name,ARRAY(
-                    SELECT DISTINCT q.user_id FROM "StaffingV2QualifiedAssignment" q
-                        JOIN "StaffingNeed" n USING(request_id,need_id)
-                        WHERE q.request_id=? AND ? AND n.area_id=a.area_id ORDER BY q.user_id
+                    SELECT DISTINCT uid FROM (
+                        SELECT q.user_id AS uid FROM "StaffingV2QualifiedAssignment" q
+                            JOIN "StaffingNeed" n USING(request_id,need_id)
+                            WHERE q.request_id=? AND ? AND n.area_id=a.area_id
+                        UNION
+                        SELECT cs.user_id AS uid FROM "StaffingServiceAssignment" sa
+                            JOIN "StaffingServicePlacement" sp USING(request_id,service_id)
+                            JOIN "CruiseStaff" cs ON cs.cruise_staff_id=sa.cruise_staff_id AND cs.status='ACTIVE'
+                            JOIN "User" u ON u.user_id=cs.user_id AND u.status='ACTIVE'
+                            WHERE sa.request_id=? AND ? AND sp.area_id=a.area_id
+                    ) staff_in_area ORDER BY uid
                 ) FROM "StaffingV2EligibleArea" a WHERE a.cruise_id=? ORDER BY a.area_name,a.area_id
                 """ : """
                 SELECT a.area_id, a.area_name, ARRAY(
@@ -1116,16 +1434,20 @@ public class StaffingWorkflowService {
                 terminals.getOrDefault(rs.getObject(1, UUID.class), List.of()),
                 Arrays.asList((UUID[]) rs.getArray(3).getArray()),
                 eligibleTerminals.getOrDefault(rs.getObject(1, UUID.class), List.of())),
-                request.v2() ? new Object[]{id, !request.shipPlanStale(), cruiseId} : new Object[]{cruiseId});
+                request.v2() ? new Object[]{id, !request.shipPlanStale(), id, !request.shipPlanStale(), cruiseId} : new Object[]{cruiseId});
         var activities = jdbc.query("""
                 SELECT w.window_id, w.kind, w.name, ARRAY(
                     SELECT DISTINCT d.user_id FROM "CruiseStaffDutyWindow" d
                     WHERE d.cruise_id=w.cruise_id AND d.kind=w.kind AND d.window_id=w.window_id
                     ORDER BY d.user_id
-                ) FROM "CruiseStaffWorkWindow" w WHERE w.cruise_id=? AND w.kind IN ('ONBOARD','SHORE')
+                ), COALESCE(oa.required_staff_count, se.required_staff_count, 1)
+                FROM "CruiseStaffWorkWindow" w
+                LEFT JOIN "OnboardActivity" oa ON w.kind='ONBOARD' AND oa.onboard_activity_id=w.window_id
+                LEFT JOIN "ShoreExcursion" se ON w.kind='SHORE' AND se.shore_excursion_id=w.window_id
+                WHERE w.cruise_id=? AND w.kind IN ('ONBOARD','SHORE')
                 ORDER BY w.starts_at, w.kind, w.window_id
                 """, (rs, row) -> new ActivityReview(rs.getObject(1, UUID.class), rs.getString(2),
-                rs.getString(3), Arrays.asList((UUID[]) rs.getArray(4).getArray())), cruiseId);
+                rs.getString(3), Arrays.asList((UUID[]) rs.getArray(4).getArray()), rs.getInt(5)), cruiseId);
         List<PosReview> terminalOptions = !request.asmProgramWorkflow() ? List.of() : jdbc.query("""
                 SELECT t.terminal_id, t.terminal_name FROM "Cruise" c JOIN "PosTerminal" t USING (ship_id)
                 WHERE c.cruise_id=? AND t.enabled ORDER BY t.terminal_name,t.terminal_id
@@ -1198,7 +1520,12 @@ public class StaffingWorkflowService {
                         WHERE a.cruise_id=c.cruise_id AND ds.service_id=s.service_id)
                         THEN 'SERVICE_AREA_POS_REQUIRED'
                     ELSE 'SERVICE_POS_PERMISSION_REQUIRED'
-                END AS configuration_blocker
+                END AS configuration_blocker,
+                GREATEST(1, COALESCE((
+                    SELECT MAX(w.required_staff_count) FROM "ServiceSchedule" w
+                    WHERE w.cruise_id=service.cruise_id AND w.service_id=service.service_id
+                      AND w.cruise_stop_id IS NULL AND w.status<>'CANCELLED'
+                ), s.default_required_staff, 1)) AS required_staff_count
                 FROM "StaffingPlannedOnboardService" service
                 JOIN "Service" s USING (service_id)
                 JOIN "Cruise" c ON c.cruise_id=service.cruise_id
@@ -1219,7 +1546,7 @@ public class StaffingWorkflowService {
                             placements.getOrDefault(service, List.of()),
                             rs.getString(6) == null ? null
                                     : new ServiceProposal(rs.getString(4), rs.getString(5), rs.getString(6)),
-                            pairs, configuredPairs, blocker);
+                            pairs, configuredPairs, blocker, rs.getInt(8));
                 }, cruiseId);
     }
 
@@ -1328,9 +1655,12 @@ public class StaffingWorkflowService {
         return Boolean.TRUE.equals(jdbc.queryForObject("""
                 SELECT NOT EXISTS (
                     SELECT 1 FROM "CruiseStaffWorkWindow" w
+                    LEFT JOIN "OnboardActivity" oa ON w.kind='ONBOARD' AND oa.onboard_activity_id=w.window_id
+                    LEFT JOIN "ShoreExcursion" se ON w.kind='SHORE' AND se.shore_excursion_id=w.window_id
                     WHERE w.cruise_id=? AND w.kind IN ('ONBOARD','SHORE')
-                    AND NOT EXISTS (SELECT 1 FROM "CruiseStaffDutyWindow" d
-                                    WHERE d.cruise_id=w.cruise_id AND d.kind=w.kind AND d.window_id=w.window_id)
+                    AND (SELECT count(DISTINCT d.user_id) FROM "CruiseStaffDutyWindow" d
+                         WHERE d.cruise_id=w.cruise_id AND d.kind=w.kind AND d.window_id=w.window_id)
+                        < COALESCE(oa.required_staff_count, se.required_staff_count, 1)
                 )
                 """, Boolean.class, cruiseId));
     }

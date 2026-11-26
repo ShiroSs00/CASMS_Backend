@@ -108,6 +108,12 @@ public class ActivityService {
         a.setDescription(input.getDescription());
         a.setCategory(input.getCategory());
         a.setCapacity(input.getCapacity());
+        if (input.getRequiredStaffCount() != null) {
+            if (input.getRequiredStaffCount() < 1) throw new IllegalArgumentException("Số nhân viên phục vụ phải từ 1 trở lên.");
+            a.setRequiredStaffCount(input.getRequiredStaffCount());
+        } else if (a.getRequiredStaffCount() == null || a.getRequiredStaffCount() < 1) {
+            a.setRequiredStaffCount(1);
+        }
         a.setPrice(input.getPrice() == null ? BigDecimal.ZERO : input.getPrice());
         a.setCurrencyCode(currency);
         a.setStatus(OnboardActivityStatus.PLANNED);
@@ -129,6 +135,10 @@ public class ActivityService {
         a.setPrice(source.getPrice() == null ? BigDecimal.ZERO : source.getPrice());
         a.setCurrencyCode(source.getCurrencyCode());
         a.setCapacity(input.capacity() == null ? source.getCapacity() : input.capacity());
+        int staffNeeded = input.requiredStaffCount() != null
+                ? input.requiredStaffCount()
+                : (source.getRequiredStaffCount() != null && source.getRequiredStaffCount() >= 1 ? source.getRequiredStaffCount() : 1);
+        a.setRequiredStaffCount(staffNeeded);
         a.setStartTime(input.startTime());
         a.setEndTime(input.endTime());
         a.setLocation(input.location());
@@ -164,6 +174,9 @@ public class ActivityService {
         a.setActivityCode(businessCodeGenerator.next("AC"));
         if (a.getPrice() == null) {
             a.setPrice(BigDecimal.ZERO);
+        }
+        if (a.getRequiredStaffCount() == null || a.getRequiredStaffCount() < 1) {
+            a.setRequiredStaffCount(1);
         }
         resolveDeckAndCabin(a, deckId, cabinId);
         if (a.getMeetingPoint() != null) {
@@ -223,6 +236,12 @@ public class ActivityService {
             a.setMeetingPoint(input.getMeetingPoint().isBlank() ? null : input.getMeetingPoint().trim());
         }
         a.setCapacity(input.getCapacity());
+        if (input.getRequiredStaffCount() != null) {
+            if (input.getRequiredStaffCount() < 1) throw new IllegalArgumentException("Số nhân viên phục vụ phải từ 1 trở lên.");
+            a.setRequiredStaffCount(input.getRequiredStaffCount());
+        } else if (a.getRequiredStaffCount() == null || a.getRequiredStaffCount() < 1) {
+            a.setRequiredStaffCount(1);
+        }
         a.setPrice(input.getPrice());
         a.setCurrencyCode(currency);
         a.setDeck(venue.getDeck());

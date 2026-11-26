@@ -311,7 +311,7 @@ class ItineraryProgramsPostgresIntegrationTest {
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.shipPlanReady").value(true))
                 .andExpect(jsonPath("$.data.request.planResetImpact.assignmentsToClear").value(0));
         var checked = advance(empty.request(), "SHIP_CHECKED", ship);
-        assertEquals("SHIP_REVIEWED", checked.status());
+        assertEquals("SENT_TO_HR", checked.status());
 
         var technical = preparation.getPreparationDashboard(cruiseId).getSections().stream()
                 .filter(section -> "TECHNICAL_NAUTICAL".equals(section.getSectionCode())).findFirst().orElseThrow();
@@ -341,14 +341,12 @@ class ItineraryProgramsPostgresIntegrationTest {
                 .andExpect(jsonPath("$.data.sections[?(@.sectionCode == 'TECHNICAL_NAUTICAL')].submittedRevision",
                         org.hamcrest.Matchers.contains(submitted.getSubmittedRevision().intValue())));
 
-        assertCode("STAFFING_ROLE_REQUIRED", () -> advance(checked, "SEND_TO_HR", ship));
-        assertCode("STAFFING_PLANNER_SCOPE_FORBIDDEN", () -> advance(checked, "SEND_TO_HR", actor(Role.CRUISE_MANAGER)));
-        assertCode("STAFFING_REVISION_CONFLICT", () -> staffing.transition(checked.id(), "SEND_TO_HR",
-                new ReviewRequest(checked.revision() - 1, null), crm));
-        var dispatched = advance(checked, "SEND_TO_HR", crm);
-        assertEquals("SENT_TO_HR", dispatched.status());
-        var staffed = advance(dispatched, "HR_SUBMITTED", hr);
+        var staffed = advance(checked, "HR_SUBMITTED", hr);
         assertEquals("HR_SUBMITTED", staffed.status());
+        assertCode("STAFFING_ROLE_REQUIRED", () -> advance(staffed, "PLANNER_CONFIRMED", ship));
+        assertCode("STAFFING_PLANNER_SCOPE_FORBIDDEN", () -> advance(staffed, "PLANNER_CONFIRMED", actor(Role.CRUISE_MANAGER)));
+        assertCode("STAFFING_REVISION_CONFLICT", () -> staffing.transition(staffed.id(), "PLANNER_CONFIRMED",
+                new ReviewRequest(staffed.revision() - 1, null), crm));
         var reviewed = advance(staffed, "PLANNER_CONFIRMED", crm);
         assertEquals("PLANNER_CONFIRMED", reviewed.status());
         var approved = advance(reviewed, "OPS_APPROVED", ops);
@@ -438,25 +436,55 @@ class ItineraryProgramsPostgresIntegrationTest {
                 .andExpect(jsonPath("$.data.plannedServices[0].eligiblePlacements[0].terminalId").value(terminal.toString()));
         var withPlacement = staffing.placeService(pending.id(), service,
                 new ServicePlacementInput(serviceAreaId, terminal, withTerminal.request().revision()), ship);
-        var dispatched = advance(advance(withPlacement.request(), "SHIP_CHECKED", ship), "SEND_TO_HR", crm);
+        var dispatched = advance(withPlacement.request(), "SHIP_CHECKED", ship);
+        assertEquals("SENT_TO_HR", dispatched.status());
         UUID need = dispatched.needs().getFirst().needId();
         var assigned = staffing.assignNeed(pending.id(), need, worker.getUserId(), new NeedAssignmentInput(dispatched.revision(), true), hr);
         var unassigned = staffing.assignNeed(pending.id(), need, worker.getUserId(), new NeedAssignmentInput(assigned.revision(), false), hr);
         var replaced = staffing.assignNeed(pending.id(), need, replacement.getUserId(), new NeedAssignmentInput(unassigned.revision(), true), hr);
         assertEquals(List.of(replacement.getUserId()), replaced.needs().getFirst().assignedUserIds());
-        assertEquals(0L, jdbc.queryForObject("""
+        assertEquals(1L, jdbc.queryForObject("""
                 SELECT count(*) FROM "AreaStaffAssignment" a JOIN "CruiseStaff" cs USING (cruise_staff_id)
-                WHERE cs.cruise_id=?
+                WHERE cs.cruise_id=? AND a.enabled
                 """, Long.class, cruiseId));
-        assertEquals(new PlanResetImpact(1, 1), replaced.planResetImpact());
+        var serviceAssigned = staffing.assignServiceNeed(pending.id(), service, worker.getUserId(),
+                new NeedAssignmentInput(replaced.revision(), true), hr);
+        assertEquals(List.of(worker.getUserId()), serviceAssigned.serviceNeeds().getFirst().assignedUserIds());
+        assertEquals(1L, jdbc.queryForObject("""
+                SELECT count(*) FROM "StaffServiceAssignment" ssa
+                JOIN "AreaStaffAssignment" a USING (assignment_id)
+                JOIN "CruiseStaff" cs USING (cruise_staff_id)
+                WHERE cs.cruise_id=? AND cs.user_id=? AND ssa.service_id=? AND ssa.enabled AND ssa.inherit_permissions
+                """, Long.class, cruiseId, worker.getUserId(), service));
+        assertEquals(1L, jdbc.queryForObject("""
+                SELECT count(*) FROM "CruiseStaffDuty" d
+                JOIN "CruiseStaff" cs USING (cruise_staff_id)
+                WHERE cs.cruise_id=? AND cs.user_id=? AND d.service_id=? AND d.ended_at IS NULL
+                """, Long.class, cruiseId, worker.getUserId(), service));
+        assertEquals(new PlanResetImpact(1, 2), serviceAssigned.planResetImpact());
         jdbc.update("UPDATE \"PosTerminal\" SET permissions='{}' WHERE terminal_id=?", terminal);
         var stale = staffing.detail(pending.id(), hr);
         assertTrue(stale.shipPlanStale());
         assertTrue(stale.needs().getFirst().assignedUserIds().isEmpty());
-        assertEquals(1, stale.planResetImpact().assignmentsToClear());
+        assertEquals(2, stale.planResetImpact().assignmentsToClear());
         var returned = staffing.transition(pending.id(), "HR_RETURN_SHIP", new ReviewRequest(stale.revision(), "QA correction"), hr);
         assertEquals("PENDING_SHIP_REVIEW", returned.status());
         assertEquals(0, returned.planResetImpact().assignmentsToClear());
+        assertEquals(0L, jdbc.queryForObject("""
+                SELECT count(*) FROM "AreaStaffAssignment" a JOIN "CruiseStaff" cs USING (cruise_staff_id)
+                WHERE cs.cruise_id=? AND a.enabled
+                """, Long.class, cruiseId));
+        assertEquals(0L, jdbc.queryForObject("""
+                SELECT count(*) FROM "StaffServiceAssignment" ssa
+                JOIN "AreaStaffAssignment" a USING (assignment_id)
+                JOIN "CruiseStaff" cs USING (cruise_staff_id)
+                WHERE cs.cruise_id=? AND ssa.enabled
+                """, Long.class, cruiseId));
+        assertEquals(0L, jdbc.queryForObject("""
+                SELECT count(*) FROM "CruiseStaffDuty" d
+                JOIN "CruiseStaff" cs USING (cruise_staff_id)
+                WHERE cs.cruise_id=? AND d.service_id=? AND d.ended_at IS NULL
+                """, Long.class, cruiseId, service));
         var saved = staffing.saveShipPlan(pending.id(), new ShipPlanInput(returned.revision(), List.of(serviceAreaId), needs), ship);
         assertNotEquals(need, saved.request().needs().getFirst().needId());
         assertTrue(saved.request().needs().getFirst().assignedUserIds().isEmpty());

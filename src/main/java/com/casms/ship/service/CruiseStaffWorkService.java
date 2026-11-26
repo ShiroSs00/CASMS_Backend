@@ -42,7 +42,7 @@ public class CruiseStaffWorkService {
 
     public record WorkWindow(
             UUID windowId, UUID resourceId, UUID definitionId, String kind, String name,
-            Instant startsAt, Instant endsAt, List<UUID> userIds) {}
+            Instant startsAt, Instant endsAt, List<UUID> userIds, int requiredStaffCount) {}
 
     public record ServiceDuty(UUID userId, UUID serviceId, String serviceName) {}
 
@@ -58,9 +58,14 @@ public class CruiseStaffWorkService {
                     SELECT DISTINCT d.user_id FROM "CruiseStaffDutyWindow" d
                     WHERE d.cruise_id = w.cruise_id AND d.kind = w.kind AND d.window_id = w.window_id
                     ORDER BY d.user_id
-                ) AS staff_ids
-                FROM "CruiseStaffWorkWindow" w WHERE cruise_id = ?
-                ORDER BY starts_at, ends_at, kind, window_id
+                ) AS staff_ids,
+                COALESCE(ss.required_staff_count, oa.required_staff_count, se.required_staff_count, 1) AS required_staff_count
+                FROM "CruiseStaffWorkWindow" w
+                LEFT JOIN "ServiceSchedule" ss ON w.kind = 'SERVICE' AND ss.service_schedule_id = w.window_id
+                LEFT JOIN "OnboardActivity" oa ON w.kind = 'ONBOARD' AND oa.onboard_activity_id = w.window_id
+                LEFT JOIN "ShoreExcursion" se ON w.kind = 'SHORE' AND se.shore_excursion_id = w.window_id
+                WHERE w.cruise_id = ?
+                ORDER BY w.starts_at, w.ends_at, w.kind, w.window_id
                 """, (rs, row) -> new WorkWindow(
                 rs.getObject("window_id", UUID.class),
                 rs.getObject("resource_id", UUID.class),
@@ -68,7 +73,8 @@ public class CruiseStaffWorkService {
                 rs.getString("kind"), rs.getString("name"),
                 rs.getObject("starts_at", OffsetDateTime.class).toInstant(),
                 rs.getObject("ends_at", OffsetDateTime.class).toInstant(),
-                List.of((UUID[]) rs.getArray("staff_ids").getArray())), cruiseId);
+                List.of((UUID[]) rs.getArray("staff_ids").getArray()),
+                rs.getInt("required_staff_count")), cruiseId);
         var services = jdbc.query("""
                 SELECT cs.user_id, d.service_id, s.service_name
                 FROM "CruiseStaffDuty" d JOIN "CruiseStaff" cs USING (cruise_staff_id)

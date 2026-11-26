@@ -56,6 +56,9 @@ public class ServiceSchedule {
     @Column(name = "capacity", nullable = false)
     private Integer capacity;
 
+    @Column(name = "required_staff_count", nullable = false)
+    private Integer requiredStaffCount = 1;
+
     @Column(name = "status", nullable = false, length = 20)
     private String status = "OPEN";
 

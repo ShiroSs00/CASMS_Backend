@@ -17,4 +17,21 @@ public record ShoreExcursionRequest(
         @Min(1) Integer minimumParticipants,
         @NotNull @Min(1) Integer maximumCapacity,
         @DecimalMin("0.0") @Digits(integer = 15, fraction = 4) BigDecimal price,
-        @Pattern(regexp = "^[A-Z]{3}$") String currencyCode) {}
+        @Pattern(regexp = "^[A-Z]{3}$") String currencyCode,
+        @Min(1) Integer requiredStaffCount) {
+    public ShoreExcursionRequest(
+            UUID cruiseStopId,
+            UUID destinationId,
+            UUID supplierId,
+            String excursionName,
+            Instant startTime,
+            Instant plannedReturnTime,
+            String meetingPoint,
+            Integer minimumParticipants,
+            Integer maximumCapacity,
+            BigDecimal price,
+            String currencyCode) {
+        this(cruiseStopId, destinationId, supplierId, excursionName, startTime, plannedReturnTime,
+                meetingPoint, minimumParticipants, maximumCapacity, price, currencyCode, null);
+    }
+}

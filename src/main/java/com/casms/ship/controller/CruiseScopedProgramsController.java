@@ -128,7 +128,14 @@ public class CruiseScopedProgramsController {
             @NotNull java.time.Instant startsAt,
             @NotNull java.time.Instant endsAt,
             @NotBlank String location,
-            @NotNull @Positive Integer capacity) {}
+            @NotNull @Positive Integer capacity,
+            @Positive Integer requiredStaffCount) {
+        public ServingInput(
+                UUID serviceId, UUID cruiseStopId, UUID supplierId,
+                java.time.Instant startsAt, java.time.Instant endsAt, String location, Integer capacity) {
+            this(serviceId, cruiseStopId, supplierId, startsAt, endsAt, location, capacity, null);
+        }
+    }
 
     @GetMapping("/program-options")
     @PreAuthorize(
@@ -179,7 +186,8 @@ public class CruiseScopedProgramsController {
                         "services",
                                 jdbc.queryForList("""
                                         SELECT s.service_id AS id,s.service_name AS name,
-                                            s.requires_schedule AS scheduled, config.on_ship AS "configuredOnShip"
+                                            s.requires_schedule AS scheduled, config.on_ship AS "configuredOnShip",
+                                            s.default_required_staff AS "defaultRequiredStaff"
                                         FROM "Service" s
                                         CROSS JOIN LATERAL (SELECT EXISTS (
                                             SELECT 1 FROM "DeckServiceAssignment" a JOIN "Deck" d USING (deck_id)
@@ -217,7 +225,7 @@ public class CruiseScopedProgramsController {
                         "SELECT s.service_schedule_id AS id,s.service_id AS"
                             + " \"serviceId\",s.cruise_stop_id AS \"cruiseStopId\",s.supplier_id AS"
                             + " \"supplierId\",v.service_name AS name,s.starts_at AS"
-                            + " \"startsAt\",s.ends_at AS \"endsAt\",s.capacity,s.location,s.responsible_user_id AS \"responsibleUserId\" FROM"
+                            + " \"startsAt\",s.ends_at AS \"endsAt\",s.capacity,s.required_staff_count AS \"requiredStaffCount\",s.location,s.responsible_user_id AS \"responsibleUserId\" FROM"
                             + " \"ServiceSchedule\" s JOIN \"Service\" v USING(service_id) WHERE"
                             + " cruise_id=? ORDER BY starts_at",
                         cruiseId));
@@ -253,6 +261,7 @@ public class CruiseScopedProgramsController {
                         input.endsAt(),
                         input.location(),
                         input.capacity(),
+                        input.requiredStaffCount(),
                         handoffs.hasPendingStaffingProgram(cruiseId));
         finish(cruiseId);
         return ApiResponse.success(
@@ -277,6 +286,7 @@ public class CruiseScopedProgramsController {
                         input.endsAt(),
                         input.location(),
                         input.capacity(),
+                        input.requiredStaffCount(),
                         id,
                         handoffs.hasPendingStaffingProgram(cruiseId));
         finish(cruiseId);
@@ -487,7 +497,7 @@ public class CruiseScopedProgramsController {
         return ApiResponse.success(
                 jdbc.queryForList(
                         "SELECT e.shore_excursion_id AS id,e.excursion_name AS"
-                            + " name,e.maximum_capacity AS capacity,e.price,e.currency_code AS"
+                            + " name,e.maximum_capacity AS capacity,e.required_staff_count AS \"requiredStaffCount\",e.price,e.currency_code AS"
                             + " currency,e.cruise_stop_id AS \"cruiseStopId\",e.start_time AS"
                             + " \"startsAt\",e.planned_return_time AS \"endsAt\",e.meeting_point AS"
                             + " location FROM \"ShoreExcursion\" e JOIN \"CruiseStop\" s"
@@ -763,6 +773,7 @@ public class CruiseScopedProgramsController {
         a.setLocation(r.location());
         a.setMeetingPoint(r.meetingPoint());
         a.setCapacity(r.capacity());
+        a.setRequiredStaffCount(r.requiredStaffCount());
         a.setPrice(r.price());
         a.setCurrencyCode(r.currencyCode());
         return a;

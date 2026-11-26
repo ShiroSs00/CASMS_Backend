@@ -602,6 +602,11 @@ public class ShoreExcursionService {
         excursion.setMinimumParticipants(
                 request.minimumParticipants() == null ? 1 : request.minimumParticipants());
         excursion.setMaximumCapacity(request.maximumCapacity());
+        if (request.requiredStaffCount() != null) {
+            excursion.setRequiredStaffCount(request.requiredStaffCount());
+        } else if (excursion.getRequiredStaffCount() == null || excursion.getRequiredStaffCount() < 1) {
+            excursion.setRequiredStaffCount(1);
+        }
         excursion.setPrice(request.price() == null ? BigDecimal.ZERO : request.price());
         excursion.setCurrencyCode(normalizedCurrency);
     }
