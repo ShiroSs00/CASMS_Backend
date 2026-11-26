@@ -20,12 +20,23 @@ public class PortCallBookingPolicy {
     private final CruiseStopRepository stops;
 
     public void requireOnboardBooking(Cruise cruise, Instant now) {
+        requireOnboardBooking(cruise, now, true);
+    }
+
+    /** Advisory GET projection. A later mutation must re-evaluate under its own locks. */
+    public void requireOnboardBookingForProjection(Cruise cruise, Instant now) {
+        requireOnboardBooking(cruise, now, false);
+    }
+
+    private void requireOnboardBooking(Cruise cruise, Instant now, boolean lock) {
         if (cruise.getStatus() == CruiseStatus.COMPLETED
                 || (cruise.getReturnDatetime() != null && !now.isBefore(cruise.getReturnDatetime()))) {
             throw blocked("CRUISE_ENDED");
         }
         if (cruise.getStatus() != CruiseStatus.IN_PROGRESS) return;
-        var calls = stops.findByItineraryCruiseCruiseIdOrderByStopOrderAsc(cruise.getCruiseId())
+        var calls = (lock
+                ? stops.findByItineraryCruiseCruiseIdOrderByStopOrderAsc(cruise.getCruiseId())
+                : stops.findBookingPolicyProjection(cruise.getCruiseId()))
                 .stream().filter(stop -> stop.getStatus() != CruiseStopStatus.OMITTED).toList();
         for (int index = 0; index < calls.size(); index++) {
             CruiseStop call = calls.get(index);
