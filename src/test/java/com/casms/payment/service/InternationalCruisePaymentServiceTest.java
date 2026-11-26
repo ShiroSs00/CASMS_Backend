@@ -119,11 +119,13 @@ class InternationalCruisePaymentServiceTest {
 
         passengerUser = new User();
         passengerUser.setUserId(UUID.randomUUID());
+        passengerUser.setStatus(com.casms.identity.enums.UserStatus.ACTIVE);
         passengerUser.setUsername("passenger_asia");
         passengerUser.setRoles(Set.of(Role.PASSENGER));
 
         financeUser = new User();
         financeUser.setUserId(UUID.randomUUID());
+        financeUser.setStatus(com.casms.identity.enums.UserStatus.ACTIVE);
         financeUser.setUsername("finance_officer");
         financeUser.setRoles(Set.of(Role.FINANCE_OFFICER));
 
@@ -234,6 +236,7 @@ class InternationalCruisePaymentServiceTest {
                 "USD", TransactionType.CHARGE, null, "POS-DESK-01", "idem-exc-1",
                 "Singapore Shore Excursion", false), financePrincipal);
 
+        installPersonalMembership();
         AccountBalanceResponse balance = service.getAccountBalance(accountId, "VND", passengerPrincipal);
 
         assertThat(balance.totalCharges()).isEqualByComparingTo("320.0000");
@@ -258,6 +261,8 @@ class InternationalCruisePaymentServiceTest {
                 "Duty-free watch", false);
 
         assertThatThrownBy(() -> service.recordTransaction(overLimitReq, passengerPrincipal))
+                .isInstanceOf(AccessDeniedException.class);
+        assertThatThrownBy(() -> service.recordTransaction(overLimitReq, financePrincipal))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("exceeds available spending limit");
 
@@ -297,6 +302,14 @@ class InternationalCruisePaymentServiceTest {
         verify(onboardAccountRepository, times(2)).findByIdForUpdate(accountId);
     }
 
+    private void installPersonalMembership() {
+        var member = new OnboardAccountMember();
+        member.setPassenger(passenger);
+        member.setStatus(AccountMemberStatus.ACTIVE);
+        when(onboardAccountMemberRepository.findByOnboardAccount_OnboardAccountId(accountId))
+                .thenReturn(List.of(member));
+    }
+
     // =========================================================================
     // 5. Duplicate transaction prevention (Idempotency)
     // =========================================================================
@@ -317,6 +330,12 @@ class InternationalCruisePaymentServiceTest {
         TransactionResponse second = service.recordTransaction(req, financePrincipal);
 
         assertThat(second.transactionId()).isEqualTo(first.transactionId());
+        var changedAmount = new CreateTransactionRequest(
+                accountId, passengerId, "BAR:WINE", new BigDecimal("46.00"),
+                "USD", TransactionType.CHARGE, null, "POS-BAR-01", "idem-dup-tx-001", "Wine bottle", false);
+        assertThatThrownBy(() -> service.recordTransaction(changedAmount, financePrincipal))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        error -> assertThat(error.getCode()).isEqualTo("TRANSACTION_IDEMPOTENCY_CONFLICT"));
         assertThat(storedTransactions).hasSize(1);
     }
 
@@ -335,6 +354,7 @@ class InternationalCruisePaymentServiceTest {
                 new BigDecimal("400.00"), "USD", "USD", false,
                 "idem-auth-01", "Check-in Pre-Authorization");
 
+        installPersonalMembership();
         GatewayPaymentResponse authRes = service.authorizePayment(authReq, passengerPrincipal);
 
         assertThat(authRes.status()).isEqualTo(PaymentStatus.Authorized);
@@ -369,6 +389,7 @@ class InternationalCruisePaymentServiceTest {
                 new BigDecimal("100.00"), "USD", "USD", false,
                 "idem-charge-fail", "Attempt 1");
 
+        installPersonalMembership();
         GatewayPaymentResponse failRes = service.chargePayment(failReq, passengerPrincipal);
         assertThat(failRes.status()).isEqualTo(PaymentStatus.Failed);
         assertThat(failRes.failureReason()).contains("Card issuer declined");
@@ -552,7 +573,7 @@ class InternationalCruisePaymentServiceTest {
 
         // 1. Initiate settlement statement
         SettlementStatementResponse statement = service.initiateSettlement(
-                new InitiateSettlementRequest(accountId, false), passengerPrincipal);
+                new InitiateSettlementRequest(accountId, false), financePrincipal);
 
         assertThat(statement.settlementStatus()).isEqualTo(FinalSettlementStatus.Pending);
         assertThat(statement.totalCharges()).isEqualByComparingTo("200.0000");
@@ -573,7 +594,7 @@ class InternationalCruisePaymentServiceTest {
                 new ProcessSettlementRequest(
                         pm.getPaymentMethodId(), null, null,
                         false, "USD", false, "idem-settle-pay-1", false),
-                passengerPrincipal);
+                financePrincipal);
 
         assertThat(completed.settlementStatus()).isEqualTo(FinalSettlementStatus.Completed);
         assertThat(completed.outstandingBalance()).isEqualByComparingTo("0.0000");
@@ -587,13 +608,11 @@ class InternationalCruisePaymentServiceTest {
     @DisplayName("14. Reject unauthorized passenger access to another passenger's account and reject raw PAN storage")
     void testUnauthorizedAccessAndRawCardRejection() {
         when(onboardAccountRepository.findById(accountId)).thenReturn(Optional.of(activeAccount));
-        when(onboardAccountMemberRepository.findByOnboardAccount_OnboardAccountId(accountId))
-                .thenReturn(Collections.emptyList());
-
         User otherUser = new User();
         otherUser.setUserId(UUID.randomUUID());
         otherUser.setUsername("intruder_passenger");
         otherUser.setRoles(Set.of(Role.PASSENGER));
+        otherUser.setStatus(com.casms.identity.enums.UserStatus.ACTIVE);
         CasmsPrincipal otherPassengerPrincipal = new CasmsPrincipal(otherUser, null);
 
         // 1. Intruder passenger cannot read another passenger's onboard account

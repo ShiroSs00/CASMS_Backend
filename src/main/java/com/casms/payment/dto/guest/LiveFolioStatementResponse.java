@@ -60,6 +60,8 @@ public class LiveFolioStatementResponse {
     @Schema(description = "Thời điểm cập nhật sao kê gần nhất")
     private Instant statementAsOf;
 
+    private String scope;
+
     @Schema(description = "Danh sách chi tiết từng giao dịch chi tiêu trên tàu")
     private List<FolioTransactionItem> transactions;
 

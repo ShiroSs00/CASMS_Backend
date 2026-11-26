@@ -280,7 +280,8 @@ class BookingServiceTest {
         assertNotNull(response);
         assertEquals(BookingStatus.Draft, response.getBookingStatus());
         assertNotNull(response.getBookingReference());
-        verify(notificationService).notifyUser(any(), any(), any(), any(), any());
+        verify(notificationService).notifyUser(eq(savedUser), eq("CONTRACT_SIGNING_INVITATION"), any(), any(), any());
+        verify(notificationService).notifyUser(eq(savedUser), eq("BOOKING_CREATED"), any(), any(), any());
         verify(bookingContractRepository).save(any());
 
         var profiles = org.mockito.ArgumentCaptor.forClass(Passenger.class);

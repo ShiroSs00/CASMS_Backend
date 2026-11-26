@@ -163,7 +163,7 @@ public class OnboardAllowanceService {
                     var limit = new SpendingLimit();
                     limit.setAccountMember(member);
                     limit.setLimitAmount(cap.amount());
-                    limit.setCurrencyCode("USD");
+                    limit.setCurrencyCode(com.casms.common.util.NewWriteCurrency.requireSupportedCurrency(account.getBaseCurrency()));
                     // This is a whole-account allowance, not a window starting at a planned
                     // departure.
                     // Reconfiguring it must include every existing debit, even after an early

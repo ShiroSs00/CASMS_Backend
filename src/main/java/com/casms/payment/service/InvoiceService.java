@@ -323,6 +323,18 @@ public class InvoiceService {
                 }
             }
         }
+        return bookingInvoiceResponses(invoices);
+    }
+
+    @Transactional(readOnly = true)
+    public List<InvoiceResponse> readExistingBookingInvoices(UUID bookingId) {
+        return bookingInvoiceResponses(
+                invoiceRepository.findByBooking_BookingIdOrderByIssuedAtDesc(bookingId).stream()
+                        .filter(invoice -> invoice.getOnboardAccount() == null)
+                        .toList());
+    }
+
+    private List<InvoiceResponse> bookingInvoiceResponses(List<Invoice> invoices) {
         return invoices.stream()
                 .map(
                         inv ->

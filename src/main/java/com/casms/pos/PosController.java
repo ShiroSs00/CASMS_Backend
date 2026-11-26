@@ -28,6 +28,7 @@ import java.util.UUID;
                     + " employee permissions.")
 public class PosController {
     private final PosService service;
+    private final PosAccessService access;
     private final OnboardAllowanceService allowances;
 
     @Operation(summary = "Read the shared internal spending allowance allocated to a booking")
@@ -143,6 +144,13 @@ public class PosController {
         return ApiResponse.success(service.login(terminalId, input, employee));
     }
 
+    @PreAuthorize("hasAuthority('POS_ACCESS') and principal.enabled and principal.accountNonLocked")
+    @GetMapping("/pos/terminals")
+    public ApiResponse<List<PosDtos.TerminalChoice>> discoverTerminals(
+            @AuthenticationPrincipal CasmsPrincipal employee) {
+        return ApiResponse.success(access.discoverTerminals(employee));
+    }
+
     @Operation(summary = "Read the current POS context and effective permissions for each service")
     @PreAuthorize("hasAuthority('POS_ACCESS') and principal.enabled and principal.accountNonLocked")
     @GetMapping("/pos/session")
@@ -227,6 +235,15 @@ public class PosController {
             @RequestHeader("X-POS-Session") String session,
             @AuthenticationPrincipal CasmsPrincipal employee) {
         return ApiResponse.success(service.sale(session, employee, saleId));
+    }
+
+    @PreAuthorize("hasAuthority('POS_ACCESS') and principal.enabled and principal.accountNonLocked")
+    @GetMapping("/pos/sales/by-idempotency-key")
+    public ApiResponse<PosDtos.Sale> recoverSale(
+            @RequestParam String idempotencyKey,
+            @RequestHeader("X-POS-Session") String session,
+            @AuthenticationPrincipal CasmsPrincipal employee) {
+        return ApiResponse.success(service.recoverSale(session, employee, idempotencyKey));
     }
 
     @Operation(

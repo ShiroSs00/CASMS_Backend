@@ -18,3 +18,7 @@ spring:
 logging:
   level:
     com.casms: DEBUG
+
+# A fresh signing key for the isolated test process when CI does not supply one.
+jwt:
+  secret: ${JWT_SECRET:${random.uuid}${random.uuid}}

@@ -11,6 +11,7 @@ import com.casms.activity.repository.*;
 import com.casms.booking.entity.Booking;
 import com.casms.booking.entity.BookingPassenger;
 import com.casms.booking.enums.BookingStatus;
+import com.casms.booking.enums.BookingPassengerParticipationStatus;
 import com.casms.booking.repository.BookingPassengerRepository;
 import com.casms.identity.entity.Passenger;
 import com.casms.ship.entity.Cruise;
@@ -54,6 +55,7 @@ class ActivityRegistrationWorkflowTest {
         BookingPassenger bp = new BookingPassenger();
         bp.setPassenger(passenger);
         bp.setBooking(booking);
+        bp.setParticipationStatus(BookingPassengerParticipationStatus.Active);
         OnboardActivity a = new OnboardActivity();
         a.setOnboardActivityId(activityId);
         a.setCruise(cruise);
@@ -90,6 +92,7 @@ class ActivityRegistrationWorkflowTest {
         BookingPassenger bp = new BookingPassenger();
         bp.setPassenger(passenger);
         bp.setBooking(booking);
+        bp.setParticipationStatus(BookingPassengerParticipationStatus.Active);
         OnboardActivity a = new OnboardActivity();
         a.setOnboardActivityId(activityId);
         a.setCruise(cruise);
@@ -122,6 +125,7 @@ class ActivityRegistrationWorkflowTest {
         BookingPassenger bp = new BookingPassenger();
         bp.setPassenger(passenger);
         bp.setBooking(booking);
+        bp.setParticipationStatus(BookingPassengerParticipationStatus.Active);
         OnboardActivity a = new OnboardActivity();
         a.setOnboardActivityId(activityId);
         when(bookingPassengers.findById(bpId)).thenReturn(Optional.of(bp));

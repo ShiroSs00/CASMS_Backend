@@ -6,6 +6,9 @@ import com.casms.booking.repository.BookingRepository;
 import com.casms.booking.service.BookingService;
 import com.casms.identity.entity.Passenger;
 import com.casms.payment.config.SepayProperties;
+import com.casms.security.principal.CasmsPrincipal;
+import com.casms.common.exception.BusinessException;
+import com.casms.ship.entity.Cruise;
 import com.casms.payment.dto.guest.*;
 import com.casms.payment.entity.*;
 import com.casms.payment.enums.InvoiceDocumentType;
@@ -70,6 +73,9 @@ class GuestPaymentExperienceServiceTest {
 
     @Mock
     private SepayProperties sepayProperties;
+
+    @Mock
+    private OnboardFinancialAccess financialAccess;
 
     @InjectMocks
     private GuestPaymentExperienceService guestPaymentExperienceService;
@@ -247,11 +253,13 @@ class GuestPaymentExperienceServiceTest {
         OnboardAccount account = new OnboardAccount();
         account.setOnboardAccountId(accountId);
         account.setStatus(OnboardAccountStatus.ACTIVE);
+        account.setCruise(new Cruise());
         account.setCreditLimit(new BigDecimal("20000000"));
 
         OnboardTransaction tx = new OnboardTransaction();
         tx.setTransactionId(UUID.randomUUID());
         tx.setTransactionType(com.casms.payment.enums.TransactionType.CHARGE);
+        tx.setCurrencyCode("USD");
         tx.setAmount(new BigDecimal("650000"));
         tx.setStatus(com.casms.payment.enums.TransactionStatus.POSTED);
 
@@ -259,7 +267,11 @@ class GuestPaymentExperienceServiceTest {
         when(onboardTransactionRepository.findByOnboardAccount_OnboardAccountIdOrderByTransactionTimeDesc(accountId))
                 .thenReturn(java.util.List.of(tx));
 
-        LiveFolioStatementResponse statement = guestPaymentExperienceService.getLiveFolioStatement(accountId, null);
+        var actor = mock(CasmsPrincipal.class);
+        when(financialAccess.readFolio(actor, account, null))
+                .thenReturn(new OnboardFinancialAccess.Scope(null, null));
+        LiveFolioStatementResponse statement =
+                guestPaymentExperienceService.getLiveFolioStatement(accountId, null, actor);
 
         assertThat(statement).isNotNull();
         assertThat(statement.getCreditLimit()).isEqualByComparingTo(new BigDecimal("20000000"));
@@ -268,54 +280,29 @@ class GuestPaymentExperienceServiceTest {
     }
 
     @Test
-    @DisplayName("Express Check-out tự động tất toán và cấp Thẻ Thông Hành Rời Tàu Gangway")
+    @DisplayName("Express checkout without payment evidence cannot mutate the ledger")
     void testProcessExpressFolioCheckout() {
-        UUID accountId = UUID.randomUUID();
-        OnboardAccount account = new OnboardAccount();
-        account.setOnboardAccountId(accountId);
-        account.setStatus(OnboardAccountStatus.ACTIVE);
-        account.setCreditLimit(new BigDecimal("20000000"));
-
-        when(onboardAccountRepository.findById(accountId)).thenReturn(Optional.of(account));
-        when(invoiceRepository.save(any(Invoice.class))).thenAnswer(invocation -> invocation.getArgument(0));
-
-        ExpressFolioCheckoutRequest request = new ExpressFolioCheckoutRequest();
-        request.setOnboardAccountId(accountId);
-        request.setPaymentMethod(PaymentMethod.CreditCard);
-        request.setCardLast4("4444");
-        request.setConfirmedByGuest(true);
-
-        ExpressFolioCheckoutResponse response = guestPaymentExperienceService.processExpressFolioCheckout(request);
-
-        assertThat(response).isNotNull();
-        assertThat(response.getSettlementStatus()).isEqualTo("SETTLED_AND_CLEARED");
-        assertThat(response.getGangwayClearancePassToken()).startsWith("GANGWAY-PASS-");
-        assertThat(response.getClearanceQrData()).contains("CLEARED_FOR_DEBARKATION");
-        assertThat(account.getStatus()).isEqualTo(OnboardAccountStatus.CLOSED);
+        var actor = mock(CasmsPrincipal.class);
+        var request = new ExpressFolioCheckoutRequest();
+        request.setOnboardAccountId(UUID.randomUUID());
+        var error = org.junit.jupiter.api.Assertions.assertThrows(BusinessException.class,
+                () -> guestPaymentExperienceService.processExpressFolioCheckout(request, actor));
+        assertThat(error.getCode()).isEqualTo("SETTLEMENT_WORKFLOW_UNAVAILABLE");
+        verifyNoInteractions(onboardAccountRepository, onboardTransactionRepository,
+                invoiceRepository, finalSettlementRepository);
     }
 
     @Test
-    @DisplayName("Ghi nhận phong tỏa tiền cọc phòng thành công")
+    @DisplayName("Deposit without verified authorization is refused")
     void testRecordSecurityDepositHold() {
-        UUID accountId = UUID.randomUUID();
-        OnboardAccount account = new OnboardAccount();
-        account.setOnboardAccountId(accountId);
-        account.setStatus(OnboardAccountStatus.ACTIVE);
-
-        when(onboardAccountRepository.findById(accountId)).thenReturn(Optional.of(account));
-
-        SecurityDepositHoldRequest request = new SecurityDepositHoldRequest();
-        request.setOnboardAccountId(accountId);
+        var actor = mock(CasmsPrincipal.class);
+        var request = new SecurityDepositHoldRequest();
+        request.setOnboardAccountId(UUID.randomUUID());
         request.setDepositAmount(new BigDecimal("2000000"));
-        request.setPaymentMethod(PaymentMethod.CreditCard);
-        request.setCardLast4("8888");
-
-        SecurityDepositHoldResponse response = guestPaymentExperienceService.recordSecurityDepositHold(request);
-
-        assertThat(response).isNotNull();
-        assertThat(response.getDepositAmount()).isEqualByComparingTo(new BigDecimal("2000000"));
-        assertThat(response.getPreAuthCode()).startsWith("PREAUTH-");
-        assertThat(response.getStatus()).isEqualTo("HELD_ACTIVE");
+        var error = org.junit.jupiter.api.Assertions.assertThrows(BusinessException.class,
+                () -> guestPaymentExperienceService.recordSecurityDepositHold(request, actor));
+        assertThat(error.getCode()).isEqualTo("DEPOSIT_EVIDENCE_REQUIRED");
+        verifyNoInteractions(onboardAccountRepository, onboardTransactionRepository);
     }
 
     @Test
@@ -355,22 +342,16 @@ class GuestPaymentExperienceServiceTest {
     }
 
     @Test
-    @DisplayName("Từ chối Express Check-out khi tài khoản phòng đã được đóng trước đó")
+    @DisplayName("Express checkout without payment evidence cannot mutate the ledger")
     void testProcessExpressFolioCheckout_AlreadyClosed_ThrowsException() {
-        UUID accountId = UUID.randomUUID();
-        OnboardAccount account = new OnboardAccount();
-        account.setOnboardAccountId(accountId);
-        account.setStatus(OnboardAccountStatus.CLOSED);
-
-        when(onboardAccountRepository.findById(accountId)).thenReturn(Optional.of(account));
-
-        ExpressFolioCheckoutRequest request = new ExpressFolioCheckoutRequest();
-        request.setOnboardAccountId(accountId);
-        request.setConfirmedByGuest(true);
-
-        org.junit.jupiter.api.Assertions.assertThrows(
-                com.casms.common.exception.BusinessException.class,
-                () -> guestPaymentExperienceService.processExpressFolioCheckout(request));
+        var actor = mock(CasmsPrincipal.class);
+        var request = new ExpressFolioCheckoutRequest();
+        request.setOnboardAccountId(UUID.randomUUID());
+        var error = org.junit.jupiter.api.Assertions.assertThrows(BusinessException.class,
+                () -> guestPaymentExperienceService.processExpressFolioCheckout(request, actor));
+        assertThat(error.getCode()).isEqualTo("SETTLEMENT_WORKFLOW_UNAVAILABLE");
+        verifyNoInteractions(onboardAccountRepository, onboardTransactionRepository,
+                invoiceRepository, finalSettlementRepository);
     }
 
     @Test
@@ -405,45 +386,16 @@ class GuestPaymentExperienceServiceTest {
     }
 
     @Test
-    @DisplayName("Express Check-out ghi nhận tiền tip cho thủy thủ đoàn và tính phụ phí thẻ")
+    @DisplayName("Express checkout without payment evidence cannot mutate the ledger")
     void testProcessExpressFolioCheckout_WithGratuityAndCardSurcharge() {
-        UUID accountId = UUID.randomUUID();
-        OnboardAccount account = new OnboardAccount();
-        account.setOnboardAccountId(accountId);
-        account.setStatus(OnboardAccountStatus.ACTIVE);
-        account.setCreditLimit(new BigDecimal("20000000"));
-
-        OnboardTransaction tx = new OnboardTransaction();
-        tx.setTransactionId(UUID.randomUUID());
-        tx.setTransactionType(com.casms.payment.enums.TransactionType.CHARGE);
-        tx.setAmount(new BigDecimal("1000000"));
-        tx.setStatus(com.casms.payment.enums.TransactionStatus.POSTED);
-
-        when(onboardAccountRepository.findById(accountId)).thenReturn(Optional.of(account));
-        when(onboardTransactionRepository.findByOnboardAccount_OnboardAccountIdOrderByTransactionTimeDesc(accountId))
-                .thenReturn(java.util.List.of(tx));
-        when(invoiceRepository.save(any(Invoice.class))).thenAnswer(inv -> inv.getArgument(0));
-        when(sepayProperties.isCardSurchargeEnabled()).thenReturn(true);
-        when(sepayProperties.getCardSurchargePercent()).thenReturn(new BigDecimal("2.50"));
-
-        ExpressFolioCheckoutRequest request = new ExpressFolioCheckoutRequest();
-        request.setOnboardAccountId(accountId);
-        request.setPaymentMethod(PaymentMethod.CreditCard);
-        request.setConfirmedByGuest(true);
-        request.setGratuityAmount(new BigDecimal("200000"));
-        request.setGratuityType("GENERAL_CREW_POOL");
-
-        ExpressFolioCheckoutResponse response = guestPaymentExperienceService.processExpressFolioCheckout(request);
-
-        assertThat(response).isNotNull();
-        assertThat(response.getGratuityAmount()).isEqualByComparingTo(new BigDecimal("200000"));
-        assertThat(response.getGratuityType()).isEqualTo("GENERAL_CREW_POOL");
-        // totalChargesWithGratuity = 1,000,000 + 200,000 = 1,200,000. Surcharge 2.5% = 30,000. Total = 1,230,000.
-        assertThat(response.getTotalChargesAmount()).isEqualByComparingTo(new BigDecimal("1200000"));
-        assertThat(response.getCardSurchargeAmount()).isEqualByComparingTo(new BigDecimal("30000"));
-        assertThat(response.getAdditionalPaidAmount()).isEqualByComparingTo(new BigDecimal("1230000"));
-        assertThat(response.getClearanceNotice()).contains("tiền tip 200,000 VNĐ");
-        verify(onboardTransactionRepository, atLeastOnce()).save(any(OnboardTransaction.class));
+        var actor = mock(CasmsPrincipal.class);
+        var request = new ExpressFolioCheckoutRequest();
+        request.setOnboardAccountId(UUID.randomUUID());
+        var error = org.junit.jupiter.api.Assertions.assertThrows(BusinessException.class,
+                () -> guestPaymentExperienceService.processExpressFolioCheckout(request, actor));
+        assertThat(error.getCode()).isEqualTo("SETTLEMENT_WORKFLOW_UNAVAILABLE");
+        verifyNoInteractions(onboardAccountRepository, onboardTransactionRepository,
+                invoiceRepository, finalSettlementRepository);
     }
 
     @Test
@@ -470,7 +422,9 @@ class GuestPaymentExperienceServiceTest {
         request.setCurrency("VND");
         request.setNotes("Khách muốn nâng hạng phòng ngắm hoàng hôn Vịnh Lan Hạ");
 
-        OnboardUpgradeResponse response = guestPaymentExperienceService.processOnboardUpgrade(request);
+        account.setBaseCurrency("VND");
+        OnboardUpgradeResponse response = guestPaymentExperienceService.processOnboardUpgrade(
+                request, mock(CasmsPrincipal.class));
 
         assertThat(response).isNotNull();
         assertThat(response.getUpgradeType()).isEqualTo("CABIN_UPGRADE");
@@ -504,7 +458,9 @@ class GuestPaymentExperienceServiceTest {
         request.setCurrency("VND");
         request.setNotes("Khách muốn ở lại thêm 1 đêm khám phá Hang Sáng Tối");
 
-        OnboardUpgradeResponse response = guestPaymentExperienceService.processOnboardUpgrade(request);
+        account.setBaseCurrency("VND");
+        OnboardUpgradeResponse response = guestPaymentExperienceService.processOnboardUpgrade(
+                request, mock(CasmsPrincipal.class));
 
         assertThat(response).isNotNull();
         assertThat(response.getUpgradeType()).isEqualTo("ITINERARY_EXTENSION");
@@ -572,135 +528,53 @@ class GuestPaymentExperienceServiceTest {
     }
 
     @Test
-    @DisplayName("Express Check-out với chính sách miễn phụ phí thẻ cho khách VIP (waiveCardSurcharge = true)")
+    @DisplayName("Express checkout without payment evidence cannot mutate the ledger")
     void testProcessExpressFolioCheckout_WaiveCardSurcharge() {
-        UUID accountId = UUID.randomUUID();
-        OnboardAccount account = new OnboardAccount();
-        account.setOnboardAccountId(accountId);
-        account.setStatus(OnboardAccountStatus.ACTIVE);
-        account.setCreditLimit(new BigDecimal("20000000"));
-
-        OnboardTransaction tx = new OnboardTransaction();
-        tx.setTransactionId(UUID.randomUUID());
-        tx.setTransactionType(com.casms.payment.enums.TransactionType.CHARGE);
-        tx.setAmount(new BigDecimal("1000000"));
-        tx.setStatus(com.casms.payment.enums.TransactionStatus.POSTED);
-
-        when(onboardAccountRepository.findById(accountId)).thenReturn(Optional.of(account));
-        when(onboardTransactionRepository.findByOnboardAccount_OnboardAccountIdOrderByTransactionTimeDesc(accountId))
-                .thenReturn(java.util.List.of(tx));
-        when(invoiceRepository.save(any(Invoice.class))).thenAnswer(inv -> inv.getArgument(0));
-
-        ExpressFolioCheckoutRequest request = new ExpressFolioCheckoutRequest();
-        request.setOnboardAccountId(accountId);
-        request.setPaymentMethod(PaymentMethod.CreditCard);
-        request.setConfirmedByGuest(true);
-        request.setWaiveCardSurcharge(true);
-
-        ExpressFolioCheckoutResponse response = guestPaymentExperienceService.processExpressFolioCheckout(request);
-
-        assertThat(response).isNotNull();
-        assertThat(response.getCardSurchargeAmount()).isEqualByComparingTo(BigDecimal.ZERO);
-        assertThat(response.getAdditionalPaidAmount()).isEqualByComparingTo(new BigDecimal("1000000"));
-        assertThat(response.getClearanceNotice()).doesNotContain("phụ phí cà thẻ");
+        var actor = mock(CasmsPrincipal.class);
+        var request = new ExpressFolioCheckoutRequest();
+        request.setOnboardAccountId(UUID.randomUUID());
+        var error = org.junit.jupiter.api.Assertions.assertThrows(BusinessException.class,
+                () -> guestPaymentExperienceService.processExpressFolioCheckout(request, actor));
+        assertThat(error.getCode()).isEqualTo("SETTLEMENT_WORKFLOW_UNAVAILABLE");
+        verifyNoInteractions(onboardAccountRepository, onboardTransactionRepository,
+                invoiceRepository, finalSettlementRepository);
     }
 
     @Test
-    @DisplayName("Express Check-out với tỷ lệ phụ phí thẻ linh hoạt tuỳ chỉnh (customSurchargePercent = 1.0%)")
+    @DisplayName("Express checkout without payment evidence cannot mutate the ledger")
     void testProcessExpressFolioCheckout_CustomSurchargePercent() {
-        UUID accountId = UUID.randomUUID();
-        OnboardAccount account = new OnboardAccount();
-        account.setOnboardAccountId(accountId);
-        account.setStatus(OnboardAccountStatus.ACTIVE);
-        account.setCreditLimit(new BigDecimal("20000000"));
-
-        OnboardTransaction tx = new OnboardTransaction();
-        tx.setTransactionId(UUID.randomUUID());
-        tx.setTransactionType(com.casms.payment.enums.TransactionType.CHARGE);
-        tx.setAmount(new BigDecimal("1000000"));
-        tx.setStatus(com.casms.payment.enums.TransactionStatus.POSTED);
-
-        when(onboardAccountRepository.findById(accountId)).thenReturn(Optional.of(account));
-        when(onboardTransactionRepository.findByOnboardAccount_OnboardAccountIdOrderByTransactionTimeDesc(accountId))
-                .thenReturn(java.util.List.of(tx));
-        when(invoiceRepository.save(any(Invoice.class))).thenAnswer(inv -> inv.getArgument(0));
-
-        ExpressFolioCheckoutRequest request = new ExpressFolioCheckoutRequest();
-        request.setOnboardAccountId(accountId);
-        request.setPaymentMethod(PaymentMethod.CreditCard);
-        request.setConfirmedByGuest(true);
-        request.setCustomSurchargePercent(new BigDecimal("1.00"));
-
-        ExpressFolioCheckoutResponse response = guestPaymentExperienceService.processExpressFolioCheckout(request);
-
-        assertThat(response).isNotNull();
-        // 1,000,000 * 1.0% = 10,000
-        assertThat(response.getCardSurchargeAmount()).isEqualByComparingTo(new BigDecimal("10000"));
-        assertThat(response.getAdditionalPaidAmount()).isEqualByComparingTo(new BigDecimal("1010000"));
-        assertThat(response.getClearanceNotice()).contains("10,000 VNĐ");
+        var actor = mock(CasmsPrincipal.class);
+        var request = new ExpressFolioCheckoutRequest();
+        request.setOnboardAccountId(UUID.randomUUID());
+        var error = org.junit.jupiter.api.Assertions.assertThrows(BusinessException.class,
+                () -> guestPaymentExperienceService.processExpressFolioCheckout(request, actor));
+        assertThat(error.getCode()).isEqualTo("SETTLEMENT_WORKFLOW_UNAVAILABLE");
+        verifyNoInteractions(onboardAccountRepository, onboardTransactionRepository,
+                invoiceRepository, finalSettlementRepository);
     }
 
     @Test
-    @DisplayName("Express Check-out khấu trừ chính xác các khoản thanh toán tạm ứng/hoàn tiền (Interim Credits) trong chuyến đi")
+    @DisplayName("Express checkout without payment evidence cannot mutate the ledger")
     void testProcessExpressFolioCheckout_WithInterimCredits() {
-        UUID accountId = UUID.randomUUID();
-        OnboardAccount account = new OnboardAccount();
-        account.setOnboardAccountId(accountId);
-        account.setStatus(OnboardAccountStatus.ACTIVE);
-        account.setCreditLimit(new BigDecimal("20000000"));
-
-        // 1 giao dịch tiêu dùng 2,000,000 VNĐ
-        OnboardTransaction chargeTx = new OnboardTransaction();
-        chargeTx.setTransactionId(UUID.randomUUID());
-        chargeTx.setTransactionType(com.casms.payment.enums.TransactionType.CHARGE);
-        chargeTx.setAmount(new BigDecimal("2000000"));
-        chargeTx.setStatus(com.casms.payment.enums.TransactionStatus.POSTED);
-
-        // 1 giao dịch đã trả trước giữa chuyến đi (Interim Payment) 1,000,000 VNĐ
-        OnboardTransaction paymentTx = new OnboardTransaction();
-        paymentTx.setTransactionId(UUID.randomUUID());
-        paymentTx.setTransactionType(com.casms.payment.enums.TransactionType.PAYMENT);
-        paymentTx.setAmount(new BigDecimal("1000000"));
-        paymentTx.setStatus(com.casms.payment.enums.TransactionStatus.POSTED);
-
-        when(onboardAccountRepository.findById(accountId)).thenReturn(Optional.of(account));
-        when(onboardTransactionRepository.findByOnboardAccount_OnboardAccountIdOrderByTransactionTimeDesc(accountId))
-                .thenReturn(java.util.List.of(chargeTx, paymentTx));
-        when(invoiceRepository.save(any(Invoice.class))).thenAnswer(inv -> inv.getArgument(0));
-
-        ExpressFolioCheckoutRequest request = new ExpressFolioCheckoutRequest();
-        request.setOnboardAccountId(accountId);
-        request.setPaymentMethod(PaymentMethod.CreditCard);
-        request.setConfirmedByGuest(true);
-        request.setWaiveCardSurcharge(true); // Miễn phụ phí để kiểm tra số dư gốc
-
-        ExpressFolioCheckoutResponse response = guestPaymentExperienceService.processExpressFolioCheckout(request);
-
-        assertThat(response).isNotNull();
-        // Net charges = 2,000,000 - 1,000,000 = 1,000,000. Không bị tính lặp 2,000,000!
-        assertThat(response.getTotalChargesAmount()).isEqualByComparingTo(new BigDecimal("1000000"));
-        assertThat(response.getAdditionalPaidAmount()).isEqualByComparingTo(new BigDecimal("1000000"));
+        var actor = mock(CasmsPrincipal.class);
+        var request = new ExpressFolioCheckoutRequest();
+        request.setOnboardAccountId(UUID.randomUUID());
+        var error = org.junit.jupiter.api.Assertions.assertThrows(BusinessException.class,
+                () -> guestPaymentExperienceService.processExpressFolioCheckout(request, actor));
+        assertThat(error.getCode()).isEqualTo("SETTLEMENT_WORKFLOW_UNAVAILABLE");
+        verifyNoInteractions(onboardAccountRepository, onboardTransactionRepository,
+                invoiceRepository, finalSettlementRepository);
     }
 
     @Test
     @DisplayName("Bảo mật chống IDOR: Người dùng ẩn danh không thể xem sao kê của tài khoản đã gắn với hành khách có User")
     void testAssertAccountAccess_AnonymousBlockedWhenOwnerRegistered() {
-        UUID accountId = UUID.randomUUID();
-        OnboardAccount account = new OnboardAccount();
-        account.setOnboardAccountId(accountId);
-        account.setStatus(OnboardAccountStatus.ACTIVE);
-
-        com.casms.identity.entity.User user = new com.casms.identity.entity.User();
-        user.setUserId(UUID.randomUUID());
-        Passenger passenger = new Passenger();
-        passenger.setUser(user);
-        account.setPrimaryPassenger(passenger);
-
-        when(onboardAccountRepository.findById(accountId)).thenReturn(Optional.of(account));
-
+        doThrow(new org.springframework.security.access.AccessDeniedException("Missing principal"))
+                .when(financialAccess).requireAuthenticated(null);
         org.junit.jupiter.api.Assertions.assertThrows(
                 org.springframework.security.access.AccessDeniedException.class,
-                () -> guestPaymentExperienceService.getLiveFolioStatement(accountId, null, null));
+                () -> guestPaymentExperienceService.getLiveFolioStatement(UUID.randomUUID(), null, null));
+        verifyNoInteractions(onboardAccountRepository, onboardTransactionRepository);
     }
 }
 

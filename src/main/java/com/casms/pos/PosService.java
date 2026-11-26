@@ -270,6 +270,10 @@ public class PosService {
     public PosDtos.Sale sell(String token, CasmsPrincipal user, PosDtos.SaleInput input) {
         var a = access(token, user);
         require(a, input.serviceId(), PosPermission.SERVICE_SALE);
+        if ((input.expectedUnitPrice() == null) != (input.expectedCurrency() == null))
+            throw invalid("POS_PRICE_CONFIRMATION_INVALID", "Supply both reviewed price and currency");
+        String reviewedCurrency = input.expectedCurrency() == null ? null
+                : NewWriteCurrency.requireSupportedCurrency(input.expectedCurrency());
         String fingerprint =
                 hash(
                         input.serviceId()
@@ -280,9 +284,13 @@ public class PosService {
                                 + "|"
                                 + input.scheduleId()
                                 + "|"
-                                + input.quantity());
+                                + input.quantity()
+                                + (reviewedCurrency == null ? "" : "|" + reviewedCurrency + "|"
+                                        + input.expectedUnitPrice().stripTrailingZeros().toPlainString()));
         var existing = repository.sale(a.terminal().terminalId(), input.idempotencyKey().trim());
         if (existing.isPresent()) {
+            if (!user.getUserId().equals(existing.get().sale().employeeId()))
+                throw denied("Sale belongs to another employee");
             if (!fingerprint.equals(existing.get().fingerprint()))
                 throw conflict("POS_IDEMPOTENCY_CONFLICT", "Key was used for a different sale");
             if (!a.area().id().equals(existing.get().sale().areaId()))
@@ -329,9 +337,14 @@ public class PosService {
         if (!catalog.isCanSellIndependently() || !catalog.isCanBuyOnboard())
             throw invalid(
                     "SERVICE_NOT_RETAIL_ONBOARD", "Service cannot be sold independently onboard");
-        NewWriteCurrency.requireSupportedCurrency(catalog.getCurrencyCode());
+        String currency = NewWriteCurrency.requireSupportedCurrency(catalog.getCurrencyCode());
+        if (!currency.equals(NewWriteCurrency.requireSupportedCurrency(account.getBaseCurrency())))
+            throw conflict("POS_ACCOUNT_CURRENCY_MISMATCH", "Catalogue and account currency must match");
         if (catalog.getPrice() == null || catalog.getPrice().signum() <= 0)
             throw invalid("POS_PRICE_REQUIRED", "A positive catalogue price is required");
+        if (reviewedCurrency != null && (!reviewedCurrency.equals(currency)
+                || input.expectedUnitPrice().compareTo(catalog.getPrice()) != 0))
+            throw conflict("POS_PRICE_CHANGED", "Review the current catalogue price before recording the sale");
         if (input.scheduleId() != null) {
             var schedule =
                     schedules
@@ -363,6 +376,7 @@ public class PosService {
                         passenger,
                         user,
                         total,
+                        currency,
                         TransactionType.CHARGE,
                         "POS_SALE",
                         saleId,
@@ -393,7 +407,7 @@ public class PosService {
                         input.quantity(),
                         catalog.getPrice(),
                         total,
-                        "USD",
+                        currency,
                         user.getUserId(),
                         charge.getChargeId(),
                         now,
@@ -407,6 +421,19 @@ public class PosService {
         var sale = scopedSale(a, id);
         if (!has(a, sale.serviceId(), PosPermission.SERVICE_SALE))
             throw denied("Sale access denied");
+        return sale;
+    }
+
+    public PosDtos.Sale recoverSale(String token, CasmsPrincipal user, String key) {
+        var a = access(token, user);
+        if (key == null || key.isBlank() || key.length() > 100)
+            throw invalid("POS_IDEMPOTENCY_KEY_INVALID", "Enter a valid sale idempotency key");
+        var sale = repository.sale(a.terminal().terminalId(), key.trim())
+                .orElseThrow(() -> new ResourceNotFoundException("POS sale not found")).sale();
+        if (!a.area().id().equals(sale.areaId()) || !user.getUserId().equals(sale.employeeId()))
+            throw denied("Sale belongs to another POS area or employee");
+        checkSaleCruise(a, sale);
+        require(a, sale.serviceId(), PosPermission.SERVICE_SALE);
         return sale;
     }
 
@@ -463,6 +490,7 @@ public class PosService {
             com.casms.identity.entity.Passenger passenger,
             CasmsPrincipal user,
             BigDecimal amount,
+            String currency,
             TransactionType type,
             String source,
             UUID reference,
@@ -472,7 +500,7 @@ public class PosService {
         t.setPassenger(passenger);
         t.setTransactionType(type);
         t.setAmount(amount);
-        t.setCurrencyCode("USD");
+        t.setCurrencyCode(currency);
         t.setTransactionTime(now);
         t.setPostedAt(now);
         t.setStatus(TransactionStatus.POSTED);

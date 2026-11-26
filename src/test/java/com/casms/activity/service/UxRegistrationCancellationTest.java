@@ -102,6 +102,7 @@ class UxRegistrationCancellationTest {
         booking.setBookingStatus(BookingStatus.Confirmed);
         booking.setCruise(cruise);
         bp.setBooking(booking);
+        bp.setParticipationStatus(com.casms.booking.enums.BookingPassengerParticipationStatus.Active);
         UUID bpId = UUID.randomUUID(), activityId = UUID.randomUUID();
         var a = new OnboardActivity();
         a.setOnboardActivityId(activityId);

@@ -75,6 +75,7 @@ class UxScheduledRequestTest {
         bp = new BookingPassenger();
         bp.setBookingPassengerId(bpId);
         bp.setBooking(booking);
+        bp.setParticipationStatus(com.casms.booking.enums.BookingPassengerParticipationStatus.Active);
         bp.setPassenger(passenger);
         item = new Service();
         item.setServiceId(serviceId);
@@ -109,14 +110,14 @@ class UxScheduledRequestTest {
     }
 
     @Test
-    void newRequestCannotSnapshotForeignCurrencyAsUsd() {
+    void newRequestCannotSnapshotUnsupportedCurrencyAsUsd() {
         prepareCreate();
-        item.setCurrencyCode("VND");
+        item.setCurrencyCode("EUR");
         var error =
                 assertThrows(
                         BusinessException.class,
                         () -> service.create(userId, serviceId, bpId, scheduleId, 1, "", null));
-        assertEquals("CURRENCY_USD_REQUIRED", error.getCode());
+        assertEquals("UNSUPPORTED_CURRENCY", error.getCode());
         verify(requests, never()).save(any());
     }
 
@@ -151,6 +152,7 @@ class UxScheduledRequestTest {
 
     @Test
     void scheduledCreatePersistsSelectedWindowAndPriceSnapshot() {
+        item.setCurrencyCode("VND");
         prepareCreate();
         prepareSchedule();
         when(bookingPassengers.findById(bpId)).thenReturn(Optional.of(bp));
@@ -162,7 +164,7 @@ class UxScheduledRequestTest {
         assertEquals(2, saved.getQuantity());
         item.setPrice(new BigDecimal("99"));
         assertEquals(new BigDecimal("12.3456"), saved.getUnitPriceSnapshot());
-        assertEquals("USD", saved.getCurrencySnapshot());
+        assertEquals("VND", saved.getCurrencySnapshot());
         assertEquals(BookingStatus.Confirmed, booking.getBookingStatus());
     }
 

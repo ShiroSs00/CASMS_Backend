@@ -31,14 +31,22 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.math.BigDecimal;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.*;
 
 /** Real JWT, method authorization, Flyway, JDBC/JPA transactions and PostgreSQL; no mocks. */
-@SpringBootTest
-@AutoConfigureMockMvc
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
+        properties = "server.address=127.0.0.1")
+@AutoConfigureMockMvc(print = org.springframework.boot.test.autoconfigure.web.servlet.MockMvcPrint.NONE)
+@org.springframework.context.annotation.Import(LocalCasmsVerificationConfiguration.class)
 class PosPostgresIntegrationTest {
+    @org.springframework.boot.test.web.server.LocalServerPort int httpPort;
     @Autowired MockMvc mvc;
     @Autowired ObjectMapper mapper;
     @Autowired JdbcTemplate jdbc;
@@ -593,6 +601,128 @@ class PosPostgresIntegrationTest {
     }
 
     @Test
+    void passengerAndStaffMobileFlowOverRealHttp() throws Exception {
+        String passengerUserJwt = loginOverHttp(buyer);
+        String employeeJwt = loginOverHttp(staff);
+        requestOverHttp("GET", "/auth/me", passengerUserJwt, null, null, 200);
+        requestOverHttp("GET", "/booking/" + booking, passengerUserJwt, null, null, 200);
+        requestOverHttp("GET", "/itineraries/mine", passengerUserJwt, null, null, 200);
+        jdbc.update("UPDATE \"Cruise\" SET departure_datetime=now()+interval '1 hour' WHERE cruise_id=?", cruise);
+        jdbc.update("""
+                INSERT INTO "BookingContract"
+                    (booking_contract_id, booking_id, contract_reference, document_reference, status)
+                VALUES (?, ?, ?, 'mobile-http-fixture-contract', 'Accepted')
+                """, UUID.randomUUID(), booking, code());
+
+        String checkin = "/checkin/passenger/" + bp;
+        requestOverHttp("POST", checkin + "/start?emergencyContactName=QA&emergencyContactPhone=0123456789",
+                passengerUserJwt, null, null, 200);
+        var ready = requestOverHttp("POST", checkin + "/complete", passengerUserJwt, null, null, 200);
+        assertEquals("BoardingReady", ready.path("checkinStatus").asText());
+        String claim = requestOverHttp("POST", checkin + "/card-claim", passengerUserJwt, null, null, 200)
+                .path("code").asText();
+
+        String posSession = requestOverHttp("POST", "/pos-terminals/" + terminal + "/sessions",
+                employeeJwt, null, Map.of("deviceSecret", secret, "cruiseId", cruise, "areaId", area), 201)
+                .path("sessionToken").asText();
+        requestOverHttp("POST", "/pos/passenger-cards/preview",
+                employeeJwt, posSession, Map.of("code", claim), 403);
+        new TransactionTemplate(tm).executeWithoutResult(status -> {
+            User operator = users.findById(jwt.extractUserId(manager)).orElseThrow();
+            operator.getRoles().add(Role.BOOKING_AGENT);
+            users.saveAndFlush(operator);
+        });
+        String cardOperatorJwt = loginOverHttp(manager);
+        String cardOperatorSession = requestOverHttp("POST", "/pos-terminals/" + terminal + "/sessions",
+                cardOperatorJwt, null, Map.of("deviceSecret", secret, "cruiseId", cruise, "areaId", area), 201)
+                .path("sessionToken").asText();
+        var preview = requestOverHttp("POST", "/pos/passenger-cards/preview",
+                cardOperatorJwt, cardOperatorSession, Map.of("code", claim), 200);
+        assertEquals(bp.toString(), preview.path("bookingPassengerId").asText());
+        String card = UUID.randomUUID().toString().replace("-", "").toUpperCase(Locale.ROOT);
+        var confirmed = requestOverHttp("POST", "/pos/passenger-cards/confirm",
+                cardOperatorJwt, cardOperatorSession, Map.of("code", claim, "cardIdentifier", card), 200);
+        assertEquals(bp.toString(), confirmed.path("bookingPassengerId").asText());
+        assertEquals("ASSIGNED", requestOverHttp("GET", checkin + "/card",
+                passengerUserJwt, null, null, 200).path("status").asText());
+        var recoveredCard = requestOverHttp("POST", "/pos/passenger-cards/lookup",
+                cardOperatorJwt, cardOperatorSession, Map.of("cardIdentifier", card), 200);
+        assertEquals(bp.toString(), recoveredCard.path("bookingPassengerId").asText());
+
+        jdbc.update("UPDATE \"Cruise\" SET departure_datetime=now()-interval '1 hour' WHERE cruise_id=?", cruise);
+        var sale = requestOverHttp("POST", "/pos/sales", employeeJwt, posSession,
+                Map.of("serviceId", service, "bookingPassengerId", bp, "onboardAccountId", account,
+                        "quantity", 1, "idempotencyKey", "mobile-real-http",
+                        "expectedUnitPrice", BigDecimal.TEN, "expectedCurrency", "USD"), 201);
+        String request = sale.path("serviceRequestId").asText();
+        for (String action : List.of("assign", "accept", "start", "complete"))
+            requestOverHttp("POST", "/pos/requests/" + request + "/actions/" + action,
+                    employeeJwt, posSession, null, 200);
+        assertEquals(1, count("Charge"));
+        assertEquals(1, requestOverHttp("GET", "/payment/guest/folio/statement?bookingId=" + booking,
+                passengerUserJwt, null, null, 200).path("transactions").size());
+
+        requestOverHttp("GET", "/notifications", passengerUserJwt, null, null, 200);
+        HttpRequest streamRequest = HttpRequest.newBuilder(httpUri("/notifications/stream"))
+                .header("Authorization", "Bearer " + passengerUserJwt)
+                .header("Accept", "text/event-stream").timeout(Duration.ofSeconds(8)).GET().build();
+        try (var client = HttpClient.newHttpClient()) {
+            var stream = client.send(streamRequest, HttpResponse.BodyHandlers.ofInputStream());
+            try (var body = stream.body()) {
+                assertEquals(200, stream.statusCode());
+                assertTrue(stream.headers().firstValue("Content-Type").orElse("").startsWith("text/event-stream"));
+                var event = CompletableFuture.supplyAsync(() -> {
+                    try {
+                        return new java.io.BufferedReader(new java.io.InputStreamReader(
+                                body, java.nio.charset.StandardCharsets.UTF_8)).readLine();
+                    } catch (java.io.IOException e) {
+                        throw new CompletionException(e);
+                    }
+                });
+                assertEquals("event:connected", event.get(8, TimeUnit.SECONDS));
+            }
+        }
+
+        requestOverHttp("DELETE", "/pos/session", cardOperatorJwt, cardOperatorSession, null, 204);
+        requestOverHttp("DELETE", "/pos/session", employeeJwt, posSession, null, 204);
+        requestOverHttp("GET", "/pos/session", employeeJwt, posSession, null, 403);
+        requestOverHttp("POST", "/auth/logout", passengerUserJwt, null, null, 200);
+    }
+
+    private String loginOverHttp(String fixtureJwt) throws Exception {
+        UUID userId = jwt.extractUserId(fixtureJwt);
+        String password = UUID.randomUUID().toString();
+        String username = jdbc.queryForObject("SELECT username FROM \"User\" WHERE user_id=?",
+                String.class, userId);
+        jdbc.update("UPDATE \"User\" SET password_hash=? WHERE user_id=?", encoder.encode(password), userId);
+        var response = requestOverHttp("POST", "/auth/login", null, null,
+                Map.of("username", username, "password", password), 200);
+        assertEquals(userId.toString(), response.path("userId").asText());
+        return response.path("accessToken").asText();
+    }
+
+    private URI httpUri(String path) {
+        return URI.create("http://127.0.0.1:" + httpPort + "/api" + path);
+    }
+
+    private JsonNode requestOverHttp(String method, String path, String token, String posSession,
+                                    Object data, int expected) throws Exception {
+        var request = HttpRequest.newBuilder(httpUri(path)).timeout(Duration.ofSeconds(10));
+        if (token != null) request.header("Authorization", "Bearer " + token);
+        if (posSession != null) request.header("X-POS-Session", posSession);
+        if (data != null) request.header("Content-Type", "application/json");
+        request.method(method, data == null ? HttpRequest.BodyPublishers.noBody()
+                : HttpRequest.BodyPublishers.ofByteArray(mapper.writeValueAsBytes(data)));
+        try (var client = HttpClient.newHttpClient()) {
+            var response = client.send(request.build(), HttpResponse.BodyHandlers.ofString());
+            JsonNode body = response.body().isBlank() ? mapper.createObjectNode() : mapper.readTree(response.body());
+            assertEquals(expected, response.statusCode(), () -> method + " " + path.split("\\?", 2)[0]
+                    + " errorCode=" + body.path("code").asText());
+            return body.path("data");
+        }
+    }
+
+    @Test
     void recordsUsageAtServerPriceReducesVirtualAllowanceAndCreatesNoPayment() throws Exception {
         long paymentCount = payments.count();
         JsonNode sale = sell(bp, 1, "one", 201);
@@ -614,6 +744,65 @@ class PosPostgresIntegrationTest {
         sell(bp2, 1, "same", 409);
         assertEquals(1, count("PosSale"));
         assertEquals(1, count("Charge"));
+    }
+
+    @Test
+    void saleChecksReviewedPriceAndCurrencyBeforeAnyFinancialWrites() throws Exception {
+        Map<String, Object> input = new HashMap<>();
+        input.put("serviceId", service);
+        input.put("bookingPassengerId", bp);
+        input.put("onboardAccountId", account);
+        input.put("quantity", 1);
+        input.put("idempotencyKey", "reviewed-sale");
+        input.put("expectedUnitPrice", new BigDecimal("9"));
+        input.put("expectedCurrency", "USD");
+        var endpoint = post("/pos/sales").header("X-POS-Session", session);
+        perform(endpoint, staff, input, 409);
+        assertEquals(0, count("Charge"));
+        assertEquals(0, count("OnboardTransaction"));
+
+        jdbc.update("UPDATE \"Service\" SET currency_code='VND' WHERE service_id=?", service);
+        input.put("expectedUnitPrice", BigDecimal.TEN);
+        input.put("expectedCurrency", "VND");
+        perform(post("/pos/sales").header("X-POS-Session", session), staff, input, 409);
+        assertEquals(0, count("Charge"));
+
+        jdbc.update("UPDATE \"Service\" SET currency_code='USD' WHERE service_id=?", service);
+        input.put("expectedCurrency", "USD");
+        var receipt = perform(post("/pos/sales").header("X-POS-Session", session), staff, input, 201);
+        var recovered = perform(get("/pos/sales/by-idempotency-key")
+                .header("X-POS-Session", session).param("idempotencyKey", "reviewed-sale"), staff, null, 200);
+        assertEquals(receipt.path("saleId"), recovered.path("saleId"));
+        assertEquals("USD", recovered.path("currency").asText());
+        assertEquals(1, count("Charge"));
+    }
+
+    @Test
+    void discoversOnlyAuthorizedTerminalContextAndOwnFinancialScope() throws Exception {
+        var choices = perform(get("/pos/terminals"), staff, null, 200);
+        assertTrue(java.util.stream.StreamSupport.stream(choices.spliterator(), false)
+                .anyMatch(choice -> terminal.toString().equals(choice.path("terminalId").asText())
+                        && cruise.toString().equals(choice.path("cruiseId").asText())
+                        && !choice.has("deviceSecret")));
+        perform(get("/pos/terminals"), buyer, null, 403);
+        var card = perform(get("/checkin/passenger/{id}/card", bp), buyer, null, 200);
+        assertEquals("NOT_ASSIGNED", card.path("status").asText());
+        perform(get("/checkin/passenger/{id}/card", bp2), buyer, null, 403);
+        var catalogue = perform(get("/servicepackage/passenger/{id}/catalogue", bp), buyer, null, 200);
+        assertEquals(cruise.toString(), catalogue.path("cruiseId").asText());
+        assertTrue(java.util.stream.StreamSupport.stream(catalogue.path("services").spliterator(), false)
+                .anyMatch(entry -> service.toString().equals(entry.path("serviceId").asText())
+                        && !entry.path("placements").isEmpty()));
+        var discovery = perform(get("/payment/guest/folio/account").param("bookingId", booking.toString()),
+                buyer, null, 200);
+        assertEquals(account.toString(), discovery.path("onboardAccountId").asText());
+        sell(bp, 1, "own-charge", 201);
+        sell(bp2, 1, "other-charge", 201);
+        var folio = perform(get("/payment/guest/folio/statement").param("bookingId", booking.toString()),
+                buyer, null, 200);
+        assertEquals("PASSENGER", folio.path("scope").asText());
+        assertEquals(1, folio.path("transactions").size());
+        assertTrue(folio.path("netPayableBalance").isNull() || folio.path("netPayableBalance").isMissingNode());
     }
 
     @Test
@@ -2299,6 +2488,14 @@ class PosPostgresIntegrationTest {
     @AfterEach
     void cleanup() {
         if (booking != null) {
+            jdbc.update("""
+                    DELETE FROM "PassengerNfcCard" WHERE booking_passenger_id IN
+                        (SELECT booking_passenger_id FROM "BookingPassenger" WHERE booking_id=?)
+                    """, booking);
+            jdbc.update("""
+                    DELETE FROM "PassengerCardClaim" WHERE booking_passenger_id IN
+                        (SELECT booking_passenger_id FROM "BookingPassenger" WHERE booking_id=?)
+                    """, booking);
             jdbc.update(
                     "DELETE FROM \"CruiseCheckin\" WHERE booking_passenger_id IN (SELECT"
                         + " booking_passenger_id FROM \"BookingPassenger\" WHERE booking_id=?)",
