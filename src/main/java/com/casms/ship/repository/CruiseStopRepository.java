@@ -41,6 +41,10 @@ public interface CruiseStopRepository extends JpaRepository<CruiseStop, UUID> {
     @Lock(LockModeType.PESSIMISTIC_READ)
     List<CruiseStop> findByItineraryCruiseCruiseIdOrderByStopOrderAsc(UUID cruiseId);
 
+    /** Read projection only; mutations must retain the locking query above. */
+    @Query("select s from CruiseStop s where s.itinerary.cruise.cruiseId = :cruiseId order by s.stopOrder")
+    List<CruiseStop> findBookingPolicyProjection(@Param("cruiseId") UUID cruiseId);
+
     boolean existsByItineraryItineraryIdAndStopOrder(UUID itineraryId, Integer stopOrder);
 
     Optional<CruiseStop> findByItineraryItineraryIdAndStopOrder(
