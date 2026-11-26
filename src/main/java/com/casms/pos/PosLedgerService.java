@@ -35,6 +35,7 @@ public class PosLedgerService {
 
     public PosDtos.Budget budget(OnboardAccount account, UUID passenger) {
         UUID id = account.getOnboardAccountId();
+        String currency = NewWriteCurrency.requireSupportedCurrency(account.getBaseCurrency());
         if (account.getCreditLimit() == null || account.getCreditLimit().signum() < 0)
             throw new BusinessException(
                     "POS_ALLOWANCE_NOT_ALLOCATED",
@@ -52,17 +53,7 @@ public class PosLedgerService {
         if (members.isEmpty())
             throw new AccessDeniedException(
                     "Passenger has no active spending permission on this account");
-        if (Boolean.TRUE.equals(
-                jdbc.queryForObject(
-                        "SELECT EXISTS(SELECT 1 FROM \"OnboardTransaction\" WHERE"
-                            + " onboard_account_id=? AND currency_code<>'USD' AND status='POSTED'"
-                            + " AND "
-                                + USAGE_TYPES
-                                + ")",
-                        Boolean.class,
-                        id)))
-            throw new BusinessException(
-                    "POS_ACCOUNT_CURRENCY_MISMATCH", "Cannot mix historical account currencies");
+        requireAllowanceCurrency(account);
         BigDecimal used =
                 jdbc.queryForObject(
                                 "SELECT coalesce(sum(amount),0) FROM \"OnboardTransaction\" WHERE"
@@ -80,7 +71,9 @@ public class PosLedgerService {
                             + " effective_from<=now() AND (effective_to IS NULL OR"
                             + " effective_to>now()) FOR SHARE",
                         members.getFirst())) {
-            NewWriteCurrency.requireUsd((String) limit.get("currency_code"));
+            if (!currency.equals(NewWriteCurrency.requireSupportedCurrency((String) limit.get("currency_code"))))
+                throw new BusinessException("POS_ACCOUNT_CURRENCY_MISMATCH",
+                        "Spending limit and account currency must match");
             BigDecimal spent =
                     jdbc.queryForObject(
                             "SELECT coalesce(sum(amount),0) FROM \"OnboardTransaction\" WHERE"
@@ -99,7 +92,24 @@ public class PosLedgerService {
                                     .max(BigDecimal.ZERO));
         }
         return new PosDtos.Budget(
-                id, passenger, account.getCreditLimit(), used, accountRemaining, remaining, "USD");
+                id, passenger, account.getCreditLimit(), used, accountRemaining, remaining, currency);
+    }
+
+    public void requireAllowanceCurrency(OnboardAccount account) {
+        UUID id = account.getOnboardAccountId();
+        String currency = NewWriteCurrency.requireSupportedCurrency(account.getBaseCurrency());
+        if (Boolean.TRUE.equals(
+                jdbc.queryForObject(
+                        "SELECT EXISTS(SELECT 1 FROM \"OnboardTransaction\" WHERE"
+                            + " onboard_account_id=? AND currency_code<>? AND status='POSTED'"
+                            + " AND "
+                                + USAGE_TYPES
+                                + ")",
+                        Boolean.class,
+                        id,
+                        currency)))
+            throw new BusinessException(
+                    "POS_ACCOUNT_CURRENCY_MISMATCH", "Cannot mix historical account currencies");
     }
 
     public void assertCanSpend(OnboardAccount account, UUID passenger, BigDecimal amount) {
@@ -150,8 +160,9 @@ public class PosLedgerService {
         var rows =
                 jdbc.queryForList(
                         "SELECT"
-                            + " s.sale_id,s.amount,s.onboard_account_id,c.passenger_id,c.transaction_id"
+                            + " s.sale_id,s.amount,s.onboard_account_id,c.passenger_id,c.transaction_id,t.currency_code"
                             + " FROM \"PosSale\" s JOIN \"Charge\" c ON c.charge_id=s.charge_id"
+                            + " JOIN \"OnboardTransaction\" t ON t.transaction_id=c.transaction_id"
                             + " WHERE s.service_request_id=? AND s.reversed_at IS NULL FOR UPDATE"
                             + " OF s",
                         request);
@@ -162,11 +173,12 @@ public class PosLedgerService {
                 "INSERT INTO \"OnboardTransaction\""
                     + " (transaction_id,onboard_account_id,passenger_id,transaction_type,amount,currency_code,transaction_time,posted_at,status,source_type,source_reference_id,original_transaction_id,created_by_user_id,sync_status,synced_at)"
                     + " VALUES"
-                    + " (?,?,?,'VOID',?,'USD',now(),now(),'POSTED','POS_ALLOWANCE_REVERSAL',?,?,?,'SYNCED',now())",
+                    + " (?,?,?,'VOID',?,?,now(),now(),'POSTED','POS_ALLOWANCE_REVERSAL',?,?,?,'SYNCED',now())",
                 reversal,
                 sale.get("onboard_account_id"),
                 sale.get("passenger_id"),
                 ((BigDecimal) sale.get("amount")).negate(),
+                sale.get("currency_code"),
                 sale.get("sale_id"),
                 sale.get("transaction_id"),
                 actor);

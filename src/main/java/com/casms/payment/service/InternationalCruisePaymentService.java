@@ -232,15 +232,34 @@ public class InternationalCruisePaymentService {
             CreateTransactionRequest request,
             CasmsPrincipal principal) {
         String idempotencyKey = request.idempotencyKey().trim();
-        Optional<OnboardTransaction> existingTx = onboardTransactionRepository.findByIdempotencyKey(idempotencyKey);
-        if (existingTx.isPresent()) {
-            log.info("Idempotent hit for onboard transaction key={}", idempotencyKey);
-            return toTransactionResponse(existingTx.get());
-        }
-
-        // Pessimistic write lock on OnboardAccount to prevent concurrent spending-limit violations
+        assertFinanceStaffAccess(principal, "Only authorized finance staff can record ledger transactions");
+        // Serializes retries for the account as well as its spending-limit checks.
         OnboardAccount account = onboardAccountRepository.findByIdForUpdate(request.accountId())
                 .orElseThrow(() -> new ResourceNotFoundException("OnboardAccount", request.accountId()));
+        TransactionType txType = request.transactionType() != null ? request.transactionType() : TransactionType.CHARGE;
+        BigDecimal amount = request.amount().setScale(4, RoundingMode.HALF_UP);
+        Optional<OnboardTransaction> existingTx = onboardTransactionRepository.findByIdempotencyKey(idempotencyKey);
+        if (existingTx.isPresent()) {
+            OnboardTransaction prior = existingTx.get();
+            UUID requestedPassenger = request.passengerId() != null ? request.passengerId()
+                    : account.getPrimaryPassenger() == null ? null : account.getPrimaryPassenger().getPassengerId();
+            String description = request.description() != null ? request.description() : request.serviceReference();
+            if (!account.getOnboardAccountId().equals(prior.getOnboardAccount().getOnboardAccountId())
+                    || prior.getCreatedByUser() == null
+                    || !principal.getUserId().equals(prior.getCreatedByUser().getUserId())
+                    || !Objects.equals(requestedPassenger,
+                            prior.getPassenger() == null ? null : prior.getPassenger().getPassengerId())
+                    || txType != prior.getTransactionType() || amount.compareTo(prior.getAmount()) != 0
+                    || !request.currency().trim().equalsIgnoreCase(prior.getCurrencyCode())
+                    || !Objects.equals(request.serviceReference().trim(), prior.getServiceReference())
+                    || !Objects.equals(request.posTerminalId(), prior.getPosTerminalId())
+                    || !Objects.equals(request.deviceReference(), prior.getDeviceReference())
+                    || !Objects.equals(description, prior.getDescription())) {
+                throw new BusinessException(HttpStatus.CONFLICT, "TRANSACTION_IDEMPOTENCY_CONFLICT",
+                        "Key was already used for a different transaction");
+            }
+            return toTransactionResponse(prior);
+        }
 
         if (account.getStatus() != OnboardAccountStatus.ACTIVE) {
             throw new BusinessException(
@@ -256,9 +275,6 @@ public class InternationalCruisePaymentService {
                     "TRANSACTION_CURRENCY_MISMATCH",
                     "All onboard transactions must be recorded in the cruise base currency (" + baseCurrency + ")");
         }
-
-        TransactionType txType = request.transactionType() != null ? request.transactionType() : TransactionType.CHARGE;
-        BigDecimal amount = request.amount().setScale(4, RoundingMode.HALF_UP);
 
         if (txType == TransactionType.CHARGE || txType == TransactionType.ADJUSTMENT) {
             LedgerTotals totals = computeLedgerTotals(account);
@@ -1535,26 +1551,25 @@ public class InternationalCruisePaymentService {
     // SECURITY & OWNERSHIP VERIFICATION
     // =========================================================================
     private void assertAccountReadAccess(OnboardAccount account, CasmsPrincipal principal) {
-        if (principal == null) return;
-        if (isStaffOrFinance(principal)) return;
+        if (principal == null || !principal.isEnabled() || !principal.isAccountNonLocked())
+            throw new AccessDeniedException("An active account is required");
+        if (!principal.hasRole(Role.PASSENGER)
+                && principal.hasAnyRole(Role.ADMIN, Role.FINANCE_OFFICER)) return;
 
-        UUID callerUserId = principal.getUserId();
-        if (account.getPrimaryPassenger() != null
-                && account.getPrimaryPassenger().getUser() != null
-                && callerUserId.equals(account.getPrimaryPassenger().getUser().getUserId())) {
-            return;
-        }
+        var owner = account.getPrimaryPassenger();
+        if (!principal.hasRole(Role.PASSENGER) || owner == null || owner.getUser() == null
+                || !principal.getUserId().equals(owner.getUser().getUserId()))
+            throw new AccessDeniedException("Account-wide records are restricted to personal accounts");
 
-        boolean isMember = onboardAccountMemberRepository
-                .findByOnboardAccount_OnboardAccountId(account.getOnboardAccountId())
-                .stream()
-                .anyMatch(m -> m.getPassenger() != null
-                        && m.getPassenger().getUser() != null
-                        && callerUserId.equals(m.getPassenger().getUser().getUserId()));
-
-        if (!isMember) {
-            throw new AccessDeniedException("Passengers may only access their own onboard account and financial records");
-        }
+        Instant now = Instant.now();
+        var members = onboardAccountMemberRepository
+                .findByOnboardAccount_OnboardAccountId(account.getOnboardAccountId());
+        if (members.size() != 1 || members.stream().noneMatch(member ->
+                owner.getPassengerId().equals(member.getPassenger().getPassengerId())
+                        && member.getStatus() == AccountMemberStatus.ACTIVE
+                        && (member.getEffectiveFrom() == null || !member.getEffectiveFrom().isAfter(now))
+                        && (member.getEffectiveTo() == null || member.getEffectiveTo().isAfter(now))))
+            throw new AccessDeniedException("Account-wide records require an active personal membership");
     }
 
     private void assertPassengerAccess(Passenger passenger, CasmsPrincipal principal) {
@@ -1567,7 +1582,8 @@ public class InternationalCruisePaymentService {
     }
 
     private void assertFinanceStaffAccess(CasmsPrincipal principal, String message) {
-        if (principal == null) {
+        if (principal == null || !principal.isEnabled() || !principal.isAccountNonLocked()
+                || principal.hasRole(Role.PASSENGER)) {
             throw new AccessDeniedException(message);
         }
         boolean allowed = principal.hasRole(Role.FINANCE_OFFICER)

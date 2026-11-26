@@ -298,6 +298,41 @@ public class PosAccessService {
         policy(terminal, area, service, new PosDtos.AssignmentInput(null, false));
     }
 
+    @Transactional(readOnly = true)
+    public List<PosDtos.TerminalChoice> discoverTerminals(CasmsPrincipal employee) {
+        if (employee == null || !employee.isStaff() || !employee.isEnabled()
+                || !employee.isAccountNonLocked() || !employee.hasPermission(Permission.POS_ACCESS))
+            throw new AccessDeniedException("An active employee with POS_ACCESS is required");
+        boolean manager = PosStaffResourceService.manager(employee);
+        String assignments = manager ? "" : """
+                AND EXISTS (
+                    SELECT 1 FROM "AreaStaffAssignment" a
+                    JOIN "CruiseStaff" cs ON cs.cruise_staff_id = a.cruise_staff_id
+                    WHERE a.area_object_id = o.ship_model_object_id AND a.enabled
+                      AND a.starts_at <= clock_timestamp()
+                      AND (a.ends_at IS NULL OR a.ends_at > clock_timestamp())
+                      AND cs.status = 'ACTIVE' AND cs.user_id = ? AND cs.cruise_id = c.cruise_id
+                )
+                """;
+        return jdbc.query("""
+                SELECT t.terminal_id, t.ship_id, o.ship_model_object_id, c.cruise_id,
+                       t.terminal_code, t.terminal_name
+                FROM "PosTerminal" t
+                JOIN "PosTerminalArea" l ON l.terminal_id = t.terminal_id AND l.enabled
+                JOIN "ShipModelObject" o ON o.ship_model_object_id = l.area_object_id
+                JOIN "ShipModel" m ON m.ship_model_id = o.ship_model_id
+                JOIN "Deck" d ON d.deck_id = o.deck_id AND d.ship_id = t.ship_id
+                JOIN "Cruise" c ON c.ship_id = t.ship_id
+                WHERE t.enabled AND m.ship_id = t.ship_id AND m.status = 'READY'
+                  AND o.object_type = 'FACILITY' AND o.cabin_id IS NULL
+                  AND c.status IN ('PUBLISHED','IN_PROGRESS','COMPLETED')
+                """ + assignments + " ORDER BY t.terminal_code, c.cruise_id, o.ship_model_object_id",
+                (r, n) -> new PosDtos.TerminalChoice(
+                        r.getObject(1, UUID.class), r.getObject(2, UUID.class),
+                        r.getObject(3, UUID.class), r.getObject(4, UUID.class), r.getString(5), r.getString(6)),
+                manager ? new Object[0] : new Object[] {employee.getUserId()});
+    }
+
     public PosDtos.AreaStaff login(
             PosDtos.Terminal terminal, PosDtos.LoginInput input, CasmsPrincipal employee) {
         UUID user = employee.getUserId();

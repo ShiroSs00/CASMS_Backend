@@ -2,6 +2,8 @@ package com.casms.activity.controller;
 
 import com.casms.activity.entity.*;
 import com.casms.activity.service.ActivityService;
+import com.casms.activity.service.RegistrationRecoveryService;
+import com.casms.activity.service.RegistrationRecoveryService.Kind;
 import com.casms.common.response.ApiResponse;
 import com.casms.cruisepackage.service.CruisePackageEntitlementService;
 import com.casms.cruisepackage.service.CruisePackageEntitlementService.OperationEntitlement;
@@ -36,6 +38,7 @@ import java.util.UUID;
         description = "Quản lý hoạt động trên tàu, đăng ký tham gia và điểm danh hành khách")
 public class ActivityController {
     private final ActivityService service;
+    private final RegistrationRecoveryService registrationRecovery;
     private final com.casms.ship.service.CruisePlanOperationsAccess cruiseAccess;
     private final CruisePackageEntitlementService fareEntitlements;
 
@@ -361,16 +364,14 @@ public class ActivityController {
     public ApiResponse<RegistrationView> register(
             @Parameter(description = "ID hoạt động", required = true) @PathVariable UUID id,
             @Valid @RequestBody RegistrationRequest r,
+            @RequestHeader(value = "Idempotency-Key", required = false) String key,
             Authentication auth) {
         var p = (CasmsPrincipal) auth.getPrincipal();
         return ApiResponse.success(
                 RegistrationView.of(
-                        service.register(
-                                r.bookingPassengerId(),
-                                id,
-                                r.quantity(),
-                                p.getUserId(),
-                                p.isStaff())));
+                        registrationRecovery.register(p,
+                                Kind.ACTIVITY,
+                                r.bookingPassengerId(), id, r.quantity(), key)));
     }
 
     @Operation(
@@ -382,16 +383,21 @@ public class ActivityController {
     public ApiResponse<RegistrationView> registerExcursion(
             @Parameter(description = "ID tour tham quan", required = true) @PathVariable UUID id,
             @Valid @RequestBody RegistrationRequest r,
+            @RequestHeader(value = "Idempotency-Key", required = false) String key,
             Authentication auth) {
         var p = (CasmsPrincipal) auth.getPrincipal();
         return ApiResponse.success(
                 RegistrationView.of(
-                        service.registerExcursion(
-                                r.bookingPassengerId(),
-                                id,
-                                r.quantity(),
-                                p.getUserId(),
-                                p.isStaff())));
+                        registrationRecovery.register(p,
+                                Kind.EXCURSION,
+                                r.bookingPassengerId(), id, r.quantity(), key)));
+    }
+
+    @PreAuthorize("hasAnyAuthority('ACTIVITY_REGISTRATION','EXCURSION_BOOKING')")
+    @GetMapping("/registrations/by-operation-key")
+    public ApiResponse<RegistrationView> recoverRegistration(@RequestParam String key, Authentication auth) {
+        var actor = (CasmsPrincipal) auth.getPrincipal();
+        return ApiResponse.success(RegistrationView.of(registrationRecovery.recover(actor, key)));
     }
 
     @Operation(

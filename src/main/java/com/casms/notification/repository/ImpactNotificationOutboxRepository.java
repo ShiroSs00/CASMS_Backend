@@ -35,5 +35,7 @@ public interface ImpactNotificationOutboxRepository
                 + " o.cruise.cruiseId = :cruiseId")
     long countDistinctBookingsByCruiseId(@Param("cruiseId") UUID cruiseId);
 
-    List<ImpactNotificationOutbox> findByRecipientUser_UserIdAndAcknowledgedAtIsNull(UUID userId);
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    Optional<ImpactNotificationOutbox>
+            findByNotification_NotificationIdAndRecipientUser_UserId(UUID notificationId, UUID userId);
 }

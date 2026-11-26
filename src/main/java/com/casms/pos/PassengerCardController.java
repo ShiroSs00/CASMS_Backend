@@ -8,6 +8,7 @@ import jakarta.validation.constraints.Size;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -29,6 +30,13 @@ public class PassengerCardController {
             @NotBlank @Size(max = 43) String code,
             @NotBlank @Size(max = 64) String cardIdentifier) {}
     public record LookupRequest(@NotBlank @Size(max = 64) String cardIdentifier) {}
+
+    @GetMapping("/checkin/passenger/{passengerId}/card")
+    @PreAuthorize("hasRole('PASSENGER') and hasAuthority('CHECKIN_READ') and principal.enabled and principal.accountNonLocked")
+    public ApiResponse<PassengerCardService.CardStatus> status(
+            @PathVariable UUID passengerId, @AuthenticationPrincipal CasmsPrincipal customer) {
+        return ApiResponse.success(service.status(passengerId, customer.getUserId()));
+    }
 
     @PostMapping("/checkin/passenger/{passengerId}/card-claim")
     @PreAuthorize("hasRole('PASSENGER') and hasAuthority('CHECKIN_READ')")

@@ -144,13 +144,26 @@ public final class PosDtos {
             UUID cruiseId,
             UUID staffAssignmentId) {}
 
+    public record TerminalChoice(
+            UUID terminalId, UUID shipId, UUID areaId, UUID cruiseId, String code, String name) {}
+
     public record SaleInput(
             @NotNull UUID serviceId,
             @NotNull UUID bookingPassengerId,
             @NotNull UUID onboardAccountId,
             UUID scheduleId,
             @NotNull @Min(1) @Max(1) Integer quantity,
-            @NotBlank @Size(max = 100) String idempotencyKey) {}
+            @NotBlank @Size(max = 100) String idempotencyKey,
+            @jakarta.validation.constraints.DecimalMin(value = "0", inclusive = false)
+            @jakarta.validation.constraints.Digits(integer = 15, fraction = 4)
+            BigDecimal expectedUnitPrice,
+            @Size(max = 3) String expectedCurrency) {
+        public SaleInput(UUID serviceId, UUID bookingPassengerId, UUID onboardAccountId,
+                         UUID scheduleId, Integer quantity, String idempotencyKey) {
+            this(serviceId, bookingPassengerId, onboardAccountId, scheduleId, quantity,
+                    idempotencyKey, null, null);
+        }
+    }
 
     public record Sale(
             UUID saleId,

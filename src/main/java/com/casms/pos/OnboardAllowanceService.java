@@ -86,10 +86,13 @@ public class OnboardAllowanceService {
                 throw new BusinessException(
                         "POS_INVALID_MEMBER_LIMIT",
                         "Member caps must reference distinct active passengers in this booking");
+        String currency = com.casms.common.util.NewWriteCurrency.requireSupportedCurrency(
+                booking.getCruise().getBaseCurrency());
         var account = booking.getSettlementOnboardAccount();
         if (account == null) {
             account = new OnboardAccount();
             account.setCruise(booking.getCruise());
+            account.setBaseCurrency(currency);
             account.setStatus(OnboardAccountStatus.ACTIVE);
             account.setCreditLimit(input.amount());
             account.setActivatedAt(Instant.now());
@@ -104,6 +107,9 @@ public class OnboardAllowanceService {
                         "POS_ACCOUNT_NOT_ACTIVE",
                         "Booking account must be active and belong to the booking cruise");
         }
+        if (!currency.equals(com.casms.common.util.NewWriteCurrency.requireSupportedCurrency(account.getBaseCurrency())))
+            throw new BusinessException("POS_ACCOUNT_CURRENCY_MISMATCH", "Account and cruise currency must match");
+        ledger.requireAllowanceCurrency(account);
         UUID accountId = account.getOnboardAccountId();
         var used =
                 jdbc.queryForObject(
@@ -163,7 +169,7 @@ public class OnboardAllowanceService {
                     var limit = new SpendingLimit();
                     limit.setAccountMember(member);
                     limit.setLimitAmount(cap.amount());
-                    limit.setCurrencyCode("USD");
+                    limit.setCurrencyCode(com.casms.common.util.NewWriteCurrency.requireSupportedCurrency(account.getBaseCurrency()));
                     // This is a whole-account allowance, not a window starting at a planned
                     // departure.
                     // Reconfiguring it must include every existing debit, even after an early

@@ -40,7 +40,8 @@ public class InternationalCruisePaymentController {
     // 1. ONBOARD ACCOUNT ENDPOINTS
     // =========================================================================
     @Operation(summary = "Create or activate passenger onboard account for a cruise")
-    @PreAuthorize("isAuthenticated()")
+    @PreAuthorize("hasAnyRole('ADMIN', 'FINANCE_OFFICER') and hasAuthority('PAYMENT_PROCESS')"
+            + " and !hasRole('PASSENGER') and principal.enabled and principal.accountNonLocked")
     @PostMapping("/onboard-accounts")
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<OnboardAccountResponse> createOnboardAccount(
@@ -73,7 +74,8 @@ public class InternationalCruisePaymentController {
     }
 
     @Operation(summary = "Update onboard account spending limit")
-    @PreAuthorize("isAuthenticated()")
+    @PreAuthorize("hasAnyRole('ADMIN', 'FINANCE_OFFICER') and hasAuthority('PAYMENT_PROCESS')"
+            + " and !hasRole('PASSENGER') and principal.enabled and principal.accountNonLocked")
     @PatchMapping("/onboard-accounts/{id}/spending-limit")
     public ApiResponse<OnboardAccountResponse> updateSpendingLimit(
             @PathVariable("id") UUID accountId,
@@ -264,7 +266,8 @@ public class InternationalCruisePaymentController {
     // 5. END-OF-CRUISE SETTLEMENT ENDPOINTS
     // =========================================================================
     @Operation(summary = "Generate an end-of-cruise settlement statement after verifying offline sync")
-    @PreAuthorize("isAuthenticated()")
+    @PreAuthorize("hasAnyRole('ADMIN', 'FINANCE_OFFICER') and hasAuthority('SETTLEMENT_PROCESS')"
+            + " and !hasRole('PASSENGER') and principal.enabled and principal.accountNonLocked")
     @PostMapping("/settlements")
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<SettlementStatementResponse> initiateSettlement(
@@ -296,7 +299,8 @@ public class InternationalCruisePaymentController {
     }
 
     @Operation(summary = "Process end-of-cruise settlement payment and close account upon full reconciliation")
-    @PreAuthorize("isAuthenticated()")
+    @PreAuthorize("hasAnyRole('ADMIN', 'FINANCE_OFFICER') and hasAuthority('SETTLEMENT_PROCESS')"
+            + " and !hasRole('PASSENGER') and principal.enabled and principal.accountNonLocked")
     @PostMapping("/settlements/{id}/process")
     public ApiResponse<SettlementStatementResponse> processSettlement(
             @PathVariable("id") UUID settlementId,

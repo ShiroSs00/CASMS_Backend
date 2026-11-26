@@ -225,7 +225,6 @@ public class NotificationService {
                             .inAppDeliveredAt(Instant.now())
                             .sentAt(Instant.now())
                             .build();
-            outboxRepository.save(outbox);
 
             // 2. Đồng bộ vào bảng Notification để hiển thị cho User
             Notification notif = new Notification();
@@ -233,7 +232,12 @@ public class NotificationService {
             notif.setNotificationType(notificationType);
             notif.setTitle(title);
             notif.setContent(content);
-            notificationRepository.save(notif);
+            Notification saved = notificationRepository.save(notif);
+            outbox.setNotification(saved);
+            outboxRepository.save(outbox);
+            long unread = notificationRepository.countByRecipientUserUserIdAndReadAtIsNull(recipient.getUserId());
+            NotificationResponse response = toResponse(saved);
+            afterCommit(() -> sseHub.publishNotification(recipient.getUserId(), response, unread));
 
             sentCount++;
         }
@@ -356,11 +360,15 @@ public class NotificationService {
         if (notification.getReadAt() == null) {
             notification.setReadAt(now);
             notificationRepository.save(notification);
+            long unread = notificationRepository.countByRecipientUserUserIdAndReadAtIsNull(userId);
+            afterCommit(() -> sseHub.publishUnreadCount(userId, unread));
         }
 
         // Cập nhật ACK vào Outbox nếu tương ứng
         List<ImpactNotificationOutbox> outboxes =
-                outboxRepository.findByRecipientUser_UserIdAndAcknowledgedAtIsNull(userId);
+                outboxRepository.findByNotification_NotificationIdAndRecipientUser_UserId(notificationId, userId)
+                        .filter(outbox -> outbox.getAcknowledgedAt() == null)
+                        .stream().toList();
         for (ImpactNotificationOutbox o : outboxes) {
             o.setStatus("ACK");
             o.setAcknowledgedAt(now);
