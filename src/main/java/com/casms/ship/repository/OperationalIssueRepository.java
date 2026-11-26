@@ -31,6 +31,12 @@ public interface OperationalIssueRepository extends JpaRepository<OperationalIss
     List<OperationalIssue> findByStatusAndCruise_CruiseIdOrderByReportedAtDesc(
             OperationalIssueStatus status, UUID cruiseId);
 
+    List<OperationalIssue> findByShip_ShipIdAndCruise_CruiseIdOrderByReportedAtDesc(
+            UUID shipId, UUID cruiseId);
+
+    List<OperationalIssue> findByStatusAndShip_ShipIdAndCruise_CruiseIdOrderByReportedAtDesc(
+            OperationalIssueStatus status, UUID shipId, UUID cruiseId);
+
     List<OperationalIssue> findByAssignedTo_UserIdOrderByReportedAtDesc(UUID userId);
 
     long countByCruise_CruiseIdAndStatus(UUID cruiseId, OperationalIssueStatus status);

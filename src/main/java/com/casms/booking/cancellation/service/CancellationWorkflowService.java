@@ -74,6 +74,10 @@ public class CancellationWorkflowService {
         if (booking.getBookingStatus() == BookingStatus.Cancelled || cases.existsByBookingIdAndStatusIn(bookingId, ACTIVE)) {
             throw conflict("CANCELLATION_ALREADY_ACTIVE", "Đặt chỗ đã hủy hoặc đã có yêu cầu đang xử lý.");
         }
+        Instant departureAt = booking.getCruise() == null ? null : booking.getCruise().getDepartureDatetime();
+        if (departureAt != null && !departureAt.isAfter(Instant.now())) {
+            throw conflict("CANCELLATION_AFTER_DEPARTURE", "Chuyến khởi hành đã xuất bến nên không thể gửi yêu cầu hủy đặt chỗ.");
+        }
         if (issueId != null) requireIssueOnBooking(booking, issueId);
         var cancellation = new CancellationCase();
         cancellation.setBookingId(bookingId);

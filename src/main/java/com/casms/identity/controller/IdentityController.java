@@ -34,8 +34,8 @@ public class IdentityController {
                         + " POS; ONBOARD_STAFF lấy nhân viên phục vụ dịch vụ và hoạt động,"
                         + " OPERATIONAL_ISSUE lấy người xử lý sự cố.")
     @PreAuthorize(
-            "hasAnyAuthority('USER_READ', 'OPERATIONAL_ISSUE_ASSIGN', 'OPERATIONAL_ISSUE_CREATE',"
-                + " 'OPERATIONAL_ISSUE_UPDATE')")
+            "hasAnyAuthority('USER_READ', 'OPERATIONAL_ISSUE_READ', 'OPERATIONAL_ISSUE_ASSIGN',"
+                + " 'OPERATIONAL_ISSUE_CREATE', 'OPERATIONAL_ISSUE_UPDATE')")
     @GetMapping("/users")
     public ResponseEntity<ApiResponse<List<UserLookupResponse>>> listUsers(
             @RequestParam(required = false, defaultValue = "ACTIVE") UserStatus status,

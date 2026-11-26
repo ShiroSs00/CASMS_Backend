@@ -18,8 +18,12 @@ public class OperationalIssueResponse {
     private String issueCode;
 
     private UUID cruiseId;
+    private String cruiseCode;
+    private String cruiseName;
     private UUID shipId;
+    private String shipName;
     private UUID cabinId;
+    private String cabinNumber;
 
     private OperationalIssueType issueType;
     private OperationalIssueSeverity severity;
@@ -30,9 +34,13 @@ public class OperationalIssueResponse {
     private OperationalIssueStatus status;
 
     private UUID reportedById;
+    private String reporterName;
     private UUID resolvedById;
+    private String resolvedByName;
     private UUID assignedToId;
+    private String assignedToName;
     private UUID verifiedById;
+    private String verifiedByName;
     private Instant verifiedAt;
 
     private String resolution;

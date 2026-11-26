@@ -97,7 +97,16 @@ public class OperationalIssueService {
 
         List<OperationalIssue> issues;
 
-        if (status != null && shipId != null) {
+        if (status != null && shipId != null && cruiseId != null) {
+            issues =
+                    issueRepository
+                            .findByStatusAndShip_ShipIdAndCruise_CruiseIdOrderByReportedAtDesc(
+                                    status, shipId, cruiseId);
+        } else if (shipId != null && cruiseId != null) {
+            issues =
+                    issueRepository.findByShip_ShipIdAndCruise_CruiseIdOrderByReportedAtDesc(
+                            shipId, cruiseId);
+        } else if (status != null && shipId != null) {
             issues =
                     issueRepository.findByStatusAndShip_ShipIdOrderByReportedAtDesc(status, shipId);
         } else if (status != null && cruiseId != null) {
@@ -354,8 +363,12 @@ public class OperationalIssueService {
                 .issueId(issue.getIssueId())
                 .issueCode(issue.getIssueCode())
                 .cruiseId(issue.getCruise() == null ? null : issue.getCruise().getCruiseId())
+                .cruiseCode(issue.getCruise() == null ? null : issue.getCruise().getCruiseCode())
+                .cruiseName(issue.getCruise() == null ? null : issue.getCruise().getCruiseName())
                 .shipId(issue.getShip() == null ? null : issue.getShip().getShipId())
+                .shipName(issue.getShip() == null ? null : issue.getShip().getShipName())
                 .cabinId(issue.getCabin() == null ? null : issue.getCabin().getCabinId())
+                .cabinNumber(issue.getCabin() == null ? null : issue.getCabin().getCabinNumber())
                 .issueType(issue.getIssueType())
                 .severity(issue.getSeverity())
                 .description(issue.getDescription())
@@ -364,12 +377,20 @@ public class OperationalIssueService {
                 .status(issue.getStatus())
                 .reportedById(
                         issue.getReportedBy() == null ? null : issue.getReportedBy().getUserId())
+                .reporterName(
+                        issue.getReportedBy() == null ? null : issue.getReportedBy().getUsername())
                 .resolvedById(
                         issue.getResolvedBy() == null ? null : issue.getResolvedBy().getUserId())
+                .resolvedByName(
+                        issue.getResolvedBy() == null ? null : issue.getResolvedBy().getUsername())
                 .assignedToId(
                         issue.getAssignedTo() == null ? null : issue.getAssignedTo().getUserId())
+                .assignedToName(
+                        issue.getAssignedTo() == null ? null : issue.getAssignedTo().getUsername())
                 .verifiedById(
                         issue.getVerifiedBy() == null ? null : issue.getVerifiedBy().getUserId())
+                .verifiedByName(
+                        issue.getVerifiedBy() == null ? null : issue.getVerifiedBy().getUsername())
                 .verifiedAt(issue.getVerifiedAt())
                 .resolution(issue.getResolution())
                 .createdAt(issue.getCreatedAt())
