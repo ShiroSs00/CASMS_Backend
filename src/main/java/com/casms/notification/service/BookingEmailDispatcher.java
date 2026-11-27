@@ -31,7 +31,7 @@ public class BookingEmailDispatcher {
     }
 
     /** At-least-once delivery: SKIP LOCKED coordinates workers; SMTP cannot promise exactly once. */
-    @Scheduled(fixedDelayString = "${casms.booking-email.poll-ms:30000}")
+    @Scheduled(fixedDelayString = "${casms.booking-email.poll-ms:5000}")
     @Transactional
     public void dispatch() {
         JavaMailSender sender = mailSender.getIfAvailable();
