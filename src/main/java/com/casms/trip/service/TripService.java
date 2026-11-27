@@ -658,16 +658,24 @@ public class TripService {
                 trip.getDurationGroup() != null ? trip.getDurationGroup() : TripDurationGroup.SHORT;
 
         if (request.getAction() == TripDayManageAction.ADD) {
-            int newDayNumber = trip.getDurationDays() + 1;
+            int currentDays =
+                    Math.max(
+                            trip.getDurationDays(),
+                            version.getDays() != null ? version.getDays().size() : 0);
+            int newDayNumber = currentDays + 1;
             if (newDayNumber > group.getMaxDays()) {
+                String limitMessage =
+                        group == TripDurationGroup.SHORT
+                                ? "Chuyến ngắn (1–2 ngày) đã có đủ 2 ngày, không thể thêm ngày."
+                                : "Nhóm thời lượng "
+                                        + group
+                                        + " chỉ cho phép tối đa "
+                                        + group.getMaxDays()
+                                        + " ngày";
                 throw new BusinessException(
                         HttpStatus.UNPROCESSABLE_ENTITY,
                         "DURATION_LIMIT_EXCEEDED",
-                        "Nhóm thời lượng "
-                                + group
-                                + " chỉ cho phép tối đa "
-                                + group.getMaxDays()
-                                + " ngày");
+                        limitMessage);
             }
 
             List<TripScheduleVersion> draftVersions =
