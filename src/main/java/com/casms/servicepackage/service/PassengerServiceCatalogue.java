@@ -40,7 +40,7 @@ public class PassengerServiceCatalogue {
                 || (cruise.getStatus() != CruiseStatus.PUBLISHED && cruise.getStatus() != CruiseStatus.IN_PROGRESS))
             return new Catalogue(cruiseId, List.of());
         Instant now = Instant.now();
-        bookingPolicy.requireOnboardBooking(cruise, now);
+        bookingPolicy.requireOnboardBookingForProjection(cruise, now);
 
         UUID shipId = cruise.getShip().getShipId();
         var placements = jdbc.query("""

@@ -112,7 +112,11 @@ public class CruisePackageEntitlementService {
         // Booking state is stable through the operation. Cancellation uses the existing exclusive Booking lock.
         var owners=jdbc.queryForList("SELECT b.booking_id FROM \"Booking\" b JOIN \"BookingPassenger\" p USING(booking_id) WHERE p.booking_passenger_id=? FOR SHARE OF b",UUID.class,passengerId);
         if(owners.isEmpty())throw business("ENTITLEMENT_PASSENGER_MISMATCH","Không tìm thấy hành khách của quyền lợi.");
-        var grant=repository.find(BookingCruisePackageBenefitSnapshot.class,grantId,lock);
+        // Snapshot entities remain immutable/read-only in Hibernate. Serialize quota mutations
+        // on the PostgreSQL row rather than upgrading a read-only managed entity's lock mode.
+        if(lock && jdbc.queryForList("SELECT snapshot_benefit_id FROM \"BookingFareBenefitSnapshot\" WHERE snapshot_benefit_id=? FOR UPDATE",UUID.class,grantId).isEmpty())
+            throw business("ENTITLEMENT_NOT_FOUND","Không tìm thấy quyền lợi đã mua.");
+        var grant=repository.find(BookingCruisePackageBenefitSnapshot.class,grantId,false);
         if(grant==null)throw business("ENTITLEMENT_NOT_FOUND","Không tìm thấy quyền lợi đã mua.");
         if(!grant.getBookingPassengerId().equals(passengerId))throw business("ENTITLEMENT_PASSENGER_MISMATCH","Quyền lợi không thuộc hành khách đang sử dụng.");
         if(!matches(grant,type,resourceId))throw business("ENTITLEMENT_RESOURCE_MISMATCH","Lần phục vụ không nằm trong snapshot quyền lợi đã mua.");
