@@ -1,6 +1,6 @@
 spring:
   mail:
-    host: ${SPRING_MAIL_HOST:localhost}
+    host: ${SPRING_MAIL_HOST:smtp.gmail.com}
     port: ${SPRING_MAIL_PORT:587}
     username: ${SPRING_MAIL_USERNAME:}
     password: ${SPRING_MAIL_PASSWORD:}
@@ -89,8 +89,15 @@ casms:
       enabled: ${CASMS_CANCELLATION_WORKFLOW_ENABLED:true}
   booking-email:
     enabled: ${CASMS_BOOKING_EMAIL_ENABLED:false}
-    from: ${CASMS_BOOKING_EMAIL_FROM:}
+    from: ${CASMS_BOOKING_EMAIL_FROM:taobaothanh@5zulieu.com}
     portal-url: ${CASMS_BOOKING_EMAIL_PORTAL_URL:http://localhost:5173}
+  employee-activation-email:
+    enabled: ${CASMS_EMPLOYEE_ACTIVATION_EMAIL_ENABLED:true}
+    from: ${CASMS_EMPLOYEE_ACTIVATION_EMAIL_FROM:${SPRING_MAIL_USERNAME:taobaothanh@5zulieu.com}}
+    portal-url: ${CASMS_EMPLOYEE_ACTIVATION_EMAIL_PORTAL_URL:http://localhost:5174/activate-employee-account}
+    allow-loopback-http: ${CASMS_EMPLOYEE_ACTIVATION_EMAIL_ALLOW_LOOPBACK_HTTP:true}
+    token-key: ${CASMS_EMPLOYEE_ACTIVATION_EMAIL_TOKEN_KEY:Q0FTTVMtRU1QTE9ZRUUtQUNUSVZBVElPTi1TRUNSRVQtS0VZLTIwMjYtMDAx}
+    poll-ms: ${CASMS_EMPLOYEE_ACTIVATION_EMAIL_POLL_MS:5000}
   payment:
     sepay:
       enabled: ${SEPAY_ENABLED:true}

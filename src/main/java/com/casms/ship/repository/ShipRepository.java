@@ -90,6 +90,9 @@ public interface ShipRepository extends JpaRepository<Ship, UUID> {
     boolean existsByShipTypeShipTypeId(UUID shipTypeId);
     boolean existsByShipCode(String shipCode);
 
+    @Query("SELECT count(c) > 0 FROM Cruise c WHERE c.ship.shipId = :shipId")
+    boolean hasAnyCruise(@Param("shipId") UUID shipId);
+
     boolean existsByShipCodeAndShipIdNot(String shipCode, UUID shipId);
 
     Optional<Ship> findByShipCode(String shipCode);

@@ -23,6 +23,7 @@ import lombok.extern.slf4j.Slf4j;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -262,6 +263,20 @@ public class ShipService {
             return mapToResponse(ship);
         }
 
+        // Strict DRAFT -> READY rule: a ship in DRAFT may only transition to READY
+        if (ship.getStatus() == ShipStatus.DRAFT && newStatus != ShipStatus.READY) {
+            throw new BusinessException(
+                    HttpStatus.CONFLICT,
+                    "INVALID_SHIP_STATUS_TRANSITION",
+                    "Tàu đang ở trạng thái Đang thiết lập (DRAFT) chỉ có thể chuyển sang Sẵn sàng hoạt động (READY).");
+        }
+        if (ship.getStatus() == ShipStatus.RETIRED) {
+            throw new BusinessException(
+                    HttpStatus.CONFLICT,
+                    "INVALID_SHIP_STATUS_TRANSITION",
+                    "Tàu đã ngừng hoạt động (RETIRED) không thể chuyển sang trạng thái khác.");
+        }
+
         if (ship.getShipType() != null) {
             requireOperationalProfile(ship);
         }
@@ -277,6 +292,13 @@ public class ShipService {
                                 + newStatus
                                 + " while ship is on an active cruise");
             }
+        }
+
+        if (newStatus == ShipStatus.DRAFT) {
+            throw new BusinessException(
+                    HttpStatus.CONFLICT,
+                    "INVALID_SHIP_STATUS_TRANSITION",
+                    "Không thể chuyển tàu đã khai thác quay về trạng thái Đang thiết lập (DRAFT).");
         }
 
         ship.setStatus(newStatus);
@@ -378,6 +400,15 @@ public class ShipService {
                         new ShipReadinessAssessmentResponse.Issue(
                                 "NO_CONFIGURED_CABINS", "Configure at least one cabin"));
             }
+            var opProfile = ship.getOperationalProfile();
+            if (opProfile != null && opProfile.classificationExpiryDate() != null
+                    && opProfile.classificationExpiryDate().isBefore(java.time.LocalDate.now())) {
+                readiness = "NOT_READY";
+                issues.add(
+                        new ShipReadinessAssessmentResponse.Issue(
+                                "CLASSIFICATION_EXPIRED",
+                                "Đăng kiểm tàu đã hết hạn (" + opProfile.classificationExpiryDate() + ")"));
+            }
         }
         return new ShipReadinessAssessmentResponse(
                 shipId,
@@ -452,6 +483,12 @@ public class ShipService {
             throw new BusinessException(org.springframework.http.HttpStatus.UNPROCESSABLE_ENTITY,
                     "SHIP_OPERATIONAL_PROFILE_INCOMPLETE", "Complete the ship profile before changing status",
                     java.util.Map.of("missingGroups", missing));
+        }
+        if (profile.classificationExpiryDate().isBefore(java.time.LocalDate.now())) {
+            throw new BusinessException(org.springframework.http.HttpStatus.UNPROCESSABLE_ENTITY,
+                    "SHIP_CLASSIFICATION_EXPIRED",
+                    "Đăng kiểm tàu đã hết hạn (" + profile.classificationExpiryDate()
+                            + "). Vui lòng gia hạn trước khi đưa tàu vào khai thác.");
         }
     }
 

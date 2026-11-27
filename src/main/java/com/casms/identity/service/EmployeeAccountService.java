@@ -255,17 +255,27 @@ public class EmployeeAccountService {
     @Transactional
     public void retryActivationEmail(UUID id, CasmsPrincipal actor) {
         requireAuthority(actor, "USER_UPDATE");
-        profile(id, actor);
+        var employee = profile(id, actor);
+        if (!"PENDING_ACTIVATION".equals(employee.status())) {
+            throw new BusinessException(HttpStatus.CONFLICT, "EMPLOYEE_NOT_PENDING_ACTIVATION",
+                    "Tài khoản nhân viên không còn ở trạng thái chờ kích hoạt.");
+        }
         int updated = jdbc.update("""
                 UPDATE "EmployeeActivationOutbox" o SET attempts = 0, next_attempt_at = now(),
+                    sent_at = NULL,
                     last_retry_by = ?, last_retry_at = now(),
-                    activation_id = CASE WHEN o.expires_at <= now() THEN gen_random_uuid() ELSE o.activation_id END,
-                    expires_at = CASE WHEN o.expires_at <= now() THEN now() + interval '7 days' ELSE o.expires_at END
+                    activation_id = CASE WHEN o.expires_at <= now() OR o.sent_at IS NOT NULL THEN gen_random_uuid() ELSE o.activation_id END,
+                    expires_at = now() + interval '7 days'
                 FROM "Employee" e WHERE e.employee_id = o.employee_id AND e.employee_id = ?
-                    AND e.status = 'PENDING_ACTIVATION' AND o.consumed_at IS NULL AND o.sent_at IS NULL
-                    AND (o.attempts = 5 OR o.expires_at <= now())
+                    AND e.status = 'PENDING_ACTIVATION' AND o.consumed_at IS NULL
                 """, actor.getUserId(), id);
-        if (updated > 0) audit(actor.getUserId(), id, "EMPLOYEE_ACTIVATION_EMAIL_RETRY", Map.of());
+        if (updated == 0) {
+            jdbc.update("""
+                    INSERT INTO "EmployeeActivationOutbox" (employee_id, last_retry_by, last_retry_at)
+                    VALUES (?, ?, now())
+                    """, id, actor.getUserId());
+        }
+        audit(actor.getUserId(), id, "EMPLOYEE_ACTIVATION_EMAIL_RETRY", Map.of("email", employee.email()));
     }
 
     private void requireAuthority(CasmsPrincipal actor, String permission) {

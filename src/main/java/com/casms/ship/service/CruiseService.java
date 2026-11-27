@@ -189,6 +189,17 @@ public class CruiseService {
             throw new BusinessException("INVALID_SCHEDULE",
                     "Departure and return datetimes are required; return must be after departure");
         }
+        var opProfile = ship.getOperationalProfile();
+        if (opProfile != null && opProfile.classificationExpiryDate() != null) {
+            java.time.LocalDate cruiseEndDate = arrival.atZone(java.time.ZoneId.of("Asia/Ho_Chi_Minh")).toLocalDate();
+            if (opProfile.classificationExpiryDate().isBefore(cruiseEndDate)) {
+                throw new BusinessException(
+                        HttpStatus.UNPROCESSABLE_ENTITY,
+                        "SHIP_CLASSIFICATION_EXPIRES_BEFORE_CRUISE_END",
+                        "Ngày hết hạn đăng kiểm tàu (" + opProfile.classificationExpiryDate()
+                                + ") phải lớn hơn hoặc bằng ngày kết thúc chuyến đi (" + cruiseEndDate + ").");
+            }
+        }
         requirePassengerCapacity(ship, passengers);
         UUID shipId = ship.getShipId();
         long decks = deckRepository.countByShipShipId(shipId);

@@ -5,6 +5,7 @@ import com.casms.identity.service.EmployeeActivationToken;
 import jakarta.annotation.PostConstruct;
 import jakarta.mail.MessagingException;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -21,6 +22,7 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 @ConditionalOnProperty(name = "casms.employee-activation-email.enabled", havingValue = "true")
@@ -91,7 +93,10 @@ public class EmployeeActivationEmailDispatcher {
                         <p>Liên kết chỉ dùng được một lần.</p></div></body></html>
                         """.formatted(escape(name), escape(link)));
                 sender.send(message);
+                log.info("Sent employee activation email to {} (activationId={})", row.get("email"), id);
             } catch (MessagingException | MailException failure) {
+                log.error("Failed to send employee activation email to {} (activationId={}): {}",
+                        row.get("email"), id, failure.getMessage(), failure);
                 jdbc.update("""
                         UPDATE "EmployeeActivationOutbox" SET attempts = attempts + 1,
                             next_attempt_at = now() + interval '5 minutes' WHERE activation_id = ?

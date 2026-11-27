@@ -18,3 +18,11 @@ spring:
 logging:
   level:
     com.casms: DEBUG
+
+casms:
+  booking-email:
+    enabled: false
+  employee-activation-email:
+    enabled: false
+  staff-assignment-email:
+    enabled: false

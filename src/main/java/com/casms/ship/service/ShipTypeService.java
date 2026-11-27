@@ -263,7 +263,24 @@ public class ShipTypeService {
                 .orElseThrow(() -> new ResourceNotFoundException("Ship", shipId));
         ShipArchiveService.requireUnarchived(ship);
         requireTypedShip(ship);
-        ShipOperationalProfile updated = profile.withLegacyManufacturing(ship.getOperationalProfile());
+        ShipOperationalProfile previous = ship.getOperationalProfile();
+        if (ship.getCommissionDate() != null && profile.deliveryDate() != null
+                && profile.deliveryDate().isBefore(ship.getCommissionDate())) {
+            throw new BusinessException(HttpStatus.UNPROCESSABLE_ENTITY, "INVALID_DELIVERY_DATE",
+                    "Ngày bàn giao không hợp lệ (không được trước ngày đưa tàu vào sử dụng).");
+        }
+        if (previous != null && previous.deliveryDate() != null
+                && !Objects.equals(previous.deliveryDate(), profile.deliveryDate())
+                && ships.hasAnyCruise(shipId)) {
+            throw new BusinessException(HttpStatus.CONFLICT, "DELIVERY_DATE_LOCKED",
+                    "Không thể thay đổi ngày bàn giao khi tàu đã phát sinh hoạt động.");
+        }
+        if (ShipStatus.isOperational(ship.getStatus()) && previous != null && previous.imoNumber() != null
+                && !Objects.equals(previous.imoNumber(), profile.imoNumber())) {
+            throw new BusinessException(HttpStatus.CONFLICT, "IMO_LOCKED",
+                    "Không thể thay đổi số IMO khi tàu đã được xác minh đưa vào khai thác.");
+        }
+        ShipOperationalProfile updated = profile.withLegacyManufacturing(previous);
         ship.setOperationalProfile(updated);
         return updated;
     }
