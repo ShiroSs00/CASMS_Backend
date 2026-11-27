@@ -35,17 +35,27 @@ public class EmployeeActivationEmailDispatcher {
     @Value("${casms.employee-activation-email.portal-url:}")
     private String portalUrl;
 
+    @Value("${casms.employee-activation-email.allow-loopback-http:false}")
+    private boolean allowLoopbackHttp;
+
+    static boolean validPortal(URI portal, boolean allowLoopbackHttp) {
+        boolean localHttp = allowLoopbackHttp && "http".equalsIgnoreCase(portal.getScheme())
+                && ("localhost".equalsIgnoreCase(portal.getHost()) || "127.0.0.1".equals(portal.getHost()));
+        return ("https".equalsIgnoreCase(portal.getScheme()) || localHttp)
+                && portal.getHost() != null && portal.getFragment() == null
+                && portal.getUserInfo() == null && portal.getQuery() == null;
+    }
+
     @PostConstruct
     void validateConfiguration() {
         URI portal = URI.create(portalUrl);
-        if (!"https".equalsIgnoreCase(portal.getScheme()) || portal.getHost() == null
-                || portal.getFragment() != null || portal.getUserInfo() != null
+        if (!validPortal(portal, allowLoopbackHttp)
                 || !tokens.isConfigured() || from.isBlank() || mailSender.getIfAvailable() == null) {
             throw new IllegalStateException("Employee activation email requires an HTTPS portal, token key and SMTP");
         }
     }
 
-    @Scheduled(fixedDelayString = "${casms.employee-activation-email.poll-ms:30000}")
+    @Scheduled(fixedDelayString = "${casms.employee-activation-email.poll-ms:5000}")
     @Transactional
     public void dispatch() {
         var sender = mailSender.getObject();
