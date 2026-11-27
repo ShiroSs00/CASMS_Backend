@@ -48,9 +48,11 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.ArrayList;
@@ -728,6 +730,14 @@ public class TripCatalogController {
     }
 
     @PreAuthorize("hasRole('ADMIN')")
+    @PostMapping("/geography/countries")
+    @ResponseStatus(HttpStatus.CREATED)
+    public ApiResponse<TripGeographyCatalog.Item> createCountry(
+            @Valid @RequestBody CreateCountryRequest request) {
+        return ApiResponse.success(geographyCatalog.createCountry(request.code(), request.label()));
+    }
+
+    @PreAuthorize("hasRole('ADMIN')")
     @PatchMapping("/geography/{kind}/{code}/status")
     public ApiResponse<TripGeographyCatalog.Item> changeGeographyStatus(
             @PathVariable TripGeographyCatalog.Kind kind,
@@ -737,6 +747,8 @@ public class TripCatalogController {
     }
 
     public record GeographyStatusRequest(@NotNull TripGeographyCatalog.Status status) {}
+
+    public record CreateCountryRequest(@NotNull String code, @NotNull String label) {}
 
     public ApiResponse<List<PlanningSourcePortResponse>> getSourcePorts() {
         return getSourcePorts(null, null, null, null, null);

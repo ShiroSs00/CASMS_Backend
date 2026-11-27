@@ -19,6 +19,8 @@ import java.util.Set;
 @Service
 @RequiredArgsConstructor
 public class TripGeographyCatalog {
+    private static final Set<String> ISO_COUNTRY_CODES = Set.of(Locale.getISOCountries());
+
     public enum Kind { COUNTRY, REGION }
     public enum Status { ACTIVE, INACTIVE }
     public record Item(Kind kind, String code, String label, String description, Status status) {}
@@ -30,11 +32,39 @@ public class TripGeographyCatalog {
                 SELECT kind, code, label, description, status
                 FROM trip_geography_catalog
                 WHERE NOT ? OR status = 'ACTIVE'
-                ORDER BY kind, display_order
+                ORDER BY kind, display_order, code
                 """, (row, index) -> new Item(
                 Kind.valueOf(row.getString("kind")), row.getString("code"),
                 row.getString("label"), row.getString("description"),
                 Status.valueOf(row.getString("status"))), activeOnly);
+    }
+
+    @Transactional
+    public Item createCountry(String code, String label) {
+        String inputCode = code == null ? "" : code.strip();
+        String normalized = normalize(inputCode);
+        if (!inputCode.matches("[A-Za-z]{2}") || !ISO_COUNTRY_CODES.contains(normalized)) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "INVALID_COUNTRY_CODE",
+                    "Mã quốc gia phải thuộc ISO 3166-1 alpha-2.");
+        }
+        String countryLabel = label == null ? "" : label.strip();
+        if (countryLabel.isBlank() || countryLabel.indexOf(0) >= 0
+                || countryLabel.codePointCount(0, countryLabel.length()) > 100) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "INVALID_COUNTRY_LABEL",
+                    "Tên quốc gia phải từ 1 đến 100 ký tự.");
+        }
+        int inserted = jdbc.update("""
+                INSERT INTO trip_geography_catalog (kind, code, label, display_order, status)
+                SELECT 'COUNTRY', ?, ?, COALESCE(MAX(display_order), 0) + 1, 'ACTIVE'
+                FROM trip_geography_catalog
+                WHERE kind = 'COUNTRY'
+                ON CONFLICT (kind, code) DO NOTHING
+                """, normalized, countryLabel);
+        if (inserted == 0) {
+            throw new BusinessException(HttpStatus.CONFLICT, "COUNTRY_ALREADY_EXISTS",
+                    "Quốc gia " + normalized + " đã có trong danh mục.");
+        }
+        return new Item(Kind.COUNTRY, normalized, countryLabel, null, Status.ACTIVE);
     }
 
     @Transactional

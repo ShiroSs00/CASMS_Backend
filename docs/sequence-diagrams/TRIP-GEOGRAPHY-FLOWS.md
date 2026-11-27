@@ -4,6 +4,12 @@
 
 Flyway V122 khởi tạo năm quốc gia và ba miền theo thứ tự đã công bố. Endpoint lập kế hoạch giữ cấu trúc `countries` và `domesticRegions`. Admin đọc cả trạng thái ACTIVE và INACTIVE từ endpoint cấu hình. Bật lại Việt Nam cho phép bật từng miền riêng.
 
+Admin có thể thêm quốc gia bằng mã ISO 3166-1 alpha-2 và tên hiển thị. Sau khi commit, quốc gia mới xuất hiện trong danh mục cấu hình và danh mục đang hoạt động. Nguồn cảng, chuyến quốc tế và lịch nháp dùng cùng tập quốc gia đang hoạt động. Chuyến nội địa dùng VN. Sau khi tắt mục qua API trạng thái, mục vẫn hiện trong danh mục cấu hình và được loại khỏi lựa chọn lập kế hoạch.
+
+Quốc gia mới được xếp sau các mục đã có tại thời điểm tạo. Khi các thao tác tạo đồng thời dùng cùng thứ tự, danh mục dùng mã quốc gia để phân thứ tự ổn định.
+
+Xem trình tự tạo, xác thực mã và xử lý tranh chấp khóa chính trong [API thêm quốc gia](trip/post-trip-planning-catalogs-geography-countries.md).
+
 ```mermaid
 sequenceDiagram
     actor Client

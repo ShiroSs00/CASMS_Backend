@@ -25,6 +25,56 @@ import static org.mockito.Mockito.when;
 
 class TripGeographyCatalogTest {
     @Test
+    void createsActiveCountryWithStandardCodeAndTrimmedLabel() {
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        var catalog = new TripGeographyCatalog(jdbc);
+        when(jdbc.update(contains("ON CONFLICT (kind, code) DO NOTHING"),
+                eq("KR"), eq("Hàn Quốc"))).thenReturn(1);
+
+        var created = catalog.createCountry(" kr ", " Hàn Quốc ");
+
+        assertEquals(new TripGeographyCatalog.Item(
+                TripGeographyCatalog.Kind.COUNTRY, "KR", "Hàn Quốc", null,
+                TripGeographyCatalog.Status.ACTIVE), created);
+        verify(jdbc).update(contains("COALESCE(MAX(display_order), 0) + 1"),
+                eq("KR"), eq("Hàn Quốc"));
+    }
+
+    @Test
+    void rejectsInvalidIsoCodeAndLabelBeforeWriting() {
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        var catalog = new TripGeographyCatalog(jdbc);
+
+        for (String code : List.of("ZZ", "VNM", "ß", " ")) {
+            BusinessException error = assertThrows(BusinessException.class,
+                    () -> catalog.createCountry(code, "Tên quốc gia"));
+            assertEquals("INVALID_COUNTRY_CODE", error.getCode());
+        }
+        for (String label : List.of(" ", "a".repeat(101), "abc" + (char) 0)) {
+            BusinessException error = assertThrows(BusinessException.class,
+                    () -> catalog.createCountry("KR", label));
+            assertEquals("INVALID_COUNTRY_LABEL", error.getCode());
+        }
+        verifyNoMoreInteractions(jdbc);
+    }
+
+    @Test
+    void existingCountryReturnsConflictWithoutUpdatingItsStatusOrLabel() {
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        var catalog = new TripGeographyCatalog(jdbc);
+        when(jdbc.update(contains("ON CONFLICT (kind, code) DO NOTHING"),
+                eq("VN"), eq("Tên thay thế"))).thenReturn(0);
+
+        BusinessException error = assertThrows(BusinessException.class,
+                () -> catalog.createCountry(" vn ", "Tên thay thế"));
+
+        assertEquals("COUNTRY_ALREADY_EXISTS", error.getCode());
+        verify(jdbc).update(contains("ON CONFLICT (kind, code) DO NOTHING"),
+                eq("VN"), eq("Tên thay thế"));
+        verifyNoMoreInteractions(jdbc);
+    }
+
+    @Test
     void turningOffVietnamTurnsOffAllRegions() {
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
         TripGeographyCatalog catalog = new TripGeographyCatalog(jdbc);

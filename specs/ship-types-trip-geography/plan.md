@@ -11,6 +11,7 @@ Nguồn nghiệp vụ là [đặc tả](spec.md). Nền triển khai là `origin
 ## Danh mục chuyến đi
 
 - V122 khởi tạo năm quốc gia và ba miền. Giữ cấu trúc API danh mục lập kế hoạch, thêm thao tác Admin bật và tắt.
+- BE-09 bổ sung thao tác tạo quốc gia trong cùng danh mục và dùng khóa chính hiện tại để bảo vệ mã trùng. Luồng lập chuyến tiếp tục đọc các mục ACTIVE.
 - Chặn lựa chọn địa lý không khả dụng khi tạo chuyến. Lịch nháp không còn khả dụng báo lỗi tạo lại. Tắt Việt Nam và ba miền trong cùng giao dịch.
 
 ## Xác minh

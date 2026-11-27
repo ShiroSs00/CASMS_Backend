@@ -285,6 +285,30 @@ public class TripPlanningContractTest {
                 .andExpect(jsonPath("$.code").value("STALE_REVISION"));
     }
 
+    @Test
+    void createsGeographyCountryWithAdminContract() throws Exception {
+        catalogController.setGeographyCatalog(geographyCatalog);
+        var country = new TripGeographyCatalog.Item(
+                TripGeographyCatalog.Kind.COUNTRY, "KR", "Hàn Quốc", null,
+                TripGeographyCatalog.Status.ACTIVE);
+        when(geographyCatalog.createCountry("kr", "Hàn Quốc")).thenReturn(country);
+
+        mockMvcCatalog.perform(post("/trip-planning/catalogs/geography/countries")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"code":"kr","label":"Hàn Quốc"}
+                                """))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.kind").value("COUNTRY"))
+                .andExpect(jsonPath("$.data.code").value("KR"))
+                .andExpect(jsonPath("$.data.label").value("Hàn Quốc"))
+                .andExpect(jsonPath("$.data.status").value("ACTIVE"));
+        assertEquals("hasRole('ADMIN')", TripCatalogController.class
+                .getMethod("createCountry", TripCatalogController.CreateCountryRequest.class)
+                .getAnnotation(org.springframework.security.access.prepost.PreAuthorize.class)
+                .value());
+    }
+
     // 5. GET /trip-planning/catalogs
     @Test
     @DisplayName(

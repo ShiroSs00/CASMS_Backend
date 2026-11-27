@@ -25,3 +25,8 @@ Surefire ghi 80 test, 0 failures, 0 errors, 0 skipped.
 ## Chưa xác minh trên PostgreSQL
 
 Ca tích hợp `shipTypeProvisioningSharesAssetsAndGatesStatusOnScopedProfile` đã biên dịch, chờ chạy trên PostgreSQL cô lập. Docker daemon đang dừng và môi trường chưa có PostgreSQL cô lập được duyệt. Migration V121/V122, rollback trên database, trùng định danh đồng thời và bảo toàn dữ liệu lịch sử khi nâng cấp vẫn chờ bằng chứng thực thi.
+# Kiểm chứng bổ sung BE-09
+
+- `mvn.cmd -B -ntp '-Dtest=TripGeographyCatalogTest,TripPlanningContractTest' test` hoàn thành ngày 2026-11-27. Chạy 30 test, 0 lỗi kiểm thử, 0 lỗi thực thi, 0 bỏ qua. Trong đó có 7 test service danh mục và 23 test hợp đồng API.
+- `python scripts/sequence_docs.py --check` ghi nhận route và sơ đồ BE-09. Kiểm tra toàn kho vẫn báo 94 route và 101 sơ đồ cũ còn thiếu, không có lỗi cấu trúc Mermaid.
+- Chưa kiểm thử đồng thời trên PostgreSQL. API dùng khóa chính hiện có và câu lệnh `INSERT ... ON CONFLICT` để xử lý mã trùng.
