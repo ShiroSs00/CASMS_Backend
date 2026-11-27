@@ -1,0 +1,41 @@
+<!DOCTYPE suite SYSTEM "https://testng.org/testng-1.0.dtd">
+<suite name="CASMS-TestNG-Suite" parallel="classes" thread-count="4" verbose="1">
+    <listeners>
+        <listener class-name="com.casms.testng.listener.CasmsTestListener"/>
+    </listeners>
+
+    <test name="Smoke-Suite">
+        <groups>
+            <run>
+                <include name="smoke"/>
+            </run>
+        </groups>
+        <packages>
+            <package name="com.casms.testng"/>
+        </packages>
+    </test>
+
+    <test name="Security-And-Boundary-Suite">
+        <groups>
+            <run>
+                <include name="security"/>
+                <include name="boundary"/>
+            </run>
+        </groups>
+        <packages>
+            <package name="com.casms.testng"/>
+        </packages>
+    </test>
+
+    <test name="Full-Regression-Suite">
+        <groups>
+            <run>
+                <include name="regression"/>
+                <exclude name="flaky"/>
+            </run>
+        </groups>
+        <packages>
+            <package name="com.casms.testng"/>
+        </packages>
+    </test>
+</suite>
