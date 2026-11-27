@@ -33,6 +33,7 @@ sequenceDiagram
 
     Manager->>Security: POST /ship-types/{typeId}/ships with Idempotency-Key
     Security->>Controller: SHIP_MANAGER
+    Note over Controller: Validate optional lastClassificationDate before provisioning
     Controller->>Service: Reserve key and provision or replay (write transaction)
     Service->>Repositories: Lock type and check ACTIVE
     alt No such type or inactive
@@ -60,3 +61,37 @@ sequenceDiagram
 - `POST /ships/{shipId}/status` locks the ship. A same-state request returns the current ship. For a typed ship with missing certification, warranty or maintenance data, it returns 422 with `missingGroups`. For a complete profile it continues the existing active-cruise guard and saves the new status. Legacy ships retain their existing lifecycle.
 - The authenticated ship list and detail expose the type ID for typed ships. Managers can see the ships they created as well as active assignments. The two former direct-creation endpoints return 410 and guide authorized callers to the type APIs. Existing ships keep their IDs and may continue legacy operations.
 - Ship managers can [delete unused draft ship models](ship/delete-ships-shipid-models-modelid-unused.md) for ships they created or manage through an active cruise assignment. Object mappings and import history block deletion. The operation leaves the ship type and shared binary assets available.
+
+## Last classification survey date
+
+`lastClassificationDate` is the optional date of the latest completed classification survey. It accepts an ISO date on or before the current date. When `classificationExpiryDate` is also supplied, expiry must be on or after the survey date.
+
+Provisioning stores the date in the ship's existing operational profile JSONB within its creation transaction. The standard provisioning response remains a ship summary. GET operational profile reads the stored date when available. Full PUT replaces the date and clears it if omitted. Omitting the field preserves the serialized profile shape used for existing provisioning request fingerprints.
+
+```mermaid
+sequenceDiagram
+    actor Manager as Ship Manager
+    participant Security as JWT and ship record scope
+    participant Controller as ShipOperationalProfileController
+    participant Service as ShipTypeService
+    participant Repo as ShipRepository
+    participant DB as PostgreSQL
+    Manager->>Security: GET or PUT operational profile
+    Security->>Controller: SHIP_MANAGER with ship scope
+    alt GET
+        Controller->>Service: profile in read-only transaction
+        Service->>Repo: findById and require a typed ship
+        Repo->>DB: Read ship operational profile JSONB
+        Service-->>Manager: 200 profile, including recorded survey date
+    else PUT
+        alt Invalid date or expiry before survey
+            Controller-->>Manager: 400 VALIDATION_FAILED
+        else Valid request
+            Controller->>Service: replaceProfile in write transaction
+            Service->>Repo: Lock ship row and validate existing profile guards
+            Repo->>DB: SELECT FOR UPDATE
+            Service->>DB: Persist replaced operational profile JSONB at commit
+            Service-->>Manager: 200 replaced profile
+        end
+    end
+```

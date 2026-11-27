@@ -30,3 +30,8 @@ Ca tích hợp `shipTypeProvisioningSharesAssetsAndGatesStatusOnScopedProfile` �
 - `mvn.cmd -B -ntp '-Dtest=TripGeographyCatalogTest,TripPlanningContractTest' test` hoàn thành ngày 2026-11-27. Chạy 30 test, 0 lỗi kiểm thử, 0 lỗi thực thi, 0 bỏ qua. Trong đó có 7 test service danh mục và 23 test hợp đồng API.
 - `python scripts/sequence_docs.py --check` ghi nhận route và sơ đồ BE-09. Kiểm tra toàn kho vẫn báo 94 route và 101 sơ đồ cũ còn thiếu, không có lỗi cấu trúc Mermaid.
 - Chưa kiểm thử đồng thời trên PostgreSQL. API dùng khóa chính hiện có và câu lệnh `INSERT ... ON CONFLICT` để xử lý mã trùng.
+
+## Kiểm chứng ngày đăng kiểm gần nhất
+
+- `mvn.cmd -B -ntp '-Dtest=ShipOperationalProfileTest,ShipServiceTest,ShipTypeServiceTest' test` chạy 18 test, 0 lỗi kiểm thử, 0 lỗi thực thi và 0 bỏ qua. Các ca mới kiểm tra hồ sơ cũ, ánh xạ khi tạo và thay hồ sơ, ngày tương lai và thứ tự ngày hết hạn.
+- `python scripts/sequence_docs.py --check` có đủ tài liệu cho 3 route chịu ảnh hưởng. Kiểm tra toàn kho vẫn báo 94 route và 101 sơ đồ cũ còn thiếu, 0 lỗi cấu trúc Mermaid.

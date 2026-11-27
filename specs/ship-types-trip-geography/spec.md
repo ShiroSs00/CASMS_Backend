@@ -27,7 +27,7 @@
   - Nhà máy đóng tàu, quốc gia đóng tàu, năm đóng tàu.
   - Ngày bàn giao.
   - Quốc gia đăng ký và số đăng ký tàu.
-  - Đăng kiểm và chứng nhận, gồm đơn vị đăng kiểm, ngày hết hạn và hồ sơ chứng nhận. Quản lý tàu gắn hồ sơ chứng nhận khi tạo tàu.
+  - Đăng kiểm và chứng nhận, gồm đơn vị đăng kiểm, ngày đăng kiểm gần nhất, ngày hết hạn và hồ sơ chứng nhận. Ngày đăng kiểm gần nhất có thể để trống, dùng định dạng ngày ISO và không được ở tương lai. Khi có cả hai ngày, ngày hết hạn không được trước ngày đăng kiểm gần nhất. Quản lý tàu gắn hồ sơ chứng nhận khi tạo tàu.
   - Bảo hành, gồm thông tin hợp đồng bảo hành do Quản lý tàu gắn khi tạo tàu.
   - Lịch sử bảo trì và sửa chữa do Quản lý tàu gắn khi tạo tàu.
 

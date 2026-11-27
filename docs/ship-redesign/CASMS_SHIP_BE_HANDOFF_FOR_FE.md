@@ -73,11 +73,14 @@ DTO hồ sơ vận hành. Mọi trường có thể bỏ trống khi tạo DRAFT
   "manufacturerShipCode":"BUILD-01","imoNumber":"1234567",
   "shipyard":"Example Yard","buildCountry":"VN","buildYear":2020,"deliveryDate":"2020-01-15",
   "registrationCountry":"VN","registrationNumber":"REG-01",
-  "classificationSociety":"Example Society","classificationExpiryDate":"2099-01-15",
+  "classificationSociety":"Example Society","lastClassificationDate":"2025-01-15",
+  "classificationExpiryDate":"2099-01-15",
   "certificateReferences":["certificate-1"],"warrantyReferences":["warranty-1"],
   "maintenanceReferences":["maintenance-1"]
 }
 ```
+
+`lastClassificationDate` là ngày đăng kiểm gần nhất. FE có thể hiển thị trống khi phản hồi thiếu trường này. Ngày đăng kiểm không được ở tương lai và ngày hết hạn phải cùng ngày hoặc sau ngày đăng kiểm. Khi gửi PUT để sửa trường khác, gửi lại ngày hiện có nếu muốn giữ giá trị đó.
 
 Các trạng thái Ship là DRAFT, READY, IN_SERVICE, MAINTENANCE, SUSPENDED và RETIRED. Một yêu cầu đổi trạng thái tàu có loại thiếu hồ sơ trả 422 `SHIP_OPERATIONAL_PROFILE_INCOMPLETE` với `details.missingGroups`. Giá trị nhóm là `certification` (đơn vị, ngày hết hạn và tham chiếu), `warranty` và `maintenance`. Sau khi hồ sơ đủ, guard chuyến đang hoạt động tiếp tục áp dụng.
 

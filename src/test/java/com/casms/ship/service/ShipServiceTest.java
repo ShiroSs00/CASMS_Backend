@@ -130,7 +130,7 @@ class ShipServiceTest {
         verify(shipRepository, never()).save(any(Ship.class));
 
         ship.setOperationalProfile(new ShipOperationalProfile(null, null, null, null, null, null,
-                null, null, "Registry", LocalDate.now().plusYears(1),
+                null, null, "Registry", null, LocalDate.now().plusYears(1),
                 List.of("certificate-1"), List.of("warranty-1"), List.of("maintenance-1")));
         when(shipRepository.save(ship)).thenReturn(ship);
         assertEquals(ShipStatus.READY, service.changeStatus(id, ShipStatus.READY).getStatus());
