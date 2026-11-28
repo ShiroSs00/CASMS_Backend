@@ -41,3 +41,9 @@ Ca tích hợp `shipTypeProvisioningSharesAssetsAndGatesStatusOnScopedProfile` �
 - `mvn.cmd -B -ntp '-Dtest=ShipClassificationExpiryServiceTest,ShipTypeServiceTest,ShipServiceTest,CruiseServiceTest' test` chạy 35 ca với 0 lỗi kiểm thử, 0 lỗi thực thi và 0 bỏ qua.
 - `git diff --check` đạt. `python scripts/sequence_docs.py --check` ghi nhận các route đã sửa, còn 92 route và 99 sơ đồ nền thiếu, 0 route lỗi thời và 0 lỗi cấu trúc Mermaid.
 - Chưa áp dụng V145 hoặc chạy bài tích hợp PostgreSQL, nên chưa có bằng chứng runtime từ scheduler, giao dịch gửi thông báo và SSE.
+
+## Đồng bộ trạng thái tàu khi khởi hành và đóng chuyến
+
+- Chạy `CruiseServiceTest,ShipClassificationExpiryServiceTest` có 23 ca, 1 lỗi từ test cũ `publishCruise_whenReady_success`. Nền `main` đã thay luồng publish trực tiếp bằng phản hồi `LEGACY_PUBLISH_DISABLED`.
+- Chạy lại hai lớp, loại riêng ca publish cũ. Kết quả 22 ca đạt, 0 lỗi và 0 bỏ qua. Các ca mới bao gồm khởi hành, đóng chuyến cuối, chuyến khác đang chạy, hết hạn, bảo toàn trạng thái tạm ngưng và hủy chuyến đang chạy.
+- `python scripts/sequence_docs.py --check` ghi nhận tài liệu start, complete và cancel. Nền còn 98 route và 105 sơ đồ thiếu, 0 lỗi cấu trúc Mermaid.

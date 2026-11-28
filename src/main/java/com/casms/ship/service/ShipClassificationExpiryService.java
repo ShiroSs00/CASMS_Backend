@@ -38,12 +38,17 @@ public class ShipClassificationExpiryService {
             return;
         }
 
-        LocalDate expiry = ship.getOperationalProfile().classificationExpiryDate();
         boolean activeCruise = cruises.existsByShip_ShipIdAndStatus(shipId, CruiseStatus.IN_PROGRESS);
+        applyExpiry(ship, activeCruise);
+    }
+
+    // Both callers hold the ship row lock in a write transaction and have checked expiry.
+    void applyExpiry(Ship ship, boolean activeCruise) {
+        LocalDate expiry = ship.getOperationalProfile().classificationExpiryDate();
         sendNotice(ship, expiry, activeCruise);
         if (!activeCruise) {
             ship.setStatus(ShipStatus.MAINTENANCE);
-            log.info("Ship {} moved to MAINTENANCE after classification expiry {}", shipId, expiry);
+            log.info("Ship {} moved to MAINTENANCE after classification expiry {}", ship.getShipId(), expiry);
         }
     }
 

@@ -31,6 +31,9 @@ public interface CruiseRepository
 
     boolean existsByShip_ShipIdAndStatus(UUID shipId, CruiseStatus status);
 
+    boolean existsByShip_ShipIdAndStatusAndCruiseIdNot(
+            UUID shipId, CruiseStatus status, UUID cruiseId);
+
     boolean existsByCruiseCode(String cruiseCode);
 
     boolean existsByShip(Ship ship);

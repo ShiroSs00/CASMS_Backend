@@ -67,7 +67,9 @@ sequenceDiagram
 
 ## Automatic maintenance for classification expiry
 
-The scheduled check runs once a minute by default. It evaluates ships in READY or IN_SERVICE that are unarchived and have a classification expiry before the current Vietnam date. Expiry on the current date remains valid. A ship with an IN_PROGRESS cruise keeps its status even when that cruise has passed its scheduled return. When no cruise is IN_PROGRESS, the next check moves the expired ship to MAINTENANCE. Profile renewal leaves the ship's status for the existing manual status flow.
+The scheduled check runs once a minute by default. It evaluates ships in READY or IN_SERVICE that are unarchived and have a classification expiry before the current Vietnam date. Expiry on the current date remains valid. A ship with an IN_PROGRESS cruise keeps its status even when that cruise has passed its scheduled return. When no cruise is IN_PROGRESS, the expiry check moves the expired ship to MAINTENANCE. Profile renewal leaves the ship's status for the existing manual status flow.
+
+Starting a cruise sets its locked ship to IN_SERVICE in the start transaction. Completing a cruise takes the same ship lock and checks for other IN_PROGRESS cruises, excluding the one being completed. The last completion returns an operational ship to READY unless its known expiry has passed, in which case the completion transaction invokes the same expiry notice and MAINTENANCE flow. Archived and nonoperational ship states are preserved. Direct cancellation locks the cruise and rejects a cruise that has already started.
 
 The recipient is one active Ship Manager. The ship's creator takes priority when still active and in that role. Otherwise an active Ship Manager assigned to a nonterminal cruise for the ship is selected by user ID. A ship without an eligible recipient can still move to MAINTENANCE. V145 gives the notice a unique `(ship_id, expiry_date)` claim. The claim, persisted notification and any status change share a transaction. The existing notification service emits SSE after commit.
 

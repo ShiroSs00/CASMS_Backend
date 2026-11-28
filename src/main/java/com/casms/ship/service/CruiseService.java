@@ -154,6 +154,7 @@ public class CruiseService {
     private final CruiseAuditService cruiseAuditService;
     private final CruisePackageService cruisePackageService;
     private final CruiseMainflowService mainflow;
+    private final ShipClassificationExpiryService shipClassificationExpiry;
     private final JdbcTemplate jdbc;
 
     @Transactional(readOnly = true)
@@ -1789,7 +1790,7 @@ public class CruiseService {
 
         Ship ship = cruise.getShip() == null ? null : shipRepository
                 .findByIdForUpdate(cruise.getShip().getShipId()).orElse(null);
-        if (ship == null || !ShipStatus.isOperational(ship.getStatus())) {
+        if (ship == null || ship.getArchivedAt() != null || !ShipStatus.isOperational(ship.getStatus())) {
             throw new BusinessException(
                     "SHIP_NOT_ACTIVE",
                     "Cannot start cruise: assigned ship is missing or not operational");
@@ -1826,6 +1827,7 @@ public class CruiseService {
         }
 
         Instant now = Instant.now();
+        ship.setStatus(ShipStatus.IN_SERVICE);
         cruise.setStatus(CruiseStatus.IN_PROGRESS);
         cruise.setActualDepartureDatetime(now);
         if (actorId != null) {
@@ -1881,7 +1883,8 @@ public class CruiseService {
 
     @Transactional
     public CruiseResponse complete(UUID cruiseId, UUID actorId, String closureNotes) {
-        Cruise cruise = getCruiseById(cruiseId);
+        Cruise cruise = cruiseRepository.findByIdForUpdate(cruiseId)
+                .orElseThrow(() -> new ResourceNotFoundException("Cruise", cruiseId));
 
         if (cruise.getStatus() != CruiseStatus.IN_PROGRESS) {
             throw new BusinessException(
@@ -1916,6 +1919,7 @@ public class CruiseService {
         }
 
         Instant now = Instant.now();
+        syncShipAfterCruiseCompletion(cruise, now);
         cruise.setStatus(CruiseStatus.COMPLETED);
         cruise.setActualReturnDatetime(now);
         if (actorId != null) {
@@ -1969,9 +1973,33 @@ public class CruiseService {
         return mapToResponse(cruise);
     }
 
+    private void syncShipAfterCruiseCompletion(Cruise cruise, Instant now) {
+        if (cruise.getShip() == null) {
+            return;
+        }
+        UUID shipId = cruise.getShip().getShipId();
+        Ship ship = shipRepository.findByIdForUpdate(shipId)
+                .orElseThrow(() -> new ResourceNotFoundException("Ship", shipId));
+        if (ship.getArchivedAt() != null || !ShipStatus.isOperational(ship.getStatus())) {
+            return;
+        }
+        boolean anotherCruiseActive = cruiseRepository.existsByShip_ShipIdAndStatusAndCruiseIdNot(
+                shipId, CruiseStatus.IN_PROGRESS, cruise.getCruiseId());
+        if (anotherCruiseActive) {
+            ship.setStatus(ShipStatus.IN_SERVICE);
+        }
+        if (ShipClassificationExpiryService.isExpired(
+                ship, now.atZone(PortTimeZoneHelper.SHIP_TIME_ZONE).toLocalDate())) {
+            shipClassificationExpiry.applyExpiry(ship, anotherCruiseActive);
+        } else if (!anotherCruiseActive) {
+            ship.setStatus(ShipStatus.READY);
+        }
+    }
+
     @Transactional
     public CruiseResponse cancel(UUID cruiseId, String reason) {
-        Cruise cruise = getCruiseById(cruiseId);
+        Cruise cruise = cruiseRepository.findByIdForUpdate(cruiseId)
+                .orElseThrow(() -> new ResourceNotFoundException("Cruise", cruiseId));
 
         if (cruise.getStatus() == CruiseStatus.COMPLETED) {
             throw new BusinessException(

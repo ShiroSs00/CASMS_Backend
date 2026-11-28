@@ -82,6 +82,7 @@ class CruiseServiceTest {
     @Mock private CruiseAuditService cruiseAuditService;
     @Mock private CruisePackageService cruisePackageService;
     @Mock private CruiseMainflowService mainflow;
+    @Mock private ShipClassificationExpiryService shipClassificationExpiry;
     @Mock private JdbcTemplate jdbc;
 
     @InjectMocks private CruiseService cruiseService;
@@ -325,6 +326,92 @@ class CruiseServiceTest {
         assertEquals("SHIP_CLASSIFICATION_EXPIRES_BEFORE_CRUISE_END", error.getCode());
         assertEquals(CruiseStatus.PUBLISHED, testCruise.getStatus());
         verify(cruiseRepository, never()).save(any());
+    }
+
+    @Test
+    void startSetsShipInServiceAfterDepartureGatePasses() {
+        testCruise.setStatus(CruiseStatus.PUBLISHED);
+        testCruise.setShip(testShip);
+        testCruise.setDepartureDatetime(Instant.now().minusSeconds(60));
+        givenLockedCruiseAndShip();
+        when(cruiseRepository.save(testCruise)).thenReturn(testCruise);
+        var readiness = new CruiseReadinessResponse();
+        readiness.setReady(true);
+        CruiseService service = spy(cruiseService);
+        doReturn(readiness).when(service).validateDepartureReadiness(cruiseId);
+
+        assertEquals(CruiseStatus.IN_PROGRESS, service.start(cruiseId).getStatus());
+        assertEquals(ShipStatus.IN_SERVICE, testShip.getStatus());
+    }
+
+    @Test
+    void completeLastCruiseSetsShipReadyWhenExpiryIsToday() {
+        givenCompletableCruise();
+        setClassificationExpiry(testShip, LocalDate.now(PortTimeZoneHelper.SHIP_TIME_ZONE));
+
+        assertEquals(CruiseStatus.COMPLETED, cruiseService.complete(cruiseId).getStatus());
+        assertEquals(ShipStatus.READY, testShip.getStatus());
+        verifyNoInteractions(shipClassificationExpiry);
+    }
+
+    @Test
+    void completeKeepsShipInServiceIfAnotherCruiseIsUnderway() {
+        givenCompletableCruise();
+        when(cruiseRepository.existsByShip_ShipIdAndStatusAndCruiseIdNot(
+                shipId, CruiseStatus.IN_PROGRESS, cruiseId)).thenReturn(true);
+
+        assertEquals(CruiseStatus.COMPLETED, cruiseService.complete(cruiseId).getStatus());
+        assertEquals(ShipStatus.IN_SERVICE, testShip.getStatus());
+        verifyNoInteractions(shipClassificationExpiry);
+    }
+
+    @Test
+    void completeLastCruiseDelegatesExpiredShipToNotificationAndMaintenanceFlow() {
+        givenCompletableCruise();
+        setClassificationExpiry(testShip, LocalDate.now(PortTimeZoneHelper.SHIP_TIME_ZONE).minusDays(1));
+
+        cruiseService.complete(cruiseId);
+
+        verify(shipClassificationExpiry).applyExpiry(testShip, false);
+    }
+
+    @Test
+    void completeDoesNotReactivateSuspendedShip() {
+        givenCompletableCruise();
+        testShip.setStatus(ShipStatus.SUSPENDED);
+
+        assertEquals(CruiseStatus.COMPLETED, cruiseService.complete(cruiseId).getStatus());
+        assertEquals(ShipStatus.SUSPENDED, testShip.getStatus());
+        verifyNoInteractions(shipClassificationExpiry);
+    }
+
+    @Test
+    void cancelLocksCruiseAndRejectsInProgressWithoutChangingShip() {
+        testCruise.setStatus(CruiseStatus.IN_PROGRESS);
+        testCruise.setShip(testShip);
+        testShip.setStatus(ShipStatus.IN_SERVICE);
+        when(cruiseRepository.findByIdForUpdate(cruiseId)).thenReturn(Optional.of(testCruise));
+
+        BusinessException error = assertThrows(
+                BusinessException.class, () -> cruiseService.cancel(cruiseId, "Weather"));
+
+        assertEquals("CANNOT_CANCEL_IN_PROGRESS", error.getCode());
+        assertEquals(ShipStatus.IN_SERVICE, testShip.getStatus());
+        verifyNoInteractions(shipRepository);
+    }
+
+    private void givenCompletableCruise() {
+        testCruise.setStatus(CruiseStatus.IN_PROGRESS);
+        testCruise.setShip(testShip);
+        testCruise.setReturnDatetime(Instant.now().minusSeconds(60));
+        testShip.setStatus(ShipStatus.IN_SERVICE);
+        givenLockedCruiseAndShip();
+        when(cruiseRepository.save(testCruise)).thenReturn(testCruise);
+    }
+
+    private void givenLockedCruiseAndShip() {
+        when(cruiseRepository.findByIdForUpdate(cruiseId)).thenReturn(Optional.of(testCruise));
+        when(shipRepository.findByIdForUpdate(shipId)).thenReturn(Optional.of(testShip));
     }
 
     private static void setClassificationExpiry(Ship ship, LocalDate expiry) {
