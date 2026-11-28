@@ -20,3 +20,9 @@ Sau khi bổ sung biên đúng hai giờ, chạy lại `PortOperationTimingTest,
 `git diff --check` trả 0. `python scripts/sequence_docs.py --check` trả 1 do 63 dòng inventory và 547 sơ đồ còn thiếu, 0 dòng lỗi thời và 0 lỗi cấu trúc Mermaid. Nền trước thay đổi báo thiếu 73 dòng và 610 sơ đồ. Các route mới về ngân sách và từ chối hồ sơ có trong inventory.
 
 Chưa chạy migration V123–V125 hoặc kiểm thử PostgreSQL. Các kịch bản cần dữ liệu thực gồm hai đường gán/đổi lịch đồng thời, lưu/đọc nhóm giờ dịch vụ, khóa cảng đồng thời với nhận đặt, dedupe cảnh báo và thay đổi revision hồ sơ.
+
+## Hạn đăng kiểm khi lập chuyến
+
+- `mvn.cmd -B -ntp '-Dtest=CruiseServiceTest,TripAndCruiseP0PortValidationTest' test` chạy 28 ca với 0 lỗi kiểm thử, 0 lỗi thực thi và 0 bỏ qua. Ca mới kiểm tra biên ngày về theo giờ Việt Nam, hồ sơ thiếu hạn và tàu hết hạn trước ngày về.
+- Inventory và sơ đồ đã cập nhật 6 route của luồng lập chuyến. `python scripts/sequence_docs.py --check` vẫn báo 94 route và 101 sơ đồ cũ còn thiếu, 0 lỗi cấu trúc Mermaid.
+- Các bộ test PostgreSQL tùy chọn đã có dữ liệu hạn đăng kiểm cho ca gán tàu hợp lệ. Chưa chạy các bộ đó.

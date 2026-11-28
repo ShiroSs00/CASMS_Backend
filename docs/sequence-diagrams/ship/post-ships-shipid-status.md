@@ -1,5 +1,7 @@
 # POST /ships/{shipId}/status
 
+The manual typed-ship profile guard checks expiry against today's date in Vietnam, inclusive. After renewing the profile, a manager with the required authority can use this route to change status; [classification expiry automation](../SHIP-TYPE-FLOWS.md#automatic-maintenance-for-classification-expiry) only changes status to MAINTENANCE.
+
 Ship profile: ShipResponse sau đổi trạng thái chứa bốn trường. Xem [luồng đã rà soát](../SHIP-BASIC-PROFILE.md).
 
 ```mermaid

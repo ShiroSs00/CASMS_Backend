@@ -18,19 +18,37 @@ class ShipOperationalProfileTest {
     @Test
     void retainsLatestSurveyOnProvisioningAndReplacement() throws Exception {
         var previous = read("""
-                {"shipyard":"Legacy yard", "lastClassificationDate":"2024-05-20"}
+                {"shipyard":"Legacy yard", "classificationDate":"2024-05-20"}
                 """);
         var submitted = read("""
-                {"lastClassificationDate":"2025-05-20", "classificationExpiryDate":"2026-05-20"}
+                {"classificationDate":"2025-05-20", "classificationExpiryDate":"2026-05-20"}
                 """);
 
         var provisioned = submitted.withLegacyManufacturing(null);
         var replaced = submitted.withLegacyManufacturing(previous);
 
-        assertEquals(LocalDate.of(2025, 5, 20), provisioned.lastClassificationDate());
-        assertEquals(provisioned.lastClassificationDate(), replaced.lastClassificationDate());
+        assertEquals(LocalDate.of(2025, 5, 20), provisioned.classificationDate());
+        assertEquals(provisioned.classificationDate(), replaced.classificationDate());
         assertEquals("Legacy yard", replaced.shipyard());
-        assertEquals("2025-05-20", mapper.valueToTree(replaced).get("lastClassificationDate").asText());
+        assertEquals("2025-05-20", mapper.valueToTree(replaced).get("classificationDate").asText());
+    }
+
+    @Test
+    void acceptsClassificationDateInProfileAndProvisioningPayloads() throws Exception {
+        var profile = read("""
+                {"classificationDate":"2025-05-20", "classificationExpiryDate":"2026-05-20"}
+                """);
+        var provisioning = mapper.readValue("""
+                {"shipName":"Test Ship", "profile":{"classificationDate":"2025-05-20"}}
+                """, ShipFromTypeRequest.class);
+
+        assertEquals(LocalDate.of(2025, 5, 20), profile.classificationDate());
+        assertEquals(profile.classificationDate(), provisioning.profile().classificationDate());
+        var response = mapper.valueToTree(profile);
+        assertEquals("2025-05-20", response.get("classificationDate").asText());
+        assertFalse(response.has("lastClassificationDate"));
+        assertThrows(com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException.class,
+                () -> read("{\"lastClassificationDate\":\"2025-05-20\"}"));
     }
 
     @Test
@@ -39,12 +57,12 @@ class ShipOperationalProfileTest {
                 {"classificationExpiryDate":"2026-05-20"}
                 """);
         var previous = read("""
-                {"lastClassificationDate":"2025-05-20"}
+                {"classificationDate":"2025-05-20"}
                 """);
 
-        assertNull(legacy.lastClassificationDate());
-        assertFalse(mapper.valueToTree(legacy).has("lastClassificationDate"));
-        assertNull(legacy.withLegacyManufacturing(previous).lastClassificationDate());
+        assertNull(legacy.classificationDate());
+        assertFalse(mapper.valueToTree(legacy).has("classificationDate"));
+        assertNull(legacy.withLegacyManufacturing(previous).classificationDate());
     }
 
     @Test
@@ -53,21 +71,21 @@ class ShipOperationalProfileTest {
             var validator = factory.getValidator();
             LocalDate today = LocalDate.now();
             var future = read("""
-                    {"lastClassificationDate":"%s"}
+                    {"classificationDate":"%s"}
                     """.formatted(today.plusDays(2)));
             var expiresEarlier = read("""
-                    {"lastClassificationDate":"%s", "classificationExpiryDate":"%s"}
+                    {"classificationDate":"%s", "classificationExpiryDate":"%s"}
                     """.formatted(today, today.minusDays(1)));
             var sameDay = read("""
-                    {"lastClassificationDate":"%s", "classificationExpiryDate":"%s"}
+                    {"classificationDate":"%s", "classificationExpiryDate":"%s"}
                     """.formatted(today, today));
 
             assertTrue(validator.validate(future).stream()
-                    .anyMatch(error -> error.getPropertyPath().toString().equals("lastClassificationDate")));
+                    .anyMatch(error -> error.getPropertyPath().toString().equals("classificationDate")));
             assertTrue(validator.validate(expiresEarlier).stream().anyMatch(
                     error -> error.getPropertyPath().toString().equals("expiryNotBeforeLastClassification")));
             assertTrue(validator.validate(sameDay).isEmpty());
-            assertTrue(validator.validate(read("{\"lastClassificationDate\":\"2025-05-20\"}")).isEmpty());
+            assertTrue(validator.validate(read("{\"classificationDate\":\"2025-05-20\"}")).isEmpty());
             assertTrue(validator.validate(read("{\"classificationExpiryDate\":\"2026-05-20\"}")).isEmpty());
         }
     }

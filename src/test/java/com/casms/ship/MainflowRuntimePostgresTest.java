@@ -1342,6 +1342,7 @@ class MainflowRuntimePostgresTest {
         ship.setShipCode("V4-" + java.util.UUID.randomUUID().toString().substring(0, 8));
         ship.setShipName("Assignment fixture ship");
         ship.setStatus(com.casms.ship.enums.ShipStatus.READY);
+        CruiseShipFixtures.setClassificationExpiry(ship);
         ship.setTotalCapacity(2);
         ship.setTotalDecks(1);
         ship = ships.save(ship);

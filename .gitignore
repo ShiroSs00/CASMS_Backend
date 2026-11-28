@@ -45,6 +45,10 @@ Thumbs.db
 !/docs/ship-redesign/
 !/docs/sequence-diagrams/
 /docs/sequence-diagrams/*
+!/docs/sequence-diagrams/notification/
+/docs/sequence-diagrams/notification/*
+!/docs/sequence-diagrams/notification/get-notification-stream.md
+!/docs/sequence-diagrams/notification/get-notification-unread-count.md
 !/docs/sequence-diagrams/ONLINE-CHECKIN-NFC-CARD.md
 !/docs/sequence-diagrams/checkin/
 /docs/sequence-diagrams/checkin/*

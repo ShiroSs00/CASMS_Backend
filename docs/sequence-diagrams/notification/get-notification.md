@@ -1,5 +1,7 @@
 # GET /notification
 
+The authenticated recipient can read `SHIP_CLASSIFICATION_EXPIRED` notifications after the [expiry check](../SHIP-TYPE-FLOWS.md#automatic-maintenance-for-classification-expiry) commits. Existing recipient scoping applies.
+
 ```mermaid
 sequenceDiagram
     title GET /notification — NotificationController.listMine

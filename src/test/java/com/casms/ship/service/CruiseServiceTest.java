@@ -16,11 +16,16 @@ import com.casms.identity.repository.UserRepository;
 import com.casms.servicepackage.repository.TourPackageRepository;
 import com.casms.ship.dto.request.CruiseCreateRequest;
 import com.casms.ship.dto.request.CruiseChangeImpactRequest;
+import com.casms.ship.dto.request.EligibleCruiseShipsRequest;
+import com.casms.ship.dto.request.ShipOperationalProfile;
 import com.casms.ship.dto.response.CruiseReadinessResponse;
 import com.casms.ship.dto.response.CruiseResponse;
+import com.casms.ship.dto.response.CruiseSchedulePreviewResponse;
+import com.casms.ship.dto.response.EligibleCruiseShipsResponse;
 import com.casms.ship.entity.*;
 import com.casms.ship.enums.*;
 import com.casms.ship.repository.*;
+import com.casms.ship.util.PortTimeZoneHelper;
 import com.casms.trip.repository.TripScheduleVersionRepository;
 import org.springframework.jdbc.core.JdbcTemplate;
 
@@ -33,6 +38,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Optional;
@@ -157,6 +163,7 @@ class CruiseServiceTest {
         testCruise.setShip(testShip);
         Instant newDeparture = testCruise.getDepartureDatetime().plus(1, ChronoUnit.DAYS);
         Instant newReturn = testCruise.getReturnDatetime().plus(1, ChronoUnit.DAYS);
+        setClassificationExpiry(testShip, newReturn.atZone(PortTimeZoneHelper.SHIP_TIME_ZONE).toLocalDate());
         var request = new CruiseChangeImpactRequest();
         request.setNewDepartureDatetime(newDeparture);
         when(cruiseRepository.findByIdForUpdate(cruiseId)).thenReturn(Optional.of(testCruise));
@@ -170,6 +177,56 @@ class CruiseServiceTest {
                 () -> cruiseService.applyChange(cruiseId, request, null));
 
         assertEquals("SHIP_SCHEDULE_CONFLICT", error.getCode());
+        verify(cruiseRepository, never()).save(any());
+    }
+
+    @Test
+    void eligibleShipsUsesProjectedArrivalDateInVietnamAndAllowsExpiryOnThatDate() {
+        UUID sourceVersionId = UUID.randomUUID();
+        Instant departure = Instant.parse("2030-04-10T01:00:00Z");
+        Instant arrival = Instant.parse("2030-04-12T17:00:00Z");
+        var request = new EligibleCruiseShipsRequest(sourceVersionId, 3L, departure, 25);
+        when(scheduleMaterializationService.previewSchedule(sourceVersionId, departure))
+                .thenReturn(CruiseSchedulePreviewResponse.builder()
+                        .sourceVersionRevision(3L)
+                        .returnDatetime(arrival)
+                        .build());
+        Ship noProfile = new Ship();
+        Ship noExpiry = new Ship();
+        setClassificationExpiry(noExpiry, null);
+        Ship expiresOnUtcDate = new Ship();
+        setClassificationExpiry(expiresOnUtcDate, LocalDate.of(2030, 4, 12));
+        setClassificationExpiry(testShip, LocalDate.of(2030, 4, 13));
+        Ship validLater = new Ship();
+        validLater.setShipId(UUID.randomUUID());
+        setClassificationExpiry(validLater, LocalDate.of(2030, 4, 14));
+        when(shipRepository.findEligibleForCruise(25, departure, arrival))
+                .thenReturn(List.of(noProfile, noExpiry, expiresOnUtcDate, testShip, validLater));
+
+        var result = cruiseService.eligibleShips(request);
+
+        assertEquals(arrival, result.returnDatetime());
+        assertEquals(List.of(shipId, validLater.getShipId()), result.ships().stream()
+                .map(EligibleCruiseShipsResponse.Candidate::shipId)
+                .toList());
+    }
+
+    @Test
+    void createWithoutSourceRejectsAssignedShipWithMissingClassificationExpiry() {
+        var request = new CruiseCreateRequest();
+        request.setExpectedPassengerCount(25);
+        request.setDepartureDatetime(testCruise.getDepartureDatetime());
+        request.setReturnDatetime(testCruise.getReturnDatetime());
+        request.setDeparturePortId(depPort.getPortId());
+        request.setReturnPortId(retPort.getPortId());
+        request.setShipId(shipId);
+        when(portRepository.findById(depPort.getPortId())).thenReturn(Optional.of(depPort));
+        when(portRepository.findById(retPort.getPortId())).thenReturn(Optional.of(retPort));
+        when(shipRepository.findByIdForUpdate(shipId)).thenReturn(Optional.of(testShip));
+
+        BusinessException error = assertThrows(BusinessException.class, () -> cruiseService.create(request));
+
+        assertEquals("SHIP_CLASSIFICATION_EXPIRY_REQUIRED", error.getCode());
         verify(cruiseRepository, never()).save(any());
     }
 
@@ -222,6 +279,8 @@ class CruiseServiceTest {
     @Test
     @DisplayName("Gán tàu cho cruise thành công khi tàu ACTIVE và không trùng lịch")
     void assignShip_success() {
+        setClassificationExpiry(testShip,
+                testCruise.getReturnDatetime().atZone(PortTimeZoneHelper.SHIP_TIME_ZONE).toLocalDate());
         when(cruiseRepository.findByIdForUpdate(cruiseId)).thenReturn(Optional.of(testCruise));
         when(shipRepository.findByIdForUpdate(shipId)).thenReturn(Optional.of(testShip));
         when(deckRepository.countByShipShipId(shipId)).thenReturn(5L);
@@ -236,6 +295,41 @@ class CruiseServiceTest {
         assertNotNull(response);
         assertEquals(shipId, response.getShipId());
         verify(cruiseRepository).save(any(Cruise.class));
+    }
+
+    @Test
+    void assignShipRejectsExpiryBeforeCruiseArrivalDate() {
+        setClassificationExpiry(testShip, testCruise.getReturnDatetime()
+                .atZone(PortTimeZoneHelper.SHIP_TIME_ZONE).toLocalDate().minusDays(1));
+        when(cruiseRepository.findByIdForUpdate(cruiseId)).thenReturn(Optional.of(testCruise));
+        when(shipRepository.findByIdForUpdate(shipId)).thenReturn(Optional.of(testShip));
+
+        BusinessException error = assertThrows(
+                BusinessException.class, () -> cruiseService.assignShip(cruiseId, shipId));
+
+        assertEquals("SHIP_CLASSIFICATION_EXPIRES_BEFORE_CRUISE_END", error.getCode());
+        verify(cruiseRepository, never()).save(any());
+    }
+
+    @Test
+    void startRechecksClassificationUnderShipLock() {
+        testCruise.setStatus(CruiseStatus.PUBLISHED);
+        testCruise.setShip(testShip);
+        setClassificationExpiry(testShip, testCruise.getReturnDatetime()
+                .atZone(PortTimeZoneHelper.SHIP_TIME_ZONE).toLocalDate().minusDays(1));
+        when(cruiseRepository.findByIdForUpdate(cruiseId)).thenReturn(Optional.of(testCruise));
+        when(shipRepository.findByIdForUpdate(shipId)).thenReturn(Optional.of(testShip));
+
+        BusinessException error = assertThrows(BusinessException.class, () -> cruiseService.start(cruiseId));
+
+        assertEquals("SHIP_CLASSIFICATION_EXPIRES_BEFORE_CRUISE_END", error.getCode());
+        assertEquals(CruiseStatus.PUBLISHED, testCruise.getStatus());
+        verify(cruiseRepository, never()).save(any());
+    }
+
+    private static void setClassificationExpiry(Ship ship, LocalDate expiry) {
+        ship.setOperationalProfile(new ShipOperationalProfile(
+                null, null, null, null, null, null, null, null, null, null, expiry, null, null, null));
     }
 
     @Test

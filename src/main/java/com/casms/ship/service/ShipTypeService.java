@@ -32,8 +32,10 @@ import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.ArrayList;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Locale;
@@ -213,8 +215,15 @@ public class ShipTypeService {
 
     private String requestHash(ProvisionRequest request) {
         try {
+            byte[] payload = mapper.writeValueAsBytes(request);
+            if (request.profile() != null && request.profile().classificationDate() != null) {
+                // Keep fingerprints for provisioning requests recorded before the API field rename.
+                payload = new String(payload, StandardCharsets.UTF_8)
+                        .replace("\"classificationDate\":", "\"lastClassificationDate\":")
+                        .getBytes(StandardCharsets.UTF_8);
+            }
             return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
-                    .digest(mapper.writeValueAsBytes(request)));
+                    .digest(payload));
         } catch (NoSuchAlgorithmException | JsonProcessingException exception) {
             throw new IllegalStateException("Cannot fingerprint the ship provisioning request", exception);
         }
@@ -232,6 +241,8 @@ public class ShipTypeService {
         JsonNode manifest = assets.manifest(modelKey, assetVersion);
         Ship ship = new Ship();
         ship.setShipType(type);
+        ship.setOperationalProfile(profile == null ? null : profile.withLegacyManufacturing(null));
+        ShipService.requireOperationalProfile(ship);
         ship.setDesignModelKey(modelKey);
         ship.setDesignAssetVersion(assetVersion);
         ship.setCreatedByShipManagerId(managerId);
@@ -252,11 +263,11 @@ public class ShipTypeService {
             deckLimit = Math.max(deckLimit, deck.path("number").asInt());
         }
         ship.setDeckNumberLimit(deckLimit);
-        ship.setOperationalProfile(profile == null ? null : profile.withLegacyManufacturing(null));
         UUID shipId = ships.saveAndFlush(ship).getShipId();
         UUID modelId = modelAssets.register(shipId, modelKey, assetVersion);
         importer.importForProvisioning(shipId, modelId, actor);
         modelAssets.activate(shipId, modelId);
+        ship.setStatus(ShipStatus.READY);
         return shipService.detail(shipId);
     }
 
@@ -267,6 +278,8 @@ public class ShipTypeService {
         ShipArchiveService.requireUnarchived(ship);
         requireTypedShip(ship);
         ShipOperationalProfile previous = ship.getOperationalProfile();
+        ShipOperationalProfile updated = profile.withLegacyManufacturing(previous);
+        requireCompleteProfileForReplacement(updated);
         if (ship.getCommissionDate() != null && profile.deliveryDate() != null
                 && profile.deliveryDate().isBefore(ship.getCommissionDate())) {
             throw new BusinessException(HttpStatus.UNPROCESSABLE_ENTITY, "INVALID_DELIVERY_DATE",
@@ -283,11 +296,26 @@ public class ShipTypeService {
             throw new BusinessException(HttpStatus.CONFLICT, "IMO_LOCKED",
                     "Không thể thay đổi số IMO khi tàu đã được xác minh đưa vào khai thác.");
         }
-        ShipOperationalProfile updated = profile.withLegacyManufacturing(previous);
         ship.setOperationalProfile(updated);
         ships.save(ship);
         classificationMonitor.transitionToMaintenanceIfExpired(ship, java.time.LocalDate.now());
         return updated;
+    }
+
+    private static void requireCompleteProfileForReplacement(ShipOperationalProfile profile) {
+        List<String> missingFields = new ArrayList<>();
+        if (profile.deliveryDate() == null) missingFields.add("deliveryDate");
+        if (profile.imoNumber() == null) missingFields.add("imoNumber");
+        if (profile.registrationCountry() == null) missingFields.add("registrationCountry");
+        if (profile.registrationNumber() == null) missingFields.add("registrationNumber");
+        if (profile.classificationSociety() == null) missingFields.add("classificationSociety");
+        if (profile.classificationDate() == null) missingFields.add("classificationDate");
+        if (profile.classificationExpiryDate() == null) missingFields.add("classificationExpiryDate");
+        if (!missingFields.isEmpty()) {
+            throw new BusinessException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "SHIP_OPERATIONAL_PROFILE_INCOMPLETE", "Hồ sơ vận hành tàu chưa đủ thông tin bắt buộc.",
+                    Map.of("missingFields", missingFields));
+        }
     }
 
     @Transactional(readOnly = true)

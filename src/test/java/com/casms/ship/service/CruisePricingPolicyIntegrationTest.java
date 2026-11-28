@@ -103,6 +103,7 @@ public class CruisePricingPolicyIntegrationTest {
         testShip.setShipCode("SH-PRC-" + UUID.randomUUID().toString().substring(0, 8));
         testShip.setShipName("Pricing Explorer");
         testShip.setStatus(ShipStatus.READY);
+        com.casms.ship.CruiseShipFixtures.setClassificationExpiry(testShip);
         testShip.setTotalCapacity(100);
         testShip.setTotalDecks(2);
         testShip = shipRepository.save(testShip);

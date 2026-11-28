@@ -438,7 +438,8 @@ public class ShipService {
             }
             var opProfile = ship.getOperationalProfile();
             if (opProfile != null && opProfile.classificationExpiryDate() != null
-                    && opProfile.classificationExpiryDate().isBefore(java.time.LocalDate.now())) {
+                    && opProfile.classificationExpiryDate().isBefore(
+                            LocalDate.now(com.casms.ship.util.PortTimeZoneHelper.SHIP_TIME_ZONE))) {
                 readiness = "NOT_READY";
                 issues.add(
                         new ShipReadinessAssessmentResponse.Issue(
@@ -501,7 +502,7 @@ public class ShipService {
                 .orElseThrow(() -> new ResourceNotFoundException("Ship", shipId));
     }
 
-    private static void requireOperationalProfile(Ship ship) {
+    static void requireOperationalProfile(Ship ship) {
         var profile = ship.getOperationalProfile();
         var missing = new java.util.ArrayList<String>();
         if (profile == null || profile.classificationSociety() == null
@@ -513,7 +514,8 @@ public class ShipService {
                     "SHIP_OPERATIONAL_PROFILE_INCOMPLETE", "Complete the ship profile before changing status",
                     java.util.Map.of("missingGroups", missing));
         }
-        if (profile.classificationExpiryDate().isBefore(java.time.LocalDate.now())) {
+        if (profile.classificationExpiryDate().isBefore(
+                LocalDate.now(com.casms.ship.util.PortTimeZoneHelper.SHIP_TIME_ZONE))) {
             throw new BusinessException(org.springframework.http.HttpStatus.UNPROCESSABLE_ENTITY,
                     "SHIP_CLASSIFICATION_EXPIRED",
                     "Đăng kiểm tàu đã hết hạn (" + profile.classificationExpiryDate()

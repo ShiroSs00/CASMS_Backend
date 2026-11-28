@@ -29,6 +29,8 @@ public interface CruiseRepository
     @Query("select c from Cruise c where c.cruiseId = :cruiseId")
     Optional<Cruise> findByIdForUpdate(@Param("cruiseId") UUID cruiseId);
 
+    boolean existsByShip_ShipIdAndStatus(UUID shipId, CruiseStatus status);
+
     boolean existsByCruiseCode(String cruiseCode);
 
     boolean existsByShip(Ship ship);

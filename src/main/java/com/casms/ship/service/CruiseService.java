@@ -166,8 +166,11 @@ public class CruiseService {
         if (projection.getReturnDatetime() == null || !projection.getReturnDatetime().isAfter(request.departureDatetime())) {
             throw new BusinessException("INVALID_SCHEDULE", "Giờ kết thúc phải sau giờ khởi hành.");
         }
+        LocalDate arrivalDate = projection.getReturnDatetime().atZone(PortTimeZoneHelper.SHIP_TIME_ZONE)
+                .toLocalDate();
         var ships = shipRepository.findEligibleForCruise(request.expectedPassengerCount(),
                 request.departureDatetime(), projection.getReturnDatetime()).stream()
+                .filter(ship -> classificationCoversArrival(classificationExpiry(ship), arrivalDate))
                 .map(ship -> new EligibleCruiseShipsResponse.Candidate(ship.getShipId(), ship.getShipName(),
                         ship.getShipCode(), ship.getTotalCapacity(), ship.getStatus()))
                 .toList();
@@ -183,23 +186,23 @@ public class CruiseService {
 
     private record ShipConfiguration(long decks, long cabins) {}
 
+    private static LocalDate classificationExpiry(Ship ship) {
+        var profile = ship.getOperationalProfile();
+        return profile == null ? null : profile.classificationExpiryDate();
+    }
+
+    private static boolean classificationCoversArrival(LocalDate expiry, LocalDate arrivalDate) {
+        return expiry != null && !expiry.isBefore(arrivalDate);
+    }
+
     private ShipConfiguration requireShipSchedule(
             Ship ship, Integer passengers, UUID cruiseId, Instant departure, Instant arrival) {
         if (departure == null || arrival == null || !arrival.isAfter(departure)) {
             throw new BusinessException("INVALID_SCHEDULE",
                     "Departure and return datetimes are required; return must be after departure");
         }
-        var opProfile = ship.getOperationalProfile();
-        if (opProfile != null && opProfile.classificationExpiryDate() != null) {
-            java.time.LocalDate cruiseEndDate = arrival.atZone(java.time.ZoneId.of("Asia/Ho_Chi_Minh")).toLocalDate();
-            if (opProfile.classificationExpiryDate().isBefore(cruiseEndDate)) {
-                throw new BusinessException(
-                        HttpStatus.UNPROCESSABLE_ENTITY,
-                        "SHIP_CLASSIFICATION_EXPIRES_BEFORE_CRUISE_END",
-                        "Ngày hết hạn đăng kiểm tàu (" + opProfile.classificationExpiryDate()
-                                + ") phải lớn hơn hoặc bằng ngày kết thúc chuyến đi (" + cruiseEndDate + ").");
-            }
-        }
+        LocalDate arrivalDate = arrival.atZone(PortTimeZoneHelper.SHIP_TIME_ZONE).toLocalDate();
+        requireClassificationThrough(classificationExpiry(ship), arrivalDate);
         requirePassengerCapacity(ship, passengers);
         UUID shipId = ship.getShipId();
         long decks = deckRepository.countByShipShipId(shipId);
@@ -216,6 +219,21 @@ public class CruiseService {
                     "Ship has an overlapping active cruise during this period");
         }
         return new ShipConfiguration(decks, cabins);
+    }
+
+    private static void requireClassificationThrough(LocalDate expiry, LocalDate requiredThrough) {
+        if (expiry == null) {
+            throw new BusinessException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "SHIP_CLASSIFICATION_EXPIRY_REQUIRED",
+                    "Tàu phải có ngày hết hạn đăng kiểm để được gán cho chuyến đi.");
+        }
+        if (!classificationCoversArrival(expiry, requiredThrough)) {
+            throw new BusinessException(
+                    HttpStatus.UNPROCESSABLE_ENTITY,
+                    "SHIP_CLASSIFICATION_EXPIRES_BEFORE_CRUISE_END",
+                    "Ngày hết hạn đăng kiểm tàu (" + expiry
+                            + ") phải lớn hơn hoặc bằng ngày yêu cầu (" + requiredThrough + ").");
+        }
     }
 
     private void requireOperationalShip(Ship ship, String errorCode) {
@@ -1769,10 +1787,19 @@ public class CruiseService {
                     "CRUISE_NOT_PUBLISHED", "Only published cruises can be started");
         }
 
-        if (cruise.getShip() == null || !ShipStatus.isOperational(cruise.getShip().getStatus())) {
+        Ship ship = cruise.getShip() == null ? null : shipRepository
+                .findByIdForUpdate(cruise.getShip().getShipId()).orElse(null);
+        if (ship == null || !ShipStatus.isOperational(ship.getStatus())) {
             throw new BusinessException(
                     "SHIP_NOT_ACTIVE",
                     "Cannot start cruise: assigned ship is missing or not operational");
+        }
+        LocalDate expiry = classificationExpiry(ship);
+        if (expiry != null) {
+            LocalDate today = LocalDate.now(PortTimeZoneHelper.SHIP_TIME_ZONE);
+            LocalDate plannedReturn = cruise.getReturnDatetime() == null ? today
+                    : cruise.getReturnDatetime().atZone(PortTimeZoneHelper.SHIP_TIME_ZONE).toLocalDate();
+            requireClassificationThrough(expiry, plannedReturn.isAfter(today) ? plannedReturn : today);
         }
 
         // Rule 1: Không bấm start quá sớm trước giờ khởi hành (tối đa 2 giờ trước

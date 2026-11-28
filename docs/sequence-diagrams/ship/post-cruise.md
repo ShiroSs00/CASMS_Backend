@@ -1,5 +1,7 @@
 # POST /cruise
 
+Khi có `shipId`, service khóa tàu và kiểm tra hạn đăng kiểm đến ngày về theo giờ Việt Nam. Chuyến từ lịch nguồn dùng thời điểm về đã chiếu. Chuyến thủ công dùng thời điểm về đã kiểm tra từ yêu cầu. Thiếu hạn hoặc hạn trước ngày về trả 422. Tạo nháp chưa gán tàu không chạy bước này.
+
 ```mermaid
 sequenceDiagram
     title POST /cruise — CruiseController.create
