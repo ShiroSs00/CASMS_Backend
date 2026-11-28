@@ -367,9 +367,12 @@ public class ShoreExcursionService {
 
     private static void requireActivitySlot(ShoreExcursion excursion) {
         CruiseStop call = excursion.getCruiseStop();
+        Instant disembarkation = call.validDisembarkationStart();
+        com.casms.ship.service.ActivityTimingPolicy.requireShoreExcursionBeforeDisembarkation(
+                call.getPlannedArrival(), disembarkation);
         Instant cutoff = call.getAllAboardTime() != null ? call.getAllAboardTime() : call.getPlannedDeparture();
         var cruise = call.getItinerary() == null ? null : call.getItinerary().getCruise();
-        if (call.validDisembarkationStart() != null && cruise != null && cruise.getReturnDatetime() != null) {
+        if (disembarkation != null && cruise != null && cruise.getReturnDatetime() != null) {
             cutoff = cruise.getReturnDatetime();
         }
         com.casms.ship.service.ActivityTimingPolicy.requireNewSlot(

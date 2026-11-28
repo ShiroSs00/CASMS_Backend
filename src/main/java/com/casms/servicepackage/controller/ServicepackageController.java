@@ -6,6 +6,7 @@ import com.casms.cruisepackage.service.CruisePackageEntitlementService;
 import com.casms.cruisepackage.service.CruisePackageEntitlementService.OperationEntitlement;
 import com.casms.security.principal.CasmsPrincipal;
 import com.casms.ship.repository.BookingAgentCruiseScope;
+import com.casms.servicepackage.dto.ServiceOperatingWindow;
 import com.casms.servicepackage.entity.*;
 import com.casms.servicepackage.entity.Service;
 import com.casms.servicepackage.enums.*;
@@ -73,7 +74,19 @@ public class ServicepackageController {
             @Positive Integer preCruiseUsageLimit,
             @Size(max=100) String usageTimeZone,
             Set<@NotNull ServiceOperatingPeriod> operatingPeriods,
-            @Positive Integer defaultRequiredStaff) {
+            @Positive Integer defaultRequiredStaff,
+            List<@NotNull @Valid ServiceOperatingWindow> operatingWindows) {
+        public ServiceCatalogDto(String name, String description, String type, BigDecimal price,
+                String currency, Integer capacity, Boolean scheduled, UUID categoryId,
+                Boolean canBuyPreCruise, Boolean canBuyOnboard, Boolean canSellIndependently,
+                String unitCode, ServiceUsagePolicy preCruiseUsagePolicy, Integer preCruiseUsageLimit,
+                String usageTimeZone, Set<ServiceOperatingPeriod> operatingPeriods,
+                Integer defaultRequiredStaff) {
+            this(name, description, type, price, currency, capacity, scheduled, categoryId,
+                    canBuyPreCruise, canBuyOnboard, canSellIndependently, unitCode,
+                    preCruiseUsagePolicy, preCruiseUsageLimit, usageTimeZone, operatingPeriods,
+                    defaultRequiredStaff, null);
+        }
         public ServiceCatalogDto(String name, String description, String type, BigDecimal price,
                 String currency, Integer capacity, Boolean scheduled, UUID categoryId,
                 Boolean canBuyPreCruise, Boolean canBuyOnboard, Boolean canSellIndependently,
@@ -259,7 +272,8 @@ public class ServicepackageController {
             boolean canBuyPreCruise, boolean canBuyOnboard, boolean canSellIndependently,
             ServiceUsagePolicy preCruiseUsagePolicy, Integer preCruiseUsageLimit, String usageTimeZone,
             Set<ServiceOperatingPeriod> operatingPeriods,
-            Integer defaultRequiredStaff) {
+            Integer defaultRequiredStaff,
+            List<ServiceOperatingWindow> operatingWindows) {
         static ServiceView of(Service s) {
             return new ServiceView(
                     s.getServiceId(),
@@ -278,7 +292,8 @@ public class ServicepackageController {
                     s.getApplicabilityScope(), s.isCanBuyPreCruise(), s.isCanBuyOnboard(),
                     s.isCanSellIndependently(), s.getPreCruiseUsagePolicy(), s.getPreCruiseUsageLimit(),
                     s.getUsageTimeZone(), s.getOperatingPeriods(),
-                    s.getDefaultRequiredStaff() == null ? 1 : s.getDefaultRequiredStaff());
+                    s.getDefaultRequiredStaff() == null ? 1 : s.getDefaultRequiredStaff(),
+                    s.getOperatingWindows());
         }
     }
 
@@ -958,6 +973,7 @@ public class ServicepackageController {
 
     private void apply(Service s, ServiceCatalogDto r) {
         if (r.operatingPeriods() != null) s.setOperatingPeriods(Set.copyOf(r.operatingPeriods()));
+        if (r.operatingWindows() != null) s.setOperatingWindows(List.copyOf(r.operatingWindows()));
         if (r.canBuyPreCruise() != null) s.setCanBuyPreCruise(r.canBuyPreCruise());
         if (r.canBuyOnboard() != null) s.setCanBuyOnboard(r.canBuyOnboard());
         if (r.canSellIndependently() != null) s.setCanSellIndependently(r.canSellIndependently());

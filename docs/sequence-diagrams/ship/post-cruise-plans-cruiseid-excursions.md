@@ -62,3 +62,5 @@ sequenceDiagram
         Controller-->>Client: HTTP success
     end
 ```
+
+Create uses the [final-port timing sequence](../PORT-CALL-BOOKING-FLOWS.md#final-port-shore-excursion-timing).

@@ -299,8 +299,7 @@ public class ServiceRequestService {
             throw new IllegalArgumentException("PER_DAY prepaid services require a schedule to identify the usage day");
         if (!onboardSale && schedule == null
                 && (cruise.getDepartureDatetime() == null || now.isBefore(cruise.getDepartureDatetime()))
-                && s.getOperatingPeriods() != null && !s.getOperatingPeriods().isEmpty()
-                && s.getOperatingPeriods().size() < com.casms.servicepackage.enums.ServiceOperatingPeriod.values().length) {
+                && ServiceOperatingHours.isRestricted(s.getOperatingWindows(), s.getOperatingPeriods())) {
             throw new BusinessException("SERVICE_USAGE_TIME_REQUIRED",
                     "Select a service schedule so its operating hours can be checked");
         }
@@ -340,7 +339,7 @@ public class ServiceRequestService {
     }
 
     private void requireOperatingHours(Service service, UUID cruiseId, ServiceSchedule schedule, Instant now) {
-        if (service.getOperatingPeriods() == null || service.getOperatingPeriods().isEmpty()) return;
+        if (!ServiceOperatingHours.isRestricted(service.getOperatingWindows(), service.getOperatingPeriods())) return;
         var facts = schedule == null || schedule.getCruiseStop() == null
                 ? null : schedule.getCruiseStop().getPortFacts();
         Instant start = schedule == null ? now : schedule.getStartsAt();
@@ -352,7 +351,7 @@ public class ServiceRequestService {
                         .map(day -> PortTimeZoneHelper.resolveZone(day.getShipTimeZoneId()))
                         .findFirst().orElse(PortTimeZoneHelper.SHIP_TIME_ZONE)
                 : PortTimeZoneHelper.resolveZone(facts.timeZoneId());
-        operatingHours.requireOpen(service.getOperatingPeriods(), start,
+        operatingHours.requireOpen(service.getOperatingWindows(), service.getOperatingPeriods(), start,
                 schedule == null ? null : schedule.getEndsAt(), zone);
     }
 

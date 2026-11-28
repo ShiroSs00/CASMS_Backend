@@ -50,6 +50,17 @@ class PortOperationTimingTest {
     }
 
     @Test
+    void finalPortRequiresTwoHoursBetweenArrivalAndDisembarkation() {
+        var error = assertThrows(BusinessException.class,
+                () -> ActivityTimingPolicy.requireShoreExcursionBeforeDisembarkation(
+                        ARRIVAL, ARRIVAL.plus(119, ChronoUnit.MINUTES)));
+        assertEquals("SHORE_EXCURSION_FINAL_PORT_WINDOW_TOO_SHORT", error.getCode());
+        assertDoesNotThrow(() -> ActivityTimingPolicy.requireShoreExcursionBeforeDisembarkation(
+                ARRIVAL, ARRIVAL.plus(120, ChronoUnit.MINUTES)));
+        assertDoesNotThrow(() -> ActivityTimingPolicy.requireShoreExcursionBeforeDisembarkation(ARRIVAL, null));
+    }
+
+    @Test
     void adjacentGroupsCoverMidnightWithoutAllowingAnUnconfiguredGroup() {
         var hours = new ServiceOperatingHours("06:00", "18:00", "22:00");
         var zone = ZoneId.of("Asia/Ho_Chi_Minh");

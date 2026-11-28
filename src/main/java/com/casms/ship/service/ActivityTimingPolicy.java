@@ -14,6 +14,14 @@ public final class ActivityTimingPolicy {
 
     private ActivityTimingPolicy() {}
 
+    public static void requireShoreExcursionBeforeDisembarkation(Instant arrival, Instant disembarkation) {
+        if (arrival != null && disembarkation != null
+                && Duration.between(arrival, disembarkation).compareTo(MIN_TIME_REMAINING) < 0) {
+            throw new BusinessException(HttpStatus.UNPROCESSABLE_ENTITY, "SHORE_EXCURSION_FINAL_PORT_WINDOW_TOO_SHORT",
+                    "Cần ít nhất 2 giờ từ lúc tàu cập cảng cuối đến lúc bắt đầu trả khách để tổ chức tour trên bờ.");
+        }
+    }
+
     public static void requireNewSlot(Instant start, Instant end, Instant cutoff, Instant now) {
         if (start == null || end == null || cutoff == null) return;
         if (Duration.between(start, end).compareTo(MIN_DURATION) <= 0) {

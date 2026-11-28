@@ -1,5 +1,6 @@
 package com.casms.servicepackage.entity;
 
+import com.casms.servicepackage.dto.ServiceOperatingWindow;
 import com.casms.servicepackage.enums.ServiceStatus;
 import com.casms.servicepackage.enums.ServiceUsagePolicy;
 
@@ -13,6 +14,7 @@ import org.hibernate.type.SqlTypes;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 @Getter
@@ -23,6 +25,10 @@ public class Service {
     @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.JSON)
     @Column(name = "operating_periods", columnDefinition = "jsonb")
     private java.util.Set<com.casms.servicepackage.enums.ServiceOperatingPeriod> operatingPeriods;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "operating_windows", columnDefinition = "jsonb")
+    private List<ServiceOperatingWindow> operatingWindows;
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)

@@ -152,11 +152,8 @@ public class ItineraryProgramPolicy {
         Instant deadline = instant(stop.get("all_aboard_time"));
         if (deadline == null || departure != null && deadline.isAfter(departure)) deadline = departure;
         Instant arrival = instant(stop.get("planned_arrival"));
-        Instant disembarkation = instant(stop.get("disembarkation_starts_at"));
-        if (disembarkation != null && Objects.equals(arrival, instant(stop.get("disembarkation_planned_arrival")))
-                && stop.get("disembarkation_minutes") instanceof Number minutes
-                && departure != null && !disembarkation.plusSeconds(minutes.longValue() * 60).isAfter(departure)
-                && end != null && end.isAfter(disembarkation)) {
+        Instant disembarkation = validDisembarkationStart(stop);
+        if (disembarkation != null && end != null && end.isAfter(disembarkation)) {
             throw new BusinessException("EXCURSION_DISEMBARKATION_OVERLAP",
                     "Tour bờ phải kết thúc trước hoặc đúng giờ bắt đầu trả khách.");
         }
@@ -165,6 +162,16 @@ public class ItineraryProgramPolicy {
         requireWindow(start, end, arrival, deadline, "EXCURSION_OUTSIDE_PORT_CALL");
         if (!end.isBefore(deadline)) throw new BusinessException("EXCURSION_OUTSIDE_PORT_CALL", "Return before all-aboard/departure");
         requireWindow(start, end, instant(cruise.get("departure_datetime")), instant(cruise.get("return_datetime")), "EXCURSION_OUTSIDE_CRUISE");
+    }
+
+    static Instant validDisembarkationStart(Map<String, Object> stop) {
+        Instant disembarkation = instant(stop.get("disembarkation_starts_at"));
+        Instant departure = instant(stop.get("planned_departure"));
+        return disembarkation != null
+                && Objects.equals(instant(stop.get("planned_arrival")), instant(stop.get("disembarkation_planned_arrival")))
+                && stop.get("disembarkation_minutes") instanceof Number minutes
+                && departure != null && !disembarkation.plusSeconds(minutes.longValue() * 60).isAfter(departure)
+                ? disembarkation : null;
     }
 
     public static void requireDetails(Object capacity, Object price, Object currency, Object location) {

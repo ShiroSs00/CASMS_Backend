@@ -145,6 +145,9 @@ public class ItineraryProgramService {
         var cruise = jdbc.queryForMap("SELECT * FROM \"Cruise\" WHERE cruise_id=?", cruiseId);
         policy.requireServedDestination((UUID) stop.get("cruise_stop_id"), (UUID) excursion.get("destination_id"));
         policy.validateExcursionTimes(stop, input.startsAt(), input.returnsAt(), cruise);
+        ActivityTimingPolicy.requireShoreExcursionBeforeDisembarkation(
+                ItineraryProgramPolicy.instant(stop.get("planned_arrival")),
+                ItineraryProgramPolicy.validDisembarkationStart(stop));
         var departure = ItineraryProgramPolicy.instant(stop.get("planned_departure"));
         var allAboard = ItineraryProgramPolicy.instant(stop.get("all_aboard_time"));
         var returnTime = ItineraryProgramPolicy.instant(cruise.get("return_datetime"));

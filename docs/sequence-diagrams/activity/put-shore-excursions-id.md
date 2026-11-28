@@ -74,3 +74,5 @@ A schedule edit checks active staff duties in the database transaction. An overl
 ## Port-call and booking
 
 See the [reviewed flow](../PORT-CALL-BOOKING-FLOWS.md) for authorization, validation, transaction boundaries and responses. This note covers the BE-09 to BE-20 change.
+
+Update uses the [final-port timing sequence](../PORT-CALL-BOOKING-FLOWS.md#final-port-shore-excursion-timing). On this route the check runs when excursion times or the port call change.

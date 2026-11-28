@@ -66,6 +66,7 @@ Thumbs.db
 !/docs/sequence-diagrams/PORT-CALL-BOOKING-FLOWS.md
 !/docs/sequence-diagrams/ship/
 /docs/sequence-diagrams/ship/*
+!/docs/sequence-diagrams/ship/get-cruise-cruiseid-public-experiences.md
 !/docs/sequence-diagrams/ship/*ship-types*.md
 !/docs/sequence-diagrams/ship/delete-ships-shipid-models-modelid-unused.md
 !/docs/sequence-diagrams/ship/*operational-profile.md

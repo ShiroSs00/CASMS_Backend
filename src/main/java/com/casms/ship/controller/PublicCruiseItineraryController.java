@@ -3,6 +3,8 @@ package com.casms.ship.controller;
 import com.casms.common.response.ApiResponse;
 import com.casms.ship.dto.response.PublicCruiseItineraryResponse;
 import com.casms.ship.service.PublicCruiseItineraryService;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.swagger.v3.oas.annotations.Operation;
 import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -20,6 +22,7 @@ import java.util.UUID;
 public class PublicCruiseItineraryController {
     private final PublicCruiseItineraryService service;
     private final JdbcTemplate jdbc;
+    private final ObjectMapper mapper;
 
     @GetMapping({"/cruise/{cruiseId}/public-itinerary", "/cruises/{cruiseId}/public-itinerary"})
     @PreAuthorize("permitAll()")
@@ -39,6 +42,7 @@ public class PublicCruiseItineraryController {
                         + "d.deck_name AS \"deckName\", d.deck_number AS \"deckNumber\", "
                         + "s.description, s.price, COALESCE(s.currency_code, 'VND') AS \"currencyCode\", "
                         + "s.operating_periods AS \"operatingPeriods\", "
+                        + "s.operating_windows::text AS \"operatingWindows\", "
                         + "s.can_buy_pre_cruise AS \"canBuyPreCruise\", s.can_buy_onboard AS \"canBuyOnboard\" "
                         + "FROM \"Cruise\" c "
                         + "JOIN \"Deck\" d ON d.ship_id = c.ship_id "
@@ -48,6 +52,15 @@ public class PublicCruiseItineraryController {
                         + "WHERE c.cruise_id = ? AND COALESCE(s.status, 'ACTIVE') <> 'INACTIVE' "
                         + "ORDER BY d.deck_number NULLS LAST, s.service_name",
                 cruiseId);
+        for (Map<String, Object> row : services) {
+            if (row.get("operatingWindows") instanceof String json) {
+                try {
+                    row.put("operatingWindows", mapper.readTree(json));
+                } catch (JsonProcessingException ex) {
+                    throw new IllegalStateException("Invalid stored service operating windows", ex);
+                }
+            }
+        }
 
         List<Map<String, Object>> activities = jdbc.queryForList(
                 "SELECT oa.onboard_activity_id AS \"activityId\", oa.activity_name AS \"activityName\", "
