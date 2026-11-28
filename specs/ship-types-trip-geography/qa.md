@@ -35,3 +35,9 @@ Ca tích hợp `shipTypeProvisioningSharesAssetsAndGatesStatusOnScopedProfile` �
 
 - `mvn.cmd -B -ntp '-Dtest=ShipOperationalProfileTest,ShipServiceTest,ShipTypeServiceTest' test` chạy 18 test, 0 lỗi kiểm thử, 0 lỗi thực thi và 0 bỏ qua. Các ca mới kiểm tra hồ sơ cũ, ánh xạ khi tạo và thay hồ sơ, ngày tương lai và thứ tự ngày hết hạn.
 - `python scripts/sequence_docs.py --check` có đủ tài liệu cho 3 route chịu ảnh hưởng. Kiểm tra toàn kho vẫn báo 94 route và 101 sơ đồ cũ còn thiếu, 0 lỗi cấu trúc Mermaid.
+
+## Kiểm chứng tạo tàu READY và hết hạn đăng kiểm
+
+- `mvn.cmd -B -ntp '-Dtest=ShipClassificationExpiryServiceTest,ShipTypeServiceTest,ShipServiceTest,CruiseServiceTest' test` chạy 35 ca với 0 lỗi kiểm thử, 0 lỗi thực thi và 0 bỏ qua.
+- `git diff --check` đạt. `python scripts/sequence_docs.py --check` ghi nhận các route đã sửa, còn 92 route và 99 sơ đồ nền thiếu, 0 route lỗi thời và 0 lỗi cấu trúc Mermaid.
+- Chưa áp dụng V145 hoặc chạy bài tích hợp PostgreSQL, nên chưa có bằng chứng runtime từ scheduler, giao dịch gửi thông báo và SSE.

@@ -52,7 +52,7 @@ API phân trang trả Spring Page trong `data`. Dùng `content`, `number`, `size
 
 ## Quản lý tàu và viewer theo tàu thật
 
-`POST /ship-types/{typeId}/ships` yêu cầu SHIP_MANAGER và header `Idempotency-Key` (UUID do FE tạo một lần cho mỗi lần xác nhận). Body JSON `{"shipName":"Aurora 01","profile":null}` hoặc gửi hồ sơ theo mẫu dưới đây. Server sinh mã `SH`, dựng cấu trúc và trả 201 `ShipResponse` với `shipId`, `shipCode`, `shipName`, `shipTypeId`, `status`, `totalCapacity`, `totalDecks`, `deckNumberLimit` và các trường hồ sơ cơ bản.
+`POST /ship-types/{typeId}/ships` yêu cầu SHIP_MANAGER và header `Idempotency-Key` (UUID do FE tạo một lần cho mỗi lần xác nhận). Gửi `shipName` cùng hồ sơ đủ nhóm đăng kiểm, bảo hành và bảo trì. Server sinh mã `SH`, dựng cấu trúc, kích hoạt model và trả 201 `ShipResponse` với `status: "READY"` sau khi lưu thành công. Hồ sơ thiếu trả 422 `SHIP_OPERATIONAL_PROFILE_INCOMPLETE` với `details.missingGroups`. Hạn đăng kiểm đã qua trả 422 `SHIP_CLASSIFICATION_EXPIRED`.
 
 Nếu không nhận được phản hồi, giữ nguyên cặp payload và UUID. Cho phép người dùng chọn “Kiểm tra kết quả” bằng `GET /ship-types/{typeId}/ships/provisioning/{requestKey}` (SHIP_MANAGER). Endpoint trả 200 với tàu của chính tài khoản hoặc 404 nếu chưa thấy kết quả đã commit. Nếu cần thử lại, gửi lại đúng POST với UUID cũ. Backend trả cùng tàu nếu request ban đầu đã commit, kể cả khi Admin vừa thay asset của loại. Dùng lại key với dữ liệu khác trả 409 `IDEMPOTENCY_CONFLICT`. Một giao dịch rollback có thể được thử lại bằng key cũ. Tạo tàu khác là thao tác mới có UUID mới.
 
@@ -66,23 +66,25 @@ Nếu không nhận được phản hồi, giữ nguyên cặp payload và UUID.
 | GET `/ships/{shipId}/models` | SHIP_MODEL_READ | Danh sách model của tàu. |
 | GET `/ships/{shipId}/models/{modelId}/deck-mappings`, `cabin-mappings`, `assets/{assetPath}` | SHIP_READ | Dùng đúng shipId và modelId đã trả về. Không cần authority ghi để xem. |
 
-DTO hồ sơ vận hành. Mọi trường có thể bỏ trống khi tạo DRAFT. Ngày dùng ISO `YYYY-MM-DD`, IMO là chuỗi 7 chữ số, quốc gia là mã 2 chữ cái, số đăng ký đi cùng quốc gia đăng ký.
+Hồ sơ khi tạo tàu cần `classificationSociety`, `classificationExpiryDate` và ít nhất một mục trong mỗi danh sách `certificateReferences`, `warrantyReferences`, `maintenanceReferences`. Các trường còn lại có thể bỏ trống. Ngày dùng ISO `YYYY-MM-DD`, IMO là chuỗi 7 chữ số, quốc gia là mã 2 chữ cái, số đăng ký đi cùng quốc gia đăng ký.
 
 ```json
 {
   "manufacturerShipCode":"BUILD-01","imoNumber":"1234567",
   "shipyard":"Example Yard","buildCountry":"VN","buildYear":2020,"deliveryDate":"2020-01-15",
   "registrationCountry":"VN","registrationNumber":"REG-01",
-  "classificationSociety":"Example Society","lastClassificationDate":"2025-01-15",
+  "classificationSociety":"Example Society","classificationDate":"2025-01-15",
   "classificationExpiryDate":"2099-01-15",
   "certificateReferences":["certificate-1"],"warrantyReferences":["warranty-1"],
   "maintenanceReferences":["maintenance-1"]
 }
 ```
 
-`lastClassificationDate` là ngày đăng kiểm gần nhất. FE có thể hiển thị trống khi phản hồi thiếu trường này. Ngày đăng kiểm không được ở tương lai và ngày hết hạn phải cùng ngày hoặc sau ngày đăng kiểm. Khi gửi PUT để sửa trường khác, gửi lại ngày hiện có nếu muốn giữ giá trị đó.
+`classificationDate` là ngày đăng kiểm gần nhất trong cả yêu cầu và phản hồi. FE có thể hiển thị trống khi phản hồi thiếu ngày. Ngày đăng kiểm không được ở tương lai và ngày hết hạn phải cùng ngày hoặc sau ngày đăng kiểm. Khi gửi PUT để sửa trường khác, gửi lại ngày hiện có nếu muốn giữ giá trị đó.
 
 Các trạng thái Ship là DRAFT, READY, IN_SERVICE, MAINTENANCE, SUSPENDED và RETIRED. Một yêu cầu đổi trạng thái tàu có loại thiếu hồ sơ trả 422 `SHIP_OPERATIONAL_PROFILE_INCOMPLETE` với `details.missingGroups`. Giá trị nhóm là `certification` (đơn vị, ngày hết hạn và tham chiếu), `warranty` và `maintenance`. Sau khi hồ sơ đủ, guard chuyến đang hoạt động tiếp tục áp dụng.
+
+Tàu READY hoặc IN_SERVICE quá hạn đăng kiểm sẽ tự chuyển MAINTENANCE khi không còn chuyến IN_PROGRESS. Quản lý tàu nhận thông báo `SHIP_CLASSIFICATION_EXPIRED` khi backend phát hiện quá hạn, ngay cả khi chuyến đang chạy. Sau khi gia hạn hồ sơ, dùng API trạng thái để đưa tàu trở lại READY.
 
 ## Xử lý lỗi và tương thích
 

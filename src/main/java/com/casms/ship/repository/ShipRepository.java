@@ -101,6 +101,9 @@ public interface ShipRepository extends JpaRepository<Ship, UUID> {
     @Query("SELECT s FROM Ship s WHERE s.shipId = :shipId")
     Optional<Ship> findByIdForUpdate(@Param("shipId") UUID shipId);
 
+    List<Ship> findAllByArchivedAtIsNullAndStatusInAndOperationalProfileIsNotNull(
+            List<ShipStatus> statuses);
+
     @Query("""
             SELECT s FROM Ship s
             WHERE s.archivedAt IS NULL AND s.status IN ('READY', 'IN_SERVICE') AND s.totalCapacity >= :passengers

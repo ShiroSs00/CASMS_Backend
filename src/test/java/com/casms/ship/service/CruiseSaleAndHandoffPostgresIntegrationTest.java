@@ -143,6 +143,7 @@ public class CruiseSaleAndHandoffPostgresIntegrationTest {
         testShip.setShipCode(shipCode);
         testShip.setShipName("Sale Explorer Test");
         testShip.setStatus(ShipStatus.READY);
+        com.casms.ship.CruiseShipFixtures.setClassificationExpiry(testShip);
         testShip.setTotalCapacity(200);
         testShip.setTotalDecks(3);
         testShip = shipRepository.save(testShip);

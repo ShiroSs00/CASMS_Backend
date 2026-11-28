@@ -1574,7 +1574,7 @@ class ShipModelImportPostgresIntegrationTest {
                 "maintenanceReferences", List.of("maintenance-1"));
         UUID firstKey = UUID.randomUUID();
         byte[] firstPayload = mapper.writeValueAsBytes(Map.of("shipName", "Aurora 01",
-                "profile", Map.of("imoNumber", "1234567")));
+                "profile", readyProfile(Map.of("imoNumber", "1234567"))));
         var executor = Executors.newFixedThreadPool(2);
         UUID first;
         try {
@@ -1675,9 +1675,13 @@ class ShipModelImportPostgresIntegrationTest {
                 .andExpect(status().isCreated()).andExpect(jsonPath("$.data.shipId").value(first.toString()));
         assertEquals(shipCount + 2, ships.count());
 
-        mockMvc.perform(post("/ships/{shipId}/status", first)
-                        .param("status", "READY").header("Authorization", "Bearer " + manager))
-                .andExpect(status().isUnprocessableEntity());
+        mockMvc.perform(post("/ship-types/{typeId}/ships", typeId)
+                        .header("Authorization", "Bearer " + manager)
+                        .header("Idempotency-Key", UUID.randomUUID())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"shipName\":\"Missing profile\"}"))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.code").value("SHIP_OPERATIONAL_PROFILE_INCOMPLETE"));
         mockMvc.perform(get("/ships/{shipId}/operational-profile", first)
                         .header("Authorization", "Bearer " + otherManager))
                 .andExpect(status().isForbidden());
@@ -1780,7 +1784,7 @@ class ShipModelImportPostgresIntegrationTest {
         UUID requestKey = UUID.randomUUID();
         String name = key + " first";
         UUID first = provisionedShipId(type, manager, requestKey,
-                mapper.writeValueAsBytes(Map.of("shipName", name)), name);
+                mapper.writeValueAsBytes(Map.of("shipName", name, "profile", readyProfile(Map.of()))), name);
         testShipIds.add(first);
         UUID second = createTypedShip(type, key + " second", manager, Map.of());
         UUID managerId = ships.findById(first).orElseThrow().getCreatedByShipManagerId();
@@ -1836,6 +1840,7 @@ class ShipModelImportPostgresIntegrationTest {
         mockMvc.perform(post("/ships/{id}/archive", second).header("Authorization", "Bearer " + manager))
                 .andExpect(status().isConflict()).andExpect(jsonPath("$.details.blockers[0]").value("SERVICE_ASSIGNMENT"));
 
+        jdbc.update("UPDATE \"Ship\" SET status='DRAFT' WHERE ship_id=?", first);
         mockMvc.perform(get("/ships/{id}/archive-eligibility", first).header("Authorization", "Bearer " + manager))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.eligible").value(true));
         mockMvc.perform(post("/ships/{id}/archive", first).header("Authorization", "Bearer " + manager))
@@ -1978,7 +1983,8 @@ class ShipModelImportPostgresIntegrationTest {
                 Boolean.class, legacyId));
 
         UUID requestKey = UUID.randomUUID();
-        byte[] payload = mapper.writeValueAsBytes(Map.of("shipName", "Retry after repair"));
+        byte[] payload = mapper.writeValueAsBytes(Map.of(
+                "shipName", "Retry after repair", "profile", readyProfile(Map.of())));
         var initialCounts = List.of(ships.count(), models.count(), decks.count(), cabins.count(), objects.count(),
                 jobs.count());
         mockMvc.perform(post("/ship-types/{typeId}/ships", typeId)
@@ -2007,7 +2013,7 @@ class ShipModelImportPostgresIntegrationTest {
     private UUID createTypedShip(UUID typeId, String name, String manager, Map<String, Object> profile)
             throws Exception {
         UUID shipId = provisionedShipId(typeId, manager, UUID.randomUUID(),
-                mapper.writeValueAsBytes(Map.of("shipName", name, "profile", profile)), name);
+                mapper.writeValueAsBytes(Map.of("shipName", name, "profile", readyProfile(profile))), name);
         testShipIds.add(shipId);
         return shipId;
     }
@@ -2020,9 +2026,20 @@ class ShipModelImportPostgresIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON).content(payload))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.data.shipName").value(name))
-                .andExpect(jsonPath("$.data.status").value("DRAFT")).andReturn();
+                .andExpect(jsonPath("$.data.status").value("READY")).andReturn();
         return UUID.fromString(mapper.readTree(result.getResponse().getContentAsByteArray())
                 .path("data").path("shipId").asText());
+    }
+
+    private static Map<String, Object> readyProfile(Map<String, Object> extras) {
+        Map<String, Object> profile = new LinkedHashMap<>(Map.of(
+                "classificationSociety", "Example Classification",
+                "classificationExpiryDate", "2099-01-01",
+                "certificateReferences", List.of("certificate-1"),
+                "warrantyReferences", List.of("warranty-1"),
+                "maintenanceReferences", List.of("maintenance-1")));
+        profile.putAll(extras);
+        return profile;
     }
 
     @Test

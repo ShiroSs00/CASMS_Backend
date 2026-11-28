@@ -32,6 +32,7 @@ import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
@@ -212,8 +213,15 @@ public class ShipTypeService {
 
     private String requestHash(ProvisionRequest request) {
         try {
+            byte[] payload = mapper.writeValueAsBytes(request);
+            if (request.profile() != null && request.profile().classificationDate() != null) {
+                // Keep fingerprints for provisioning requests recorded before the API field rename.
+                payload = new String(payload, StandardCharsets.UTF_8)
+                        .replace("\"classificationDate\":", "\"lastClassificationDate\":")
+                        .getBytes(StandardCharsets.UTF_8);
+            }
             return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
-                    .digest(mapper.writeValueAsBytes(request)));
+                    .digest(payload));
         } catch (NoSuchAlgorithmException | JsonProcessingException exception) {
             throw new IllegalStateException("Cannot fingerprint the ship provisioning request", exception);
         }
@@ -231,6 +239,8 @@ public class ShipTypeService {
         JsonNode manifest = assets.manifest(modelKey, assetVersion);
         Ship ship = new Ship();
         ship.setShipType(type);
+        ship.setOperationalProfile(profile == null ? null : profile.withLegacyManufacturing(null));
+        ShipService.requireOperationalProfile(ship);
         ship.setDesignModelKey(modelKey);
         ship.setDesignAssetVersion(assetVersion);
         ship.setCreatedByShipManagerId(managerId);
@@ -249,11 +259,11 @@ public class ShipTypeService {
             deckLimit = Math.max(deckLimit, deck.path("number").asInt());
         }
         ship.setDeckNumberLimit(deckLimit);
-        ship.setOperationalProfile(profile == null ? null : profile.withLegacyManufacturing(null));
         UUID shipId = ships.saveAndFlush(ship).getShipId();
         UUID modelId = modelAssets.register(shipId, modelKey, assetVersion);
         importer.importForProvisioning(shipId, modelId, actor);
         modelAssets.activate(shipId, modelId);
+        ship.setStatus(ShipStatus.READY);
         return shipService.detail(shipId);
     }
 

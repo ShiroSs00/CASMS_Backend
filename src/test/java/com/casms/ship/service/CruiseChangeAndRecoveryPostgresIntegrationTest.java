@@ -127,6 +127,7 @@ public class CruiseChangeAndRecoveryPostgresIntegrationTest {
         shipA.setShipCode("SHA-" + UUID.randomUUID().toString().substring(0, 4));
         shipA.setShipName("Tàu Ngôi Sao Phương Đông A");
         shipA.setStatus(ShipStatus.READY);
+        com.casms.ship.CruiseShipFixtures.setClassificationExpiry(shipA);
         shipA.setTotalCapacity(100);
         shipA.setTotalDecks(3);
         shipA = shipRepository.save(shipA);
@@ -152,6 +153,7 @@ public class CruiseChangeAndRecoveryPostgresIntegrationTest {
         shipB.setShipCode("SHB-" + UUID.randomUUID().toString().substring(0, 4));
         shipB.setShipName("Tàu Đại Dương Huyền Thoại B");
         shipB.setStatus(ShipStatus.READY);
+        com.casms.ship.CruiseShipFixtures.setClassificationExpiry(shipB);
         shipB.setTotalCapacity(150);
         shipB.setTotalDecks(5);
         shipB = shipRepository.save(shipB);

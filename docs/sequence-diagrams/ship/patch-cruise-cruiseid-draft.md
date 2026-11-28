@@ -1,5 +1,7 @@
 # PATCH /cruise/{cruiseId}/draft
 
+Khi yêu cầu chọn tàu hoặc đổi thời gian của chuyến đã gán tàu, service kiểm tra hạn đăng kiểm của tàu đã khóa theo ngày về hiệu lực tại Việt Nam. Thiếu hạn hoặc hạn trước ngày về trả 422.
+
 ## Ship schedule and fleet
 
 See the [reviewed flow](../TRIP-DEPARTURE-WINDOW.md) for authorization, validation, transaction boundaries and responses. This note covers the BE-09 to BE-20 change.

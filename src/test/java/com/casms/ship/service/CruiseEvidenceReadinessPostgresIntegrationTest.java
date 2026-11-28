@@ -109,6 +109,7 @@ public class CruiseEvidenceReadinessPostgresIntegrationTest {
         testShip.setShipCode("SH-EVI-" + UUID.randomUUID().toString().substring(0, 8));
         testShip.setShipName("Evidence Explorer");
         testShip.setStatus(ShipStatus.READY);
+        com.casms.ship.CruiseShipFixtures.setClassificationExpiry(testShip);
         testShip.setTotalCapacity(150);
         testShip.setTotalDecks(3);
         testShip = shipRepository.save(testShip);

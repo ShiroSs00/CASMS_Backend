@@ -22,7 +22,7 @@ public record ShipOperationalProfile(
         @Size(min = 2, max = 150, message = "Tên tổ chức đăng kiểm phải từ 2 đến 150 ký tự") String classificationSociety,
         @JsonInclude(JsonInclude.Include.NON_NULL)
         @PastOrPresent(message = "Ngày đăng kiểm gần nhất không được ở tương lai")
-        LocalDate lastClassificationDate,
+        LocalDate classificationDate,
         LocalDate classificationExpiryDate,
         @Size(max = 100) List<@NotBlank @Size(max = 255) String> certificateReferences,
         @Size(max = 100) List<@NotBlank @Size(max = 255) String> warrantyReferences,
@@ -78,8 +78,8 @@ public record ShipOperationalProfile(
     @AssertTrue(message = "Ngày hết hạn đăng kiểm không được trước ngày đăng kiểm gần nhất")
     @JsonIgnore
     public boolean isExpiryNotBeforeLastClassification() {
-        return lastClassificationDate == null || classificationExpiryDate == null
-                || !classificationExpiryDate.isBefore(lastClassificationDate);
+        return classificationDate == null || classificationExpiryDate == null
+                || !classificationExpiryDate.isBefore(classificationDate);
     }
 
     @AssertTrue(message = "Danh sách tham chiếu hồ sơ không được chứa mục trùng lặp")
@@ -98,7 +98,7 @@ public record ShipOperationalProfile(
                 previous == null ? null : previous.buildCountry(),
                 previous == null ? null : previous.buildYear(),
                 deliveryDate, registrationCountry, registrationNumber, classificationSociety,
-                lastClassificationDate, classificationExpiryDate,
+                classificationDate, classificationExpiryDate,
                 certificateReferences, warrantyReferences, maintenanceReferences);
     }
 

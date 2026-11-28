@@ -7,3 +7,4 @@
 - [x] T05 · Tài liệu · Cập nhật inventory và luồng API. Chạy kiểm tra coverage và ghi lỗi nền.
 - [ ] T06 · QA PostgreSQL · Chạy migration và luồng hai tàu cùng loại trên PostgreSQL cô lập.
 - [x] T07 · BE-09 · Bổ sung API Admin thêm quốc gia, sơ đồ sequence và ca kiểm thử danh mục lập chuyến.
+- [x] T08 · BE-04 · Tạo tàu ở READY khi hồ sơ hợp lệ. Chạy kiểm tra hết hạn đăng kiểm, gửi thông báo và chuyển sang MAINTENANCE khi tàu hết chuyến đang chạy.

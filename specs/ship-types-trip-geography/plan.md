@@ -6,7 +6,8 @@ Nguồn nghiệp vụ là [đặc tả](spec.md). Nền triển khai là `origin
 
 - Thêm quan hệ tùy chọn `Ship.shipType` để giữ dữ liệu tàu lịch sử. Loại tàu đang hoạt động có gói model đầy đủ. Migration V121 thêm khóa ngoại từ loại đến manifest, cùng ràng buộc duy nhất cho IMO và số đăng ký theo quốc gia.
 - Admin tạo hoặc thay phiên bản model bằng gói ZIP. Các tàu đã tạo giữ phiên bản đang dùng. Quản lý tàu tạo tàu từ loại đang hoạt động, dùng chung dữ liệu asset và dựng cấu trúc, ánh xạ riêng theo tàu trong cùng giao dịch.
-- Quản lý tàu gắn hồ sơ bằng danh sách tham chiếu khi tạo hoặc bổ sung sau. Hồ sơ có API đọc và ghi theo phạm vi tàu. Các nhóm chứng nhận, bảo hành và bảo trì là điều kiện đổi trạng thái của tàu tạo theo loại. Hai đường dẫn tạo tàu trực tiếp cũ trả 410.
+- Quản lý tàu nhập hồ sơ trước khi xác nhận tạo tàu theo loại. Dùng chung kiểm tra hồ sơ và hạn đăng kiểm tại bước xác nhận để tạo tàu ở READY. Hồ sơ tàu cũ vẫn đọc và sửa theo phạm vi tàu. Hai đường dẫn tạo tàu trực tiếp cũ trả 410.
+- Kiểm tra hết hạn định kỳ theo ngày Việt Nam. Gửi thông báo trong ứng dụng có định danh chống trùng. Chuyển tàu đủ điều kiện sang MAINTENANCE khi không còn chuyến IN_PROGRESS.
 
 ## Danh mục chuyến đi
 

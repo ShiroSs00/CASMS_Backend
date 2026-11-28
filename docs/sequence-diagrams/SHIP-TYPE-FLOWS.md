@@ -33,12 +33,14 @@ sequenceDiagram
 
     Manager->>Security: POST /ship-types/{typeId}/ships with Idempotency-Key
     Security->>Controller: SHIP_MANAGER
-    Note over Controller: Validate optional lastClassificationDate before provisioning
+    Note over Controller: Validate optional classificationDate before provisioning
     Controller->>Service: Reserve key and provision or replay (write transaction)
     Service->>Repositories: Lock type and check ACTIVE
     alt No such type or inactive
         Service-->>Manager: 404 or 409
-    else Active type
+    else New ship profile incomplete or expired
+        Service-->>Manager: 422 and rollback of idempotency reservation
+    else Active type and complete unexpired profile
         Service->>Repositories: Generate SH code and insert DRAFT ship with profile
         Repositories->>DB: Check FK and unique IMO and registration indexes
         Service->>Repositories: Register ship-specific ShipModel for pinned asset
@@ -48,7 +50,8 @@ sequenceDiagram
             Service-->>Manager: Import error and rollback of ship, model and structure
         else Import succeeds
             Service->>Repositories: Validate mappings and activate model
-            Service->>DB: Record ship ID on the idempotency result\n            Service-->>Manager: 201 physical ship
+            Service->>DB: Set physical ship READY and record idempotency result
+            Service-->>Manager: 201 READY after commit
         end
     end
 ```
@@ -62,9 +65,45 @@ sequenceDiagram
 - The authenticated ship list and detail expose the type ID for typed ships. Managers can see the ships they created as well as active assignments. The two former direct-creation endpoints return 410 and guide authorized callers to the type APIs. Existing ships keep their IDs and may continue legacy operations.
 - Ship managers can [delete unused draft ship models](ship/delete-ships-shipid-models-modelid-unused.md) for ships they created or manage through an active cruise assignment. Object mappings and import history block deletion. The operation leaves the ship type and shared binary assets available.
 
+## Automatic maintenance for classification expiry
+
+The scheduled check runs once a minute by default. It evaluates ships in READY or IN_SERVICE that are unarchived and have a classification expiry before the current Vietnam date. Expiry on the current date remains valid. A ship with an IN_PROGRESS cruise keeps its status even when that cruise has passed its scheduled return. When no cruise is IN_PROGRESS, the next check moves the expired ship to MAINTENANCE. Profile renewal leaves the ship's status for the existing manual status flow.
+
+The recipient is one active Ship Manager. The ship's creator takes priority when still active and in that role. Otherwise an active Ship Manager assigned to a nonterminal cruise for the ship is selected by user ID. A ship without an eligible recipient can still move to MAINTENANCE. V145 gives the notice a unique `(ship_id, expiry_date)` claim. The claim, persisted notification and any status change share a transaction. The existing notification service emits SSE after commit.
+
+```mermaid
+sequenceDiagram
+    participant Job as ShipClassificationExpiryJob
+    participant Service as ShipClassificationExpiryService
+    participant Repo as Ship and Cruise repositories
+    participant Notify as NotificationService
+    participant DB as PostgreSQL
+    participant Manager as Ship Manager
+    Job->>Repo: Find operational unarchived ships with profile
+    Job->>Service: Process each past-due classification in its own transaction
+    Service->>Repo: Lock ship and recheck status and date
+    Repo->>DB: SELECT FOR UPDATE
+    Service->>Repo: Check for any IN_PROGRESS cruise
+    Repo->>DB: SELECT EXISTS regardless of planned end
+    opt Active manager found and unique notice claim inserted
+        Service->>DB: Claim ship and expiry date
+        Service->>Notify: Persist SHIP_CLASSIFICATION_EXPIRED
+        Notify->>DB: Insert recipient notification
+    end
+    alt A cruise is IN_PROGRESS
+        Note over Service,DB: Keep status and re-evaluate on next check
+    else No cruise is IN_PROGRESS
+        Service->>DB: Set MAINTENANCE
+    end
+    Note over Service,DB: Commit state and any notification together
+    opt Notification was created
+        Notify-->>Manager: Publish notification and unread count through SSE
+    end
+```
+
 ## Last classification survey date
 
-`lastClassificationDate` is the optional date of the latest completed classification survey. It accepts an ISO date on or before the current date. When `classificationExpiryDate` is also supplied, expiry must be on or after the survey date.
+`classificationDate` is the optional date of the latest completed classification survey in requests and responses. Migration V144 renames the stored legacy date key, and provisioning keeps its original fingerprint representation for safe retries. The date must be on or before the current date, and expiry must be on or after the survey date when both are supplied.
 
 Provisioning stores the date in the ship's existing operational profile JSONB within its creation transaction. The standard provisioning response remains a ship summary. GET operational profile reads the stored date when available. Full PUT replaces the date and clears it if omitted. Omitting the field preserves the serialized profile shape used for existing provisioning request fingerprints.
 
