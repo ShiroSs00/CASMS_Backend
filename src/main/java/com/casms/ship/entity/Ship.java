@@ -2,6 +2,7 @@ package com.casms.ship.entity;
 
 import com.casms.ship.enums.ShipStatus;
 import com.casms.ship.dto.request.ShipOperationalProfile;
+import com.casms.ship.util.PortTimeZoneHelper;
 
 import jakarta.persistence.*;
 
@@ -105,7 +106,10 @@ public class Ship {
     @PrePersist
     protected void onCreate() {
         createdAt = Instant.now();
-        updatedAt = Instant.now();
+        updatedAt = createdAt;
+        if (shipType != null) {
+            commissionDate = LocalDate.ofInstant(createdAt, PortTimeZoneHelper.SHIP_TIME_ZONE);
+        }
     }
 
     @PreUpdate

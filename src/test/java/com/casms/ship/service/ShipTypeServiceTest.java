@@ -49,6 +49,7 @@ class ShipTypeServiceTest {
     @Mock ShipModelImportService importer;
     @Mock BusinessCodeGenerator codes;
     @Mock ShipService shipService;
+    @Mock ShipClassificationMonitorService classificationMonitor;
     @Mock IdempotencyRecordRepository idempotencyRecords;
     @Spy ObjectMapper mapper = new ObjectMapper().findAndRegisterModules();
     @InjectMocks ShipTypeService service;
@@ -93,7 +94,7 @@ class ShipTypeServiceTest {
             assertEquals("SH-0001", ship.getShipCode());
             assertEquals(10, ship.getDeckNumberLimit());
             assertSame(type, ship.getShipType());
-            assertEquals(ShipStatus.DRAFT, ship.getStatus());
+            assertEquals(ShipStatus.READY, ship.getStatus());
             assertEquals("voyager", ship.getDesignModelKey());
             assertEquals("pinned", ship.getDesignAssetVersion());
             assertEquals(profile, ship.getOperationalProfile());
@@ -241,6 +242,7 @@ class ShipTypeServiceTest {
         UUID shipId = UUID.randomUUID();
         Ship ship = new Ship();
         ship.setShipType(new ShipType());
+        ship.setCommissionDate(LocalDate.of(2024, 2, 1));
         ship.setStatus(status);
         when(ships.findByIdForUpdate(shipId)).thenReturn(Optional.of(ship));
         var incomplete = mapper.readValue("{}", ShipOperationalProfile.class);

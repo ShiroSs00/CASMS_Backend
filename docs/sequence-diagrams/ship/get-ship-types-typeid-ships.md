@@ -15,3 +15,5 @@ sequenceDiagram
     DB-->>API: Domain result
     API-->>Client: 200 Page of ShipResponse
 ```
+
+The ShipResponse returns the stored commissionDate for newly provisioned typed ships.

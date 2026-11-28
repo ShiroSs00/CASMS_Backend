@@ -11,3 +11,5 @@ See the [reviewed ship-type sequence](../SHIP-TYPE-FLOWS.md) for security, the t
 The model and physical ship become READY after structural import and mapping validation. Replay of a previously committed request returns its existing ship, including an older DRAFT ship.
 
 See [ship type flow](../SHIP-TYPE-FLOWS.md).
+
+On first insert, JPA derives commissionDate from createdAt in Asia/Ho_Chi_Minh and saves both in the provisioning transaction. The 201 response includes commissionDate, and a replay returns the saved date.

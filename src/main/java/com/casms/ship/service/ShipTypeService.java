@@ -280,11 +280,6 @@ public class ShipTypeService {
         ShipOperationalProfile previous = ship.getOperationalProfile();
         ShipOperationalProfile updated = profile.withLegacyManufacturing(previous);
         requireCompleteProfileForReplacement(updated);
-        if (ship.getCommissionDate() != null && profile.deliveryDate() != null
-                && profile.deliveryDate().isBefore(ship.getCommissionDate())) {
-            throw new BusinessException(HttpStatus.UNPROCESSABLE_ENTITY, "INVALID_DELIVERY_DATE",
-                    "Ngày bàn giao không hợp lệ (không được trước ngày đưa tàu vào sử dụng).");
-        }
         if (previous != null && previous.deliveryDate() != null
                 && !Objects.equals(previous.deliveryDate(), profile.deliveryDate())
                 && ships.hasAnyCruise(shipId)) {

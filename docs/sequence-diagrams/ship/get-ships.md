@@ -41,3 +41,5 @@ sequenceDiagram
 The list includes shipTypeId for typed ships. A Ship Manager sees creator-owned ships and active assignments.
 
 See [ship type flow](../SHIP-TYPE-FLOWS.md).
+
+The ShipResponse returns the stored commissionDate for newly provisioned typed ships.

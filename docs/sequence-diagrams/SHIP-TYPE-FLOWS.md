@@ -41,7 +41,8 @@ sequenceDiagram
     else New ship profile incomplete or expired
         Service-->>Manager: 422 and rollback of idempotency reservation
     else Active type and complete unexpired profile
-        Service->>Repositories: Generate SH code and insert DRAFT ship with profile
+        Service->>Repositories: Generate SH code and insert READY ship with profile
+        Note over Repositories: Before insert, derive commissionDate from createdAt in the Vietnam timezone
         Repositories->>DB: Check FK and unique IMO and registration indexes
         Service->>Repositories: Register ship-specific ShipModel for pinned asset
         Service->>Importer: Import deck, cabin, area and mappings
@@ -50,8 +51,8 @@ sequenceDiagram
             Service-->>Manager: Import error and rollback of ship, model and structure
         else Import succeeds
             Service->>Repositories: Validate mappings and activate model
-            Service->>DB: Set physical ship READY and record idempotency result
-            Service-->>Manager: 201 READY after commit
+            Service->>DB: Record idempotency result
+            Service-->>Manager: 201 READY with commissionDate after commit
         end
     end
 ```

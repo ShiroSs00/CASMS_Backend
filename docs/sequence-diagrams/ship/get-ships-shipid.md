@@ -36,3 +36,5 @@ sequenceDiagram
 The scoped read includes shipTypeId for typed ships. Detailed operational records have their own scoped endpoint.
 
 See [ship type flow](../SHIP-TYPE-FLOWS.md).
+
+The ShipResponse returns the stored commissionDate for newly provisioned typed ships.
