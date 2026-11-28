@@ -1567,7 +1567,12 @@ class ShipModelImportPostgresIntegrationTest {
                 "SELECT count(*) FROM \"ShipModelAssetBlob\" WHERE model_key = ?", Long.class, key);
 
         Map<String, Object> profile = Map.of(
+                "deliveryDate", "2024-01-01",
+                "imoNumber", "1234567",
+                "registrationCountry", "VN",
+                "registrationNumber", "PROFILE-" + UUID.randomUUID(),
                 "classificationSociety", "Example Classification",
+                "classificationDate", "2024-01-02",
                 "classificationExpiryDate", "2099-01-01",
                 "certificateReferences", List.of("certificate-1"),
                 "warrantyReferences", List.of("warranty-1"),
@@ -1741,10 +1746,17 @@ class ShipModelImportPostgresIntegrationTest {
         }
         mockMvc.perform(put("/ships/{shipId}/operational-profile", first)
                         .header("Authorization", "Bearer " + manager).contentType(MediaType.APPLICATION_JSON)
-                        .content(mapper.writeValueAsBytes(Map.of("manufacturerShipCode", "CHANGED",
-                                "shipyard", "Wrong yard", "buildCountry", "FR", "buildYear", 1991, "imoNumber", "7654321"))))
+                        .content(mapper.writeValueAsBytes(Map.ofEntries(
+                                Map.entry("manufacturerShipCode", "CHANGED"),
+                                Map.entry("shipyard", "Wrong yard"), Map.entry("buildCountry", "FR"),
+                                Map.entry("buildYear", 1991), Map.entry("imoNumber", "7654329"),
+                                Map.entry("deliveryDate", "2024-01-01"), Map.entry("registrationCountry", "VN"),
+                                Map.entry("registrationNumber", "DESIGN-" + UUID.randomUUID()),
+                                Map.entry("classificationSociety", "Example Classification"),
+                                Map.entry("classificationDate", "2024-01-02"),
+                                Map.entry("classificationExpiryDate", "2099-01-01")))))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.manufacturerShipCode").doesNotExist())
-                .andExpect(jsonPath("$.data.imoNumber").value("7654321"));
+                .andExpect(jsonPath("$.data.imoNumber").value("7654329"));
 
         upload(key, "v2", smallBundle(key, "v2", "OCEAN_VIEW", "HULL-02", true), admin);
         String v2 = storedVersions.get(key + "|v2");

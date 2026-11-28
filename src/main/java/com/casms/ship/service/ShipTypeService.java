@@ -35,6 +35,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.ArrayList;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Locale;
@@ -274,6 +275,8 @@ public class ShipTypeService {
         ShipArchiveService.requireUnarchived(ship);
         requireTypedShip(ship);
         ShipOperationalProfile previous = ship.getOperationalProfile();
+        ShipOperationalProfile updated = profile.withLegacyManufacturing(previous);
+        requireCompleteProfileForReplacement(updated);
         if (ship.getCommissionDate() != null && profile.deliveryDate() != null
                 && profile.deliveryDate().isBefore(ship.getCommissionDate())) {
             throw new BusinessException(HttpStatus.UNPROCESSABLE_ENTITY, "INVALID_DELIVERY_DATE",
@@ -290,9 +293,24 @@ public class ShipTypeService {
             throw new BusinessException(HttpStatus.CONFLICT, "IMO_LOCKED",
                     "Không thể thay đổi số IMO khi tàu đã được xác minh đưa vào khai thác.");
         }
-        ShipOperationalProfile updated = profile.withLegacyManufacturing(previous);
         ship.setOperationalProfile(updated);
         return updated;
+    }
+
+    private static void requireCompleteProfileForReplacement(ShipOperationalProfile profile) {
+        List<String> missingFields = new ArrayList<>();
+        if (profile.deliveryDate() == null) missingFields.add("deliveryDate");
+        if (profile.imoNumber() == null) missingFields.add("imoNumber");
+        if (profile.registrationCountry() == null) missingFields.add("registrationCountry");
+        if (profile.registrationNumber() == null) missingFields.add("registrationNumber");
+        if (profile.classificationSociety() == null) missingFields.add("classificationSociety");
+        if (profile.classificationDate() == null) missingFields.add("classificationDate");
+        if (profile.classificationExpiryDate() == null) missingFields.add("classificationExpiryDate");
+        if (!missingFields.isEmpty()) {
+            throw new BusinessException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "SHIP_OPERATIONAL_PROFILE_INCOMPLETE", "Hồ sơ vận hành tàu chưa đủ thông tin bắt buộc.",
+                    Map.of("missingFields", missingFields));
+        }
     }
 
     @Transactional(readOnly = true)

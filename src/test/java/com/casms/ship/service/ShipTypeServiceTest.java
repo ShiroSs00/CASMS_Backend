@@ -20,6 +20,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
@@ -210,6 +211,56 @@ class ShipTypeServiceTest {
         user.setUserId(UUID.randomUUID());
         user.setRoles(java.util.Set.of(Role.SHIP_MANAGER));
         return new CasmsPrincipal(user, null);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"deliveryDate", "imoNumber", "registrationCountry", "registrationNumber",
+            "classificationSociety", "classificationDate", "classificationExpiryDate"})
+    void replacementRejectsEachMissingRequiredField(String field) throws Exception {
+        UUID shipId = UUID.randomUUID();
+        var previous = completeReplacementProfile();
+        Ship ship = new Ship();
+        ship.setShipType(new ShipType());
+        ship.setStatus(ShipStatus.READY);
+        ship.setOperationalProfile(previous);
+        when(ships.findByIdForUpdate(shipId)).thenReturn(Optional.of(ship));
+        var payload = (com.fasterxml.jackson.databind.node.ObjectNode) mapper.valueToTree(previous);
+        payload.remove(field);
+        var incomplete = mapper.treeToValue(payload, ShipOperationalProfile.class);
+
+        var failure = assertThrows(BusinessException.class, () -> service.replaceProfile(shipId, incomplete));
+
+        assertEquals("SHIP_OPERATIONAL_PROFILE_INCOMPLETE", failure.getCode());
+        assertSame(previous, ship.getOperationalProfile());
+        assertEquals(ShipStatus.READY, ship.getStatus());
+    }
+
+    @ParameterizedTest
+    @EnumSource(ShipStatus.class)
+    void allShipStatusesRequireCompleteReplacementButAllowEmptyReferences(ShipStatus status) throws Exception {
+        UUID shipId = UUID.randomUUID();
+        Ship ship = new Ship();
+        ship.setShipType(new ShipType());
+        ship.setStatus(status);
+        when(ships.findByIdForUpdate(shipId)).thenReturn(Optional.of(ship));
+        var incomplete = mapper.readValue("{}", ShipOperationalProfile.class);
+        var complete = completeReplacementProfile();
+
+        assertEquals("SHIP_OPERATIONAL_PROFILE_INCOMPLETE",
+                assertThrows(BusinessException.class, () -> service.replaceProfile(shipId, incomplete)).getCode());
+        assertNull(ship.getOperationalProfile());
+        assertEquals(complete, service.replaceProfile(shipId, complete));
+        assertEquals(complete, ship.getOperationalProfile());
+        assertEquals(status, ship.getStatus());
+    }
+
+    private ShipOperationalProfile completeReplacementProfile() throws Exception {
+        return mapper.readValue("""
+                {"deliveryDate":"2024-01-15","imoNumber":"1234567","registrationCountry":"VN",
+                 "registrationNumber":"TEST-01","classificationSociety":"Registry",
+                 "classificationDate":"2024-03-15","classificationExpiryDate":"2099-03-15",
+                 "warrantyReferences":[]}
+                """, ShipOperationalProfile.class);
     }
 
     private static ShipOperationalProfile completeProfile(LocalDate expiry) {

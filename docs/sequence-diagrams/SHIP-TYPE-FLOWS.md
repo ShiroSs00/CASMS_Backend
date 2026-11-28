@@ -105,7 +105,7 @@ sequenceDiagram
 
 `classificationDate` is the optional date of the latest completed classification survey in requests and responses. Migration V144 renames the stored legacy date key, and provisioning keeps its original fingerprint representation for safe retries. The date must be on or before the current date, and expiry must be on or after the survey date when both are supplied.
 
-Provisioning stores the date in the ship's existing operational profile JSONB within its creation transaction. The standard provisioning response remains a ship summary. GET operational profile reads the stored date when available. Full PUT replaces the date and clears it if omitted. Omitting the field preserves the serialized profile shape used for existing provisioning request fingerprints.
+Provisioning stores the date in the ship's existing operational profile JSONB within its creation transaction. The standard provisioning response remains a ship summary. GET operational profile reads the stored date when available. PUT requires the complete delivery, registration and survey fields for every ship status. The three reference lists remain optional on PUT. Omitting the date on provisioning preserves the serialized profile shape used for existing provisioning request fingerprints.
 
 ```mermaid
 sequenceDiagram
@@ -129,8 +129,12 @@ sequenceDiagram
             Controller->>Service: replaceProfile in write transaction
             Service->>Repo: Lock ship row and validate existing profile guards
             Repo->>DB: SELECT FOR UPDATE
-            Service->>DB: Persist replaced operational profile JSONB at commit
-            Service-->>Manager: 200 replaced profile
+            alt Replacement omits a required delivery, registration or survey field
+                Service-->>Manager: 422 SHIP_OPERATIONAL_PROFILE_INCOMPLETE with missing fields
+            else Replacement accepted
+                Service->>DB: Persist replaced operational profile JSONB at commit
+                Service-->>Manager: 200 replaced profile
+            end
         end
     end
 ```

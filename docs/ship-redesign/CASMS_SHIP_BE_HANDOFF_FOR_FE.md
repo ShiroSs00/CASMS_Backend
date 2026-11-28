@@ -61,6 +61,8 @@ Nếu không nhận được phản hồi, giữ nguyên cặp payload và UUID.
 | PATCH `/ships/{shipId}` | SHIP_UPDATE | Contract cập nhật cơ bản hiện có. |
 | PATCH `/ships/{shipId}/name` | SHIP_MANAGER và SHIP_READ | JSON `{"shipName":"Aurora Renewed"}`. Áp dụng tàu có loại trong phạm vi manager. |
 | GET, PUT `/ships/{shipId}/operational-profile` | SHIP_MANAGER | Theo phạm vi tàu. PUT thay hồ sơ toàn bộ. Tàu legacy trả 409 `SHIP_TYPE_REQUIRED`. |
+
+Khi lưu hồ sơ ở bất kỳ trạng thái nào, PUT cần `deliveryDate`, `imoNumber`, `registrationCountry`, `registrationNumber`, `classificationSociety`, `classificationDate` và `classificationExpiryDate`. Ba danh sách tham chiếu chứng nhận, bảo hành, bảo trì và sửa chữa có thể bỏ trống. Nếu thiếu trường bắt buộc, PUT từ chối thay đổi. Lỗi nghiệp vụ 422 `SHIP_OPERATIONAL_PROFILE_INCOMPLETE` liệt kê trường thiếu trong `details.missingFields`.
 | POST `/ships/{shipId}/status?status=READY` | SHIP_STATUS_CHANGE | Trạng thái vận hành tàu tách khỏi READY của ShipModel. |
 | GET `/ships/{shipId}/model` | SHIP_READ | Model đang hoạt động của tàu. Dùng `id`, `baseUrl` và `manifestUrl` trong data. |
 | GET `/ships/{shipId}/models` | SHIP_MODEL_READ | Danh sách model của tàu. |
