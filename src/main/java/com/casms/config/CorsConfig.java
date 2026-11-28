@@ -13,7 +13,7 @@ import java.util.List;
 @Configuration
 public class CorsConfig {
 
-    @Value("${casms.cors.allowed-origins:http://localhost:5173,http://localhost:5174,http://127.0.0.1:5173,http://127.0.0.1:5174}")
+    @Value("${casms.cors.allowed-origins:http://localhost:5173,http://localhost:5174,http://127.0.0.1:5173,http://127.0.0.1:5174,https://adminocevie.vercel.app}")
     private String allowedOrigins;
 
     @Bean
@@ -26,7 +26,16 @@ public class CorsConfig {
                         .toList();
         config.setAllowedOrigins(origins);
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-        config.setAllowedHeaders(List.of("Authorization", "Content-Type", "X-Requested-With", "X-Correlation-Id", "Accept"));
+        config.setAllowedHeaders(List.of(
+                                        "Authorization",
+                                        "Content-Type",
+                                        "X-Requested-With",
+                                        "X-Correlation-Id",
+                                        "Accept",
+                                        "Idempotency-Key",
+                                        "If-Match",
+                                        "X-Guest-Token"
+                                    ));
         config.setExposedHeaders(List.of("X-Correlation-Id", "Content-Disposition"));
         config.setAllowCredentials(true);
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
