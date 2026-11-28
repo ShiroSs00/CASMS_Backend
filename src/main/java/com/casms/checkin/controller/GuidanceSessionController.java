@@ -77,7 +77,11 @@ public class GuidanceSessionController {
     @Operation(
             summary = "Cập nhật trạng thái buổi phổ cập",
             description = "Chuyển trạng thái Scheduled -> Completed hoặc Cancelled")
-    @PreAuthorize("hasAuthority('CHECKIN_UPDATE') and hasAnyRole('BOOKING_AGENT','OPERATIONS_MANAGER','ONBOARD_STAFF') and !hasRole('POS')")
+    @PreAuthorize(
+            "!hasRole('POS') and (hasRole('ADMIN')"
+                + " or (hasRole('BOOKING_AGENT') and hasAuthority('CHECKIN_UPDATE'))"
+                + " or (hasRole('OPERATIONS_MANAGER') and hasAuthority('CRUISE_READ'))"
+                + " or (hasRole('ONBOARD_STAFF') and hasAuthority('CRUISE_READ')))")
     @PatchMapping("/{sessionId}/status")
     public ApiResponse<GuidanceSessionResponse> updateStatus(
             @Parameter(description = "ID buổi phổ cập", required = true) @PathVariable
@@ -91,7 +95,11 @@ public class GuidanceSessionController {
             description =
                     "Quét tất cả hành khách có booking active trên chuyến và ghi danh vào buổi phổ"
                         + " cập")
-    @PreAuthorize("hasAuthority('CHECKIN_UPDATE') and hasAnyRole('BOOKING_AGENT','OPERATIONS_MANAGER','ONBOARD_STAFF') and !hasRole('POS')")
+    @PreAuthorize(
+            "!hasRole('POS') and (hasRole('ADMIN')"
+                + " or (hasRole('BOOKING_AGENT') and hasAuthority('CHECKIN_UPDATE'))"
+                + " or (hasRole('OPERATIONS_MANAGER') and hasAuthority('CRUISE_READ'))"
+                + " or (hasRole('ONBOARD_STAFF') and hasAuthority('CRUISE_READ')))")
     @PostMapping("/{sessionId}/participants/auto-populate")
     public ApiResponse<Integer> autoPopulate(
             @Parameter(description = "ID buổi phổ cập", required = true) @PathVariable
@@ -105,7 +113,11 @@ public class GuidanceSessionController {
             summary = "Điểm danh hành khách tham gia buổi phổ cập",
             description =
                     "Ghi nhận trạng thái tham dự (Registered, Attended, Absent) của hành khách")
-    @PreAuthorize("hasAuthority('CHECKIN_UPDATE') and hasAnyRole('BOOKING_AGENT','OPERATIONS_MANAGER','ONBOARD_STAFF') and !hasRole('POS')")
+    @PreAuthorize(
+            "!hasRole('POS') and (hasRole('ADMIN')"
+                + " or (hasRole('BOOKING_AGENT') and hasAuthority('CHECKIN_UPDATE'))"
+                + " or (hasRole('OPERATIONS_MANAGER') and hasAuthority('CRUISE_READ'))"
+                + " or (hasRole('ONBOARD_STAFF') and hasAuthority('CRUISE_READ')))")
     @PostMapping("/{sessionId}/attendance")
     public ApiResponse<GuidanceParticipantResponse> recordAttendance(
             @Parameter(description = "ID buổi phổ cập", required = true) @PathVariable
@@ -120,7 +132,11 @@ public class GuidanceSessionController {
             summary = "Danh sách hành khách tham gia buổi phổ cập",
             description =
                     "Lấy danh sách chi tiết các hành khách được ghi danh và trạng thái điểm danh")
-    @PreAuthorize("hasAuthority('CHECKIN_UPDATE') and hasAnyRole('BOOKING_AGENT','OPERATIONS_MANAGER','ONBOARD_STAFF') and !hasRole('POS')")
+    @PreAuthorize(
+            "!hasRole('POS') and (hasRole('ADMIN')"
+                + " or (hasRole('BOOKING_AGENT') and hasAuthority('CHECKIN_READ'))"
+                + " or (hasRole('OPERATIONS_MANAGER') and hasAuthority('CRUISE_READ'))"
+                + " or (hasRole('ONBOARD_STAFF') and hasAuthority('CRUISE_READ')))")
     @GetMapping("/{sessionId}/participants")
     public ApiResponse<List<GuidanceParticipantResponse>> listParticipants(
             @Parameter(description = "ID buổi phổ cập", required = true) @PathVariable

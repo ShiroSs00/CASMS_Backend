@@ -1747,24 +1747,11 @@ public class CruiseService {
 
     @Transactional
     public CruiseResponse publish(UUID cruiseId) {
-        Cruise cruise = getCruiseById(cruiseId);
-
-        if (cruise.getStatus() != CruiseStatus.DRAFT) {
-            throw new BusinessException("CRUISE_NOT_DRAFT", "Only draft cruises can be published");
-        }
-
-        CruiseReadinessResponse readiness = validateOperationalReadiness(cruiseId);
-        if (!readiness.isReady()) {
-            throw new BusinessException(
-                    "CRUISE_NOT_READY",
-                    "Cruise is not operationally ready to publish: "
-                            + String.join("; ", readiness.getIssues()));
-        }
-
-        cruise.setStatus(CruiseStatus.PUBLISHED);
-        cruise = cruiseRepository.save(cruise);
-        log.info("Published cruise: {}", cruiseId);
-        return mapToResponse(cruise);
+        getCruiseById(cruiseId);
+        throw new BusinessException(
+                HttpStatus.GONE,
+                "LEGACY_PUBLISH_DISABLED",
+                "Luồng phát hành trực tiếp (/publish) đã ngừng sử dụng. Vui lòng hoàn tất xét duyệt kế hoạch và mở bán qua quy trình Mở bán chính thức (open-sale).");
     }
 
     @Transactional
@@ -1961,7 +1948,16 @@ public class CruiseService {
 
         if (cruise.getStatus() == CruiseStatus.COMPLETED) {
             throw new BusinessException(
-                    "CANNOT_CANCEL_COMPLETED", "Completed cruises cannot be cancelled");
+                    HttpStatus.CONFLICT,
+                    "CANNOT_CANCEL_COMPLETED",
+                    "Không thể hủy chuyến đã hoàn tất (COMPLETED).");
+        }
+
+        if (cruise.getStatus() == CruiseStatus.IN_PROGRESS) {
+            throw new BusinessException(
+                    HttpStatus.CONFLICT,
+                    "CANNOT_CANCEL_IN_PROGRESS",
+                    "Không thể hủy trực tiếp chuyến đang khởi hành (IN_PROGRESS). Vui lòng xử lý qua quy trình sự cố vận hành.");
         }
 
         if (cruise.getStatus() == CruiseStatus.CANCELLED) {
@@ -1969,12 +1965,43 @@ public class CruiseService {
         }
 
         if (reason == null || reason.isBlank()) {
-            throw new BusinessException("REASON_REQUIRED", "Cancellation reason is required");
+            throw new BusinessException(
+                    HttpStatus.BAD_REQUEST, "REASON_REQUIRED", "Vui lòng nhập lý do hủy chuyến.");
         }
 
+        long activeBookings =
+                bookingRepository
+                        .findByCruiseCruiseIdAndBookingStatusNot(cruiseId, BookingStatus.Cancelled)
+                        .size();
+        if (activeBookings > 0) {
+            throw new BusinessException(
+                    HttpStatus.CONFLICT,
+                    "CRUISE_HAS_ACTIVE_BOOKINGS",
+                    "Chuyến đang có "
+                            + activeBookings
+                            + " đặt chỗ hiệu lực. Vui lòng xử lý hủy/hoàn tiền hoặc thông báo tác động hành khách trước khi hủy chuyến.");
+        }
+
+        String previousStatus = cruise.getStatus() != null ? cruise.getStatus().name() : "UNKNOWN";
+        String trimmedReason = reason.trim();
         cruise.setStatus(CruiseStatus.CANCELLED);
         cruise = cruiseRepository.save(cruise);
-        log.info("Cancelled cruise: {} with reason: {}", cruiseId, reason);
+        Instant now = Instant.now();
+        if (cruiseAuditService != null) {
+            cruiseAuditService.recordEvent(
+                    cruise,
+                    "CRUISE_CANCEL",
+                    "EVT-CANCEL-" + cruise.getCruiseCode() + "-" + now.toEpochMilli(),
+                    null,
+                    "CRUISE_MANAGER",
+                    "CRUISE_CANCEL",
+                    "WHOLE_CRUISE",
+                    "Status=" + previousStatus,
+                    "Status=CANCELLED",
+                    trimmedReason,
+                    "ActiveBookings=0");
+        }
+        log.info("Cancelled cruise: {} with reason: {}", cruiseId, trimmedReason);
         return mapToResponse(cruise);
     }
 

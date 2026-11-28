@@ -37,6 +37,13 @@ public interface BookingRepository
 
     Optional<Booking> findByBookingReference(String bookingReference);
 
+    @Query(
+            "SELECT b FROM Booking b WHERE b.bookingReference IS NOT NULL "
+                + "AND LENGTH(REPLACE(REPLACE(b.bookingReference, '-', ''), ' ', '')) >= 5 "
+                + "AND :cleanMemo LIKE CONCAT('%', UPPER(REPLACE(REPLACE(b.bookingReference, '-', ''), ' ', '')), '%') "
+                + "ORDER BY LENGTH(REPLACE(REPLACE(b.bookingReference, '-', ''), ' ', '')) DESC")
+    List<Booking> findMatchingReferencesInMemo(@Param("cleanMemo") String cleanMemo, Pageable pageable);
+
     Optional<Booking> findBySettlementOnboardAccount_OnboardAccountId(UUID onboardAccountId);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)

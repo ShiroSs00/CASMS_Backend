@@ -62,6 +62,20 @@ public class ServiceRequestService {
         return requests.findAll();
     }
 
+    public List<ServiceRequest> listForActor(UUID userId, boolean staff, boolean assignedOnly) {
+        return assignedOnly ? requests.findAssignedWork(userId) : list(userId, staff);
+    }
+
+    public ServiceRequest getForActor(UUID id, UUID userId, boolean staff, boolean assignedOnly) {
+        if (assignedOnly) requireAssignedWork(id, userId);
+        return get(id, userId, staff);
+    }
+
+    private void requireAssignedWork(UUID id, UUID userId) {
+        if (!requests.isAssignedWork(id, userId))
+            throw new AccessDeniedException("Yêu cầu không thuộc công việc được giao trên chuyến của bạn.");
+    }
+
     public ServiceRequest get(UUID id, UUID userId, boolean staff) {
         ServiceRequest r = requests.findById(id).orElseThrow(() -> missing("Service request", id));
         assertOwner(r, userId, staff);
@@ -402,6 +416,16 @@ public class ServiceRequestService {
         return transition(id, userId, action, true, staff, fulfilledQuantity, unitCode);
     }
 
+    public ServiceRequest transitionAssignedRequest(UUID id, UUID userId, String action,
+            Integer fulfilledQuantity, String unitCode) {
+        // Scope is checked after acquiring the same row lock used by the command.
+        requests.lockById(id).orElseThrow(() -> missing("Service request", id));
+        requireAssignedWork(id, userId);
+        if (!List.of("accept", "reject", "start", "complete").contains(action))
+            throw new AccessDeniedException("Nhân viên chỉ thực hiện yêu cầu đã được phân công.");
+        return transition(id, userId, action, true, true, fulfilledQuantity, unitCode);
+    }
+
     private ServiceRequest transition(UUID id, UUID userId, String action, boolean requestApi,
             boolean staff, Integer fulfilledQuantity, String unitCode) {
         ServiceRequest r = requests.lockById(id).orElseThrow(() -> missing("Service request", id));
@@ -413,7 +437,8 @@ public class ServiceRequestService {
         }
         switch (action) {
             case "assign" -> {
-                if (r.getStatus() != ServiceRequestStatus.REQUESTED) invalid();
+                if (r.getStatus() != ServiceRequestStatus.REQUESTED
+                        && r.getStatus() != ServiceRequestStatus.ACCEPTED) invalid();
                 User user = users.findById(userId).orElseThrow(() -> missing("User", userId));
                 r.setAssignedUser(user);
             }

@@ -35,4 +35,10 @@ public interface CruiseCheckinRepository extends JpaRepository<CruiseCheckin, UU
                 + " = :cruiseId AND (c.boardingReadyAt IS NOT NULL OR c.checkinStatus ="
                 + " com.casms.checkin.enums.CruiseCheckinStatus.BoardingReady)")
     long countBoardedPassengersByCruiseId(@Param("cruiseId") UUID cruiseId);
+
+    @Query(
+            "SELECT COUNT(c) > 0 FROM CruiseCheckin c WHERE c.bookingPassenger.booking.bookingId ="
+                + " :bookingId AND (c.boardingReadyAt IS NOT NULL OR c.checkinStatus ="
+                + " com.casms.checkin.enums.CruiseCheckinStatus.BoardingReady)")
+    boolean existsBoardedByBookingId(@Param("bookingId") UUID bookingId);
 }

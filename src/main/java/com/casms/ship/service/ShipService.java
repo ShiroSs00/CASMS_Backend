@@ -60,7 +60,13 @@ public class ShipService {
             throw new BusinessException("INVALID_SHIP_NAME", "Ship name is required");
         String shipName = request.getShipName().trim();
         String shipCode = businessCodeGenerator.next("SH");
-        ShipStatus status = request.getStatus() == null ? ShipStatus.DRAFT : request.getStatus();
+        ShipStatus status = request.getStatus() == null ? ShipStatus.READY : request.getStatus();
+        if (status == ShipStatus.DRAFT) {
+            throw new BusinessException(
+                    HttpStatus.CONFLICT,
+                    "INVALID_SHIP_STATUS",
+                    "Tàu mới khởi tạo ở trạng thái Sẵn sàng hoạt động (READY), không sử dụng trạng thái Đang thiết lập (DRAFT).");
+        }
         validateShipDimensions(request.getTotalCapacity(), request.getTotalDecks());
         validateHullDimensions(request.getLengthMeters(), request.getBeamMeters());
         validateCommissionDate(request.getCommissionDate());
@@ -263,22 +269,53 @@ public class ShipService {
             return mapToResponse(ship);
         }
 
-        // Strict DRAFT -> READY rule: a ship in DRAFT may only transition to READY
-        if (ship.getStatus() == ShipStatus.DRAFT && newStatus != ShipStatus.READY) {
-            throw new BusinessException(
-                    HttpStatus.CONFLICT,
-                    "INVALID_SHIP_STATUS_TRANSITION",
-                    "Tàu đang ở trạng thái Đang thiết lập (DRAFT) chỉ có thể chuyển sang Sẵn sàng hoạt động (READY).");
-        }
         if (ship.getStatus() == ShipStatus.RETIRED) {
             throw new BusinessException(
                     HttpStatus.CONFLICT,
                     "INVALID_SHIP_STATUS_TRANSITION",
                     "Tàu đã ngừng hoạt động (RETIRED) không thể chuyển sang trạng thái khác.");
         }
+        if (newStatus == ShipStatus.DRAFT) {
+            throw new BusinessException(
+                    HttpStatus.CONFLICT,
+                    "INVALID_SHIP_STATUS_TRANSITION",
+                    "Không thể chuyển tàu về trạng thái Đang thiết lập (DRAFT).");
+        }
+        if (newStatus == ShipStatus.IN_SERVICE) {
+            throw new BusinessException(
+                    HttpStatus.CONFLICT,
+                    "SYSTEM_MANAGED_STATUS",
+                    "Trạng thái Đang khai thác (IN_SERVICE) do hệ thống tự động cập nhật khi chuyến bắt đầu.");
+        }
+        // Legacy DRAFT ships may only move to READY
+        if (ship.getStatus() == ShipStatus.DRAFT && newStatus != ShipStatus.READY) {
+            throw new BusinessException(
+                    HttpStatus.CONFLICT,
+                    "INVALID_SHIP_STATUS_TRANSITION",
+                    "Tàu đang thiết lập chỉ có thể chuyển sang Sẵn sàng hoạt động (READY).");
+        }
+        if (ship.getStatus() == ShipStatus.IN_SERVICE && newStatus == ShipStatus.READY) {
+            Optional<Cruise> currentCruise =
+                    cruiseRepository.findCurrentActiveCruise(shipId, Instant.now());
+            if (currentCruise.isPresent()) {
+                throw new BusinessException(
+                        HttpStatus.CONFLICT,
+                        "SHIP_ACTIVE_CRUISE",
+                        "Tàu đang chạy chuyến; hệ thống sẽ tự động đưa về Sẵn sàng hoạt động sau khi chuyến hoàn tất.");
+            }
+        }
 
-        if (ship.getShipType() != null) {
-            requireOperationalProfile(ship);
+        // Entering READY requires complete operational profile + valid classification + structural decks/cabins
+        if (newStatus == ShipStatus.READY) {
+            if (ship.getShipType() != null) {
+                requireOperationalProfile(ship);
+            }
+            if (deckRepository.countByShipShipId(shipId) == 0 || cabinRepository.countByShipShipId(shipId) == 0) {
+                throw new BusinessException(
+                        HttpStatus.UNPROCESSABLE_ENTITY,
+                        "SHIP_STRUCTURE_INCOMPLETE",
+                        "Tàu cần có tối thiểu 1 boong và 1 cabin trước khi chuyển sang Sẵn sàng hoạt động.");
+            }
         }
 
         // A ship on a current cruise cannot move to a non-operational state
@@ -287,18 +324,17 @@ public class ShipService {
                     cruiseRepository.findCurrentActiveCruise(shipId, Instant.now());
             if (currentCruise.isPresent()) {
                 throw new BusinessException(
+                        HttpStatus.CONFLICT,
                         "SHIP_ACTIVE_CRUISE",
-                        "Cannot change status to "
-                                + newStatus
-                                + " while ship is on an active cruise");
+                        "Không thể chuyển sang trạng thái " + newStatus + " khi tàu đang khai thác chuyến.");
             }
         }
 
-        if (newStatus == ShipStatus.DRAFT) {
+        if (newStatus == ShipStatus.RETIRED && shipRepository.hasActiveOrScheduledCruise(shipId)) {
             throw new BusinessException(
                     HttpStatus.CONFLICT,
-                    "INVALID_SHIP_STATUS_TRANSITION",
-                    "Không thể chuyển tàu đã khai thác quay về trạng thái Đang thiết lập (DRAFT).");
+                    "SHIP_HAS_SCHEDULED_CRUISES",
+                    "Không thể ngừng khai thác vĩnh viễn khi tàu vẫn còn chuyến đang hoặc sắp khai thác.");
         }
 
         ship.setStatus(newStatus);
@@ -469,15 +505,8 @@ public class ShipService {
         var profile = ship.getOperationalProfile();
         var missing = new java.util.ArrayList<String>();
         if (profile == null || profile.classificationSociety() == null
-                || profile.classificationExpiryDate() == null
-                || profile.certificateReferences() == null || profile.certificateReferences().isEmpty()) {
+                || profile.classificationExpiryDate() == null) {
             missing.add("certification");
-        }
-        if (profile == null || profile.warrantyReferences() == null || profile.warrantyReferences().isEmpty()) {
-            missing.add("warranty");
-        }
-        if (profile == null || profile.maintenanceReferences() == null || profile.maintenanceReferences().isEmpty()) {
-            missing.add("maintenance");
         }
         if (!missing.isEmpty()) {
             throw new BusinessException(org.springframework.http.HttpStatus.UNPROCESSABLE_ENTITY,

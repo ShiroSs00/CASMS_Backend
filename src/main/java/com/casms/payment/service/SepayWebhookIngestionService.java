@@ -78,7 +78,13 @@ public class SepayWebhookIngestionService {
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public IngestionResult ingestEvent(SepayWebhookPayload payload) {
-        Long sepayId = payload.getId() != null ? payload.getId() : System.currentTimeMillis();
+        if (payload == null || payload.getId() == null) {
+            throw new com.casms.common.exception.BusinessException(
+                    org.springframework.http.HttpStatus.BAD_REQUEST,
+                    "INVALID_WEBHOOK_ID",
+                    "SePay webhook payload must include a non-null transaction id");
+        }
+        Long sepayId = payload.getId();
 
         Optional<SepayTransaction> existingOpt = sepayTransactionRepository.findBySepayId(sepayId);
         if (existingOpt.isPresent()) {
@@ -779,29 +785,12 @@ public class SepayWebhookIngestionService {
         }
         String cleanMemo = memo.replaceAll("[^A-Za-z0-9]", "").toUpperCase(Locale.ROOT);
         if (!cleanMemo.isBlank()) {
-            List<Booking> allBookings = bookingRepository.findAll();
-            return allBookings.stream()
-                    .filter(
-                            b ->
-                                    b.getBookingReference() != null
-                                            && !b.getBookingReference().isBlank())
-                    .sorted(
-                            Comparator.comparingInt(
-                                            (Booking b) ->
-                                                    b.getBookingReference()
-                                                            .replaceAll("[^A-Za-z0-9]", "")
-                                                            .length())
-                                    .reversed())
-                    .filter(
-                            b -> {
-                                String cleanRef =
-                                        b.getBookingReference()
-                                                .replaceAll("[^A-Za-z0-9]", "")
-                                                .toUpperCase(Locale.ROOT);
-                                return cleanRef.length() >= 5 && cleanMemo.contains(cleanRef);
-                            })
-                    .findFirst()
-                    .orElse(null);
+            List<Booking> matches =
+                    bookingRepository.findMatchingReferencesInMemo(
+                            cleanMemo, org.springframework.data.domain.PageRequest.of(0, 1));
+            if (!matches.isEmpty()) {
+                return matches.get(0);
+            }
         }
         return null;
     }

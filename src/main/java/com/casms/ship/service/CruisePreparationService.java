@@ -85,10 +85,7 @@ public class CruisePreparationService {
                                     cruise.getCruiseId(), actor.getUserId(), "ACTIVE")
                             .filter(member -> "SHIP_MANAGER".equals(member.getRoleInCruise()))
                             .isPresent();
-            case "SAFETY_CREW" -> actor.hasRole(Role.OPERATIONS_MANAGER)
-                    && Boolean.TRUE.equals(jdbc.queryForObject(
-                            "SELECT EXISTS(" + CruisePlanOperationsAccess.RECEIVED_PLANS + " AND cruise_id=?)",
-                            Boolean.class, cruise.getCruiseId()));
+            case "SAFETY_CREW" -> submissionScope(cruise, actor);
             default -> false;
         };
     }
@@ -99,16 +96,11 @@ public class CruisePreparationService {
         if (!SUBMITTABLE.contains(section.getStatus())) return null;
         var actor = currentActor();
         if (actor == null || !actor.hasAuthority("CRUISE_PREPARATION_SUBMIT")) return "SUBMIT_PERMISSION_REQUIRED";
-        String role = switch (section.getSectionCode()) {
-            case "TECHNICAL_NAUTICAL" -> "SHIP_MANAGER";
-            case "SAFETY_CREW" -> "OPERATIONS_MANAGER";
-            default -> "CRUISE_MANAGER";
-        };
+        String role = sectionSubmitterRole(section.getSectionCode());
         if (!actor.hasRole(Role.valueOf(role))) return "SECTION_SUBMITTER_ROLE_REQUIRED";
         if (sectionSubmissionScope(section.getCruise(), section.getSectionCode(), actor)) return null;
         return switch (section.getSectionCode()) {
             case "TECHNICAL_NAUTICAL" -> "ASSIGNED_SHIP_MANAGER_REQUIRED";
-            case "SAFETY_CREW" -> "PLAN_RECEIPT_REQUIRED";
             default -> "PREPARATION_COORDINATOR_REQUIRED";
         };
     }
@@ -149,6 +141,57 @@ public class CruisePreparationService {
 
     public record OperatingBudget(Long revision, String amountVnd, boolean canEdit,
             long reviewRevision, String status, String rejectionReason) {}
+
+    public record SubmittedBudget(UUID cruiseId, String cruiseCode, String cruiseName,
+            String amountVnd, String status, long reviewRevision, String reason,
+            String submittedByName, boolean canReview) {}
+
+    public record BudgetEvent(UUID eventId, String action, Instant occurredAt, String actorName,
+            String reason, String amountVnd, String status) {}
+
+    @Transactional(readOnly = true)
+    public List<BudgetEvent> operatingBudgetHistory(UUID cruiseId, CasmsPrincipal actor) {
+        if (!permitted(actor, false))
+            throw new BusinessException(HttpStatus.FORBIDDEN, "PREPARATION_ACTION_FORBIDDEN",
+                    "Chỉ người có quyền xét duyệt ngân sách được xem lịch sử.");
+        operatingBudget(cruiseId, actor); // Reuse the independent, submitted-budget object scope.
+        return jdbc.query("""
+                SELECT p.event_id,p.action,p.occurred_at,p.reason,
+                       p.snapshot->>'amountVnd' AS amount_vnd,p.snapshot->>'status' AS budget_status,
+                       COALESCE(NULLIF(e.full_name,''),u.username) AS actor_name
+                FROM "CruisePreparationEvent" p
+                LEFT JOIN "User" u ON u.user_id=p.actor_id
+                LEFT JOIN "Employee" e ON e.user_id=p.actor_id
+                WHERE p.cruise_id=? AND p.section_code=?
+                ORDER BY p.occurred_at DESC,p.event_id
+                """, (rs,i) -> new BudgetEvent(rs.getObject("event_id",UUID.class),
+                        rs.getString("action"),rs.getTimestamp("occurred_at").toInstant(),
+                        rs.getString("actor_name"),rs.getString("reason"),rs.getString("amount_vnd"),
+                        rs.getString("budget_status")),cruiseId,BUDGET_SECTION);
+    }
+
+    @Transactional(readOnly = true)
+    public List<SubmittedBudget> operatingBudgetReviews(CasmsPrincipal actor) {
+        if (!permitted(actor, false))
+            throw new BusinessException(HttpStatus.FORBIDDEN, "PREPARATION_ACTION_FORBIDDEN",
+                    "Chỉ người có quyền xét duyệt ngân sách được xem hàng chờ.");
+        // Budget submission has its own scope and must not depend on plan submission.
+        return jdbc.query("""
+                SELECT c.cruise_id,c.cruise_code,c.cruise_name,c.operating_budget_vnd,
+                       r.status,r.revision,r.reason,COALESCE(NULLIF(e.full_name,''),u.username) AS submitter_name,
+                       r.status='SUBMITTED' AND c.status='DRAFT' AND r.submitted_by<>? AS can_review
+                FROM "CruiseOperatingBudgetReview" r JOIN "Cruise" c USING(cruise_id)
+                LEFT JOIN "User" u ON u.user_id=r.submitted_by
+                LEFT JOIN "Employee" e ON e.user_id=r.submitted_by
+                WHERE r.revision>0 AND r.submitted_by IS NOT NULL
+                ORDER BY CASE WHEN r.status='SUBMITTED' THEN 0 ELSE 1 END,c.cruise_code
+                """, (rs, i) -> new SubmittedBudget(rs.getObject("cruise_id", UUID.class),
+                        rs.getString("cruise_code"), rs.getString("cruise_name"),
+                        rs.getBigDecimal("operating_budget_vnd") == null ? null
+                                : rs.getBigDecimal("operating_budget_vnd").toPlainString(),
+                        rs.getString("status"), rs.getLong("revision"), rs.getString("reason"),
+                        rs.getString("submitter_name"), rs.getBoolean("can_review")), actor.getUserId());
+    }
 
     private BudgetReview budgetReview(UUID cruiseId) {
         return jdbc.query("""
@@ -427,17 +470,21 @@ public class CruisePreparationService {
             List.of(
                     new SectionTemplate(
                             "TECHNICAL_NAUTICAL", "Kỹ thuật Hàng hải & Tàu", "SHIP_MANAGER"),
-                    new SectionTemplate("HOTEL_CABIN", "Khách sạn & Buồng phòng", "CRUISE_MANAGER"),
+                    new SectionTemplate("HOTEL_CABIN", "Cabin phục vụ khách", "CRUISE_MANAGER"),
                     new SectionTemplate(
                             "ENTERTAINMENT_SHORE",
                             "Hoạt động Giải trí & Tour bờ",
                             "CRUISE_MANAGER"),
                     new SectionTemplate(
-                            "SAFETY_CREW", "An toàn & Thuyền viên", "OPERATIONS_MANAGER"));
+                            "SAFETY_CREW", "Nhân sự phục vụ trên tàu", "OPERATIONS_MANAGER"));
 
     private record SectionTemplate(String code, String name, String ownerRole) {}
 
     private static final Set<String> REVIEW_STATES = Set.of("SUBMITTED", "CONFIRMED", "RETURNED", "REJECTED", "STALE");
+
+    private static String sectionSubmitterRole(String sectionCode) {
+        return "TECHNICAL_NAUTICAL".equals(sectionCode) ? "SHIP_MANAGER" : "CRUISE_MANAGER";
+    }
 
     public record GroupReviewSummary(UUID cruiseId, String cruiseCode, String cruiseName,
             String sectionCode, String sectionName, String status, Instant submittedAt,
@@ -1070,7 +1117,7 @@ public class CruisePreparationService {
                 items.add(
                         PreparationCheckItemDto.builder()
                                 .itemCode("CABIN_INVENTORY")
-                                .itemName("Kiểm kê buồng phòng khách sạn")
+                                .itemName("Cabin khả dụng trên tàu")
                                 .ready(cabinReady)
                                 .required(true)
                                 .state(cabinReady ? "PASSED" : "BLOCKED")
@@ -1186,9 +1233,10 @@ public class CruisePreparationService {
         };
         return CruisePreparationSectionResponse.builder()
                 .sectionCode(section.getSectionCode())
-                .sectionName(section.getSectionName())
+                .sectionName(TEMPLATES.stream().filter(template -> template.code().equals(section.getSectionCode()))
+                        .map(SectionTemplate::name).findFirst().orElse(section.getSectionName()))
                 .ownerRole(section.getOwnerRole())
-                .submitterRole(section.getOwnerRole())
+                .submitterRole(sectionSubmitterRole(section.getSectionCode()))
                 .allowedActions(allowedActions(section, checkItems))
                 .submissionBlockReason(submissionBlockReason(section))
                 .status(section.getStatus())

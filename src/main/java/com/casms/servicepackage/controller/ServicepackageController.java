@@ -47,7 +47,7 @@ public class ServicepackageController {
  @PreAuthorize("hasAnyAuthority('SERVICE_REQUEST_READ','SERVICE_REQUEST_CREATE','SERVICE_REQUEST_EXECUTE')")
  @GetMapping("/requests/{id}/fare-entitlement")
  public ApiResponse<OperationEntitlement> requestEntitlement(@PathVariable UUID id,Authentication auth){
-  var principal=(CasmsPrincipal)auth.getPrincipal();var request=serviceRequests.get(id,principal.getUserId(),principal.isStaff());
+  var principal=(CasmsPrincipal)auth.getPrincipal();var request=serviceRequests.getForActor(id,principal.getUserId(),principal.isStaff(),principal.hasRole(com.casms.identity.enums.Role.ONBOARD_STAFF));
   return ApiResponse.success(new OperationEntitlement(id,fareEntitlements.operationGrant(request.getFareBenefitSnapshotId(),request.getBookingPassenger()==null?null:request.getBookingPassenger().getBookingPassengerId())));
  }
 
@@ -158,7 +158,9 @@ public class ServicepackageController {
             Instant requestTime,
             Instant completedAt,
             String usageMode, ServiceUsagePolicy usagePolicySnapshot, Integer usageLimitSnapshot,
-            String usageTimeZoneSnapshot, UUID fareBenefitSnapshotId, Integer fulfilledQuantity, String fulfillmentUnitCode) {
+            String usageTimeZoneSnapshot, UUID fareBenefitSnapshotId, Integer fulfilledQuantity, String fulfillmentUnitCode,
+            String serviceName, String passengerName, String bookingReference, String cruiseName,
+            String shipName, Instant scheduledStart, Instant scheduledEnd, String location, String unitCode) {
         public static ServiceRequestView of(ServiceRequest r) {
             return new ServiceRequestView(
                     r.getServiceRequestId(),
@@ -180,7 +182,15 @@ public class ServicepackageController {
                     r.getRequestTime(),
                     r.getCompletedAt(), r.getUsageMode(), r.getUsagePolicySnapshot(), r.getUsageLimitSnapshot(),
                     r.getUsageTimeZoneSnapshot(), r.getFareBenefitSnapshotId(),
-                    r.getUsageRecords().stream().mapToInt(ServiceUsage::getQuantity).sum(), r.getFareFulfillmentUnitCode());
+                    r.getUsageRecords().stream().mapToInt(ServiceUsage::getQuantity).sum(), r.getFareFulfillmentUnitCode(),
+                    r.getService().getServiceName(), r.getPassenger().getFullName(),
+                    r.getBooking() == null ? null : r.getBooking().getBookingReference(),
+                    r.getBooking() == null ? null : r.getBooking().getCruise().getCruiseName(),
+                    r.getBooking() == null || r.getBooking().getCruise().getShip() == null ? null : r.getBooking().getCruise().getShip().getShipName(),
+                    r.getServiceSchedule() == null ? null : r.getServiceSchedule().getStartsAt(),
+                    r.getServiceSchedule() == null ? null : r.getServiceSchedule().getEndsAt(),
+                    r.getServiceSchedule() == null ? null : r.getServiceSchedule().getLocation(),
+                    r.getService().getUnitCode());
         }
     }
 
@@ -671,7 +681,7 @@ public class ServicepackageController {
     public ApiResponse<List<ServiceRequestView>> requests(Authentication auth) {
         var principal = (CasmsPrincipal) auth.getPrincipal();
         return ApiResponse.success(
-                serviceRequests.list(principal.getUserId(), principal.isStaff()).stream()
+                serviceRequests.listForActor(principal.getUserId(), principal.isStaff(), principal.hasRole(com.casms.identity.enums.Role.ONBOARD_STAFF)).stream()
                         .map(ServiceRequestView::of)
                         .toList());
     }
@@ -682,7 +692,7 @@ public class ServicepackageController {
         var principal = (CasmsPrincipal) auth.getPrincipal();
         return ApiResponse.success(
                 ServiceRequestView.of(
-                        serviceRequests.get(id, principal.getUserId(), principal.isStaff())));
+                        serviceRequests.getForActor(id, principal.getUserId(), principal.isStaff(), principal.hasRole(com.casms.identity.enums.Role.ONBOARD_STAFF))));
     }
 
     @PreAuthorize("hasAuthority('SERVICE_REQUEST_CREATE')")
@@ -720,6 +730,8 @@ public class ServicepackageController {
             @Valid @RequestBody ServiceRequestUpdateDto r,
             Authentication auth) {
         var p = (CasmsPrincipal) auth.getPrincipal();
+        if (p.hasRole(com.casms.identity.enums.Role.ONBOARD_STAFF))
+            throw new org.springframework.security.access.AccessDeniedException("Nhân viên phục vụ không thay đổi nội dung yêu cầu của khách.");
         return ApiResponse.success(
                 ServiceRequestView.of(
                         serviceRequests.updatePending(
@@ -732,6 +744,11 @@ public class ServicepackageController {
             @PathVariable UUID id, @PathVariable String action, Authentication auth,
             @Valid @RequestBody(required = false) ServiceFulfillmentDto fulfillment) {
         var p = (CasmsPrincipal) auth.getPrincipal();
+        if (p.hasRole(com.casms.identity.enums.Role.ONBOARD_STAFF))
+            return ApiResponse.success(ServiceRequestView.of(serviceRequests.transitionAssignedRequest(
+                    id, p.getUserId(), action,
+                    fulfillment == null ? null : fulfillment.fulfilledQuantity(),
+                    fulfillment == null ? null : fulfillment.unitCode())));
         return ApiResponse.success(
                 ServiceRequestView.of(serviceRequests.transitionFromRequestApi(
                         id, p.getUserId(), p.isStaff(), action,

@@ -58,6 +58,7 @@ public class OnboardOperationService {
     private final PosLedgerService posLedgerService;
     private final OnboardTransactionRepository onboardTransactionRepository;
     private final NotificationRepository notificationRepository;
+    private final AssignedOnboardWorkScope onboardWorkScope;
 
     public record ActivityBookingResult(
             UUID registrationId,
@@ -111,6 +112,8 @@ public class OnboardOperationService {
         // 2. Mô hình 3: Khóa sức chứa bi quan (Pessimistic Lock) trên dòng OnboardActivity
         OnboardActivity activity = activities.lockActivity(activityId)
                 .orElseThrow(() -> new ResourceNotFoundException("OnboardActivity", activityId));
+
+        if (AssignedOnboardWorkScope.restricted()) onboardWorkScope.requireActivity(activityId);
 
         if (activity.getStatus() != OnboardActivityStatus.OPEN && activity.getStatus() != OnboardActivityStatus.PLANNED) {
             throw new BusinessException("ACTIVITY_NOT_OPEN", "Hoạt động giải trí không mở nhận đăng ký.");

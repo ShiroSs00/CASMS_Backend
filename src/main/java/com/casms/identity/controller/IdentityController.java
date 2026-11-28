@@ -16,8 +16,10 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.PathVariable;
 
 import java.util.List;
+import java.util.UUID;
 
 @Tag(name = "Identity & Users", description = "Quản lý tài khoản, người dùng và hành khách")
 @RestController
@@ -26,6 +28,12 @@ import java.util.List;
 public class IdentityController {
 
     private final IdentityService service;
+
+    @GetMapping("/users/{userId}/access")
+    @PreAuthorize("hasRole('ADMIN') and hasAuthority('USER_READ')")
+    public ApiResponse<IdentityService.AccountAccess> accountAccess(@PathVariable UUID userId) {
+        return ApiResponse.success(service.accountAccess(userId));
+    }
 
     @Operation(
             summary = "Danh sách người dùng cho gán việc",

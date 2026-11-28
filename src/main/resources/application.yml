@@ -59,8 +59,9 @@ server:
     context-path: /api
 
 jwt:
-  secret: ${JWT_SECRET:qvmEE5tuRBQ574igb6CUIc63m4IODJRMSXTsVmoX4iD}
+  secret: ${JWT_SECRET:}
   expiration-ms: ${JWT_EXPIRATION_MS:86400000}
+  max-session-ms: ${JWT_MAX_SESSION_MS:604800000}
 
 logging:
   level:
@@ -89,14 +90,14 @@ casms:
       enabled: ${CASMS_CANCELLATION_WORKFLOW_ENABLED:true}
   booking-email:
     enabled: ${CASMS_BOOKING_EMAIL_ENABLED:false}
-    from: ${CASMS_BOOKING_EMAIL_FROM:taobaothanh@5zulieu.com}
+    from: ${CASMS_BOOKING_EMAIL_FROM:noreply@casms.local}
     portal-url: ${CASMS_BOOKING_EMAIL_PORTAL_URL:http://localhost:5173}
   employee-activation-email:
-    enabled: ${CASMS_EMPLOYEE_ACTIVATION_EMAIL_ENABLED:true}
-    from: ${CASMS_EMPLOYEE_ACTIVATION_EMAIL_FROM:${SPRING_MAIL_USERNAME:taobaothanh@5zulieu.com}}
+    enabled: ${CASMS_EMPLOYEE_ACTIVATION_EMAIL_ENABLED:false}
+    from: ${CASMS_EMPLOYEE_ACTIVATION_EMAIL_FROM:${SPRING_MAIL_USERNAME:noreply@casms.local}}
     portal-url: ${CASMS_EMPLOYEE_ACTIVATION_EMAIL_PORTAL_URL:http://localhost:5174/activate-employee-account}
-    allow-loopback-http: ${CASMS_EMPLOYEE_ACTIVATION_EMAIL_ALLOW_LOOPBACK_HTTP:true}
-    token-key: ${CASMS_EMPLOYEE_ACTIVATION_EMAIL_TOKEN_KEY:Q0FTTVMtRU1QTE9ZRUUtQUNUSVZBVElPTi1TRUNSRVQtS0VZLTIwMjYtMDAx}
+    allow-loopback-http: ${CASMS_EMPLOYEE_ACTIVATION_EMAIL_ALLOW_LOOPBACK_HTTP:false}
+    token-key: ${CASMS_EMPLOYEE_ACTIVATION_EMAIL_TOKEN_KEY:}
     poll-ms: ${CASMS_EMPLOYEE_ACTIVATION_EMAIL_POLL_MS:5000}
   payment:
     sepay:

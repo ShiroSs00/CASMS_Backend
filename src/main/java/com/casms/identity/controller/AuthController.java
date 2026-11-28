@@ -65,11 +65,15 @@ public class AuthController {
         return ApiResponse.success(authService.getCurrentUser(principal));
     }
 
-    @Operation(summary = "Đăng xuất", description = "Đăng xuất (client-side xóa token)")
+    @Operation(summary = "Đăng xuất", description = "Đăng xuất và thu hồi JWT hiện tại")
     @PostMapping("/logout")
-    public ApiResponse<Void> logout() {
-        // Với JWT stateless, logout chỉ cần client xóa token
-        // Có thể implement blacklist token nếu cần bảo mật cao hơn
+    public ApiResponse<Void> logout(
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        if (authHeader != null
+                && authHeader.startsWith("Bearer ")
+                && StringUtils.hasText(authHeader.substring(7))) {
+            authService.logout(authHeader.substring(7));
+        }
         return ApiResponse.success("Logged out successfully", null);
     }
 }

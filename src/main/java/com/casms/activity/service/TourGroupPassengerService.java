@@ -36,16 +36,19 @@ public class TourGroupPassengerService {
     private final TourGroupRepository tourGroupRepository;
     private final PassengerRepository passengerRepository;
     private final RegistrationRepository registrationRepository;
+    private final AssignedOnboardWorkScope onboardWorkScope;
 
     public TourGroupPassengerService(
             TourGroupPassengerRepository assignmentRepository,
             TourGroupRepository tourGroupRepository,
             PassengerRepository passengerRepository,
-            RegistrationRepository registrationRepository) {
+            RegistrationRepository registrationRepository,
+            AssignedOnboardWorkScope onboardWorkScope) {
         this.assignmentRepository = assignmentRepository;
         this.tourGroupRepository = tourGroupRepository;
         this.passengerRepository = passengerRepository;
         this.registrationRepository = registrationRepository;
+        this.onboardWorkScope = onboardWorkScope;
     }
 
     // CREATE / ASSIGN
@@ -97,7 +100,9 @@ public class TourGroupPassengerService {
             assignments = assignmentRepository.search(groupId, passengerId, status);
         }
 
-        return assignments.stream().map(this::toResponse).toList();
+        return assignments.stream()
+                .filter(row -> !AssignedOnboardWorkScope.restricted() || onboardWorkScope.group(row.getTourGroup().getTourGroupId()))
+                .map(this::toResponse).toList();
     }
 
     // READ / DETAIL
@@ -320,6 +325,7 @@ public class TourGroupPassengerService {
     }
 
     private TourGroup findGroup(UUID groupId) {
+        if (AssignedOnboardWorkScope.restricted()) onboardWorkScope.requireGroup(groupId);
         if (groupId == null) {
             throw new IllegalArgumentException("Tour group ID is required");
         }
@@ -330,6 +336,7 @@ public class TourGroupPassengerService {
     }
 
     private TourGroup findGroupForUpdate(UUID groupId) {
+        if (AssignedOnboardWorkScope.restricted()) onboardWorkScope.requireGroup(groupId);
         if (groupId == null) {
             throw new IllegalArgumentException("Tour group ID is required");
         }
@@ -344,13 +351,15 @@ public class TourGroupPassengerService {
             throw new IllegalArgumentException("Assignment ID is required");
         }
 
-        return assignmentRepository
+        var result = assignmentRepository
                 .findDetailById(assignmentId)
                 .orElseThrow(
                         () ->
                                 new EntityNotFoundException(
                                         "Tour group passenger assignment not found: "
                                                 + assignmentId));
+        if (AssignedOnboardWorkScope.restricted()) onboardWorkScope.requireGroup(result.getTourGroup().getTourGroupId());
+        return result;
     }
 
     private TourGroupPassenger findAssignmentForUpdate(UUID assignmentId) {
@@ -358,13 +367,15 @@ public class TourGroupPassengerService {
             throw new IllegalArgumentException("Assignment ID is required");
         }
 
-        return assignmentRepository
+        var result = assignmentRepository
                 .findByIdForUpdate(assignmentId)
                 .orElseThrow(
                         () ->
                                 new EntityNotFoundException(
                                         "Tour group passenger assignment not found: "
                                                 + assignmentId));
+        if (AssignedOnboardWorkScope.restricted()) onboardWorkScope.requireGroup(result.getTourGroup().getTourGroupId());
+        return result;
     }
 
     /*

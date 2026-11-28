@@ -354,7 +354,24 @@ public class CruiseWorkHandoffService {
     }
 
     public boolean mayConfigurePrograms(UUID id, CasmsPrincipal actor) {
-        return asm(actor) && asmAssigned(id, actor, true);
+        if (!asm(actor)) return false;
+        if (asmAssigned(id, actor, true)) return true;
+        // RG-10 (ASM-UX-06): Allow ASM to configure cruise programs on editable DRAFT/REVISION_REQUESTED
+        // cruises when no other ASM holds an active handoff lock.
+        return Boolean.TRUE.equals(jdbc.queryForObject("""
+                SELECT EXISTS(
+                    SELECT 1 FROM "Cruise" c
+                    LEFT JOIN "CruisePlanReview" p USING(cruise_id)
+                    WHERE c.cruise_id=?
+                      AND c.status='DRAFT'
+                      AND coalesce(p.status, 'DRAFT') IN ('DRAFT', 'WITHDRAWN', 'REVISION_REQUESTED')
+                      AND NOT EXISTS (
+                          SELECT 1 FROM "CruiseWorkHandoff" h
+                          WHERE h.cruise_id=c.cruise_id AND h.work_group='ASM'
+                            AND h.assignee_id<>? AND h.status IN ('IN_PROGRESS', 'REQUESTED', 'ASSIGNED')
+                      )
+                )
+                """, Boolean.class, id, actor.getUserId()));
     }
 
     public ProgramContext programContext(UUID id, CasmsPrincipal actor) {

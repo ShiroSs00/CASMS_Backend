@@ -857,9 +857,7 @@ public class InternationalCruisePaymentService {
     public GatewayPaymentResponse getGatewayPayment(UUID paymentId, CasmsPrincipal principal) {
         Payment payment = paymentRepository.findById(paymentId)
                 .orElseThrow(() -> new ResourceNotFoundException("Payment", paymentId));
-        if (payment.getOnboardAccount() != null) {
-            assertAccountReadAccess(payment.getOnboardAccount(), principal);
-        }
+        assertPaymentReadAccess(payment, principal);
         return toGatewayPaymentResponse(payment);
     }
 
@@ -867,9 +865,7 @@ public class InternationalCruisePaymentService {
     public GatewayPaymentResponse queryAndSyncPaymentStatus(UUID paymentId, CasmsPrincipal principal) {
         Payment payment = paymentRepository.findByIdForUpdate(paymentId)
                 .orElseThrow(() -> new ResourceNotFoundException("Payment", paymentId));
-        if (payment.getOnboardAccount() != null) {
-            assertAccountReadAccess(payment.getOnboardAccount(), principal);
-        }
+        assertPaymentReadAccess(payment, principal);
 
         if (payment.getProcessorReference() != null && payment.getStatus() == PaymentStatus.Pending) {
             GatewayResult gwStatus = paymentGateway.getPaymentStatus(payment.getProcessorReference());
@@ -889,6 +885,28 @@ public class InternationalCruisePaymentService {
             }
         }
         return toGatewayPaymentResponse(payment);
+    }
+
+    private void assertPaymentReadAccess(Payment payment, CasmsPrincipal principal) {
+        if (principal == null) {
+            throw new org.springframework.security.access.AccessDeniedException(
+                    "Authentication is required to access payment details");
+        }
+        if (payment.getOnboardAccount() != null) {
+            assertAccountReadAccess(payment.getOnboardAccount(), principal);
+            return;
+        }
+        if (principal.hasPermission(Permission.PAYMENT_READ)
+                || principal.hasPermission(Permission.PAYMENT_PROCESS)) {
+            return;
+        }
+        if (payment.getBooking() != null
+                && payment.getBooking().getBookedByUser() != null
+                && principal.getUserId().equals(payment.getBooking().getBookedByUser().getUserId())) {
+            return;
+        }
+        throw new org.springframework.security.access.AccessDeniedException(
+                "You do not have permission to access this payment");
     }
 
     @Transactional

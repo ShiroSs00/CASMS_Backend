@@ -14,6 +14,22 @@ spring:
       - classpath:db/migration
       - classpath:db/prod-migration
 
+  h2:
+    console:
+      enabled: false
+
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
+
+casms:
+  cors:
+    allowed-origins: ${CASMS_CORS_ALLOWED_ORIGINS:}
+  payment:
+    guest-card-simulation-enabled: false
+
 logging:
   level:
     root: WARN

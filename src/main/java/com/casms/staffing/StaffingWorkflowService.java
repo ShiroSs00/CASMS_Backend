@@ -259,7 +259,7 @@ public class StaffingWorkflowService {
                 SELECT (SELECT count(*) FROM "StaffingNeedAssignment" WHERE request_id=?)
                      + (SELECT count(*) FROM "StaffingServiceAssignment" WHERE request_id=?)
                 """, Long.class, id, id) : 0;
-        boolean shipPlanStale = v2 && Set.of("SHIP_REVIEWED", "SENT_TO_HR", "HR_SUBMITTED",
+        boolean shipPlanStale = v2 && Set.of("SHIP_REVIEWED", "SENT_TO_HR", "HR_SUBMITTED", "SHIP_CONFIRMED",
                 "PLANNER_CONFIRMED", "OPS_APPROVED").contains(request.status())
                 && !isCurrentShipPlan(id);
         List<NeedProgress> needs = v2 ? readNeeds(id, !shipPlanStale) : List.of();
@@ -287,10 +287,11 @@ public class StaffingWorkflowService {
         Snapshot snapshot = read(id);
         if (snapshot.v2()) {
             if (planner && coordinator(snapshot.cruiseId(), actor)
-                    || ship && "PENDING_SHIP_REVIEW".equals(snapshot.status())
+                    || ship && Set.of("PENDING_SHIP_REVIEW", "HR_SUBMITTED", "SHIP_CONFIRMED", "PLANNER_CONFIRMED", "OPS_APPROVED").contains(snapshot.status())
                         && isShipManager(snapshot.cruiseId(), actor.getUserId(), false)
-                    || hr && "SENT_TO_HR".equals(snapshot.status())
-                    || ops && "PLANNER_CONFIRMED".equals(snapshot.status())) {
+                    || hr && Set.of("SENT_TO_HR", "HR_SUBMITTED", "SHIP_CONFIRMED", "PLANNER_CONFIRMED", "OPS_APPROVED")
+                        .contains(snapshot.status())
+                    || ops && Set.of("PLANNER_CONFIRMED", "OPS_APPROVED").contains(snapshot.status())) {
                 return snapshot;
             }
             throw forbidden("STAFFING_READ_FORBIDDEN");
@@ -339,10 +340,10 @@ public class StaffingWorkflowService {
                 WHERE c.status NOT IN ('COMPLETED', 'CANCELLED') AND (
                   (req.workflow_version='V2' AND (
                     (? AND req.status='SENT_TO_HR')
-                    OR (? AND req.status='PENDING_SHIP_REVIEW' AND EXISTS (
+                    OR (? AND req.status IN ('PENDING_SHIP_REVIEW','HR_SUBMITTED') AND EXISTS (
                         SELECT 1 FROM "CruiseStaff" cs WHERE cs.cruise_id=req.cruise_id
                             AND cs.user_id=? AND cs.status='ACTIVE' AND cs.role_in_cruise='SHIP_MANAGER'))
-                    OR (? AND req.status IN ('SHIP_REVIEWED','HR_SUBMITTED') AND c.preparation_coordinator_id=?)
+                    OR (? AND req.status IN ('SHIP_REVIEWED','SHIP_CONFIRMED') AND c.preparation_coordinator_id=?)
                     OR (? AND req.status='PLANNER_CONFIRMED')
                   )) OR (req.workflow_version='LEGACY' AND (
                     (? AND (req.status='SENT_TO_HR'
@@ -1021,6 +1022,7 @@ public class StaffingWorkflowService {
         UUID user = actor.getUserId();
         if (role != Role.CRUISE_MANAGER && user.equals(row.requester())
                 || role != Role.SHIP_MANAGER && user.equals(row.shipReviewer())
+                || role != Role.SHIP_MANAGER && user.equals(row.ship())
                 || role != Role.HR_MANAGER && user.equals(row.hr())) {
             throw conflict("STAFFING_SELF_APPROVAL");
         }
@@ -1029,14 +1031,21 @@ public class StaffingWorkflowService {
     private Snapshot transitionV2(UUID id, UUID cruise, ReviewState row, String action, ReviewRequest input,
                                   CasmsPrincipal actor, Role role) {
         checkRevision(row, input == null ? null : input.expectedRevision());
-        if (role == Role.SHIP_MANAGER) requireShipEditor(cruise, row, actor);
+        if (role == Role.SHIP_MANAGER) {
+            if ("SHIP_CHECKED".equals(action) || "SHIP_RETURN_ASM".equals(action)) {
+                requireShipEditor(cruise, row, actor);
+            } else if (!isShipManager(cruise, actor.getUserId(), false)) {
+                throw forbidden("STAFFING_SHIP_SCOPE_FORBIDDEN");
+            }
+        }
         requireIndependentReviewer(row, actor, role);
         Set<String> from = switch (action) {
             case "SHIP_CHECKED", "SHIP_RETURN_ASM" -> Set.of("PENDING_SHIP_REVIEW");
             case "SEND_TO_HR" -> Set.of("SHIP_REVIEWED");
-            case "CRM_RETURN_SHIP" -> Set.of("SHIP_REVIEWED", "SENT_TO_HR", "HR_SUBMITTED", "PLANNER_CONFIRMED", "OPS_APPROVED");
+            case "CRM_RETURN_SHIP" -> Set.of("SHIP_REVIEWED", "SENT_TO_HR", "HR_SUBMITTED", "SHIP_CONFIRMED", "PLANNER_CONFIRMED", "OPS_APPROVED");
             case "HR_SUBMITTED", "HR_RETURN_SHIP" -> Set.of("SENT_TO_HR");
-            case "PLANNER_CONFIRMED", "CRM_RETURN_HR" -> Set.of("HR_SUBMITTED");
+            case "SHIP_CONFIRMED", "RETURNED" -> Set.of("HR_SUBMITTED");
+            case "PLANNER_CONFIRMED", "CRM_RETURN_HR" -> Set.of("SHIP_CONFIRMED");
             case "OPS_APPROVED", "OPS_RETURN_CRM" -> Set.of("PLANNER_CONFIRMED");
             default -> Set.of();
         };
@@ -1044,7 +1053,7 @@ public class StaffingWorkflowService {
         if ("CRM_RETURN_SHIP".equals(action) && "PLANNER_CONFIRMED".equals(row.status()) && isCurrentShipPlan(id)) {
             throw conflict("STAFFING_INVALID_TRANSITION");
         }
-        boolean returned = action.contains("_RETURN_");
+        boolean returned = action.contains("_RETURN_") || "RETURNED".equals(action);
         if (returned && (input.comment() == null || input.comment().isBlank())) {
             throw conflict("STAFFING_RETURN_REASON_REQUIRED");
         }
@@ -1054,15 +1063,19 @@ public class StaffingWorkflowService {
             if (fingerprint == null) throw conflict("STAFFING_SHIP_PLAN_INCOMPLETE");
         } else if (!returned) {
             requireCurrentShipPlan(id, row);
+            if (Set.of("PLANNER_CONFIRMED", "OPS_APPROVED").contains(action)
+                    && (row.ship() == null || !isShipManager(cruise, row.ship(), false))) {
+                throw conflict("STAFFING_SHIP_CONFIRMATION_REQUIRED");
+            }
             if (!"SEND_TO_HR".equals(action) && !needsCovered(id, cruise)) {
                 throw conflict("STAFFING_CREW_SHORTAGE");
             }
         }
         String next = switch (action) {
-            case "SHIP_CHECKED", "SEND_TO_HR", "CRM_RETURN_HR" -> "SENT_TO_HR";
+            case "SHIP_CHECKED", "SEND_TO_HR", "CRM_RETURN_HR", "RETURNED" -> "SENT_TO_HR";
             case "HR_RETURN_SHIP", "CRM_RETURN_SHIP" -> "PENDING_SHIP_REVIEW";
             case "SHIP_RETURN_ASM" -> "PENDING_ASM";
-            case "OPS_RETURN_CRM" -> "HR_SUBMITTED";
+            case "OPS_RETURN_CRM" -> row.ship() == null ? "HR_SUBMITTED" : "SHIP_CONFIRMED";
             default -> action;
         };
         boolean clearingAssignments = Set.of("PENDING_ASM", "PENDING_SHIP_REVIEW").contains(next);
@@ -1081,6 +1094,8 @@ public class StaffingWorkflowService {
                     ship_reviewed_by=CASE WHEN ?='SHIP_CHECKED' THEN ? WHEN ? THEN NULL ELSE ship_reviewed_by END,
                     dispatched_by=CASE WHEN ? IN ('SEND_TO_HR','SHIP_CHECKED') THEN ? WHEN ? THEN NULL ELSE dispatched_by END,
                     hr_submitted_by=CASE WHEN ?='HR_SUBMITTED' THEN ? WHEN ? IN ('SENT_TO_HR','PENDING_ASM','PENDING_SHIP_REVIEW') THEN NULL ELSE hr_submitted_by END,
+                    ship_confirmed_by=CASE WHEN ?='SHIP_CONFIRMED' THEN ?
+                        WHEN ? IN ('HR_SUBMITTED','SENT_TO_HR','PENDING_ASM','PENDING_SHIP_REVIEW') THEN NULL ELSE ship_confirmed_by END,
                     planner_confirmed_by=CASE WHEN ?='PLANNER_CONFIRMED' THEN ?
                         WHEN ?<>'OPS_APPROVED' THEN NULL ELSE planner_confirmed_by END,
                     ops_approved_by=CASE WHEN ?='OPS_APPROVED' THEN ? ELSE NULL END,
@@ -1089,6 +1104,7 @@ public class StaffingWorkflowService {
                 """, next, fingerprint, action, actor.getUserId(), fingerprint == null,
                 action, actor.getUserId(), fingerprint == null,
                 action, actor.getUserId(), next, action, actor.getUserId(), next,
+                action, actor.getUserId(), next,
                 action, actor.getUserId(), action, id);
         if (clearingAssignments) {
             // Run after status moves to PENDING_ASM / PENDING_SHIP_REVIEW so the V134
@@ -1136,6 +1152,10 @@ public class StaffingWorkflowService {
     private void notifyNext(UUID id, UUID cruise, String status) {
         String code = cruiseCodeOf(cruise);
         String label = cruiseDisplayLabel(cruise);
+        boolean legacyHrReview = "SHIP_CONFIRMED".equals(status) && Boolean.TRUE.equals(jdbc.queryForObject("""
+                SELECT workflow_version='LEGACY' AND ship_review_workflow
+                FROM "StaffingRequest" WHERE request_id=?
+                """, Boolean.class, id));
         String title = switch (status) {
             case "PENDING_ASM" -> "Yêu cầu chuẩn bị chương trình chuyến " + code;
             case "PENDING_SHIP_REVIEW" -> "Chuyến " + code + " chờ lập phương án tàu";
@@ -1151,7 +1171,10 @@ public class StaffingWorkflowService {
             case "PENDING_SHIP_REVIEW" -> "Chương trình và định biên dịch vụ chuyến " + label + " đã sẵn sàng. Vui lòng mở khu vực, gán máy POS và bố trí dịch vụ.";
             case "SHIP_REVIEWED" -> "Quản lý tàu đã xác nhận phương án tàu cho chuyến " + label + ". Vui lòng kiểm tra và chuyển Quản lý nhân sự phân công.";
             case "SENT_TO_HR" -> "Phương án tàu chuyến " + label + " đã sẵn sàng. Vui lòng phân công nhân sự cho các vị trí và ca hoạt động.";
-            case "HR_SUBMITTED" -> "Quản lý nhân sự đã hoàn tất phân công cho chuyến " + label + ". Vui lòng rà soát và trình Quản lý vận hành phê duyệt.";
+            case "HR_SUBMITTED" -> "Quản lý nhân sự đã hoàn tất phân công cho chuyến " + label + ". Quản lý tàu cần kiểm tra và xác nhận phương án sau phân công.";
+            case "SHIP_CONFIRMED" -> "Quản lý tàu đã xác nhận phương án nhân sự chuyến " + label
+                    + (legacyHrReview ? ". Quản lý nhân sự cần xét duyệt phương án."
+                        : ". Quản lý lịch trình cần rà soát và trình Quản lý vận hành phê duyệt.");
             case "PLANNER_CONFIRMED" -> "Quản lý lịch trình đã trình phương án nhân sự chuyến " + label + " để Quản lý vận hành phê duyệt.";
             case "OPS_APPROVED" -> "Quản lý vận hành đã phê duyệt hoàn tất phương án tàu và nhân sự cho chuyến " + label + ".";
             default -> "Yêu cầu chuẩn bị nhân sự cho chuyến " + label + " vừa được cập nhật.";
@@ -1164,7 +1187,12 @@ public class StaffingWorkflowService {
                     WHEN 'PENDING_ASM' THEN EXISTS (
                         SELECT 1 FROM "UserRole" ur WHERE ur.user_id=u.user_id AND ur.role='ACTIVITY_SERVICE_MANAGER')
                     WHEN 'SHIP_REVIEWED' THEN u.user_id=c.preparation_coordinator_id
-                    WHEN 'HR_SUBMITTED' THEN u.user_id=c.preparation_coordinator_id
+                    WHEN 'HR_SUBMITTED' THEN EXISTS (
+                        SELECT 1 FROM "CruiseStaff" cs WHERE cs.cruise_id=c.cruise_id AND cs.user_id=u.user_id
+                            AND cs.status='ACTIVE' AND cs.role_in_cruise='SHIP_MANAGER')
+                    WHEN 'SHIP_CONFIRMED' THEN CASE WHEN ? THEN EXISTS (
+                        SELECT 1 FROM "UserRole" ur WHERE ur.user_id=u.user_id AND ur.role='HR_MANAGER')
+                        ELSE u.user_id=c.preparation_coordinator_id END
                     WHEN 'OPS_APPROVED' THEN u.user_id=c.preparation_coordinator_id
                     WHEN 'PENDING_SHIP_REVIEW' THEN EXISTS (
                         SELECT 1 FROM "CruiseStaff" cs WHERE cs.cruise_id=c.cruise_id AND cs.user_id=u.user_id
@@ -1174,7 +1202,7 @@ public class StaffingWorkflowService {
                     WHEN 'PLANNER_CONFIRMED' THEN EXISTS (
                         SELECT 1 FROM "UserRole" ur WHERE ur.user_id=u.user_id AND ur.role='OPERATIONS_MANAGER')
                     ELSE false END
-                """, UUID.class, cruise, status);
+                """, UUID.class, cruise, status, legacyHrReview);
 
         if ("PENDING_SHIP_REVIEW".equals(status) && recipients.isEmpty()) {
             String hrTitle = "Chuyến " + code + " cần phân công Quản lý tàu";
@@ -1338,6 +1366,13 @@ public class StaffingWorkflowService {
                     FROM "StaffingRequest" req JOIN "Cruise" c USING (cruise_id)
                     WHERE req.cruise_id=? AND req.status='OPS_APPROVED'
                     AND (req.workflow_version='V2' AND req.staffing_approved_revision=req.revision
+                        AND req.ship_confirmed_by IS NOT NULL
+                        AND EXISTS (SELECT 1 FROM "CruiseStaff" confirm_staff
+                            JOIN "User" confirm_user ON confirm_user.user_id=confirm_staff.user_id
+                            JOIN "UserRole" confirm_role ON confirm_role.user_id=confirm_user.user_id
+                            WHERE confirm_staff.cruise_id=req.cruise_id AND confirm_staff.user_id=req.ship_confirmed_by
+                                AND confirm_staff.status='ACTIVE' AND confirm_staff.role_in_cruise='SHIP_MANAGER'
+                                AND confirm_user.status='ACTIVE' AND confirm_role.role='SHIP_MANAGER')
                         AND req.planner_confirmed_by=c.preparation_coordinator_id
                         OR req.workflow_version='LEGACY' AND ((req.ship_review_workflow AND req.requested_by=c.preparation_coordinator_id)
                         OR (NOT req.ship_review_workflow AND c.preparation_coordinator_id=req.planner_confirmed_by))

@@ -7,6 +7,7 @@ import com.casms.security.jwt.JwtAuthenticationFilter;
 import jakarta.servlet.DispatcherType;
 import lombok.RequiredArgsConstructor;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -36,6 +37,12 @@ public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
     private final RolePermissionRepository rolePermissionRepository;
+
+    @Value("${springdoc.swagger-ui.enabled:false}")
+    private boolean swaggerEnabled;
+
+    @Value("${spring.h2.console.enabled:false}")
+    private boolean h2ConsoleEnabled;
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
@@ -74,27 +81,32 @@ public class SecurityConfig {
                             });
                         })
                 .authorizeHttpRequests(
-                        auth ->
+                        auth -> {
                                 auth.requestMatchers(request -> request.getDispatcherType() == DispatcherType.ASYNC
                                                 && storedAssetPath.matches(request))
-                                        .permitAll()
-                                        .requestMatchers(
-                                                "/v3/api-docs/**",
-                                                "/v3/api-docs.yaml",
-                                                "/swagger-ui/**",
-                                                "/swagger-ui.html",
-                                                "/swagger-resources/**",
-                                                "/webjars/**",
+                                        .permitAll();
+                                if (swaggerEnabled) {
+                                    auth.requestMatchers(
+                                                    "/v3/api-docs/**",
+                                                    "/v3/api-docs.yaml",
+                                                    "/swagger-ui/**",
+                                                    "/swagger-ui.html",
+                                                    "/swagger-resources/**",
+                                                    "/webjars/**")
+                                            .permitAll();
+                                }
+                                if (h2ConsoleEnabled) {
+                                    auth.requestMatchers("/h2-console/**").permitAll();
+                                }
+                                auth.requestMatchers(
                                                 "/auth/**",
-                                                "/h2-console/**",
                                                 "/booking/available-cabins",
                                                 "/booking/3d-available-cabins",
                                                 "/booking/lookup",
                                                 "/booking/lookup/**",
                                                 "/booking/recovery",
                                                 "/payment/sepay/webhook",
-                                                "/payment/sepay/quick-checkout",
-                                                "/payment/guest/**",
+                                                "/payment/guest/promo/validate",
                                                 "/api/v1/payments/webhooks/**")
                                         .permitAll()
                                         .requestMatchers(
@@ -125,7 +137,8 @@ public class SecurityConfig {
                                                 HttpMethod.POST, "/booking", "/booking/quotes")
                                         .permitAll()
                                         .anyRequest()
-                                        .authenticated())
+                                        .authenticated();
+                        })
                 .addFilterBefore(
                         jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();

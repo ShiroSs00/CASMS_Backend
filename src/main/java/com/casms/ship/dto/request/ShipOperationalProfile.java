@@ -75,11 +75,11 @@ public record ShipOperationalProfile(
                 || !classificationExpiryDate.isBefore(deliveryDate);
     }
 
-    @AssertTrue(message = "Ngày hết hạn đăng kiểm không được trước ngày đăng kiểm gần nhất")
+    @AssertTrue(message = "Ngày hết hạn đăng kiểm phải sau ngày đăng kiểm gần nhất")
     @JsonIgnore
     public boolean isExpiryNotBeforeLastClassification() {
         return lastClassificationDate == null || classificationExpiryDate == null
-                || !classificationExpiryDate.isBefore(lastClassificationDate);
+                || classificationExpiryDate.isAfter(lastClassificationDate);
     }
 
     @AssertTrue(message = "Danh sách tham chiếu hồ sơ không được chứa mục trùng lặp")

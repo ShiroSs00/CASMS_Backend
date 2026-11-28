@@ -77,16 +77,69 @@ public class OperationalRegulationService {
     public OperationalRegulationResponse updateRegulation(
             UUID regulationId, @Valid OperationalRegulationRequest request) {
         OperationalRegulation regulation = findRegulation(regulationId);
+        if (regulation.getStatus() == RegulationStatus.ACTIVE) {
+            throw new BusinessException(
+                    HttpStatus.CONFLICT,
+                    "ACTIVE_REGULATION_IMMUTABLE",
+                    "Quy định đang có hiệu lực không thể sửa trực tiếp. Hãy tạo phiên bản mới để"
+                        + " thay thế.");
+        }
         validateRequest(request);
         applyRequest(regulation, request);
 
         return toResponse(regulationRepository.save(regulation));
     }
 
+    // ==================== CREATE NEW VERSION (RG-07) ====================
+
+    public OperationalRegulationResponse createNewVersion(UUID sourceRegulationId) {
+        OperationalRegulation source = findRegulation(sourceRegulationId);
+
+        OperationalRegulation nextVersion = new OperationalRegulation();
+        nextVersion.setRegulationCode(businessCodeGenerator.next("RG"));
+        nextVersion.setName(source.getName());
+        nextVersion.setDescription(source.getDescription());
+        nextVersion.setRegulationType(source.getRegulationType());
+        nextVersion.setScope(source.getScope());
+        nextVersion.setValue(source.getValue());
+        nextVersion.setUnit(source.getUnit());
+        nextVersion.setEffectiveFrom(source.getEffectiveFrom());
+        nextVersion.setEffectiveTo(source.getEffectiveTo());
+        nextVersion.setStatus(RegulationStatus.DRAFT);
+
+        OperationalRegulation saved = regulationRepository.save(nextVersion);
+
+        if (auditRepository != null) {
+            AuditLog entry = new AuditLog();
+            entry.setAction("REGULATION_NEW_VERSION");
+            entry.setEntityType("OperationalRegulation");
+            entry.setResult("SUCCESS");
+            entry.setDetail(
+                    "Created draft version "
+                            + saved.getRegulationCode()
+                            + " from "
+                            + source.getRegulationCode()
+                            + " ("
+                            + source.getRegulationId()
+                            + ")");
+            auditRepository.save(entry);
+        }
+
+        return toResponse(saved);
+    }
+
     // ==================== DELETE ====================
 
     public void deleteUnusedRegulation(UUID regulationId) {
         OperationalRegulation regulation = findRegulation(regulationId);
+
+        if (regulation.getStatus() == RegulationStatus.ACTIVE) {
+            throw new BusinessException(
+                    HttpStatus.CONFLICT,
+                    "ACTIVE_REGULATION_DELETE_FORBIDDEN",
+                    "Không thể xóa quy định đang có hiệu lực. Hãy ngừng kích hoạt hoặc tạo phiên"
+                        + " bản mới.");
+        }
 
         boolean assignedToShip =
                 shipRegulationRepository.existsByRegulation_RegulationId(regulationId);

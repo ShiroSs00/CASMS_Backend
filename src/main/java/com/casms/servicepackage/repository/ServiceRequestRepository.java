@@ -25,6 +25,22 @@ public interface ServiceRequestRepository extends JpaRepository<ServiceRequest, 
 
     List<ServiceRequest> findByPassenger_User_UserId(UUID userId);
 
+    @Query("""
+            select r from ServiceRequest r where r.assignedUser.userId = :userId
+            and exists (select cs from CruiseStaff cs where cs.cruise = r.booking.cruise
+                and cs.user.userId = :userId and cs.status = 'ACTIVE' and cs.roleInCruise = 'ONBOARD_STAFF')
+            order by r.requestTime asc
+            """)
+    List<ServiceRequest> findAssignedWork(@Param("userId") UUID userId);
+
+    @Query("""
+            select (count(r) > 0) from ServiceRequest r where r.serviceRequestId = :id
+            and r.assignedUser.userId = :userId
+            and exists (select cs from CruiseStaff cs where cs.cruise = r.booking.cruise
+                and cs.user.userId = :userId and cs.status = 'ACTIVE' and cs.roleInCruise = 'ONBOARD_STAFF')
+            """)
+    boolean isAssignedWork(@Param("id") UUID id, @Param("userId") UUID userId);
+
     @Query(
             "select coalesce(sum(r.quantity),0) from ServiceRequest r where r.service.serviceId=:id"
                 + " and r.status in :statuses")

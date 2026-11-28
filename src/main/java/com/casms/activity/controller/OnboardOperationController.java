@@ -69,7 +69,9 @@ public class OnboardOperationController {
             summary = "Điều chỉnh lịch hoạt động do thời tiết biển",
             description = "Áp dụng Mô hình 5 (Dynamic Schedule) - Dời địa điểm và tự động thông báo tới hành khách")
     @PostMapping("/activities/{activityId}/weather-reschedule")
-    @PreAuthorize("hasAnyRole('CRUISE_STAFF', 'SHIP_OPERATOR', 'ACTIVITY_SERVICE_MANAGER', 'ADMIN')")
+    @PreAuthorize(
+            "hasAnyRole('ONBOARD_STAFF', 'OPERATIONS_MANAGER', 'SHIP_MANAGER',"
+                + " 'ACTIVITY_SERVICE_MANAGER', 'ADMIN') and !hasRole('POS')")
     public ApiResponse<RescheduleResult> rescheduleActivity(
             @PathVariable UUID activityId,
             @Valid @RequestBody WeatherRescheduleRequest request) {
@@ -89,7 +91,7 @@ public class OnboardOperationController {
             summary = "Kích hoạt đồng bộ giao dịch ngoại tuyến lên Cloud",
             description = "Áp dụng Mô hình 1 (Hybrid Edge-to-Cloud) - Quét lô giao dịch PENDING và chuyển sang SYNCED")
     @PostMapping("/sync/batch")
-    @PreAuthorize("hasAnyRole('SHIP_OPERATOR', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('OPERATIONS_MANAGER', 'SHIP_MANAGER', 'ADMIN') and !hasRole('POS')")
     public ApiResponse<SyncResult> triggerSync(
             @RequestParam(defaultValue = "100") int batchSize) {
 

@@ -155,6 +155,7 @@ public class BookingService {
     private final com.casms.cruisepackage.service.CruisePackageEntitlementService cruisePackageEntitlementService;
     private final com.casms.ship.service.DepartureSaleTermsService departureSaleTermsService;
     private final FareHoldInventory fareHoldInventory;
+    private final com.casms.checkin.repository.CruiseCheckinRepository cruiseCheckinRepository;
 
     /** Tra cứu danh sách các phòng còn trống trên tàu của chuyến đi để khách hàng tự chọn. */
     @Transactional(readOnly = true)
@@ -1099,27 +1100,42 @@ public class BookingService {
         return page.map(this::mapToSummaryResponse);
     }
 
-    /** Xác nhận hợp đồng đã ký bản cứng. */
+    /** Xác nhận hợp đồng (bản cứng bởi nhân viên hoặc hợp đồng điện tử bởi chủ đơn đặt chỗ). */
     @Transactional
     public BookingDetailResponse acceptContract(
             UUID bookingId, BookingContractAcceptRequest request, CasmsPrincipal principal) {
-        if (principal == null
-                || principal.getUserId() == null
-                || principal.getAuthorities().stream()
-                        .noneMatch(
-                                a ->
-                                        a.getAuthority().equals("BOOKING_CONTRACT_MANAGE")
-                                                || a.getAuthority().equals("ROLE_ADMIN"))) {
+        if (principal == null || principal.getUserId() == null) {
             throw new BusinessException(
                     HttpStatus.FORBIDDEN,
                     "BOOKING_CONTRACT_FORBIDDEN",
-                    "Accepting physical contract requires BOOKING_CONTRACT_MANAGE permission");
+                    "Authentication is required to accept a booking contract");
         }
         Booking booking =
                 bookingRepository
                         .findByIdForUpdate(bookingId)
                         .orElseThrow(() -> new ResourceNotFoundException("Booking", bookingId));
-        requireAssignedCruise(booking.getCruise().getCruiseId(), principal);
+
+        boolean isStaffContractManager =
+                principal.getAuthorities().stream()
+                        .anyMatch(
+                                a ->
+                                        a.getAuthority().equals("BOOKING_CONTRACT_MANAGE")
+                                                || a.getAuthority().equals("ROLE_ADMIN"));
+        boolean isBookingOwner =
+                booking.getBookedByUser() != null
+                        && Objects.equals(
+                                booking.getBookedByUser().getUserId(), principal.getUserId());
+
+        if (!isStaffContractManager && !isBookingOwner) {
+            throw new BusinessException(
+                    HttpStatus.FORBIDDEN,
+                    "BOOKING_CONTRACT_FORBIDDEN",
+                    "Accepting contract requires BOOKING_CONTRACT_MANAGE permission or booking"
+                        + " ownership");
+        }
+        if (isStaffContractManager) {
+            requireAssignedCruise(booking.getCruise().getCruiseId(), principal);
+        }
 
         if (booking.getBookingStatus() == BookingStatus.Cancelled) {
             throw new BusinessException(
@@ -1138,6 +1154,18 @@ public class BookingService {
         if (contract.getStatus() == BookingContractStatus.Accepted) {
             return mapToDetailResponse(booking);
         }
+
+        String rawDocRef = request.getDocumentReference();
+        if (isStaffContractManager && (rawDocRef == null || rawDocRef.isBlank())) {
+            throw new BusinessException(
+                    HttpStatus.BAD_REQUEST,
+                    "DOCUMENT_REFERENCE_REQUIRED",
+                    "Document reference / physical filing code is required");
+        }
+        String effectiveDocRef =
+                (rawDocRef != null && !rawDocRef.isBlank())
+                        ? rawDocRef.trim()
+                        : ("E-CONTRACT-" + booking.getBookingReference());
 
         List<BookingPassenger> passengers =
                 bookingPassengerRepository.findByBookingBookingId(bookingId);
@@ -1179,18 +1207,18 @@ public class BookingService {
         }
 
         contract.setStatus(BookingContractStatus.Accepted);
-        contract.setDocumentReference(request.getDocumentReference().trim());
+        contract.setDocumentReference(effectiveDocRef);
         contract.setAcceptedAt(
                 request.getAcceptedAt() != null ? request.getAcceptedAt() : Instant.now());
         contract.setAcceptedByBookingPassengerId(signerId);
         bookingContractRepository.save(contract);
 
         log.info(
-                "Contract {} accepted for booking {} by staff {} with document ref {}",
+                "Contract {} accepted for booking {} by {} with document ref {}",
                 contract.getContractReference(),
                 bookingId,
                 principal.getUsername(),
-                request.getDocumentReference());
+                effectiveDocRef);
 
         // Check if deposit is already paid; if so, auto-confirm booking!
         tryAutoConfirm(booking);
@@ -1428,9 +1456,17 @@ public class BookingService {
         return mapToDetailResponse(booking);
     }
 
-    /** Tự động xác nhận đơn nếu hợp đồng đã chấp thuận và số tiền cọc đã thu đủ. */
+    /** Tự động xác nhận đơn nếu hợp đồng đã chấp thuận và số tiền cọc đã thu đủ (chưa quá hạn giữ chỗ). */
     public boolean tryAutoConfirm(Booking booking) {
         if (booking.getBookingStatus() != BookingStatus.Draft) {
+            return false;
+        }
+        // RG-11 (CASMS-E2E-001): Never auto-confirm a Draft booking whose hold has already expired
+        if (booking.getHoldExpiresAt() != null && Instant.now().isAfter(booking.getHoldExpiresAt())) {
+            log.warn(
+                    "Skipping auto-confirm for booking {} because hold expired at {}",
+                    booking.getBookingReference(),
+                    booking.getHoldExpiresAt());
             return false;
         }
         BookingContract contract =
@@ -1509,6 +1545,34 @@ public class BookingService {
 
         if (booking.getBookingStatus() == BookingStatus.Cancelled) {
             return mapToDetailResponse(booking);
+        }
+
+        // RG-05 (CASMS-BOOKING-001): Block direct cancel on Confirmed bookings once cruise is
+        // IN_PROGRESS/COMPLETED or any passenger has already reached BoardingReady/boarded.
+        if (booking.getBookingStatus() == BookingStatus.Confirmed) {
+            Cruise cruise = booking.getCruise();
+            if (cruise != null && cruise.getStatus() == CruiseStatus.IN_PROGRESS) {
+                throw new BusinessException(
+                        HttpStatus.CONFLICT,
+                        "BOOKING_CANCEL_CRUISE_IN_PROGRESS",
+                        "Chuyến đi đang khởi hành, không thể hủy đặt chỗ theo luồng thông thường."
+                            + " Vui lòng xử lý qua luồng sự cố vận hành.");
+            }
+            if (cruise != null && cruise.getStatus() == CruiseStatus.COMPLETED) {
+                throw new BusinessException(
+                        HttpStatus.CONFLICT,
+                        "BOOKING_CANCEL_CRUISE_COMPLETED",
+                        "Chuyến đi đã hoàn thành, không thể hủy đặt chỗ. Vui lòng xử lý qua"
+                            + " khiếu nại/bồi hoàn.");
+            }
+            if (cruiseCheckinRepository != null
+                    && cruiseCheckinRepository.existsBoardedByBookingId(bookingId)) {
+                throw new BusinessException(
+                        HttpStatus.CONFLICT,
+                        "BOOKING_CANCEL_PASSENGER_BOARDED",
+                        "Hành khách trong đặt chỗ này đã hoàn tất lên tàu (BoardingReady), không"
+                            + " thể hủy trực tiếp.");
+            }
         }
 
         booking.setBookingStatus(BookingStatus.Cancelled);
@@ -1665,6 +1729,7 @@ public class BookingService {
     private BookingDetailResponse mapToDetailResponse(Booking booking) {
         BookingDetailResponse res = new BookingDetailResponse();
         res.setBookingId(booking.getBookingId());
+        res.setRepresentativeBookingPassengerId(booking.getRepresentativeBookingPassengerId());
         res.setBookingReference(booking.getBookingReference());
         res.setBookingStatus(booking.getBookingStatus());
 
@@ -1987,6 +2052,17 @@ public class BookingService {
             secondDue = createdAt.plus(Duration.ofDays(7));
         }
         return secondDue;
+    }
+
+    void validateQuotePaymentSchedule(PaymentPlan plan, Instant issuedAt, Instant finalDue,
+            Instant departure, int cutoffDays) {
+        try {
+            validatePaymentSchedule(plan, issuedAt, finalDue, departure);
+        } catch (BusinessException unavailable) {
+            throw new BusinessException(unavailable.getStatus(), unavailable.getCode(),
+                    unavailable.getMessage(), Map.of("eligiblePaymentPlans",
+                            resolveEligiblePaymentPlans(issuedAt, finalDue, departure, cutoffDays)));
+        }
     }
 
     private List<BookingQuoteResponse.QuoteInstallmentPreview> buildQuoteInstallmentPreviews(
@@ -2562,6 +2638,9 @@ public class BookingService {
         if (finalPaymentDueAt.isBefore(now)) {
             finalPaymentDueAt = now;
         }
+
+        // Never issue a quote with a schedule the booking command already rejects.
+        validateQuotePaymentSchedule(plan, now, finalPaymentDueAt, departure, terms.cutoffDays());
 
         String policyVersion = terms.version();
         String quotePayloadJson = writeQuoteData(lineItems);

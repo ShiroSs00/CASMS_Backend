@@ -2,8 +2,6 @@ package com.casms.booking.dto.request;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 
-import jakarta.validation.constraints.NotBlank;
-
 import lombok.Getter;
 import lombok.Setter;
 
@@ -15,10 +13,8 @@ import java.util.UUID;
 public class BookingContractAcceptRequest {
 
     @Schema(
-            description = "Mã tài liệu / số hiệu hồ sơ bản cứng đã ký",
-            example = "DOC-CTR-BK0001-20261023",
-            requiredMode = Schema.RequiredMode.REQUIRED)
-    @NotBlank(message = "Document reference / physical filing code is required")
+            description = "Mã tài liệu / số hiệu hồ sơ bản cứng đã ký (bắt buộc với nhân viên quầy; khách hàng xác nhận hợp đồng điện tử có thể để trống)",
+            example = "DOC-CTR-BK0001-20261023")
     @jakarta.validation.constraints.Size(max = 255)
     private String documentReference;
 

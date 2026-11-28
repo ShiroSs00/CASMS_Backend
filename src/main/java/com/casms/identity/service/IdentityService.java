@@ -5,6 +5,8 @@ import com.casms.identity.entity.User;
 import com.casms.identity.enums.Role;
 import com.casms.identity.enums.UserStatus;
 import com.casms.identity.repository.UserRepository;
+import com.casms.identity.repository.RolePermissionRepository;
+import com.casms.security.principal.CasmsPrincipal;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -13,6 +15,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.UUID;
+import java.time.Instant;
 
 @Slf4j
 @Service
@@ -20,6 +24,27 @@ import java.util.List;
 public class IdentityService {
 
     private final UserRepository userRepository;
+    private final RolePermissionRepository rolePermissions;
+
+    public record AccountAccess(UUID userId, String username, String email, UserStatus status,
+            Instant lastLoginAt, Instant createdAt, Instant updatedAt, List<String> roles,
+            List<String> permissions) {}
+
+    @Transactional(readOnly = true)
+    public AccountAccess accountAccess(UUID userId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new jakarta.persistence.EntityNotFoundException("Account not found"));
+        // Use the same authority resolution as authentication, including POS isolation.
+        var principal = new CasmsPrincipal(user, rolePermissions);
+        var permissions = principal.getAuthorities().stream().map(a -> a.getAuthority())
+                .filter(authority -> !authority.startsWith("ROLE_"))
+                .filter(authority -> java.util.Arrays.stream(Role.values()).noneMatch(r -> r.name().equals(authority)))
+                .sorted().toList();
+        var roles = principal.hasRole(Role.POS) ? List.of("POS")
+                : user.getRoles().stream().map(Enum::name).sorted().toList();
+        return new AccountAccess(user.getUserId(), user.getUsername(), user.getEmail(), user.getStatus(),
+                user.getLastLoginAt(), user.getCreatedAt(), user.getUpdatedAt(), roles, permissions);
+    }
 
     @Transactional(readOnly = true)
     public List<UserLookupResponse> findUsers(UserStatus status, String assignableFor) {
@@ -47,6 +72,7 @@ public class IdentityService {
                                         .displayName(u.getUsername())
                                         .username(u.getUsername())
                                         .status(u.getStatus())
+                                        .roles(u.getRoles().stream().map(Enum::name).sorted().toList())
                                         .capabilityLabel(capabilityLabel)
                                         .build())
                 .toList();

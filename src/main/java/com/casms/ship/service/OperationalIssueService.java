@@ -221,6 +221,15 @@ public class OperationalIssueService {
             throw new IllegalStateException("Record a resolution before verifying the issue");
         }
 
+        if (issue.getResolvedBy() != null
+                && issue.getResolvedBy().getUserId() != null
+                && issue.getResolvedBy().getUserId().equals(verifierId)) {
+            throw new BusinessException(
+                    HttpStatus.FORBIDDEN,
+                    "SELF_VERIFICATION_NOT_ALLOWED",
+                    "Người ghi nhận phương án xử lý không thể tự xác minh (nguyên tắc 4 mắt).");
+        }
+
         User verifier = findUser(verifierId);
 
         issue.setVerifiedBy(verifier);
@@ -239,7 +248,7 @@ public class OperationalIssueService {
         return toResponse(issueRepository.save(issue));
     }
 
-    // 10. Reopen
+    // 10. Reopen (preserves prior resolution history; only clears verification gate)
     public OperationalIssueResponse reopen(UUID issueId) {
         OperationalIssue issue = findIssue(issueId);
 
@@ -249,9 +258,6 @@ public class OperationalIssueService {
         }
 
         issue.setStatus(OperationalIssueStatus.OPEN);
-        issue.setResolvedAt(null);
-        issue.setResolvedBy(null);
-        issue.setResolution(null);
         issue.setVerifiedBy(null);
         issue.setVerifiedAt(null);
 

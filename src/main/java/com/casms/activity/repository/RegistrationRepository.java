@@ -70,6 +70,8 @@ public interface RegistrationRepository extends JpaRepository<Registration, UUID
 
     boolean existsByShoreExcursion_ShoreExcursionId(UUID excursionId);
 
+    List<Registration> findByShoreExcursion_ShoreExcursionId(UUID excursionId);
+
     boolean existsByPassenger_PassengerIdAndShoreExcursion_ShoreExcursionIdAndStatus(
             UUID passengerId, UUID shoreExcursionId, RegistrationStatus status);
 

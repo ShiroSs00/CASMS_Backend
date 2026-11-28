@@ -211,6 +211,17 @@ public class ShoreExcursionController {
         return ResponseEntity.ok(shoreExcursionService.close(id));
     }
 
+    // REOPEN REGISTRATION (CLOSED -> OPEN/FULL)
+    @Operation(
+            summary = "Mở lại đăng ký tour",
+            description = "Mở lại cổng đăng ký cho tour đang ở trạng thái CLOSED")
+    @PreAuthorize("hasAuthority('EXCURSION_STATUS_CHANGE')")
+    @PatchMapping("/{id}/reopen")
+    public ResponseEntity<ShoreExcursionResponse> reopen(
+            @Parameter(description = "ID tour tham quan", required = true) @PathVariable UUID id) {
+        return ResponseEntity.ok(shoreExcursionService.reopen(id));
+    }
+
     // START
     @Operation(
             summary = "Bắt đầu tour tham quan",
