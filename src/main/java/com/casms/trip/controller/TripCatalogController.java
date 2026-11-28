@@ -723,13 +723,13 @@ public class TripCatalogController {
         return ApiResponse.success(result);
     }
 
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasRole('CRUISE_MANAGER')")
     @GetMapping("/geography")
     public ApiResponse<List<TripGeographyCatalog.Item>> listGeography() {
         return ApiResponse.success(geographyCatalog.list(false));
     }
 
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasRole('CRUISE_MANAGER')")
     @PostMapping("/geography/countries")
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<TripGeographyCatalog.Item> createCountry(
@@ -737,7 +737,7 @@ public class TripCatalogController {
         return ApiResponse.success(geographyCatalog.createCountry(request.code(), request.label()));
     }
 
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasRole('CRUISE_MANAGER')")
     @PatchMapping("/geography/{kind}/{code}/status")
     public ApiResponse<TripGeographyCatalog.Item> changeGeographyStatus(
             @PathVariable TripGeographyCatalog.Kind kind,
@@ -747,6 +747,19 @@ public class TripCatalogController {
     }
 
     public record GeographyStatusRequest(@NotNull TripGeographyCatalog.Status status) {}
+
+    @PreAuthorize("hasRole('CRUISE_MANAGER')")
+    @GetMapping("/geography/country-options")
+    public ApiResponse<List<CountryOption>> geographyCountryOptions() {
+        Locale vietnamese = Locale.forLanguageTag("vi");
+        return ApiResponse.success(java.util.Arrays.stream(Locale.getISOCountries())
+                .map(code -> new CountryOption(code,
+                        new Locale.Builder().setRegion(code).build().getDisplayCountry(vietnamese)))
+                .sorted(java.util.Comparator.comparing(CountryOption::label))
+                .toList());
+    }
+
+    public record CountryOption(String code, String label) {}
 
     public record CreateCountryRequest(@NotNull String code, @NotNull String label) {}
 

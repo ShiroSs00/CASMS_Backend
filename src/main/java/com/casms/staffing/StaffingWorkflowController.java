@@ -4,6 +4,7 @@ import com.casms.common.response.ApiResponse;
 import com.casms.security.principal.CasmsPrincipal;
 import lombok.RequiredArgsConstructor;
 import jakarta.validation.Valid;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -19,6 +20,7 @@ import java.util.UUID;
 
 @RestController
 @RequiredArgsConstructor
+@PreAuthorize("isAuthenticated()")
 @RequestMapping("/cruises")
 public class StaffingWorkflowController {
     private final StaffingWorkflowService workflow;
@@ -31,7 +33,7 @@ public class StaffingWorkflowController {
 
     @PostMapping("/{cruiseId}/staffing-requests")
     public ApiResponse<StaffingWorkflowService.Snapshot> submit(
-            @PathVariable UUID cruiseId, @RequestBody StaffingWorkflowService.CreateRequest input,
+            @PathVariable UUID cruiseId, @Valid @RequestBody StaffingWorkflowService.CreateRequest input,
             @AuthenticationPrincipal CasmsPrincipal actor) {
         return ApiResponse.success(workflow.submit(cruiseId, input, actor));
     }
@@ -108,7 +110,7 @@ public class StaffingWorkflowController {
     @PostMapping("/staffing-requests/{requestId}/{action}")
     public ApiResponse<StaffingWorkflowService.Snapshot> review(
             @PathVariable UUID requestId, @PathVariable String action,
-            @RequestBody StaffingWorkflowService.ReviewRequest input,
+            @Valid @RequestBody StaffingWorkflowService.ReviewRequest input,
             @AuthenticationPrincipal CasmsPrincipal actor) {
         return ApiResponse.success(workflow.transition(requestId, action.toUpperCase(Locale.ROOT), input, actor));
     }

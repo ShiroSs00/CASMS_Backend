@@ -93,6 +93,11 @@ public interface ShipRepository extends JpaRepository<Ship, UUID> {
     @Query("SELECT count(c) > 0 FROM Cruise c WHERE c.ship.shipId = :shipId")
     boolean hasAnyCruise(@Param("shipId") UUID shipId);
 
+    @Query("SELECT count(c) > 0 FROM Cruise c WHERE c.ship.shipId = :shipId AND c.status NOT IN ('CANCELLED', 'COMPLETED')")
+    boolean hasActiveOrScheduledCruise(@Param("shipId") UUID shipId);
+
+    List<Ship> findByStatusAndArchivedAtIsNull(ShipStatus status);
+
     boolean existsByShipCodeAndShipIdNot(String shipCode, UUID shipId);
 
     Optional<Ship> findByShipCode(String shipCode);

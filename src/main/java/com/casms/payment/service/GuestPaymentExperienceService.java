@@ -17,6 +17,7 @@ import com.casms.payment.repository.*;
 import com.casms.security.principal.CasmsPrincipal;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
@@ -50,6 +51,9 @@ public class GuestPaymentExperienceService {
     private final SepayProperties sepayProperties;
     private final OnboardFinancialAccess financialAccess;
 
+    @Value("${casms.payment.guest-card-simulation-enabled:false}")
+    private boolean guestCardSimulationEnabled;
+
     // Cache tạm thời lưu tiến trình Group Split
     private final Map<String, GroupSplitResponse> splitGroupCache = new ConcurrentHashMap<>();
 
@@ -63,6 +67,12 @@ public class GuestPaymentExperienceService {
 
     @Transactional
     public CreditCardPaymentResponse processCreditCardPayment(CreditCardPaymentRequest request, CasmsPrincipal principal) {
+        if (!guestCardSimulationEnabled) {
+            throw new BusinessException(
+                    HttpStatus.FORBIDDEN,
+                    "CARD_SIMULATION_DISABLED",
+                    "Cổng thanh toán thẻ giả lập không khả dụng trong môi trường này. Vui lòng sử dụng VietQR hoặc cổng thanh toán chính thức.");
+        }
         log.info("Processing Credit Card payment for booking: {}, amount: {}", request.getBookingId(), request.getAmount());
 
         Booking booking = bookingRepository.findByIdForUpdate(request.getBookingId())
@@ -274,10 +284,11 @@ public class GuestPaymentExperienceService {
         // Nạp lại booking để lấy trạng thái mới nhất sau sync
         Booking refreshedBooking = bookingRepository.findById(booking.getBookingId()).orElse(booking);
 
+        boolean canOverrideSurcharge = hasPermSafe(principal, Permission.PAYMENT_PROCESS);
         BigDecimal surchargePercent;
-        if (Boolean.TRUE.equals(request.getWaiveSurcharge())) {
+        if (canOverrideSurcharge && Boolean.TRUE.equals(request.getWaiveSurcharge())) {
             surchargePercent = BigDecimal.ZERO;
-        } else if (request.getCustomSurchargePercent() != null) {
+        } else if (canOverrideSurcharge && request.getCustomSurchargePercent() != null) {
             surchargePercent = request.getCustomSurchargePercent();
         } else if (sepayProperties != null && sepayProperties.isCardSurchargeEnabled()) {
             BigDecimal resolved = sepayProperties.resolveCardSurcharge(cardBrand);
@@ -488,9 +499,21 @@ public class GuestPaymentExperienceService {
     }
 
     public GroupSplitResponse getGroupSplitStatus(String splitGroupId) {
+        return getGroupSplitStatus(splitGroupId, null);
+    }
+
+    public GroupSplitResponse getGroupSplitStatus(String splitGroupId, CasmsPrincipal principal) {
         GroupSplitResponse group = splitGroupCache.get(splitGroupId);
         if (group == null) {
             throw new ResourceNotFoundException("Group Split không tồn tại: " + splitGroupId);
+        }
+        if (group.getBookingId() != null) {
+            Booking booking = bookingRepository.findById(group.getBookingId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Booking not found with id: " + group.getBookingId()));
+            assertBookingAccess(booking, principal);
+        } else if (principal == null || (!hasPermSafe(principal, Permission.PAYMENT_READ)
+                && !hasPermSafe(principal, Permission.PAYMENT_PROCESS))) {
+            throw new AccessDeniedException("Bạn không có quyền xem tiến độ thanh toán nhóm này");
         }
         return group;
     }
@@ -511,6 +534,14 @@ public class GuestPaymentExperienceService {
                 .orElseThrow(() -> new ResourceNotFoundException("Booking not found with id: " + request.getBookingId()));
 
         assertBookingAccess(booking, principal);
+
+        if (booking.getBookingStatus() == BookingStatus.Draft
+                || booking.getBookingStatus() == BookingStatus.Cancelled) {
+            throw new BusinessException(
+                    HttpStatus.BAD_REQUEST,
+                    "BOOKING_NOT_ELIGIBLE_FOR_VAT",
+                    "Chỉ có thể xuất hóa đơn VAT cho đơn đặt chỗ đã xác nhận.");
+        }
 
         // Kiểm tra định dạng Mã số thuế Việt Nam (10 chữ số độc lập hoặc 13 chữ số chi nhánh)
         String cleanTaxCode = request.getTaxCode().trim().replaceAll("\\s+", "");
@@ -835,16 +866,12 @@ public class GuestPaymentExperienceService {
     // --- Helper kiểm tra quyền truy cập Booking (Chống IDOR) ---
     private void assertBookingAccess(Booking booking, CasmsPrincipal principal) {
         if (principal == null) {
-            // Cho phép thanh toán không cần login nếu đơn đặt tour không gắn với tài khoản thành viên nào (Guest Booking)
-            if (booking.getBookedByUser() != null) {
-                throw new AccessDeniedException("Vui lòng đăng nhập để thực hiện giao dịch cho đơn đặt tour này");
-            }
-            return;
+            throw new AccessDeniedException("Vui lòng đăng nhập để thực hiện giao dịch cho đơn đặt tour này");
         }
         if (hasPermSafe(principal, Permission.PAYMENT_PROCESS) || hasPermSafe(principal, Permission.PAYMENT_READ)) {
             return;
         }
-        if (booking.getBookedByUser() != null && !principal.getUserId().equals(booking.getBookedByUser().getUserId())) {
+        if (booking.getBookedByUser() == null || !principal.getUserId().equals(booking.getBookedByUser().getUserId())) {
             throw new AccessDeniedException("Bạn không có quyền thực hiện giao dịch cho đơn đặt tour của khách hàng khác");
         }
     }

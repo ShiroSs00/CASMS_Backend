@@ -97,14 +97,18 @@ public class AuthService {
 
     @Transactional(readOnly = true)
     public LoginResponse refreshToken(String accessToken) {
+        Instant sessionStartedAt =
+                jwtService.findRefreshableSessionStart(accessToken)
+                        .orElseThrow(AuthService::invalidToken);
         User user =
                 jwtService.findValidUserId(accessToken)
                         .flatMap(userRepository::findById)
                         .filter(account -> account.getStatus() == UserStatus.ACTIVE)
                         .orElseThrow(AuthService::invalidToken);
 
-        // Generate new token
-        String newAccessToken = jwtService.generateToken(user.getUsername(), user.getUserId());
+        // Generate new token preserving original session start time (bounded refresh window)
+        String newAccessToken =
+                jwtService.generateToken(user.getUsername(), user.getUserId(), sessionStartedAt);
         long expiresIn = jwtService.getExpirationMs() / 1000;
 
         LoginResponse response = new LoginResponse();
@@ -117,6 +121,12 @@ public class AuthService {
         response.setEffectivePermissions(getEffectivePermissions(user));
 
         return response;
+    }
+
+    public void logout(String accessToken) {
+        if (accessToken != null && !accessToken.isBlank()) {
+            jwtService.revokeToken(accessToken);
+        }
     }
 
     private static BusinessException invalidCredentials() {

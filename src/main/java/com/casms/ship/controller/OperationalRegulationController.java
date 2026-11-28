@@ -80,6 +80,19 @@ public class OperationalRegulationController {
                 ApiResponse.success(regulationService.updateRegulation(regulationId, request)));
     }
 
+    @Operation(
+            summary = "Tạo phiên bản nháp mới từ quy định hiện có",
+            description =
+                    "Nhân bản quy định hiện có sang phiên bản nháp mới để chỉnh sửa mà không làm"
+                        + " thay đổi bản đang có hiệu lực")
+    @PreAuthorize("hasAuthority('REGULATION_CREATE')")
+    @PostMapping("/{regulationId}/versions")
+    public ResponseEntity<ApiResponse<OperationalRegulationResponse>> createNewVersion(
+            @PathVariable UUID regulationId) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.success(regulationService.createNewVersion(regulationId)));
+    }
+
     @Operation(summary = "Xóa quy định", description = "Xóa quy định vận hành chưa được sử dụng")
     @PreAuthorize("hasAuthority('REGULATION_DELETE')")
     @DeleteMapping("/{regulationId}")

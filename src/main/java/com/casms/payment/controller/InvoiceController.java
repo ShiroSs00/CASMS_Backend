@@ -40,10 +40,11 @@ public class InvoiceController {
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<InvoiceResponse> generateBookingInvoice(
             @Parameter(description = "ID đơn đặt tour", required = true) @PathVariable
-                    UUID bookingId, @AuthenticationPrincipal CasmsPrincipal actor) {
+                    UUID bookingId, @AuthenticationPrincipal CasmsPrincipal actor,
+            @RequestHeader(value = "If-Match", required = false) Integer expectedVersion) {
         financialAccess.requireFinance(actor, Permission.INVOICE_GENERATE, Permission.PAYMENT_PROCESS);
         return ApiResponse.success(
-                "Booking invoice generated", invoiceService.generateBookingInvoice(bookingId));
+                "Booking invoice generated", invoiceService.generateBookingInvoice(bookingId, expectedVersion));
     }
 
     @Operation(
@@ -93,7 +94,7 @@ public class InvoiceController {
                     UUID bookingId, @AuthenticationPrincipal CasmsPrincipal actor) {
         financialAccess.requireAuthenticated(actor);
         if (financialAccess.isFinance(actor, Permission.INVOICE_GENERATE, Permission.PAYMENT_PROCESS)) {
-            return ApiResponse.success(invoiceService.getInvoicesForBooking(bookingId));
+            return ApiResponse.success(invoiceService.readExistingBookingInvoices(bookingId));
         }
         financialAccess.requireBookingInvoice(actor, financialAccess.booking(bookingId));
         return ApiResponse.success(invoiceService.readExistingBookingInvoices(bookingId));

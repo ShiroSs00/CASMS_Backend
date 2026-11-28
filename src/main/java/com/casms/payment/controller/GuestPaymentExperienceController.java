@@ -62,8 +62,9 @@ public class GuestPaymentExperienceController {
     @GetMapping("/split/{splitGroupId}")
     public ApiResponse<GroupSplitResponse> getGroupSplitStatus(
             @Parameter(description = "Mã định danh nhóm chia tiền", required = true)
-            @PathVariable String splitGroupId) {
-        return ApiResponse.success(guestPaymentExperienceService.getGroupSplitStatus(splitGroupId));
+            @PathVariable String splitGroupId,
+            @AuthenticationPrincipal CasmsPrincipal principal) {
+        return ApiResponse.success(guestPaymentExperienceService.getGroupSplitStatus(splitGroupId, principal));
     }
 
     @Operation(

@@ -15,6 +15,9 @@ spring:
   flyway:
     enabled: true
 
+jwt:
+  secret: ${JWT_SECRET:dev-only-casms-jwt-secret-key-min-32-bytes-2026}
+
 logging:
   level:
     com.casms: DEBUG

@@ -18,6 +18,7 @@ import com.casms.ship.enums.LocationDeviceType;
 import com.casms.ship.repository.CruiseRepository;
 import com.casms.ship.repository.LocationDeviceRepository;
 import com.casms.ship.repository.LocationRecordRepository;
+import com.casms.ship.repository.ShipRepository;
 
 import lombok.RequiredArgsConstructor;
 
@@ -47,6 +48,7 @@ public class BleRuntimeService {
     private final LocationDeviceRepository devices;
     private final LocationRecordRepository records;
     private final PassengerBleIdentityRepository identities;
+    private final ShipRepository ships;
 
     @Transactional
     public void ingest(UUID cruiseId, UUID receiverId, BleReadingRequest request) {
@@ -219,6 +221,11 @@ public class BleRuntimeService {
             throw new BusinessException("CRUISE_HAS_NO_SHIP", "Cruise has no assigned ship");
         }
         UUID shipId = cruise.getShip().getShipId();
+        UUID manager = CruisePlanOperationsAccess.currentShipManager();
+        if (manager != null && !ships.isManagedBy(shipId, manager)) {
+            throw new org.springframework.security.access.AccessDeniedException(
+                    "Bạn không có quyền theo dõi hành khách trên tàu này.");
+        }
         Instant now = Instant.now();
         List<LocationDevice> receivers = findActiveReceivers(shipId);
         List<PassengerBleIdentity> active =

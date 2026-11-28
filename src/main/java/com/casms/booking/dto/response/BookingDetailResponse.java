@@ -75,6 +75,9 @@ public class BookingDetailResponse {
     @Schema(description = "Hạn giữ chỗ cho đơn Draft (nếu có)")
     private Instant holdExpiresAt;
 
+    @Schema(description = "Hành khách đại diện đã ghi nhận cho đặt chỗ; không phải tài khoản nhân viên đặt hộ")
+    private UUID representativeBookingPassengerId;
+
     // Hợp đồng
     @Schema(description = "Mã hợp đồng đặt chỗ", example = "CTR-BK-20261019-9B3E")
     private String contractReference;

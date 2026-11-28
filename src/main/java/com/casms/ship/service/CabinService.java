@@ -20,6 +20,7 @@ import lombok.extern.slf4j.Slf4j;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -83,6 +84,12 @@ public class CabinService {
 
         CabinStatus status =
                 request.getStatus() == null ? CabinStatus.AVAILABLE : request.getStatus();
+        if (status == CabinStatus.OCCUPIED) {
+            throw new BusinessException(
+                    HttpStatus.BAD_REQUEST,
+                    "CABIN_OCCUPANCY_REQUIRES_ASSIGNMENT",
+                    "Không thể khởi tạo cabin trực tiếp ở trạng thái Đang sử dụng (OCCUPIED).");
+        }
         Boolean isAccessible =
                 request.getIsAccessible() == null ? Boolean.FALSE : request.getIsAccessible();
 
@@ -143,6 +150,15 @@ public class CabinService {
                     "CABIN_MODEL_FIELDS_IMMUTABLE",
                     "Cabin type, position, rotation and dimensions are controlled by the ship model"
                         + " import");
+        }
+        if (cabin.getStatus() == CabinStatus.OCCUPIED
+                && ((request.getCapacity() != null && !request.getCapacity().equals(cabin.getCapacity()))
+                        || (request.getIsAccessible() != null
+                                && !request.getIsAccessible().equals(cabin.getIsAccessible())))) {
+            throw new BusinessException(
+                    HttpStatus.CONFLICT,
+                    "CABIN_OCCUPIED_IMMUTABLE",
+                    "Không thể chỉnh sửa sức chứa hoặc thuộc tính tiếp cận khi cabin đang có khách sử dụng.");
         }
         if (request.getCapacity() != null) {
             if (request.getCapacity() < 1) {

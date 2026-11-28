@@ -54,6 +54,7 @@ public class ShipTypeService {
     private final ShipModelImportService importer;
     private final BusinessCodeGenerator codes;
     private final ShipService shipService;
+    private final ShipClassificationMonitorService classificationMonitor;
     private final IdempotencyRecordRepository idempotencyRecords;
     private final ObjectMapper mapper;
 
@@ -247,7 +248,9 @@ public class ShipTypeService {
         ship.setCreatedByShipManagerId(managerId);
         ship.setShipName(shipName);
         ship.setShipCode(codes.next("SH"));
-        ship.setStatus(ShipStatus.DRAFT);
+        boolean expiredOnCreate = profile != null && profile.classificationExpiryDate() != null
+                && profile.classificationExpiryDate().isBefore(java.time.LocalDate.now());
+        ship.setStatus(expiredOnCreate ? ShipStatus.MAINTENANCE : ShipStatus.READY);
         ship.setTotalCapacity(type.getTotalCapacity());
         ship.setTotalDecks(type.getTotalDecks());
         ship.setLengthMeters(type.getLengthMeters());
@@ -294,6 +297,8 @@ public class ShipTypeService {
                     "Không thể thay đổi số IMO khi tàu đã được xác minh đưa vào khai thác.");
         }
         ship.setOperationalProfile(updated);
+        ships.save(ship);
+        classificationMonitor.transitionToMaintenanceIfExpired(ship, java.time.LocalDate.now());
         return updated;
     }
 

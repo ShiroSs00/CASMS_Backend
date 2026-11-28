@@ -4,6 +4,7 @@ import com.casms.checkin.dto.CheckinResponse;
 import com.casms.checkin.service.CheckinService;
 import com.casms.common.response.ApiResponse;
 import com.casms.security.principal.CasmsPrincipal;
+import com.casms.ship.repository.BookingAgentCruiseScope;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -48,7 +49,7 @@ public class CheckinController {
                                 emergencyContactName,
                                 emergencyContactPhone,
                                 principal.getUserId(),
-                                principal.isStaff())));
+                                principal.isStaff(), BookingAgentCruiseScope.assignee(principal))));
     }
 
     @Operation(
@@ -68,7 +69,8 @@ public class CheckinController {
                 "Check-in completed successfully",
                 CheckinResponse.of(
                         service.completeCheckin(
-                                passengerId, principal.getUserId(), principal.isStaff())));
+                                passengerId, principal.getUserId(), principal.isStaff(),
+                                BookingAgentCruiseScope.assignee(principal))));
     }
 
     @Operation(
@@ -84,6 +86,7 @@ public class CheckinController {
         return ApiResponse.success(
                 CheckinResponse.of(
                         service.getStatus(
-                                passengerId, principal.getUserId(), principal.isStaff())));
+                                passengerId, principal.getUserId(), principal.isStaff(),
+                                BookingAgentCruiseScope.assignee(principal))));
     }
 }

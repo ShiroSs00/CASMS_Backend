@@ -15,8 +15,12 @@ import org.springframework.stereotype.Service;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
 
+import lombok.extern.slf4j.Slf4j;
+
+@Slf4j
 @Service
 @Transactional
 public class SupplierService {
@@ -73,7 +77,24 @@ public class SupplierService {
             throw new IllegalStateException("Supplier name already exists");
         }
 
+        // RG-09: Only downgrade VERIFIED -> PENDING when critical identity fields change.
+        // Routine internal notes or contact updates preserve VERIFIED status.
+        boolean criticalIdentityChanged =
+                !Objects.equals(supplier.getSupplierName(), name)
+                        || !Objects.equals(supplier.getSupplierType(), request.supplierType());
+
         applyRequest(supplier, request);
+
+        if (criticalIdentityChanged
+                && supplier.getVerificationStatus() == SupplierVerificationStatus.VERIFIED) {
+            supplier.setVerificationStatus(SupplierVerificationStatus.PENDING);
+            supplier.setVerifiedAt(null);
+            supplier.setVerifiedBy(null);
+            if (supplier.getStatus() == SupplierStatus.ACTIVE) {
+                supplier.setStatus(SupplierStatus.INACTIVE);
+            }
+        }
+
         return supplierRepository.save(supplier);
     }
 
@@ -103,9 +124,30 @@ public class SupplierService {
         return supplierRepository.save(supplier);
     }
 
-    // DEACTIVATE
+    // DEACTIVATE (RG-09: allow recording real-world loss of validity without deleting linked excursions)
     public Supplier deactivate(UUID supplierId) {
         Supplier supplier = findSupplier(supplierId);
+
+        long activeExcursions =
+                shoreExcursionRepository.findBySupplier_SupplierId(supplierId).stream()
+                        .filter(
+                                ex ->
+                                        ex.getStatus()
+                                                        != com.casms.activity.enums
+                                                                .ShoreExcursionStatus.COMPLETED
+                                                && ex.getStatus()
+                                                        != com.casms.activity.enums
+                                                                .ShoreExcursionStatus.CANCELLED)
+                        .count();
+        if (activeExcursions > 0) {
+            log.warn(
+                    "Deactivating supplier {} ({}) while {} active/upcoming shore excursion(s)"
+                        + " reference it; linked excursions and bookings are preserved for"
+                        + " operational review.",
+                    supplierId,
+                    supplier.getSupplierName(),
+                    activeExcursions);
+        }
 
         supplier.setStatus(SupplierStatus.INACTIVE);
         return supplierRepository.save(supplier);

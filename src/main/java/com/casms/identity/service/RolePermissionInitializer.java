@@ -69,16 +69,7 @@ public class RolePermissionInitializer implements CommandLineRunner {
                         Permission.CABIN_DELETE,
                         Permission.CABIN_SEARCH,
                         Permission.CABIN_VALIDATE,
-                        Permission.BLE_ANCHOR_CREATE,
                         Permission.BLE_ANCHOR_READ,
-                        Permission.BLE_ANCHOR_UPDATE,
-                        Permission.BLE_ANCHOR_DELETE,
-                        Permission.BLE_ANCHOR_ACTIVATE,
-                        Permission.BLE_ANCHOR_DEACTIVATE,
-                        Permission.BLE_ANCHOR_RETIRE,
-                        Permission.BLE_ANCHOR_INSTALL,
-                        Permission.BLE_ANCHOR_VALIDATE,
-                        Permission.BLE_TELEMETRY_RECEIVE,
                         Permission.BLE_TELEMETRY_READ));
 
         // CRUISE_MANAGER = Catalog Itinerary Coordinator (FN-001–027, FN-030–032).
@@ -176,7 +167,11 @@ public class RolePermissionInitializer implements CommandLineRunner {
                         Permission.SHIP_ARCHIVE,
                         Permission.SHIP_CONFIGURATION_READ,
                         Permission.SHIP_CONFIGURATION_VALIDATE,
+                        Permission.BLE_ANCHOR_CREATE,
                         Permission.BLE_ANCHOR_READ,
+                        Permission.BLE_ANCHOR_UPDATE,
+                        Permission.BLE_ANCHOR_DELETE,
+                        Permission.BLE_ANCHOR_INSTALL,
                         Permission.BLE_ANCHOR_ACTIVATE,
                         Permission.BLE_ANCHOR_DEACTIVATE,
                         Permission.BLE_ANCHOR_RETIRE,
@@ -454,20 +449,24 @@ public class RolePermissionInitializer implements CommandLineRunner {
                         Permission.REPORT_GENERATE,
                         Permission.REPORT_EXPORT));
 
-        // ONBOARD_STAFF serves both services and activities. Operational mutations
-        // come from resource assignments and POS policies, never global role grants.
+        // ONBOARD_STAFF serves assigned services and records attendance on assigned activities/tours (RG-10).
         saveRolePermission(
                 Role.ONBOARD_STAFF,
                 EnumSet.of(
                         Permission.POS_ACCESS,
-                        // Catalogue reads; service request operations are scoped by POS.
+                        // Phục vụ yêu cầu dịch vụ được phân công
                         Permission.SERVICE_READ,
+                        Permission.SERVICE_REQUEST_READ,
+                        Permission.SERVICE_REQUEST_EXECUTE,
 
-                        // Điểm danh và kiểm tra hoạt động / tour bờ
+                        // Điểm danh và kiểm tra hoạt động / tour bờ được phân công
                         Permission.ACTIVITY_READ,
+                        Permission.ACTIVITY_ATTENDANCE,
+                        Permission.PARTICIPATION_ATTENDANCE,
                         Permission.EXCURSION_READ,
                         Permission.TOUR_GROUP_READ,
                         Permission.TOUR_GROUP_PASSENGER_READ,
+                        Permission.TOUR_GROUP_PASSENGER_ATTENDANCE,
 
                         // Vận hành checkout và BLE
                         Permission.CHECKOUT_PROCESS,

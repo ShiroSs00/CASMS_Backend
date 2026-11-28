@@ -49,10 +49,24 @@ public class BookingEmailDispatcher {
                 helper.setSubject((String) row.get("subject"));
                 helper.setText(body != null ? body : "", isHtml);
                 sender.send(mime);
-                jdbc.update("UPDATE \"BookingEmailOutbox\" SET sent_at = now(), attempts = attempts + 1 WHERE event_key = ?", key);
+                String redactedBody = redactTemporaryPassword(body);
+                if (redactedBody != null && !redactedBody.equals(body)) {
+                    jdbc.update("UPDATE \"BookingEmailOutbox\" SET sent_at = now(), attempts = attempts + 1, body = ? WHERE event_key = ?", redactedBody, key);
+                } else {
+                    jdbc.update("UPDATE \"BookingEmailOutbox\" SET sent_at = now(), attempts = attempts + 1 WHERE event_key = ?", key);
+                }
             } catch (Exception ex) {
                 jdbc.update("UPDATE \"BookingEmailOutbox\" SET attempts = attempts + 1, next_attempt_at = now() + interval '5 minutes' WHERE event_key = ?", key);
             }
         }
+    }
+
+    private static String redactTemporaryPassword(String body) {
+        if (body == null || body.isBlank()) {
+            return body;
+        }
+        return body.replaceAll(
+                "(<strong>Mật khẩu tạm:</strong>\\s*<code>)[^<]+(</code>)",
+                "$1[REDACTED]$2");
     }
 }

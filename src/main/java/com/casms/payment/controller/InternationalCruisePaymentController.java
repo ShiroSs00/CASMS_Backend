@@ -122,7 +122,7 @@ public class InternationalCruisePaymentController {
     }
 
     @Operation(summary = "Refund a posted onboard transaction")
-    @PreAuthorize("isAuthenticated()")
+    @PreAuthorize("hasAnyRole('ADMIN', 'FINANCE_OFFICER') and hasAuthority('PAYMENT_REFUND') and !hasRole('PASSENGER')")
     @PostMapping("/transactions/{id}/refund")
     public ApiResponse<TransactionResponse> refundTransaction(
             @PathVariable("id") UUID transactionId,
@@ -134,7 +134,7 @@ public class InternationalCruisePaymentController {
     }
 
     @Operation(summary = "Void an onboard transaction and post an audit reversal")
-    @PreAuthorize("isAuthenticated()")
+    @PreAuthorize("hasAnyRole('ADMIN', 'FINANCE_OFFICER') and hasAuthority('PAYMENT_REFUND') and !hasRole('PASSENGER')")
     @PostMapping("/transactions/{id}/void")
     public ApiResponse<TransactionResponse> voidTransaction(
             @PathVariable("id") UUID transactionId,
@@ -161,7 +161,7 @@ public class InternationalCruisePaymentController {
     }
 
     @Operation(summary = "Capture a previously authorized payment")
-    @PreAuthorize("isAuthenticated()")
+    @PreAuthorize("hasAnyRole('ADMIN', 'FINANCE_OFFICER', 'BOOKING_AGENT') and hasAuthority('PAYMENT_PROCESS') and !hasRole('PASSENGER')")
     @PostMapping("/payments/capture")
     public ApiResponse<GatewayPaymentResponse> capturePayment(
             @RequestBody @Valid CapturePaymentRequest request,
@@ -328,7 +328,7 @@ public class InternationalCruisePaymentController {
     }
 
     @Operation(summary = "Register a new exchange rate snapshot")
-    @PreAuthorize("isAuthenticated()")
+    @PreAuthorize("hasAnyRole('ADMIN', 'FINANCE_OFFICER') and !hasRole('PASSENGER')")
     @PostMapping("/exchange-rates")
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<CurrencyExchangeRate> registerExchangeRate(
@@ -361,7 +361,7 @@ public class InternationalCruisePaymentController {
     // 7. OFFLINE POS TRANSACTION SYNCHRONIZATION ENDPOINTS
     // =========================================================================
     @Operation(summary = "Synchronize offline POS transactions with idempotency and conflict detection")
-    @PreAuthorize("isAuthenticated()")
+    @PreAuthorize("hasAnyRole('ADMIN', 'FINANCE_OFFICER', 'ONBOARD_STAFF', 'POS') and !hasRole('PASSENGER')")
     @PostMapping("/offline-transactions/sync")
     public ApiResponse<OfflineBatchSyncResponse> syncOfflineTransactions(
             @RequestBody @Valid OfflineBatchSyncRequest request,
@@ -372,7 +372,7 @@ public class InternationalCruisePaymentController {
     }
 
     @Operation(summary = "Get offline synchronization status and conflict logs")
-    @PreAuthorize("isAuthenticated()")
+    @PreAuthorize("hasAnyRole('ADMIN', 'FINANCE_OFFICER', 'ONBOARD_STAFF', 'POS') and !hasRole('PASSENGER')")
     @GetMapping("/offline-transactions/sync-status")
     public ApiResponse<Map<String, Object>> getOfflineSyncStatus(
             @RequestParam(required = false) UUID accountId,

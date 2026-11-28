@@ -267,11 +267,11 @@ public class BookingController {
     }
 
     @Operation(
-            summary = "Xác nhận hợp đồng bản cứng",
+            summary = "Xác nhận hợp đồng (bản cứng hoặc hợp đồng điện tử)",
             description =
-                    "Xác nhận hợp đồng đã ký bản cứng, ghi nhận mã lưu trữ hồ sơ, người thực hiện"
-                        + " và thời điểm ký để đủ điều kiện xác nhận đặt chỗ")
-    @PreAuthorize("hasAuthority('BOOKING_CONTRACT_MANAGE')")
+                    "Nhân viên quầy xác nhận hợp đồng đã ký bản cứng hoặc chủ đơn đặt chỗ xác nhận"
+                        + " hợp đồng điện tử trực tuyến để đủ điều kiện xác nhận đặt chỗ (RG-11).")
+    @PreAuthorize("hasAnyAuthority('BOOKING_CONTRACT_MANAGE', 'BOOKING_READ')")
     @PostMapping("/{bookingId}/contract/accept")
     public ApiResponse<BookingDetailResponse> acceptContract(
             @Parameter(description = "ID đơn đặt chỗ", required = true) @PathVariable

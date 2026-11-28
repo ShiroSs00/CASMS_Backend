@@ -24,6 +24,18 @@ import java.util.UUID;
 public class CruisePreparationReviewController {
     private final CruisePreparationService preparation;
 
+    @GetMapping("/operating-budgets")
+    public ApiResponse<List<CruisePreparationService.SubmittedBudget>> operatingBudgets(
+            @AuthenticationPrincipal CasmsPrincipal principal) {
+        return ApiResponse.success(preparation.operatingBudgetReviews(principal));
+    }
+
+    @GetMapping("/operating-budgets/{cruiseId}/history")
+    public ApiResponse<List<CruisePreparationService.BudgetEvent>> budgetHistory(
+            @PathVariable UUID cruiseId,@AuthenticationPrincipal CasmsPrincipal principal) {
+        return ApiResponse.success(preparation.operatingBudgetHistory(cruiseId,principal));
+    }
+
     @GetMapping
     public ApiResponse<List<GroupReviewSummary>> list(@AuthenticationPrincipal CasmsPrincipal principal) {
         return ApiResponse.success(preparation.submittedGroupReviews(principal.getUserId()));

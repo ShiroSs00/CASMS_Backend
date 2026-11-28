@@ -813,13 +813,13 @@ public class SepayService {
                     "Cổng thanh toán SePay hiện đang tạm ngưng.");
         }
 
-        // PAY-02: Any booking-scoped quick checkout must authenticate & verify booking ownership.
+        // PAY-02: Require authentication; non-staff must bind payment to an owned booking (no orphan payments).
+        if (userId == null) {
+            throw new org.springframework.security.access.AccessDeniedException(
+                    "Cần đăng nhập để tạo thanh toán SePay.");
+        }
         Booking linkedBooking = null;
         if (request.getBookingId() != null) {
-            if (userId == null) {
-                throw new org.springframework.security.access.AccessDeniedException(
-                        "Cần đăng nhập để tạo thanh toán cho đặt chỗ.");
-            }
             linkedBooking =
                     bookingRepository
                             .findById(request.getBookingId())
@@ -829,6 +829,11 @@ public class SepayService {
                                                     "Booking not found with id: "
                                                             + request.getBookingId()));
             assertAccess(linkedBooking, userId, canReadAll);
+        } else if (!canReadAll) {
+            throw new BusinessException(
+                    HttpStatus.BAD_REQUEST,
+                    "BOOKING_ID_REQUIRED",
+                    "Vui lòng chọn đơn đặt chỗ hợp lệ trước khi tạo thanh toán.");
         }
 
         // PAY-03: Server-authoritative exchange rate only.
@@ -859,10 +864,8 @@ public class SepayService {
                         "Số tiền thanh toán USD tối thiểu là 0.01 USD");
             }
             amountUsd = rawUsd.setScale(2, RoundingMode.HALF_UP);
-            amountVnd =
-                    request.getAmountVnd() != null
-                            ? request.getAmountVnd().setScale(0, RoundingMode.HALF_UP)
-                            : amountUsd.multiply(exchangeRate).setScale(0, RoundingMode.HALF_UP);
+            // Always recompute VND server-side from authoritative FX rate (never trust dual client amounts).
+            amountVnd = amountUsd.multiply(exchangeRate).setScale(0, RoundingMode.HALF_UP);
         } else {
             BigDecimal rawVnd =
                     request.getAmountVnd() != null ? request.getAmountVnd() : request.getAmount();
@@ -879,10 +882,8 @@ public class SepayService {
                         "Số tiền thanh toán tối thiểu là 2.000 VNĐ");
             }
             amountVnd = rawVnd.setScale(0, RoundingMode.HALF_UP);
-            amountUsd =
-                    request.getAmountUsd() != null
-                            ? request.getAmountUsd()
-                            : amountVnd.divide(exchangeRate, 2, RoundingMode.HALF_UP);
+            // Always recompute USD server-side from authoritative FX rate.
+            amountUsd = amountVnd.divide(exchangeRate, 2, RoundingMode.HALF_UP);
         }
 
         String paymentChannel =
@@ -1397,9 +1398,9 @@ public class SepayService {
                         : amountVnd;
 
         BigDecimal surchargePercent;
-        if (Boolean.TRUE.equals(request.getWaiveSurcharge())) {
+        if (canReadAll && Boolean.TRUE.equals(request.getWaiveSurcharge())) {
             surchargePercent = BigDecimal.ZERO;
-        } else if (request.getCustomSurchargePercent() != null) {
+        } else if (canReadAll && request.getCustomSurchargePercent() != null) {
             surchargePercent = request.getCustomSurchargePercent();
         } else if (sepayProperties != null && sepayProperties.isCardSurchargeEnabled()) {
             BigDecimal resolved = sepayProperties.resolveCardSurcharge(cardBrand);
@@ -1642,29 +1643,34 @@ public class SepayService {
                     .build();
         }
 
-        // 2. Xác thực API Key nếu có cấu hình (hỗ trợ chuẩn Authorization: Apikey <key>)
-        if (sepayProperties.getApiKey() != null && !sepayProperties.getApiKey().isBlank()) {
-            String expected = sepayProperties.getApiKey().trim();
-            boolean valid = false;
-            if (authHeader != null && !authHeader.isBlank()) {
-                String token = authHeader.trim();
-                if (token.regionMatches(true, 0, "Apikey ", 0, 7)) {
-                    token = token.substring(7).trim();
-                } else if (token.regionMatches(true, 0, "Bearer ", 0, 7)) {
-                    token = token.substring(7).trim();
-                }
-                valid =
-                        java.security.MessageDigest.isEqual(
-                                expected.getBytes(StandardCharsets.UTF_8),
-                                token.getBytes(StandardCharsets.UTF_8));
+        // 2. Xác thực API Key fail-closed (từ chối nếu chưa cấu hình khóa hoặc khóa không khớp)
+        if (sepayProperties.getApiKey() == null || sepayProperties.getApiKey().isBlank()) {
+            log.error("SePay webhook rejected: SEPAY_API_KEY is not configured");
+            throw new BusinessException(
+                    HttpStatus.UNAUTHORIZED,
+                    "SEPAY_API_KEY_NOT_CONFIGURED",
+                    "Chưa cấu hình khóa xác thực SePay");
+        }
+        String expected = sepayProperties.getApiKey().trim();
+        boolean valid = false;
+        if (authHeader != null && !authHeader.isBlank()) {
+            String token = authHeader.trim();
+            if (token.regionMatches(true, 0, "Apikey ", 0, 7)) {
+                token = token.substring(7).trim();
+            } else if (token.regionMatches(true, 0, "Bearer ", 0, 7)) {
+                token = token.substring(7).trim();
             }
-            if (!valid) {
-                log.error("Unauthorized SePay webhook attempt: invalid API key header");
-                throw new BusinessException(
-                        HttpStatus.UNAUTHORIZED,
-                        "INVALID_SEPAY_API_KEY",
-                        "Khóa xác thực SePay không hợp lệ");
-            }
+            valid =
+                    java.security.MessageDigest.isEqual(
+                            expected.getBytes(StandardCharsets.UTF_8),
+                            token.getBytes(StandardCharsets.UTF_8));
+        }
+        if (!valid) {
+            log.error("Unauthorized SePay webhook attempt: invalid API key header");
+            throw new BusinessException(
+                    HttpStatus.UNAUTHORIZED,
+                    "INVALID_SEPAY_API_KEY",
+                    "Khóa xác thực SePay không hợp lệ");
         }
 
         // 3. Bỏ qua nhanh giao dịch chuyển tiền đi (transferType != 'in') nếu có giá trị rõ ràng

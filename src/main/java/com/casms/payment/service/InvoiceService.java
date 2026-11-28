@@ -32,6 +32,20 @@ public class InvoiceService {
     private final InvoiceLineRepository invoiceLineRepository;
     private final BookingRepository bookingRepository;
     private final OnboardAccountRepository onboardAccountRepository;
+
+    @Transactional
+    public InvoiceResponse generateBookingInvoice(UUID bookingId, Integer expectedVersion) {
+        // Serialize document issuance for the same booking; a concurrent reviewer must re-read.
+        bookingRepository.findByIdForUpdate(bookingId)
+                .orElseThrow(() -> new ResourceNotFoundException("Booking", bookingId));
+        int current = invoiceRepository.findFirstByBooking_BookingIdOrderByVersionNoDesc(bookingId)
+                .map(Invoice::getVersionNo).orElse(0);
+        if (expectedVersion != null && expectedVersion != current) {
+            throw new BusinessException(HttpStatus.CONFLICT, "INVOICE_VERSION_CHANGED",
+                    "A newer invoice version is available; reload before issuing another document");
+        }
+        return generateBookingInvoice(bookingId);
+    }
     private final ChargeRepository chargeRepository;
 
     @Transactional

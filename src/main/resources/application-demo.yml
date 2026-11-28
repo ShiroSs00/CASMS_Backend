@@ -40,6 +40,9 @@ casms:
       account-number: ${SEPAY_ACCOUNT_NUMBER:0901452366}
       account-name: ${SEPAY_ACCOUNT_NAME:CONG TY DU THUYEN CASMS DEMO}
 
+jwt:
+  secret: ${JWT_SECRET:demo-only-casms-jwt-secret-key-min-32-bytes-2026}
+
 logging:
   level:
     com.casms: INFO

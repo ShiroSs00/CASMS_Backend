@@ -76,6 +76,7 @@ public class SepayController {
             description =
                     "Cho phép thay đổi động tỷ lệ phụ thu cà thẻ theo từng thương hiệu (VISA, MASTERCARD, JCB,"
                         + " AMEX, NAPAS) hoặc bật/tắt toàn bộ phụ phí thẻ mà không cần khởi động lại hệ thống.")
+    @PreAuthorize("hasAuthority('PAYMENT_PROCESS')")
     @PutMapping("/config/surcharge")
     public ApiResponse<SepayConfigResponse> updateSurchargeConfig(
             @RequestBody @Valid CardSurchargeConfigRequest request,
@@ -93,6 +94,7 @@ public class SepayController {
                     "Hiển thị số tiền, khoản đề xuất, lý do không đủ điều kiện và lệnh VietQR đang"
                         + " chờ (nếu có). Khách chỉ xem được đặt chỗ của mình; Finance dùng quyền"
                         + " PAYMENT_REPORT hoặc PAYMENT_PROCESS.")
+    @PreAuthorize("isAuthenticated()")
     @GetMapping("/options/{bookingId}")
     public ApiResponse<BookingPaymentOptionsResponse> getPaymentOptions(
             @Parameter(description = "ID đơn đặt tour", required = true) @PathVariable
@@ -112,6 +114,7 @@ public class SepayController {
                     "Tạo lệnh thanh toán theo 1 trong 3 loại: FULL (toàn bộ 100%), DEPOSIT (đặt"
                         + " cọc) hoặc STAGE (theo đợt). Hỗ trợ Idempotency và mở lại lệnh Pending"
                         + " cố định.")
+    @PreAuthorize("isAuthenticated()")
     @PostMapping("/checkout")
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<SepayCheckoutResponse> createCheckout(
@@ -130,6 +133,7 @@ public class SepayController {
                         + " & USD)",
             description =
                     "Thanh toán trực tiếp bằng thẻ quốc tế VISA hoặc MASTERCARD qua cổng SePay.")
+    @PreAuthorize("isAuthenticated()")
     @PostMapping("/card-checkout")
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<SepayCheckoutResponse> createCardCheckout(
@@ -147,6 +151,7 @@ public class SepayController {
             description =
                     "Tạo lệnh thanh toán nhanh theo số tiền bằng Tiền Việt (VND) hoặc USD, qua"
                         + " VietQR hoặc thẻ quốc tế Visa / Mastercard.")
+    @PreAuthorize("isAuthenticated()")
     @PostMapping("/quick-checkout")
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<SepayCheckoutResponse> createQuickCheckout(
@@ -164,6 +169,7 @@ public class SepayController {
             description =
                     "Kiểm tra giao dịch đã được ngân hàng xác nhận hay chưa (dùng cho Frontend"
                         + " polling). Khách chỉ tra cứu giao dịch thuộc đặt chỗ của mình.")
+    @PreAuthorize("isAuthenticated()")
     @GetMapping("/status/{paymentId}")
     public ApiResponse<PaymentStatusCheckResponse> getPaymentStatus(
             @Parameter(description = "ID giao dịch thanh toán", required = true) @PathVariable

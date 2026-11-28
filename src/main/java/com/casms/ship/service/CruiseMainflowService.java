@@ -816,7 +816,8 @@ SELECT EXISTS(SELECT 1 FROM "CruisePricingPolicy" p JOIN "Cruise" c USING(cruise
                 r.get("submitted_by") == null
                         ? List.of()
                         : jdbc.queryForList(
-                                "SELECT username FROM \"User\" WHERE user_id=?",
+                                "SELECT COALESCE(NULLIF(e.full_name,''),u.username) FROM \"User\" u"
+                                    + " LEFT JOIN \"Employee\" e ON e.user_id=u.user_id WHERE u.user_id=?",
                                 String.class,
                                 r.get("submitted_by"));
         UUID shipId = (UUID) c.get("ship_id");

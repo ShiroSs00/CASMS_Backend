@@ -29,6 +29,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.springframework.security.access.AccessDeniedException;
 
 /** Domain operations for onboard activities, registrations and attendance. */
 @Service
@@ -52,10 +53,12 @@ public class ActivityService {
     private final BusinessCodeGenerator businessCodeGenerator;
     private final DeckRepository deckRepository;
     private final CabinRepository cabinRepository;
+    private final AssignedOnboardWorkScope onboardWorkScope;
 
     @Transactional(readOnly = true)
     public List<OnboardActivity> listActivities() {
-        return activities.findByCatalogEntryFalse();
+        var rows = activities.findByCatalogEntryFalse();
+        return AssignedOnboardWorkScope.restricted() ? rows.stream().filter(a -> onboardWorkScope.activity(a.getOnboardActivityId())).toList() : rows;
     }
 
     @Transactional(readOnly = true)
@@ -69,6 +72,7 @@ public class ActivityService {
     }
 
     private OnboardActivity findActivityOrThrow(UUID id) {
+        if (AssignedOnboardWorkScope.restricted()) onboardWorkScope.requireActivity(id);
         return activities.findById(id).orElseThrow(() -> missing(ENTITY_ACTIVITY, id));
     }
 
@@ -378,11 +382,21 @@ public class ActivityService {
         a.setStatus(OnboardActivityStatus.COMPLETED);
     }
 
-    private static void handleCancelLifecycle(OnboardActivity a) {
+    private void handleCancelLifecycle(OnboardActivity a) {
         if (a.getStatus() == OnboardActivityStatus.COMPLETED || a.getStatus() == OnboardActivityStatus.CANCELLED) {
             invalid();
         }
         a.setStatus(OnboardActivityStatus.CANCELLED);
+        List<Registration> existing = registrations.findByOnboardActivity_OnboardActivityId(a.getOnboardActivityId());
+        if (existing != null) {
+            for (Registration reg : existing) {
+                if (reg.getStatus() == RegistrationStatus.PENDING
+                        || reg.getStatus() == RegistrationStatus.CONFIRMED) {
+                    reg.setStatus(RegistrationStatus.CANCELLED);
+                    registrations.save(reg);
+                }
+            }
+        }
     }
 
     public void validateActivity(OnboardActivity a, UUID exclude) {
@@ -447,9 +461,10 @@ public class ActivityService {
     }
 
     private List<Registration> findRegistrationsByActivity(UUID activityId) {
-        return activityId == null
+        var result = activityId == null
                 ? registrations.findAll()
                 : registrations.findByOnboardActivity_OnboardActivityId(activityId);
+        return AssignedOnboardWorkScope.restricted() ? result.stream().filter(this::assignedRegistration).toList() : result;
     }
 
     @Transactional(readOnly = true)
@@ -472,7 +487,27 @@ public class ActivityService {
     }
 
     private Registration findRegistrationOrThrow(UUID id) {
-        return registrations.findById(id).orElseThrow(() -> missing(ENTITY_REGISTRATION, id));
+        var result = registrations.findById(id).orElseThrow(() -> missing(ENTITY_REGISTRATION, id));
+        if (AssignedOnboardWorkScope.restricted() && !assignedRegistration(result))
+            throw new AccessDeniedException("Đăng ký không thuộc hoạt động được phân công của bạn.");
+        return result;
+    }
+
+    private boolean assignedRegistration(Registration row) {
+        return row.getOnboardActivity() != null
+                ? onboardWorkScope.activity(row.getOnboardActivity().getOnboardActivityId())
+                : row.getShoreExcursion() != null && onboardWorkScope.excursion(row.getShoreExcursion().getShoreExcursionId());
+    }
+
+    private boolean assignedParticipation(Participation row) {
+        return row.getOnboardActivity() != null
+                ? onboardWorkScope.activity(row.getOnboardActivity().getOnboardActivityId())
+                : row.getShoreExcursion() != null && onboardWorkScope.excursion(row.getShoreExcursion().getShoreExcursionId());
+    }
+
+    private void requireAssignedParticipation(Participation row) {
+        if (AssignedOnboardWorkScope.restricted() && !assignedParticipation(row))
+            throw new AccessDeniedException("Lượt tham gia không thuộc hoạt động được phân công của bạn.");
     }
 
     public Registration updatePending(
@@ -744,16 +779,20 @@ public class ActivityService {
 
     @Transactional(readOnly = true)
     public List<Participation> listParticipations() {
-        return participations.findAll();
+        var rows = participations.findAll();
+        return AssignedOnboardWorkScope.restricted() ? rows.stream().filter(this::assignedParticipation).toList() : rows;
     }
 
     @Transactional(readOnly = true)
     public Participation participation(UUID id) {
-        return participations.findById(id).orElseThrow(() -> missing("Participation", id));
+        var result = participations.findById(id).orElseThrow(() -> missing("Participation", id));
+        requireAssignedParticipation(result);
+        return result;
     }
 
     public Participation attendance(UUID id, String action) {
         Participation p = participations.lockById(id).orElseThrow(() -> missing("Participation", id));
+        requireAssignedParticipation(p);
         Instant now = Instant.now();
         switch (action) {
             case "check-in" -> handleCheckIn(p, now);

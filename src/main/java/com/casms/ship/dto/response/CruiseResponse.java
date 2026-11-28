@@ -17,7 +17,7 @@ public class CruiseResponse {
     private String saleCurrency;
     private Integer expectedPassengerCount;
 
-    @JsonProperty("expectedPassengers")
+    @JsonProperty(value = "expectedPassengers", access = JsonProperty.Access.READ_ONLY)
     public Integer getExpectedPassengers() { return expectedPassengerCount; }
 
     @Schema(

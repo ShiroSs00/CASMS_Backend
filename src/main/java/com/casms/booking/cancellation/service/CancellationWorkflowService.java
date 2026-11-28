@@ -12,11 +12,17 @@ import com.casms.booking.service.BookingService;
 import com.casms.common.exception.BusinessException;
 import com.casms.common.exception.ResourceNotFoundException;
 import com.casms.identity.enums.Role;
+import com.casms.payment.dto.request.RefundCreateRequest;
+import com.casms.payment.entity.Payment;
+import com.casms.payment.enums.PaymentStatus;
+import com.casms.payment.repository.PaymentRepository;
+import com.casms.payment.service.RefundService;
 import com.casms.security.principal.CasmsPrincipal;
 import com.casms.ship.entity.OperationalIssue;
 import com.casms.ship.repository.CruiseRepository;
 import com.casms.ship.repository.BookingAgentCruiseScope;
 import com.casms.ship.repository.OperationalIssueRepository;
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.EnumSet;
 import java.util.List;
@@ -40,6 +46,8 @@ public class CancellationWorkflowService {
     private final CruiseRepository cruises;
     private final OperationalIssueRepository issues;
     private final BookingService bookingService;
+    private final PaymentRepository paymentRepository;
+    private final RefundService refundService;
 
     public record CaseView(UUID caseId, UUID bookingId, Scenario scenario, Status status, String reason,
             Instant requestedAt, Instant departureAt, long revision, UUID issueId, UUID verifiedBy,
@@ -180,6 +188,7 @@ public class CancellationWorkflowService {
                     request.setReason(cancellation.getReason());
                     bookingService.cancel(booking.getBookingId(), request, actor);
                     cancellation.setStatus(Status.COMPLETED);
+                    createPendingRefundsForCancellation(booking.getBookingId(), cancellation.getCaseId(), decision);
                 } else {
                     cancellation.setStatus(Status.REJECTED);
                 }
@@ -242,8 +251,38 @@ public class CancellationWorkflowService {
         return new CaseView(c.getCaseId(), c.getBookingId(), c.getScenario(), c.getStatus(), c.getReason(),
                 c.getRequestedAt(), c.getDepartureAt(), c.getRevision(), finance || ops ? c.getIssueId() : null,
                 finance || ops ? c.getVerifiedBy() : null, finance || ops ? c.getVerifiedAt() : null,
-                finance || ops ? c.getDecidedBy() : null, c.getDecidedAt(), finance ? c.getDecisionReason() : null,
+                finance || ops ? c.getDecidedBy() : null, c.getDecidedAt(),
+                (finance || c.getStatus() == Status.REJECTED || c.getStatus() == Status.COMPLETED)
+                        ? c.getDecisionReason()
+                        : null,
                 "MANUAL_REVIEW_REQUIRED", List.copyOf(actions));
+    }
+
+    /**
+     * RG-06 (CASMS-REFUND-001): Auto-create idempotent PENDING (Requested) refund records when
+     * an approved cancellation has confirmed payments > 0. Never auto-disburses funds.
+     */
+    private void createPendingRefundsForCancellation(UUID bookingId, UUID caseId, String decision) {
+        if (paymentRepository == null || refundService == null) {
+            return;
+        }
+        List<Payment> confirmedPayments =
+                paymentRepository.findForBookingReadOnly(bookingId).stream()
+                        .filter(p -> p.getStatus() == PaymentStatus.Confirmed)
+                        .filter(
+                                p ->
+                                        p.getConfirmedAmount() != null
+                                                && p.getConfirmedAmount().compareTo(BigDecimal.ZERO) > 0)
+                        .toList();
+        for (Payment payment : confirmedPayments) {
+            RefundCreateRequest refundReq = new RefundCreateRequest();
+            refundReq.setOriginalPaymentId(payment.getPaymentId());
+            refundReq.setRequestedAmount(payment.getConfirmedAmount());
+            refundReq.setCurrency(payment.getCurrency());
+            refundReq.setRefundReason("Hoàn tiền theo duyệt hủy đặt chỗ: " + decision);
+            refundReq.setIdempotencyKey("CANCEL_CASE:" + caseId + ":" + payment.getPaymentId());
+            refundService.createRefund(refundReq);
+        }
     }
 
     private static void requireActor(CasmsPrincipal actor) {

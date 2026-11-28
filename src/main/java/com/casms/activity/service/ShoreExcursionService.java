@@ -42,6 +42,7 @@ public class ShoreExcursionService {
     private final DestinationRepository destinationRepository;
     private final PortRepository portRepository;
     private final BusinessCodeGenerator businessCodeGenerator;
+    private final AssignedOnboardWorkScope onboardWorkScope;
 
     private static final List<RegistrationStatus> CAPACITY_STATUSES =
             List.of(
@@ -125,6 +126,7 @@ public class ShoreExcursionService {
         }
 
         return excursions.stream()
+                .filter(e -> !AssignedOnboardWorkScope.restricted() || onboardWorkScope.excursion(e.getShoreExcursionId()))
                 .filter(e -> e.getCruiseStop()!=null)
                 .filter(e -> supplierId == null
                         || e.getSupplier().getSupplierId().equals(supplierId))
@@ -530,12 +532,25 @@ public class ShoreExcursionService {
         return toResponse(excursionRepository.save(excursion));
     }
 
+    public ShoreExcursionResponse reopen(UUID id) {
+        ShoreExcursion excursion = getById(id);
+
+        if (excursion.getStatus() != ShoreExcursionStatus.CLOSED) {
+            throw new IllegalStateException("Only CLOSED excursions can be reopened.");
+        }
+
+        excursion.setStatus(ShoreExcursionStatus.OPEN);
+        refreshCapacityStatus(excursion);
+        return toResponse(excursionRepository.save(excursion));
+    }
+
     public ShoreExcursionResponse start(UUID id) {
         ShoreExcursion excursion = getById(id);
 
         if (excursion.getStatus() != ShoreExcursionStatus.OPEN
-                && excursion.getStatus() != ShoreExcursionStatus.FULL) {
-            throw new IllegalStateException("Only OPEN or FULL excursions can start.");
+                && excursion.getStatus() != ShoreExcursionStatus.FULL
+                && excursion.getStatus() != ShoreExcursionStatus.CLOSED) {
+            throw new IllegalStateException("Only OPEN, FULL, or CLOSED excursions can start.");
         }
 
         Instant now = Instant.now();
@@ -572,6 +587,19 @@ public class ShoreExcursionService {
 
         excursion.setStatus(ShoreExcursionStatus.CANCELLED);
         excursion.setCancellationReason(reason.trim());
+
+        // Cascade cancel active registrations for this excursion (CASMS-EXCURSION-001)
+        List<com.casms.activity.entity.Registration> activeRegs =
+                registrationRepository.findByShoreExcursion_ShoreExcursionId(id);
+        if (activeRegs != null) {
+            for (com.casms.activity.entity.Registration reg : activeRegs) {
+                if (reg.getStatus() == RegistrationStatus.PENDING
+                        || reg.getStatus() == RegistrationStatus.CONFIRMED) {
+                    reg.setStatus(RegistrationStatus.CANCELLED);
+                    registrationRepository.save(reg);
+                }
+            }
+        }
 
         return toResponse(excursionRepository.save(excursion));
     }
@@ -651,6 +679,7 @@ public class ShoreExcursionService {
     }
 
     private ShoreExcursion getById(UUID id) {
+        if (AssignedOnboardWorkScope.restricted()) onboardWorkScope.requireExcursion(id);
         return excursionRepository
                 .findById(id)
                 .orElseThrow(() -> new EntityNotFoundException("Shore excursion not found: " + id));

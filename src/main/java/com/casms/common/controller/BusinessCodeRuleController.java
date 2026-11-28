@@ -42,7 +42,7 @@ public class BusinessCodeRuleController {
             description =
                     "Trả về danh sách cấu hình mẫu mã cho tất cả các thực thể (TRIP, SHIP, CRUISE,"
                         + " EXCURSION, BOOKING...)")
-    @PreAuthorize("hasAuthority('ADMIN') or hasAuthority('TRIP_READ')")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('TRIP_READ')")
     @GetMapping
     public ApiResponse<List<BusinessCodeRuleResponse>> getAllRules() {
         return ApiResponse.success(ruleService.getAllRules());
@@ -53,7 +53,7 @@ public class BusinessCodeRuleController {
             description =
                     "Trả về thông tin chi tiết, metadata Token hỗ trợ và context mẫu để hiển thị"
                         + " giao diện biên tập")
-    @PreAuthorize("hasAuthority('ADMIN') or hasAuthority('TRIP_READ')")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('TRIP_READ')")
     @GetMapping("/{entityType}")
     public ApiResponse<BusinessCodeRuleResponse> getRuleByEntityType(
             @PathVariable String entityType) {
@@ -65,8 +65,7 @@ public class BusinessCodeRuleController {
             description =
                     "Ghép chuỗi pattern với context mẫu và sinh mã thử nghiệm mà không làm nhảy số"
                         + " sequence trong DB")
-    @PreAuthorize(
-            "hasAuthority('ADMIN') or hasAuthority('TRIP_PLAN_WRITE') or hasAuthority('TRIP_READ')")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('TRIP_PLAN_WRITE') or hasAuthority('TRIP_READ')")
     @PostMapping("/preview")
     public ApiResponse<CodePreviewResponse> previewCode(
             @Valid @RequestBody CodePreviewRequest request) {
@@ -78,7 +77,7 @@ public class BusinessCodeRuleController {
             description =
                     "Lưu pattern và chiến lược sequence mới cho entity. Bắt buộc pattern phải chứa"
                         + " token {SEQ:n}")
-    @PreAuthorize("hasAuthority('ADMIN') or hasAuthority('TRIP_UPDATE')")
+    @PreAuthorize("hasRole('ADMIN')")
     @PutMapping("/{entityType}")
     public ApiResponse<BusinessCodeRuleResponse> updateRule(
             @PathVariable String entityType,

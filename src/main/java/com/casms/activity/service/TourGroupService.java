@@ -38,6 +38,7 @@ import java.util.UUID;
 public class TourGroupService {
 
     private final TourGroupRepository tourGroupRepository;
+    private final AssignedOnboardWorkScope onboardWorkScope;
     private final TourGroupPassengerRepository passengerAssignmentRepository;
     private final ShoreExcursionRepository shoreExcursionRepository;
     private final RegistrationRepository registrationRepository;
@@ -88,6 +89,7 @@ public class TourGroupService {
         }
 
         return groups.stream()
+                .filter(g -> !AssignedOnboardWorkScope.restricted() || onboardWorkScope.group(g.getTourGroupId()))
                 .filter(g -> status == null || g.getStatus() == status)
                 .filter(g -> guideId == null || guideId.equals(g.getGuideId()))
                 .map(this::toResponse)
@@ -543,6 +545,7 @@ public class TourGroupService {
     }
 
     private TourGroup getById(UUID id) {
+        if (AssignedOnboardWorkScope.restricted()) onboardWorkScope.requireGroup(id);
         return tourGroupRepository
                 .findById(id)
                 .orElseThrow(() -> new EntityNotFoundException("Tour group not found: " + id));
