@@ -27,15 +27,15 @@ public class CorsConfig {
         config.setAllowedOrigins(origins);
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of(
-                                        "Authorization",
-                                        "Content-Type",
-                                        "X-Requested-With",
-                                        "X-Correlation-Id",
-                                        "Accept",
-                                        "Idempotency-Key",
-                                        "If-Match",
-                                        "X-Guest-Token"
-                                    ));
+    "Authorization",
+    "Content-Type",
+    "X-Requested-With",
+    "X-Correlation-Id",
+    "Accept",
+    "Idempotency-Key",
+    "If-Match",
+    "X-Guest-Token"
+));
         config.setExposedHeaders(List.of("X-Correlation-Id", "Content-Disposition"));
         config.setAllowCredentials(true);
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
